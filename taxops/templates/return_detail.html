@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block title %}{% if ret.log_number %}#{{ ret.log_number }} {% endif %}{{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %} — TaxOps{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-4">
+
+  <!-- ── Return header ──────────────────────────────────────────────────── -->
+  <div class="flex items-start justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <a href="javascript:history.back()"
+         class="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded-lg hover:bg-slate-100">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <div>
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="font-mono font-black text-3xl text-slate-800 tracking-tight">{{ ret.log_number }}</span>
+          <span class="text-slate-300 text-2xl select-none">·</span>
+          <span class="text-xl font-semibold text-slate-700">{{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %}</span>
+          <span class="text-xs bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-mono font-semibold">
+            {{ ret.tax_year }}
+          </span>
+          <span class="status-badge {{ ret.badge_class }}">{{ ret.client_status or 'NO STATUS' }}</span>
+        </div>
+        {% if ret.display_name %}
+        <div class="text-sm text-slate-400 mt-0.5 ml-0.5">{{ ret.display_name }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Print sticker button -->
+    <button onclick="printSticker()"
+            class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+      </svg>
+      Print Sticker
+    </button>
+  </div>
+
+  <!-- ── Status workflow bar ────────────────────────────────────────────── -->
+  <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
+    <div class="flex items-center gap-1.5 overflow-x-auto">
+      {% set current_idx = status_flow.index(ret.client_status) if ret.client_status in status_flow else -1 %}
+      {% for s in status_flow %}
+      {% set idx = loop.index0 %}
+      {% set is_current = idx == current_idx %}
+      {% set is_done    = idx < current_idx %}
+      <button onclick="setStatusDetail({{ ret.id }}, '{{ s }}')"
+              class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all
+                     {% if is_current %}
+                       {{ status_badge.get(s,'') }} border shadow-sm
+                     {% elif is_done %}
+                       text-slate-400 border border-transparent
+                     {% else %}
+                       text-slate-500 hover:bg-slate-50 border border-transparent hover:border-slate-200
+                     {% endif %}">
+        {% if is_done %}
+        <svg class="w-3.5 h-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+        </svg>
+        {% elif is_current %}
+        <span class="w-2 h-2 rounded-full bg-current opacity-70 animate-pulse shrink-0"></span>
+        {% else %}
+        <span class="w-2 h-2 rounded-full bg-slate-300 shrink-0"></span>
+        {% endif %}
+        {{ s }}
+      </button>
+      {% if not loop.last %}
+      <svg class="w-4 h-4 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+      </svg>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ── Two-column layout ──────────────────────────────────────────────── -->
+  <div class="grid grid-cols-3 gap-4">
+
+    <!-- Left (2/3): Fields ──────────────────────────────────────────────── -->
+    <div class="col-span-2 space-y-4">
+
+      <!-- Return info -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header">Return Info</div>
+        <div class="p-4 grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+
+          {% macro ef(label, field, val, typ='text', ph='') %}
+          <div>
+            <div class="field-label">{{ label }}</div>
+            <span class="editable block font-medium text-slate-800"
+                  data-return-id="{{ ret.id }}" data-field="{{ field }}"
+                  data-value="{{ val or '' }}" data-type="{{ typ }}" data-placeholder="{{ ph }}">
+              {% if typ == 'bool' %}
+                {% if val %}<span class="text-green-600 font-semibold">✓ Yes</span>{% else %}<span class="text-slate-300">No</span>{% endif %}
+              {% else %}
+                {{ val or '—' }}
+              {% endif %}
+            </span>
+          </div>
+          {% endmacro %}
+
+          {{ ef('Preparer',      'processor',     ret.processor) }}
+          {{ ef('Email Marker',  'email_marker',  ret.email_marker) }}
+          {{ ef('Intake Date',   'intake_date',   ret.intake_date,   ph='YYYY-MM-DD') }}
+          {{ ef('Date Emailed',  'date_emailed',  ret.date_emailed,  ph='YYYY-MM-DD') }}
+          {{ ef('Pickup Date',   'pickup_date',   ret.pickup_date,   ph='YYYY-MM-DD') }}
+          {{ ef('Logout Date',   'logout_date',   ret.logout_date,   ph='YYYY-MM-DD') }}
+          {{ ef('Updated Date',  'updated_date',  ret.updated_date,  ph='YYYY-MM-DD') }}
+          {{ ef('Verified',      'verified',      ret.verified,      'bool') }}
+          {{ ef('2025 Transfer', 'transfer_2025_flag', ret.transfer_2025_flag, 'bool') }}
+          {{ ef('2026 Transfer', 'transfer_2026_flag', ret.transfer_2026_flag, 'bool') }}
+          {{ ef('Transfer Flag', 'transfer_flag', ret.transfer_flag, 'bool') }}
+        </div>
+      </div>
+
+      <!-- Forms -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header">Return Forms</div>
+        <div class="p-4 grid grid-cols-3 gap-2">
+          {% set form_list = [
+            ('form_1040',    'Form 1040'),
+            ('sched_a_d',    'Sch A & D'),
+            ('sched_c',      'Schedule C'),
+            ('sched_e',      'Schedule E'),
+            ('form_1120',    'Form 1120'),
+            ('form_1120s',   'Form 1120S'),
+            ('form_1065_llc','1065 / LLC'),
+            ('corp_officer', 'Corp Officer'),
+            ('business_owner','Bus Owner'),
+            ('form_990_1041','990 / 1041'),
+            ('is_amended',   '1040X (Amended)'),
+            ('has_w7',       'Form W-7'),
+            ('is_extension', 'Extension'),
+            ('transfer_flag','Transfer'),
+          ] %}
+          {% for field, label in form_list %}
+          {% set val = ret.get(field) %}
+          <label class="flex items-center gap-2 cursor-pointer p-2.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all select-none">
+            <input type="checkbox"
+                   {% if val %}checked{% endif %}
+                   onchange="saveField({{ ret.id }}, '{{ field }}', this.checked ? 1 : 0)"
+                   class="rounded border-slate-300 text-blue-600 focus:ring-blue-400 focus:ring-offset-0">
+            <span class="text-sm text-slate-700">{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Payment -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header flex items-center justify-between">
+          <span>Payment</span>
+          {% if ret.total_fee %}
+            {% if ret.paid_in_full %}
+            <span class="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">PAID IN FULL</span>
+            {% else %}
+            <span class="text-xs font-bold text-red-500 bg-red-50 px-2.5 py-1 rounded-full">
+              BALANCE DUE ${{ "{:,.2f}".format(ret.balance) }}
+            </span>
+            {% endif %}
+          {% endif %}
+        </div>
+        <div class="p-4 grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+
+          {% macro pf(label, field, val, currency=False) %}
+          <div>
+            <div class="field-label">{{ label }}</div>
+            <span class="editable block font-medium text-slate-800"
+                  data-return-id="{{ ret.id }}" data-field="{{ field }}"
+                  data-value="{{ val or '' }}" data-placeholder="{{ label }}">
+              {% if currency and val %}${{ "{:,.2f}".format(val) }}{% else %}{{ val or '—' }}{% endif %}
+            </span>
+          </div>
+          {% endmacro %}
+
+          {{ pf('Total Fee',    'total_fee',          ret.total_fee,          True) }}
+          {{ pf('Fee Paid',     'fee_paid',           ret.fee_paid,           True) }}
+          {{ pf('CC Fee',       'cc_fee',             ret.cc_fee,             True) }}
+          {{ pf('Receipt #',    'receipt_number',     ret.receipt_number) }}
+          {{ pf('Zelle / CK #', 'zelle_or_check_ref', ret.zelle_or_check_ref) }}
+          {{ pf('Cash / QPay',  'cash_or_qpay_ref',  ret.cash_or_qpay_ref) }}
+        </div>
+      </div>
+
+    </div><!-- /left col -->
+
+    <!-- Right (1/3): Notes + History + Client ──────────────────────────── -->
+    <div class="space-y-4">
+
+      <!-- Notes -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header">Notes</div>
+        <div class="p-3 border-b border-slate-100">
+          <textarea id="note-input" rows="2" placeholder="Add a note… (Ctrl+Enter to save)"
+                    class="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                    onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();submitNote({{ ret.id }})}"></textarea>
+          <button onclick="submitNote({{ ret.id }})"
+                  class="mt-2 w-full text-xs bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg py-1.5 font-semibold transition-colors">
+            Save Note
+          </button>
+        </div>
+        <div id="notes-list" class="divide-y divide-slate-100 max-h-56 overflow-y-auto">
+          {% for note in notes %}
+          <div class="px-4 py-3">
+            <p class="text-sm text-slate-800 leading-snug">{{ note.note_text }}</p>
+            <p class="text-xs text-slate-400 mt-1">{{ note.source }} · {{ (note.created_at or '')[:10] }}</p>
+          </div>
+          {% else %}
+          <div class="px-4 py-6 text-center text-sm text-slate-400">No notes yet</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Status history -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header">History</div>
+        <div class="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+          {% for event in events %}
+          <div class="px-4 py-3">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs font-semibold text-slate-700">{{ event.event_type }}</span>
+              {% if event.old_status and event.new_status %}
+              <span class="text-xs text-slate-400">
+                {{ event.old_status }} → {{ event.new_status }}
+              </span>
+              {% endif %}
+            </div>
+            <p class="text-xs text-slate-400 mt-0.5">
+              {{ event.source_file }} · {{ (event.event_timestamp or '')[:16] }}
+            </p>
+          </div>
+          {% else %}
+          <div class="px-4 py-6 text-center text-sm text-slate-400">No history yet</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Client info -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header">Client</div>
+        <div class="p-4 space-y-3 text-sm">
+          <div>
+            <div class="field-label">Display Name</div>
+            <span class="editable block font-medium text-slate-800"
+                  data-return-id="{{ ret.id }}" data-field="display_name"
+                  data-value="{{ ret.display_name or '' }}" data-placeholder="Display name">
+              {{ ret.display_name or '—' }}
+            </span>
+          </div>
+          <div>
+            <div class="field-label">Referred By</div>
+            <span class="editable block font-medium text-slate-800"
+                  data-return-id="{{ ret.id }}" data-field="referred_by"
+                  data-value="{{ ret.referred_by or '' }}" data-placeholder="Who referred?">
+              {{ ret.referred_by or '—' }}
+            </span>
+          </div>
+          <div>
+            <div class="field-label">Referral</div>
+            <span class="editable cursor-pointer"
+                  data-return-id="{{ ret.id }}" data-field="referral_flag"
+                  data-type="bool" data-value="{{ '1' if ret.referral_flag else '0' }}">
+              {% if ret.referral_flag %}
+              <span class="text-green-600 font-semibold">✓ Yes</span>
+              {% else %}
+              <span class="text-slate-300">No</span>
+              {% endif %}
+            </span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /right col -->
+  </div><!-- /grid -->
+
+</div><!-- /wrapper -->
+
+<!-- Hidden sticker for print -->
+<div id="sticker-content" style="display:none">
+  <div style="font-family:monospace;border:2px solid #000;padding:14px 16px;width:2.6in;line-height:1.4">
+    <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#666">Tax Year {{ ret.tax_year }}</div>
+    <div style="font-size:22px;font-weight:900;letter-spacing:3px;margin:2px 0">{{ ret.log_number }}</div>
+    <div style="font-size:13px;font-weight:600">{{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %}</div>
+    {% if ret.client_status %}
+    <div style="font-size:9px;margin-top:6px;color:#555;text-transform:uppercase">{{ ret.client_status }}</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function setStatusDetail(returnId, status) {
+  const resp = await fetch(`/api/return/${returnId}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  const data = await resp.json();
+  if (data.success) window.location.reload();
+}
+
+async function saveField(returnId, field, value) {
+  await fetch(`/api/return/${returnId}/field`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ field, value }),
+  });
+}
+
+function printSticker() {
+  const content = document.getElementById('sticker-content').innerHTML;
+  const win = window.open('', '_blank', 'width=320,height=200');
+  win.document.write(`<html><body onload="window.print();window.close()">${content}</body></html>`);
+  win.document.close();
+}
+</script>
+{% endblock %}

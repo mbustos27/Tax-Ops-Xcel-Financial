@@ -1,0 +1,4 @@
+LOG 2025,LAST,FIRST,TAX PAYER NAME (S),YR,PROCESSOR,VERIFIED,CLIENT STATUS,INT'D,25 TRANSF,26 TRANSF,EMAIL,DATE EMAILED,PICK UP,LOG OUT,TOTAL FEE,RECEIPT #,FEE PAID,CC Fee,Zelle or CK #,"Cash, Q Pay",1040,SCH A & D,SCHED C,SCHED E,1120,1120S,1065/LLC,Corp Officer,Bus Owner,1040X,W7,990/1041,EXT,TRANSFER,UPDATED,NOTES,Referral,Referred By
+1001,Smith,John,"John A Smith",2025,Ana,X,Processing,01/15/2025,X,,Sent,01/20/2025,02/01/2025,02/03/2025,"$450.00",R-1001,"$450.00","$13.50",ZL-7788,,X,,X,,,,,,,,,,,02/03/2025,"Initial intake complete and paid in full",X,Google
+1002,Doe,Jane,"Jane Doe",2025,Bob,,Log In,1/18/2025,,X,,2025-01-22,,,"$300",R-1002,"$150","$4.50",,CASH-22,X,X,,X,,,,,,X,,,,01-28-2025,"Needs follow-up docs",,Friend
+1003,Brown,Chris,"Chris Brown",2025,Cara,Y,Pickup,2025-01-10,,,,,01/30/2025,,500,R-1003,500,0,CK-333,,X,,,X,,X,,,,,X,,X,,X,2025-01-30,"Client requested extension and transfer review",Y,CPA Partner

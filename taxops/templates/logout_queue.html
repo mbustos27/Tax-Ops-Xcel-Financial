@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Logout Queue — TaxOps {{ current_year }}{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-lg font-bold text-slate-800">Logout Queue</h1>
+      <p class="text-sm text-slate-400 mt-0.5">Files at PICKUP or LOG OUT — {{ today }}</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <input id="table-filter" type="text" placeholder="Quick filter…"
+             class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400 w-36">
+      <span class="text-sm text-slate-500">
+        <span class="font-bold text-slate-800">{{ returns | length }}</span> files
+      </span>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <table class="data-table w-full text-sm">
+      <thead class="bg-slate-50 border-b border-slate-200">
+        <tr>
+          <th class="th w-16">Log #</th>
+          <th class="th">Client</th>
+          <th class="th text-right w-24">Fee</th>
+          <th class="th text-right w-28">Balance</th>
+          <th class="th w-28">Receipt #</th>
+          <th class="th w-28">Logout Date</th>
+          <th class="th w-28">Pickup Date</th>
+          <th class="th text-center w-40">Action</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in returns %}
+        <tr class="status-row status-{{ (r.client_status or '') | replace(' ','-') }} hover:bg-slate-50/80"
+            data-search="{{ r.log_number }} {{ r.last_name }} {{ r.first_name }}">
+
+          <!-- Log # -->
+          <td class="td">
+            <a href="/return/{{ r.id }}"
+               class="font-mono font-black text-blue-600 hover:text-blue-800 text-base tracking-tight">
+              {{ r.log_number }}
+            </a>
+          </td>
+
+          <!-- Client -->
+          <td class="td">
+            <div class="font-semibold text-slate-800">{{ r.last_name }}{% if r.first_name %}, {{ r.first_name }}{% endif %}</div>
+          </td>
+
+          <!-- Fee -->
+          <td class="td text-right tabular-nums">
+            {% if r.total_fee %}
+            <span class="font-medium">${{ "{:,.2f}".format(r.total_fee) }}</span>
+            {% else %}
+            <span class="text-slate-300">—</span>
+            {% endif %}
+          </td>
+
+          <!-- Balance -->
+          <td class="td text-right">
+            {% if r.paid_in_full %}
+            <span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">PAID</span>
+            {% elif r.balance %}
+            <span class="font-bold text-red-600 tabular-nums">${{ "{:,.2f}".format(r.balance) }}</span>
+            {% else %}
+            <span class="text-slate-300">—</span>
+            {% endif %}
+          </td>
+
+          <!-- Receipt # -->
+          <td class="td">
+            <span class="editable font-mono text-xs text-slate-700"
+                  data-return-id="{{ r.id }}" data-field="receipt_number"
+                  data-value="{{ r.receipt_number or '' }}" data-placeholder="Receipt #">
+              {{ r.receipt_number or '—' }}
+            </span>
+          </td>
+
+          <!-- Logout date -->
+          <td class="td">
+            <span class="editable text-xs text-slate-700"
+                  data-return-id="{{ r.id }}" data-field="logout_date"
+                  data-value="{{ r.logout_date or '' }}" data-placeholder="YYYY-MM-DD">
+              {{ r.logout_date or '—' }}
+            </span>
+          </td>
+
+          <!-- Pickup date -->
+          <td class="td">
+            <span class="editable text-xs text-slate-700"
+                  data-return-id="{{ r.id }}" data-field="pickup_date"
+                  data-value="{{ r.pickup_date or '' }}" data-placeholder="YYYY-MM-DD">
+              {{ r.pickup_date or '—' }}
+            </span>
+          </td>
+
+          <!-- Action buttons -->
+          <td class="td text-center">
+            <div class="flex items-center justify-center gap-1.5">
+              {% if r.client_status == 'PICKUP' %}
+              <button onclick="quickStatus({{ r.id }}, 'LOG OUT', this)"
+                      class="action-btn bg-slate-700 hover:bg-slate-800 text-white">
+                Log Out
+              </button>
+              {% endif %}
+              {% if r.client_status != 'PICKUP' %}
+              <button onclick="quickStatus({{ r.id }}, 'PICKUP', this)"
+                      class="action-btn bg-teal-600 hover:bg-teal-700 text-white">
+                Picked Up
+              </button>
+              {% endif %}
+              {% if r.client_status == 'LOG OUT' and r.pickup_date %}
+              <span class="text-xs text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full font-medium">
+                Done ✓
+              </span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="px-6 py-16 text-center">
+            <div class="text-5xl mb-3">✅</div>
+            <div class="font-semibold text-slate-500 text-base">Queue is clear</div>
+            <div class="text-sm text-slate-400 mt-1">No files currently at PICKUP or LOG OUT</div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function quickStatus(returnId, status, btn) {
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = '…';
+  try {
+    const resp = await fetch(`/api/return/${returnId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    const data = await resp.json();
+    if (data.success) window.location.reload();
+    else { btn.disabled = false; btn.textContent = original; }
+  } catch {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+</script>
+{% endblock %}
