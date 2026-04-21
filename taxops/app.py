@@ -12,6 +12,7 @@ from flask import (
     request, session, url_for,
 )
 
+from config import APP_ENV
 from db import get_connection, init_db
 from utils import now
 
@@ -46,32 +47,34 @@ def _security_headers(response):
 
 # ── Workflow constants ────────────────────────────────────────────────────────
 
-STATUS_FLOW = ["LOG IN", "PROCESSING", "FINALIZE", "EFILE", "PICKUP", "LOG OUT"]
+STATUS_FLOW = ["LOG IN", "PROCESSING", "FINALIZE", "PICKUP", "EFILE READY", "EFILE", "LOG OUT"]
 
 STATUS_BADGE = {
-    "LOG IN":     "bg-blue-50 text-blue-700 border-blue-200",
-    "PROCESSING": "bg-amber-50 text-amber-700 border-amber-200",
-    "FINALIZE":   "bg-orange-50 text-orange-700 border-orange-200",
-    "EFILE":      "bg-violet-50 text-violet-700 border-violet-200",
-    "PICKUP":     "bg-teal-50 text-teal-700 border-teal-200",
-    "LOG OUT":    "bg-slate-100 text-slate-500 border-slate-200",
+    "LOG IN":      "bg-blue-50 text-blue-700 border-blue-200",
+    "PROCESSING":  "bg-amber-50 text-amber-700 border-amber-200",
+    "FINALIZE":    "bg-orange-50 text-orange-700 border-orange-200",
+    "PICKUP":      "bg-teal-50 text-teal-700 border-teal-200",
+    "EFILE READY": "bg-indigo-50 text-indigo-700 border-indigo-200",
+    "EFILE":       "bg-violet-50 text-violet-700 border-violet-200",
+    "LOG OUT":     "bg-slate-100 text-slate-500 border-slate-200",
 }
 
 STATUS_DOT = {
-    "LOG IN":     "dot-blue",
-    "PROCESSING": "dot-amber",
-    "FINALIZE":   "dot-orange",
-    "EFILE":      "dot-violet",
-    "PICKUP":     "dot-teal",
-    "LOG OUT":    "dot-slate",
+    "LOG IN":      "dot-blue",
+    "PROCESSING":  "dot-amber",
+    "FINALIZE":    "dot-orange",
+    "PICKUP":      "dot-teal",
+    "EFILE READY": "dot-indigo",
+    "EFILE":       "dot-violet",
+    "LOG OUT":     "dot-slate",
 }
 
 # When advancing to these statuses, auto-stamp the corresponding date field
 # only if it hasn't been set yet.
 STATUS_DATE_STAMP = {
-    "LOG IN":  "intake_date",
-    "PICKUP":  "pickup_date",
-    "LOG OUT": "logout_date",
+    "LOG IN":      "intake_date",
+    "PICKUP":      "pickup_date",      # client called in to sign
+    "LOG OUT":     "logout_date",      # accepted, case closed
 }
 
 # Fields that live in the returns table and may be edited via /api/return/<id>/field
@@ -184,6 +187,21 @@ def query_returns(filters: dict | None = None) -> list[dict]:
             "(p.total_fee IS NOT NULL AND COALESCE(p.fee_paid,0) < p.total_fee)"
         )
 
+    if f.get("form"):
+        form_col = f["form"]
+        allowed = {
+            "form_1040", "sched_a_d", "sched_c", "sched_e",
+            "form_1120", "form_1120s", "form_1065_llc",
+            "corp_officer", "business_owner", "form_990_1041",
+            "is_amended", "has_w7", "is_extension",
+        }
+        if form_col in allowed:
+            # is_amended/has_w7/is_extension live on returns; forms live on return_forms
+            if form_col in ("is_amended", "has_w7", "is_extension"):
+                clauses.append(f"r.{form_col} = 1")
+            else:
+                clauses.append(f"rf.{form_col} = 1")
+
     if f.get("q"):
         q = f["q"].strip()
         if q.isdigit():
@@ -260,6 +278,7 @@ def base_ctx(year: int | None = None) -> dict:
         "status_counts": get_status_counts(y),
         "totals":        get_totals(y),
         "processors":    get_processors(y),
+        "app_env":       APP_ENV,
     }
 
 
@@ -297,6 +316,7 @@ def dashboard():
         "status":      request.args.getlist("status") or None,
         "processor":   request.args.get("processor"),
         "balance_due": request.args.get("balance_due"),
+        "form":        request.args.get("form"),
         "q":           request.args.get("q"),
     }
     returns = query_returns(filters)
@@ -335,7 +355,7 @@ def logout_queue():
     year = int(request.args.get("year", date.today().year))
     conn = get_connection()
     rows = conn.execute(
-        f"{_SELECT} WHERE r.tax_year=? AND r.client_status IN ('PICKUP','LOG OUT') "
+        f"{_SELECT} WHERE r.tax_year=? AND r.client_status = 'PICKUP' "
         "ORDER BY CAST(r.log_number AS INTEGER)",
         (year,),
     ).fetchall()
@@ -371,7 +391,350 @@ def payments():
     return render_template("payments.html", **ctx)
 
 
+# ── Intake form ───────────────────────────────────────────────────────────────
+
+@app.route("/intake", methods=["GET", "POST"])
+@login_required
+def intake():
+    if request.method == "GET":
+        ctx = base_ctx()
+        ctx.update({
+            "active_page": "intake",
+            "today": date.today().isoformat(),
+            "error": None,
+        })
+        return render_template("intake.html", **ctx)
+
+    # POST — create records
+    f = request.form
+    ts = now()
+    today_iso = date.today().isoformat()
+
+    last_name  = (f.get("last_name") or "").strip().upper()
+    first_name = (f.get("first_name") or "").strip().upper()
+    if not last_name:
+        ctx = base_ctx()
+        ctx.update({"active_page": "intake", "today": today_iso, "error": "Last name is required.", "prefill": {}})
+        return render_template("intake.html", **ctx), 400
+
+    def _v(key):
+        val = f.get(key, "").strip()
+        return val or None
+
+    def _n(key):
+        val = f.get(key, "").strip()
+        try:
+            return float(val) if val else None
+        except ValueError:
+            return None
+
+    def _i(key):
+        val = f.get(key, "").strip()
+        return int(val) if val.isdigit() else None
+
+    conn = get_connection()
+    try:
+        tax_year = _i("tax_year") or date.today().year
+
+        # ── Auto log number (max + 1 for this tax year) ───────────────────────
+        row = conn.execute(
+            "SELECT MAX(CAST(log_number AS INTEGER)) AS mx FROM returns WHERE tax_year = ?",
+            (tax_year,),
+        ).fetchone()
+        log_number = str((row["mx"] or 0) + 1)
+
+        # ── Client — insert new or update existing (re-intake) ────────────────
+        existing_client_id = _i("client_id")
+        if existing_client_id:
+            conn.execute(
+                """
+                UPDATE clients SET
+                    last_name=?, first_name=?, ssn_last4=?,
+                    spouse_last_name=?, spouse_first_name=?,
+                    taxpayer_dob=?, spouse_dob=?,
+                    taxpayer_occupation=?, spouse_occupation=?,
+                    taxpayer_phone=?, taxpayer_cell=?, taxpayer_work_phone=?,
+                    spouse_cell=?, spouse_work_phone=?,
+                    taxpayer_email=?, spouse_email=?,
+                    address=?, referral_flag=?, referred_by=?,
+                    is_new_client=0, prior_year_log=?, updated_at=?
+                WHERE id=?
+                """,
+                (
+                    last_name, first_name, _v("ssn_last4"),
+                    (_v("spouse_last_name") or "").upper() or None,
+                    (_v("spouse_first_name") or "").upper() or None,
+                    _v("taxpayer_dob"), _v("spouse_dob"),
+                    _v("taxpayer_occupation"), _v("spouse_occupation"),
+                    _v("taxpayer_phone"), _v("taxpayer_cell"), _v("taxpayer_work_phone"),
+                    _v("spouse_cell"), _v("spouse_work_phone"),
+                    _v("taxpayer_email"), _v("spouse_email"),
+                    _v("address"),
+                    1 if f.get("referral_flag") else 0,
+                    _v("referred_by"),
+                    _v("prior_year_log"),
+                    ts, existing_client_id,
+                ),
+            )
+            client_id = existing_client_id
+        else:
+            conn.execute(
+                """
+                INSERT INTO clients (
+                    last_name, first_name, ssn_last4,
+                    spouse_last_name, spouse_first_name,
+                    taxpayer_dob, spouse_dob,
+                    taxpayer_occupation, spouse_occupation,
+                    taxpayer_phone, taxpayer_cell, taxpayer_work_phone,
+                    spouse_cell, spouse_work_phone,
+                    taxpayer_email, spouse_email,
+                    address, referral_flag, referred_by,
+                    is_new_client, prior_year_log,
+                    created_at, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    last_name, first_name, _v("ssn_last4"),
+                    (_v("spouse_last_name") or "").upper() or None,
+                    (_v("spouse_first_name") or "").upper() or None,
+                    _v("taxpayer_dob"), _v("spouse_dob"),
+                    _v("taxpayer_occupation"), _v("spouse_occupation"),
+                    _v("taxpayer_phone"), _v("taxpayer_cell"), _v("taxpayer_work_phone"),
+                    _v("spouse_cell"), _v("spouse_work_phone"),
+                    _v("taxpayer_email"), _v("spouse_email"),
+                    _v("address"),
+                    1 if f.get("referral_flag") else 0,
+                    _v("referred_by"),
+                    int(f.get("is_new_client", "0")),
+                    _v("prior_year_log"),
+                    ts, ts,
+                ),
+            )
+            client_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        # ── Return ────────────────────────────────────────────────────────────
+        conn.execute(
+            """
+            INSERT INTO returns (
+                client_id, log_number, tax_year, client_status,
+                processor, verified, intake_date, interview_by,
+                filing_status, promise_date, delivered_by,
+                date_signatures_emailed, date_reports_emailed,
+                overtime_flag, insurance_type, digital_assets,
+                bank_name, bank_routing, bank_account, bank_account_type,
+                notes_intake,
+                is_amended, has_w7, is_extension,
+                estimate_irs, estimate_state, final_irs, final_state,
+                created_at, updated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                client_id,
+                log_number,
+                tax_year,
+                "LOG IN",
+                _v("processor"),
+                1 if f.get("verified") else 0,
+                _v("intake_date") or today_iso,
+                _v("interview_by"),
+                _v("filing_status"),
+                _v("promise_date"),
+                _v("delivered_by"),
+                _v("date_signatures_emailed"),
+                _v("date_reports_emailed"),
+                int(f.get("overtime_flag", "0")),
+                _v("insurance_type"),
+                int(f.get("digital_assets", "0")),
+                _v("bank_name"), _v("bank_routing"), _v("bank_account"), _v("bank_account_type"),
+                _v("notes_intake"),
+                1 if f.get("is_amended") else None,
+                1 if f.get("has_w7") else None,
+                1 if f.get("is_extension") else None,
+                _n("estimate_irs"), _n("estimate_state"),
+                _n("final_irs"), _n("final_state"),
+                ts, ts,
+            ),
+        )
+        return_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        # ── Return forms ──────────────────────────────────────────────────────
+        form_fields = [
+            "form_1040", "sched_a_d", "sched_c", "sched_e",
+            "form_1120", "form_1120s", "form_1065_llc",
+            "corp_officer", "business_owner", "form_990_1041",
+        ]
+        form_vals = {field: (1 if f.get(field) else None) for field in form_fields}
+        conn.execute(
+            f"""INSERT INTO return_forms (return_id, {', '.join(form_fields)})
+                VALUES (?, {', '.join('?' for _ in form_fields)})""",
+            [return_id] + [form_vals[k] for k in form_fields],
+        )
+
+        # ── Payment ───────────────────────────────────────────────────────────
+        conn.execute(
+            """
+            INSERT INTO payments (
+                return_id, total_fee, fee_paid, receipt_number, receipt2_number,
+                accounting_fee, w7_fee, form_1099_fee, license_fee,
+                reprocess_fee, discount_amount, special_discount, down_payment
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                return_id,
+                _n("total_fee"), _n("fee_paid"),
+                _v("receipt_number"), _v("receipt2_number"),
+                _n("accounting_fee"), _n("w7_fee"), _n("form_1099_fee"), _n("license_fee"),
+                _n("reprocess_fee"), _n("discount_amount"), _n("special_discount"),
+                _n("down_payment"),
+            ),
+        )
+
+        # ── Dependents ────────────────────────────────────────────────────────
+        dep_count = int(f.get("dep_count", "6"))
+        for i in range(1, dep_count + 1):
+            name = (f.get(f"dep_name_{i}") or "").strip().upper()
+            if not name:
+                continue
+            conn.execute(
+                """
+                INSERT INTO dependents
+                  (return_id, full_name, ssn_last4, relationship, date_of_birth, medi_cal, created_at)
+                VALUES (?,?,?,?,?,?,?)
+                """,
+                (
+                    return_id, name,
+                    _v(f"dep_ssn_{i}"),
+                    _v(f"dep_rel_{i}"),
+                    _v(f"dep_dob_{i}"),
+                    1 if f.get(f"dep_medicaid_{i}") else 0,
+                    ts,
+                ),
+            )
+
+        # ── Status event ──────────────────────────────────────────────────────
+        conn.execute(
+            """
+            INSERT INTO status_events
+              (return_id, event_type, old_status, new_status, event_timestamp, source_file, note)
+            VALUES (?, 'STATUS_CHANGED', NULL, 'LOG IN', ?, 'INTAKE', 'Created via intake form')
+            """,
+            (return_id, ts),
+        )
+
+        # ── Notes ─────────────────────────────────────────────────────────────
+        if _v("notes_intake"):
+            conn.execute(
+                "INSERT INTO notes (return_id, note_text, source, created_at) VALUES (?,?,'INTAKE',?)",
+                (return_id, _v("notes_intake"), ts),
+            )
+
+        conn.commit()
+        return redirect(f"/return/{return_id}")
+
+    except Exception as exc:
+        conn.rollback()
+        ctx = base_ctx()
+        ctx.update({"active_page": "intake", "today": today_iso, "error": str(exc)})
+        return render_template("intake.html", **ctx), 500
+    finally:
+        conn.close()
+
+
 # ── JSON API ──────────────────────────────────────────────────────────────────
+
+@app.get("/api/clients/search")
+@login_required
+def api_client_search():
+    """Search existing clients by name for re-intake prefill."""
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify([])
+    qp = f"%{q.lower()}%"
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT c.id, c.last_name, c.first_name, c.display_name,
+               MAX(r.tax_year) AS last_year
+        FROM clients c
+        LEFT JOIN returns r ON r.client_id = c.id
+        WHERE lower(c.last_name) LIKE ? OR lower(c.first_name) LIKE ?
+           OR lower(COALESCE(c.display_name,'')) LIKE ?
+        GROUP BY c.id
+        ORDER BY c.last_name, c.first_name
+        LIMIT 12
+        """,
+        (qp, qp, qp),
+    ).fetchall()
+    conn.close()
+    results = []
+    for r in rows:
+        first = r["first_name"] or ""
+        last  = r["last_name"]  or ""
+        name  = r["display_name"] or (f"{last}, {first}".strip(", ") if first else last)
+        results.append({
+            "id":        r["id"],
+            "name":      name,
+            "last_year": r["last_year"],
+        })
+    return jsonify(results)
+
+
+@app.get("/api/clients/<int:client_id>/reintake")
+@login_required
+def api_client_reintake(client_id: int):
+    """
+    Return everything needed to pre-populate the re-intake form for a
+    returning client: client fields + most recent return's data + dependents.
+    SSN fields are intentionally excluded.
+    """
+    conn = get_connection()
+    client = conn.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
+    if not client:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+
+    # Most recent return for this client
+    ret = conn.execute(
+        """
+        SELECT r.*, rf.form_1040, rf.sched_a_d, rf.sched_c, rf.sched_e,
+               rf.form_1120, rf.form_1120s, rf.form_1065_llc,
+               rf.corp_officer, rf.business_owner, rf.form_990_1041
+        FROM returns r
+        LEFT JOIN return_forms rf ON rf.return_id = r.id
+        WHERE r.client_id = ?
+        ORDER BY r.tax_year DESC, r.id DESC
+        LIMIT 1
+        """,
+        (client_id,),
+    ).fetchone()
+
+    # Dependents from that return
+    deps = []
+    if ret:
+        deps = [dict(d) for d in conn.execute(
+            "SELECT * FROM dependents WHERE return_id = ? ORDER BY id",
+            (ret["id"],),
+        ).fetchall()]
+        # strip SSN from dependents too
+        for d in deps:
+            d.pop("ssn_last4", None)
+
+    conn.close()
+
+    data = dict(client)
+    data.pop("ssn_last4", None)
+
+    last_return = {}
+    if ret:
+        last_return = dict(ret)
+        last_return.pop("ssn_last4", None)
+
+    return jsonify({
+        "client":      data,
+        "last_return": last_return,
+        "dependents":  deps,
+    })
+
 
 @app.get("/api/search")
 @login_required
@@ -462,6 +825,23 @@ def api_field(return_id: int):
                 f"UPDATE returns SET {field}=?, updated_at=? WHERE id=?",
                 (value, now(), return_id),
             )
+            # When ack_date is set on a transmitted return, auto-advance to LOG OUT
+            if field == "ack_date" and value:
+                cur = conn.execute(
+                    "SELECT client_status FROM returns WHERE id=?", (return_id,)
+                ).fetchone()
+                if cur and cur["client_status"] == "EFILE":
+                    ts = now()
+                    conn.execute(
+                        "UPDATE returns SET client_status='LOG OUT', logout_date=COALESCE(logout_date,?), updated_at=? WHERE id=?",
+                        (date.today().isoformat(), ts, return_id),
+                    )
+                    conn.execute(
+                        """INSERT INTO status_events
+                           (return_id, event_type, old_status, new_status, event_timestamp, source_file, note)
+                           VALUES (?, 'STATUS_CHANGED', 'EFILE', 'LOG OUT', ?, 'APP', 'Auto-advanced: ack date set')""",
+                        (return_id, ts),
+                    )
         elif field in CLIENT_EDITABLE:
             cid = conn.execute("SELECT client_id FROM returns WHERE id=?", (return_id,)).fetchone()
             if cid:

@@ -5,54 +5,86 @@
 <div class="space-y-3">
 
   <!-- ── Filter bar ──────────────────────────────────────────────────────── -->
-  <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 flex flex-wrap items-center gap-3">
+  <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 space-y-2.5">
 
-    <!-- Status pills -->
-    <div class="flex items-center gap-1.5 flex-wrap">
-      <span class="text-xs text-slate-400 shrink-0">Status:</span>
-      <a href="/?year={{ current_year }}"
-         class="pill {% if not filters.status %}pill-active{% else %}pill-inactive{% endif %}">
+    <!-- Row 1: status + preparer + balance + search -->
+    <div class="flex flex-wrap items-center gap-3">
+
+      <!-- Status pills -->
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="text-xs text-slate-400 shrink-0">Status:</span>
+        <a href="/?year={{ current_year }}{% if filters.form %}&form={{ filters.form }}{% endif %}"
+           class="pill {% if not filters.status %}pill-active{% else %}pill-inactive{% endif %}">
+          All
+        </a>
+        {% for s in status_flow %}
+        <a href="/?status={{ s }}&year={{ current_year }}{% if filters.form %}&form={{ filters.form }}{% endif %}"
+           class="pill flex items-center gap-1 {% if filters.status and s in filters.status %}pill-active{% else %}pill-inactive{% endif %}">
+          <span class="status-dot {{ status_dot.get(s,'dot-slate') }}"></span>{{ s }}
+        </a>
+        {% endfor %}
+      </div>
+
+      <div class="w-px h-5 bg-slate-200 shrink-0"></div>
+
+      <!-- Preparer filter -->
+      <div class="flex items-center gap-1.5">
+        <span class="text-xs text-slate-400">Preparer:</span>
+        <select onchange="applyFilter('processor', this.value)"
+                class="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <option value="">All</option>
+          {% for p in processors %}
+          <option value="{{ p }}" {% if filters.processor == p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Balance filter -->
+      <label class="flex items-center gap-1.5 cursor-pointer select-none">
+        <input type="checkbox"
+               onchange="applyFilter('balance_due', this.checked ? '1' : '')"
+               {% if filters.balance_due %}checked{% endif %}
+               class="rounded border-slate-300 text-blue-600 focus:ring-blue-400">
+        <span class="text-xs text-slate-600">Balance due only</span>
+      </label>
+
+      <!-- Quick in-page filter -->
+      <div class="ml-auto flex items-center gap-2">
+        <input id="table-filter" type="text" placeholder="Quick filter…"
+               class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400 w-40">
+        <span class="text-xs text-slate-400 whitespace-nowrap">
+          <span id="row-count">{{ returns | length }}</span> returns
+        </span>
+      </div>
+    </div>
+
+    <!-- Row 2: form type filter -->
+    <div class="flex items-center gap-1.5 flex-wrap border-t border-slate-100 pt-2.5">
+      <span class="text-xs text-slate-400 shrink-0">Form:</span>
+
+      {% set active_form = filters.form or '' %}
+      {% set base = '/?year=' ~ current_year %}
+      {% if filters.status %} {% set base = base ~ '&status=' ~ filters.status[0] %} {% endif %}
+      {% if filters.processor %} {% set base = base ~ '&processor=' ~ filters.processor %} {% endif %}
+      {% if filters.balance_due %} {% set base = base ~ '&balance_due=1' %} {% endif %}
+
+      <a href="{{ base }}"
+         class="pill {% if not active_form %}pill-active{% else %}pill-inactive{% endif %}">
         All
       </a>
-      {% for s in status_flow %}
-      <a href="/?status={{ s }}&year={{ current_year }}"
-         class="pill flex items-center gap-1 {% if filters.status and s in filters.status %}pill-active{% else %}pill-inactive{% endif %}">
-        <span class="status-dot {{ status_dot.get(s,'dot-slate') }}"></span>{{ s }}
+
+      {% for col, label in [
+        ('form_1040','1040'),('form_1120','1120'),('form_1120s','1120S'),
+        ('form_1065_llc','1065'),('form_990_1041','990/1041'),
+        ('is_amended','1040X'),('has_w7','W-7'),('is_extension','EXT')
+      ] %}
+      <a href="{{ base }}&form={{ col }}"
+         class="pill {% if active_form == col %}pill-active{% else %}pill-inactive{% endif %}">
+        {{ label }}
       </a>
       {% endfor %}
     </div>
 
-    <div class="w-px h-5 bg-slate-200 shrink-0"></div>
-
-    <!-- Preparer filter -->
-    <div class="flex items-center gap-1.5">
-      <span class="text-xs text-slate-400">Preparer:</span>
-      <select onchange="applyFilter('processor', this.value)"
-              class="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400">
-        <option value="">All</option>
-        {% for p in processors %}
-        <option value="{{ p }}" {% if filters.processor == p %}selected{% endif %}>{{ p }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <!-- Balance filter -->
-    <label class="flex items-center gap-1.5 cursor-pointer select-none">
-      <input type="checkbox"
-             onchange="applyFilter('balance_due', this.checked ? '1' : '')"
-             {% if filters.balance_due %}checked{% endif %}
-             class="rounded border-slate-300 text-blue-600 focus:ring-blue-400">
-      <span class="text-xs text-slate-600">Balance due only</span>
-    </label>
-
-    <!-- Quick in-page filter -->
-    <div class="ml-auto flex items-center gap-2">
-      <input id="table-filter" type="text" placeholder="Quick filter…"
-             class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400 w-40">
-      <span class="text-xs text-slate-400 whitespace-nowrap">
-        <span id="row-count">{{ returns | length }}</span> returns
-      </span>
-    </div>
   </div>
 
   <!-- ── Returns table ───────────────────────────────────────────────────── -->

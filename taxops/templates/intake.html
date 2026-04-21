@@ -1,0 +1,953 @@
+{% extends "base.html" %}
+{% block title %}New Intake — TaxOps {{ current_year }}{% endblock %}
+
+{% block content %}
+<form id="intake-form" method="post" action="/intake" autocomplete="off" class="space-y-6">
+
+  <!-- Hidden client_id populated by JS when an existing client is selected -->
+  <input type="hidden" name="client_id" id="client_id_field" value="">
+
+  <!-- ── Page header ──────────────────────────────────────────────────────── -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold text-slate-800" id="intake-title">New Client Intake</h1>
+      <p class="text-sm text-slate-500 mt-0.5">Xcel Financial Services, LLC — Income Tax Client Information
+        <span id="reintake-badge" class="hidden ml-2 bg-amber-100 text-amber-700 border border-amber-300
+              text-xs font-bold px-2 py-0.5 rounded-full">Re-intake</span>
+      </p>
+    </div>
+    <button type="submit"
+            class="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-6 py-2.5 text-sm shadow transition-colors">
+      Save &amp; Create Return
+    </button>
+  </div>
+
+  {% if error %}
+  <div class="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">{{ error }}</div>
+  {% endif %}
+
+  <!-- ── Returning client lookup ───────────────────────────────────────────── -->
+  <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+    <p class="text-xs font-bold text-amber-700 uppercase tracking-widest mb-3">
+      Returning Client? Search to pre-fill
+    </p>
+    <div class="flex gap-3 items-start">
+      <div class="relative flex-1 max-w-sm">
+        <input type="text" id="client-lookup"
+               placeholder="Type last name or first name…"
+               autocomplete="off" spellcheck="false"
+               class="w-full border border-amber-300 bg-white rounded-xl px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent">
+        <div id="client-lookup-results"
+             class="hidden absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl
+                    border border-slate-200 z-50 overflow-hidden max-h-64 overflow-y-auto">
+        </div>
+      </div>
+      <button type="button" id="clear-client"
+              class="hidden text-xs text-red-600 hover:text-red-800 font-semibold px-3 py-2.5
+                     border border-red-200 rounded-xl bg-red-50 hover:bg-red-100 transition-colors whitespace-nowrap">
+        ✕ Clear — New Client
+      </button>
+    </div>
+    <div id="selected-client-info" class="hidden mt-3 text-sm text-amber-800 font-medium"></div>
+  </div>
+
+  <!-- ── Section A: Header info ───────────────────────────────────────────── -->
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-800 flex items-center gap-2">
+      <span class="text-white font-bold text-sm tracking-wide">A — Log &amp; Interview Info</span>
+    </div>
+    <div class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+
+      <div>
+        <label class="intake-label">Tax Year</label>
+        <select name="tax_year" class="intake-input">
+          {% for y in [2026, 2025, 2024, 2023] %}
+          <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="intake-label">Log # <span class="text-slate-400 font-normal normal-case">(auto)</span></label>
+        <div class="intake-input bg-slate-50 text-slate-400 text-sm flex items-center select-none">
+          Assigned on save
+        </div>
+      </div>
+
+      <div>
+        <label class="intake-label">Prior Year Log #</label>
+        <input type="text" name="prior_year_log" class="intake-input" placeholder="e.g. 24" id="field-prior_year_log">
+      </div>
+
+      <div>
+        <label class="intake-label">Interview Date</label>
+        <input type="date" name="intake_date" id="field-intake_date" class="intake-input" value="{{ today }}">
+      </div>
+
+      <div>
+        <label class="intake-label">Interviewed By</label>
+        <select name="interview_by" class="intake-input">
+          <option value="">— select —</option>
+          {% for p in processors %}
+          <option value="{{ p }}">{{ p }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="intake-label">Client Type</label>
+        <div class="flex gap-3 mt-2">
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+            <input type="radio" name="is_new_client" value="0" checked class="accent-blue-600"> Return
+          </label>
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+            <input type="radio" name="is_new_client" value="1" class="accent-blue-600"> New
+          </label>
+        </div>
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="intake-label">Referred By</label>
+        <div class="relative">
+          <input type="text" id="referral-lookup"
+                 placeholder="Search client name…"
+                 autocomplete="off" spellcheck="false"
+                 class="intake-input pr-8">
+          <!-- hidden field holds the actual stored value -->
+          <input type="hidden" name="referred_by" id="referral-value">
+          <button type="button" id="referral-clear"
+                  class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-slate-400
+                         hover:text-slate-700 text-lg leading-none"
+                  title="Clear">&times;</button>
+          <div id="referral-results"
+               class="hidden absolute top-full left-0 right-0 mt-1 bg-white rounded-xl
+                      shadow-2xl border border-slate-200 z-50 overflow-hidden
+                      max-h-56 overflow-y-auto">
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label class="intake-label">Referral</label>
+        <div class="flex gap-3 mt-2">
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+            <input type="checkbox" name="referral_flag" id="referral-flag-check"
+                   value="1" class="accent-blue-600"> Yes
+          </label>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Section B: Taxpayer & Spouse ─────────────────────────────────────── -->
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-800">
+      <span class="text-white font-bold text-sm tracking-wide">B — Taxpayer &amp; Spouse</span>
+    </div>
+    <div class="p-5 space-y-5">
+
+      <!-- Taxpayer row -->
+      <div>
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Taxpayer</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <label class="intake-label">Last Name</label>
+            <input type="text" name="last_name" id="field-last_name" class="intake-input" placeholder="Last" required>
+          </div>
+          <div>
+            <label class="intake-label">First Name</label>
+            <input type="text" name="first_name" id="field-first_name" class="intake-input" placeholder="First">
+          </div>
+          <div>
+            <label class="intake-label">Date of Birth</label>
+            <input type="date" name="taxpayer_dob" id="field-taxpayer_dob" class="intake-input">
+          </div>
+          <div>
+            <label class="intake-label">SSN Last 4</label>
+            <input type="text" name="ssn_last4" id="field-ssn_last4" maxlength="4" pattern="\d{4}"
+                   class="intake-input font-mono" placeholder="••••">
+          </div>
+          <div>
+            <label class="intake-label">Occupation</label>
+            <input type="text" name="taxpayer_occupation" id="field-taxpayer_occupation" class="intake-input">
+          </div>
+          <div>
+            <label class="intake-label">Home Phone</label>
+            <input type="tel" name="taxpayer_phone" id="field-taxpayer_phone" class="intake-input" placeholder="(   )">
+          </div>
+          <div>
+            <label class="intake-label">Cell</label>
+            <input type="tel" name="taxpayer_cell" id="field-taxpayer_cell" class="intake-input" placeholder="(   )">
+          </div>
+          <div>
+            <label class="intake-label">Email</label>
+            <input type="email" name="taxpayer_email" id="field-taxpayer_email" class="intake-input">
+          </div>
+        </div>
+      </div>
+
+      <hr class="border-slate-100">
+
+      <!-- Spouse row -->
+      <div>
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Spouse</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <label class="intake-label">Last Name</label>
+            <input type="text" name="spouse_last_name" id="field-spouse_last_name" class="intake-input" placeholder="Last">
+          </div>
+          <div>
+            <label class="intake-label">First Name</label>
+            <input type="text" name="spouse_first_name" id="field-spouse_first_name" class="intake-input" placeholder="First">
+          </div>
+          <div>
+            <label class="intake-label">Date of Birth</label>
+            <input type="date" name="spouse_dob" id="field-spouse_dob" class="intake-input">
+          </div>
+          <div>
+            <label class="intake-label">SSN Last 4</label>
+            <input type="text" name="spouse_ssn_last4" id="field-spouse_ssn_last4" maxlength="4" pattern="\d{4}"
+                   class="intake-input font-mono" placeholder="••••">
+          </div>
+          <div>
+            <label class="intake-label">Occupation</label>
+            <input type="text" name="spouse_occupation" id="field-spouse_occupation" class="intake-input">
+          </div>
+          <div>
+            <label class="intake-label">Cell</label>
+            <input type="tel" name="spouse_cell" id="field-spouse_cell" class="intake-input" placeholder="(   )">
+          </div>
+          <div>
+            <label class="intake-label">Work Phone</label>
+            <input type="tel" name="spouse_work_phone" id="field-spouse_work_phone" class="intake-input" placeholder="(   )">
+          </div>
+          <div>
+            <label class="intake-label">Email</label>
+            <input type="email" name="spouse_email" id="field-spouse_email" class="intake-input">
+          </div>
+        </div>
+      </div>
+
+      <hr class="border-slate-100">
+
+      <!-- Address & filing status -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="md:col-span-2">
+          <label class="intake-label">Address</label>
+          <input type="text" name="address" id="field-address" class="intake-input" placeholder="Street, City, State, ZIP">
+        </div>
+        <div>
+          <label class="intake-label">Filing Status</label>
+          <select name="filing_status" id="field-filing_status" class="intake-input">
+            <option value="">— select —</option>
+            <option>SINGLE</option>
+            <option>MFJ</option>
+            <option>MFS</option>
+            <option>HH</option>
+            <option>DEPENDENT</option>
+            <option>QUAL NON DEP</option>
+          </select>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Section C: Dependents ────────────────────────────────────────────── -->
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-800 flex items-center justify-between">
+      <span class="text-white font-bold text-sm tracking-wide">C — Dependents</span>
+      <button type="button" id="add-dependent"
+              class="text-xs text-blue-300 hover:text-white transition-colors font-semibold">
+        + Add Row
+      </button>
+    </div>
+    <div class="p-5 overflow-x-auto">
+      <table class="w-full text-sm" id="dependents-table">
+        <thead>
+          <tr class="text-left">
+            <th class="th-sm w-8">#</th>
+            <th class="th-sm">Full Name</th>
+            <th class="th-sm w-24">SSN Last 4</th>
+            <th class="th-sm w-32">Relationship</th>
+            <th class="th-sm w-36">Date of Birth</th>
+            <th class="th-sm w-20 text-center">Medi-Cal</th>
+            <th class="th-sm w-8"></th>
+          </tr>
+        </thead>
+        <tbody id="dependents-body">
+          {% for i in range(1, 7) %}
+          <tr class="dependent-row border-t border-slate-100">
+            <td class="py-2 px-2 text-slate-400 text-xs font-mono">{{ i }}</td>
+            <td class="py-1 px-1"><input type="text" name="dep_name_{{ i }}" class="intake-input-sm"></td>
+            <td class="py-1 px-1"><input type="text" name="dep_ssn_{{ i }}" maxlength="4" class="intake-input-sm font-mono" placeholder="••••"></td>
+            <td class="py-1 px-1">
+              <select name="dep_rel_{{ i }}" class="intake-input-sm">
+                <option value=""></option>
+                <option>SON</option>
+                <option>DAUGHTER</option>
+                <option>PARENT</option>
+                <option>OTHER</option>
+              </select>
+            </td>
+            <td class="py-1 px-1"><input type="date" name="dep_dob_{{ i }}" class="intake-input-sm"></td>
+            <td class="py-1 px-1 text-center">
+              <input type="checkbox" name="dep_medicaid_{{ i }}" value="1" class="accent-blue-600 w-4 h-4">
+            </td>
+            <td class="py-1 px-1"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <input type="hidden" name="dep_count" value="6" id="dep-count">
+    </div>
+  </div>
+
+  <!-- ── Section D: Insurance & Assets ────────────────────────────────────── -->
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-800">
+      <span class="text-white font-bold text-sm tracking-wide">D — Insurance &amp; Digital Assets</span>
+    </div>
+    <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <div>
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Insurance Coverage</p>
+        <div class="space-y-2">
+          {% for opt in ["Employer", "Medi-Cal", "Medicare", "Marketplace / 1095-A", "Private Insurance", "Not Insured", "Not Legal Resident"] %}
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="radio" name="insurance_type" value="{{ opt }}" class="accent-blue-600">
+            {{ opt }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="space-y-5">
+        <div>
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Digital Assets</p>
+          <div class="flex gap-4">
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input type="radio" name="digital_assets" value="1" class="accent-blue-600"> Yes
+            </label>
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input type="radio" name="digital_assets" value="0" checked class="accent-blue-600"> No
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Overtime</p>
+          <div class="flex gap-4">
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input type="radio" name="overtime_flag" value="1" class="accent-blue-600"> Yes
+            </label>
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input type="radio" name="overtime_flag" value="0" checked class="accent-blue-600"> No
+            </label>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Section E: Banking ────────────────────────────────────────────────── -->
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-800">
+      <span class="text-white font-bold text-sm tracking-wide">E — Banking Information</span>
+    </div>
+    <div class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div>
+        <label class="intake-label">Bank Name</label>
+        <input type="text" name="bank_name" id="field-bank_name" class="intake-input">
+      </div>
+      <div>
+        <label class="intake-label">Routing #</label>
+        <input type="text" name="bank_routing" id="field-bank_routing" maxlength="9" class="intake-input font-mono">
+      </div>
+      <div>
+        <label class="intake-label">Account #</label>
+        <input type="text" name="bank_account" id="field-bank_account" class="intake-input font-mono">
+      </div>
+      <div>
+        <label class="intake-label">Account Type</label>
+        <select name="bank_account_type" id="field-bank_account_type" class="intake-input">
+          <option value="">— select —</option>
+          <option value="CHECKING">Checking</option>
+          <option value="SAVINGS">Savings</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Section F: Forms & Return Type ───────────────────────────────────── -->
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-800">
+      <span class="text-white font-bold text-sm tracking-wide">F — Forms &amp; Return Type</span>
+    </div>
+    <div class="p-5">
+      <div class="flex flex-wrap gap-4">
+        {% for field, label in [
+          ("form_1040","1040"),("sched_a_d","Sch A&D"),("sched_c","Sch C"),
+          ("sched_e","Sch E"),("form_1120","1120"),("form_1120s","1120S"),
+          ("form_1065_llc","1065/LLC"),("corp_officer","Corp Officer"),
+          ("business_owner","Bus Owner"),("form_990_1041","990/1041"),
+          ("is_amended","1040X Amended"),("has_w7","W-7"),("is_extension","Extension")
+        ] %}
+        <label class="flex items-center gap-2 text-sm cursor-pointer bg-slate-50 border border-slate-200
+                      rounded-lg px-3 py-2 hover:bg-blue-50 hover:border-blue-300 transition-colors
+                      has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400">
+          <input type="checkbox" name="{{ field }}" value="1" class="accent-blue-600">
+          <span class="font-medium">{{ label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Section G: Processing ─────────────────────────────────────────────── -->
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-800">
+      <span class="text-white font-bold text-sm tracking-wide">G — Processing</span>
+    </div>
+    <div class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div>
+        <label class="intake-label">Processor</label>
+        <select name="processor" id="field-processor" class="intake-input">
+          <option value="">— select —</option>
+          {% for p in processors %}
+          <option value="{{ p }}">{{ p }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="intake-label">Promise Date</label>
+        <input type="date" name="promise_date" class="intake-input">
+      </div>
+      <div>
+        <label class="intake-label">Delivered By</label>
+        <input type="text" name="delivered_by" class="intake-input" placeholder="Initials">
+      </div>
+      <div>
+        <label class="intake-label">Date Signatures Emailed</label>
+        <input type="date" name="date_signatures_emailed" class="intake-input">
+      </div>
+      <div>
+        <label class="intake-label">Date Reports Emailed</label>
+        <input type="date" name="date_reports_emailed" class="intake-input">
+      </div>
+      <div>
+        <label class="intake-label">Verified</label>
+        <div class="flex gap-3 mt-2">
+          <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+            <input type="checkbox" name="verified" value="1" class="accent-blue-600"> Yes
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Section H: Fees ───────────────────────────────────────────────────── -->
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-800">
+      <span class="text-white font-bold text-sm tracking-wide">H — Fees &amp; Payment</span>
+    </div>
+    <div class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+
+      <div>
+        <label class="intake-label">Total Fee</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <input type="number" name="total_fee" step="0.01" min="0"
+                 class="intake-input pl-6" placeholder="0.00" id="fee-total">
+        </div>
+      </div>
+      <div>
+        <label class="intake-label">Accounting Fee</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <input type="number" name="accounting_fee" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+        </div>
+      </div>
+      <div>
+        <label class="intake-label">W-7 Fee</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <input type="number" name="w7_fee" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+        </div>
+      </div>
+      <div>
+        <label class="intake-label">1099s Fee</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <input type="number" name="form_1099_fee" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+        </div>
+      </div>
+      <div>
+        <label class="intake-label">License Processing</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <input type="number" name="license_fee" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+        </div>
+      </div>
+      <div>
+        <label class="intake-label">Reprocess / Reprint</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <input type="number" name="reprocess_fee" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+        </div>
+      </div>
+      <div>
+        <label class="intake-label">Discount (coupon)</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <input type="number" name="discount_amount" step="0.01" min="0" class="intake-input pl-6" placeholder="20.00">
+        </div>
+      </div>
+      <div>
+        <label class="intake-label">Special Discount</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <input type="number" name="special_discount" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+        </div>
+      </div>
+
+      <div class="border-t border-slate-100 col-span-2 md:col-span-4 pt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div>
+          <label class="intake-label">Down Payment / Deposit</label>
+          <div class="relative">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+            <input type="number" name="down_payment" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+          </div>
+        </div>
+        <div>
+          <label class="intake-label">Fee Paid</label>
+          <div class="relative">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+            <input type="number" name="fee_paid" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+          </div>
+        </div>
+        <div>
+          <label class="intake-label">Receipt # (1)</label>
+          <input type="text" name="receipt_number" class="intake-input">
+        </div>
+        <div>
+          <label class="intake-label">Receipt # (2)</label>
+          <input type="text" name="receipt2_number" class="intake-input">
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Section I: Estimates ──────────────────────────────────────────────── -->
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-800">
+      <span class="text-white font-bold text-sm tracking-wide">I — Estimates &amp; Refunds</span>
+    </div>
+    <div class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div>
+        <label class="intake-label">Estimate — IRS</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <input type="number" name="estimate_irs" step="0.01" class="intake-input pl-6" placeholder="0.00">
+        </div>
+      </div>
+      <div>
+        <label class="intake-label">Estimate — State</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <input type="number" name="estimate_state" step="0.01" class="intake-input pl-6" placeholder="0.00">
+        </div>
+      </div>
+      <div>
+        <label class="intake-label">Final — IRS</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <input type="number" name="final_irs" step="0.01" class="intake-input pl-6" placeholder="0.00">
+        </div>
+      </div>
+      <div>
+        <label class="intake-label">Final — State</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <input type="number" name="final_state" step="0.01" class="intake-input pl-6" placeholder="0.00">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Section J: Notes ──────────────────────────────────────────────────── -->
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-800">
+      <span class="text-white font-bold text-sm tracking-wide">J — Notes</span>
+    </div>
+    <div class="p-5">
+      <textarea name="notes_intake" rows="3"
+                class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-800
+                       focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent resize-y"
+                placeholder="Special notes, instructions, or flags…"></textarea>
+    </div>
+  </div>
+
+  <!-- ── Footer submit ─────────────────────────────────────────────────────── -->
+  <div class="flex justify-end gap-3 pb-6">
+    <a href="/" class="px-5 py-2.5 text-sm text-slate-600 hover:text-slate-800 font-medium transition-colors">
+      Cancel
+    </a>
+    <button type="submit"
+            class="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-8 py-2.5 text-sm shadow transition-colors">
+      Save &amp; Create Return
+    </button>
+  </div>
+
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const lookupInput   = document.getElementById('client-lookup');
+  const resultsBox    = document.getElementById('client-lookup-results');
+  const clearBtn      = document.getElementById('clear-client');
+  const clientIdField = document.getElementById('client_id_field');
+  const selectedInfo  = document.getElementById('selected-client-info');
+  const intakeTitle   = document.getElementById('intake-title');
+  const reintakeBadge = document.getElementById('reintake-badge');
+
+  // client-level text fields (persist year to year)
+  const CLIENT_TEXT = [
+    'last_name','first_name','taxpayer_dob','taxpayer_occupation',
+    'taxpayer_phone','taxpayer_cell','taxpayer_work_phone','taxpayer_email',
+    'spouse_last_name','spouse_first_name','spouse_dob','spouse_occupation',
+    'spouse_cell','spouse_work_phone','spouse_email',
+    'address','prior_year_log',
+  ];
+
+  // return-level text fields (pre-filled but expected to be reviewed)
+  const RETURN_TEXT = [
+    'bank_name','bank_routing','bank_account',
+  ];
+
+  // return-level selects
+  const RETURN_SELECT = ['filing_status','bank_account_type','processor'];
+
+  // return-level checkboxes
+  const RETURN_CHECKS = [
+    'form_1040','sched_a_d','sched_c','sched_e',
+    'form_1120','form_1120s','form_1065_llc',
+    'corp_officer','business_owner','form_990_1041',
+    'is_amended','has_w7','is_extension',
+  ];
+
+  // return-level radio groups
+  const RETURN_RADIOS = ['insurance_type','digital_assets','overtime_flag'];
+
+  let debounceTimer = null;
+
+  lookupInput.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    const q = lookupInput.value.trim();
+    if (q.length < 2) { resultsBox.classList.add('hidden'); return; }
+    debounceTimer = setTimeout(() => fetchClients(q), 250);
+  });
+
+  lookupInput.addEventListener('keydown', e => {
+    if (e.key === 'Escape') resultsBox.classList.add('hidden');
+  });
+
+  document.addEventListener('click', e => {
+    if (!lookupInput.contains(e.target) && !resultsBox.contains(e.target))
+      resultsBox.classList.add('hidden');
+  });
+
+  async function fetchClients(q) {
+    const res  = await fetch(`/api/clients/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    renderResults(data);
+  }
+
+  function renderResults(items) {
+    if (!items.length) {
+      resultsBox.innerHTML = `
+        <p class="text-sm text-slate-400 px-4 py-3">
+          No existing clients found — will create new.
+        </p>`;
+    } else {
+      resultsBox.innerHTML = items.map(c => `
+        <button type="button" data-id="${c.id}" data-name="${c.name}"
+                class="client-pick w-full text-left px-4 py-2.5 hover:bg-amber-50
+                       transition-colors border-b border-slate-100 last:border-0">
+          <span class="font-semibold text-slate-800 text-sm">${c.name}</span>
+          ${c.last_year
+            ? `<span class="ml-2 text-xs text-slate-400">Last filed: TY${c.last_year}</span>`
+            : ''}
+        </button>`).join('');
+    }
+    resultsBox.classList.remove('hidden');
+    resultsBox.querySelectorAll('.client-pick').forEach(btn =>
+      btn.addEventListener('click', () => selectClient(btn.dataset.id, btn.dataset.name))
+    );
+  }
+
+  async function selectClient(id, name) {
+    resultsBox.classList.add('hidden');
+    lookupInput.value = name;
+
+    const res  = await fetch(`/api/clients/${id}/reintake`);
+    const { client, last_return, dependents } = await res.json();
+
+    // ── Client-level fields ───────────────────────────────────────────────
+    CLIENT_TEXT.forEach(key => prefillText(key, client[key], false));
+
+    // ── Return-level fields (from last year, highlighted) ─────────────────
+    RETURN_TEXT.forEach(key   => prefillText(key,   last_return[key],   true));
+    RETURN_SELECT.forEach(key => prefillSelect(key, last_return[key],   true));
+    RETURN_CHECKS.forEach(key => prefillCheck(key,  last_return[key],   true));
+    RETURN_RADIOS.forEach(key => prefillRadio(key,  last_return[key],   true));
+
+    // ── Dependents ────────────────────────────────────────────────────────
+    prefillDependents(dependents);
+
+    // ── UI state ──────────────────────────────────────────────────────────
+    clientIdField.value = id;
+    intakeTitle.textContent = `Re-intake — ${name}`;
+    reintakeBadge.classList.remove('hidden');
+    clearBtn.classList.remove('hidden');
+
+    const prevYear = last_return.tax_year;
+    const newYear  = document.querySelector('[name=tax_year]').value;
+    selectedInfo.innerHTML = prevYear
+      ? `Pre-filled from <strong>TY${prevYear}</strong> (Log #${last_return.log_number || '—'}).
+         Highlighted fields carried over — update anything that changed for <strong>TY${newYear}</strong>.`
+      : `Existing client found. A new TY${newYear} return will be created.`;
+    selectedInfo.classList.remove('hidden');
+  }
+
+  // ── Prefill helpers ────────────────────────────────────────────────────────
+
+  function prefillText(key, val, highlight) {
+    const el = document.getElementById(`field-${key}`);
+    if (!el || val == null || val === '') return;
+    el.value = val;
+    if (highlight) markPrefilled(el);
+  }
+
+  function prefillSelect(key, val, highlight) {
+    const el = document.getElementById(`field-${key}`);
+    if (!el || val == null || val === '') return;
+    el.value = val;
+    if (highlight) markPrefilled(el);
+  }
+
+  function prefillCheck(key, val, highlight) {
+    const el = document.querySelector(`[name="${key}"]`);
+    if (!el) return;
+    el.checked = !!val;
+    if (highlight && val) markPrefilled(el.closest('label') || el);
+  }
+
+  function prefillRadio(key, val, highlight) {
+    if (val == null || val === '') return;
+    const el = document.querySelector(`[name="${key}"][value="${val}"]`);
+    if (!el) return;
+    el.checked = true;
+    if (highlight) markPrefilled(el.closest('label') || el);
+  }
+
+  function prefillDependents(deps) {
+    if (!deps || !deps.length) return;
+    deps.forEach((dep, i) => {
+      const n = i + 1;
+      const nameEl = document.querySelector(`[name="dep_name_${n}"]`);
+      const relEl  = document.querySelector(`[name="dep_rel_${n}"]`);
+      const dobEl  = document.querySelector(`[name="dep_dob_${n}"]`);
+      const mcEl   = document.querySelector(`[name="dep_medicaid_${n}"]`);
+      if (nameEl && dep.full_name) { nameEl.value = dep.full_name; markPrefilled(nameEl); }
+      if (relEl  && dep.relationship) { relEl.value = dep.relationship; markPrefilled(relEl); }
+      if (dobEl  && dep.date_of_birth) { dobEl.value = dep.date_of_birth; markPrefilled(dobEl); }
+      if (mcEl)  { mcEl.checked = !!dep.medi_cal; if (dep.medi_cal) markPrefilled(mcEl); }
+    });
+  }
+
+  function markPrefilled(el) {
+    el.classList.add('prefilled');
+  }
+
+  // ── Clear ──────────────────────────────────────────────────────────────────
+
+  // ── Referral client search ────────────────────────────────────────────────
+
+  const refInput   = document.getElementById('referral-lookup');
+  const refValue   = document.getElementById('referral-value');
+  const refResults = document.getElementById('referral-results');
+  const refClear   = document.getElementById('referral-clear');
+  const refFlag    = document.getElementById('referral-flag-check');
+
+  let refTimer = null;
+
+  refInput.addEventListener('input', () => {
+    clearTimeout(refTimer);
+    const q = refInput.value.trim();
+    if (q.length < 2) { refResults.classList.add('hidden'); return; }
+    refTimer = setTimeout(async () => {
+      const res   = await fetch(`/api/clients/search?q=${encodeURIComponent(q)}`);
+      const items = await res.json();
+      if (!items.length) {
+        // allow free-text entry — save whatever they typed
+        refResults.innerHTML = `
+          <button type="button" data-name="${q}"
+                  class="ref-pick w-full text-left px-4 py-2.5 text-sm text-slate-500
+                         hover:bg-slate-50 border-b border-slate-100 italic">
+            Use "${q}" as free text
+          </button>`;
+      } else {
+        refResults.innerHTML = items.map(c => `
+          <button type="button" data-name="${c.name}"
+                  class="ref-pick w-full text-left px-4 py-2.5 hover:bg-blue-50
+                         transition-colors border-b border-slate-100 last:border-0">
+            <span class="font-semibold text-slate-800 text-sm">${c.name}</span>
+            ${c.last_year ? `<span class="ml-2 text-xs text-slate-400">TY${c.last_year}</span>` : ''}
+          </button>`).join('');
+      }
+      refResults.classList.remove('hidden');
+      refResults.querySelectorAll('.ref-pick').forEach(btn =>
+        btn.addEventListener('click', () => {
+          refInput.value  = btn.dataset.name;
+          refValue.value  = btn.dataset.name;
+          refFlag.checked = true;          // auto-tick referral flag
+          refResults.classList.add('hidden');
+          refClear.classList.remove('hidden');
+        })
+      );
+    }, 250);
+  });
+
+  refInput.addEventListener('blur', () => {
+    // if user typed something without picking, save the typed text
+    setTimeout(() => {
+      if (!refValue.value && refInput.value.trim()) {
+        refValue.value = refInput.value.trim();
+      }
+      refResults.classList.add('hidden');
+    }, 200);
+  });
+
+  refInput.addEventListener('keydown', e => {
+    if (e.key === 'Escape') refResults.classList.add('hidden');
+  });
+
+  refClear.addEventListener('click', () => {
+    refInput.value  = '';
+    refValue.value  = '';
+    refFlag.checked = false;
+    refClear.classList.add('hidden');
+  });
+
+  document.addEventListener('click', e => {
+    if (!refInput.contains(e.target) && !refResults.contains(e.target))
+      refResults.classList.add('hidden');
+  });
+
+  // ── Clear all (re-intake reset) ────────────────────────────────────────────
+
+  clearBtn.addEventListener('click', () => {
+    clientIdField.value = '';
+    lookupInput.value   = '';
+    intakeTitle.textContent = 'New Client Intake';
+    reintakeBadge.classList.add('hidden');
+    clearBtn.classList.add('hidden');
+    selectedInfo.classList.add('hidden');
+
+    [...CLIENT_TEXT, ...RETURN_TEXT].forEach(key => {
+      const el = document.getElementById(`field-${key}`);
+      if (el) { el.value = ''; el.classList.remove('prefilled'); }
+    });
+    RETURN_SELECT.forEach(key => {
+      const el = document.getElementById(`field-${key}`);
+      if (el) { el.value = ''; el.classList.remove('prefilled'); }
+    });
+    RETURN_CHECKS.forEach(key => {
+      const el = document.querySelector(`[name="${key}"]`);
+      if (el) { el.checked = false; el.closest('label')?.classList.remove('prefilled'); }
+    });
+    document.querySelectorAll('.prefilled').forEach(el => el.classList.remove('prefilled'));
+
+    // clear referral
+    refInput.value  = '';
+    refValue.value  = '';
+    refFlag.checked = false;
+    refClear.classList.add('hidden');
+
+    // clear dependents
+    for (let i = 1; i <= 6; i++) {
+      ['dep_name_','dep_rel_','dep_dob_'].forEach(p => {
+        const el = document.querySelector(`[name="${p}${i}"]`);
+        if (el) el.value = '';
+      });
+      const mc = document.querySelector(`[name="dep_medicaid_${i}"]`);
+      if (mc) mc.checked = false;
+    }
+  });
+})();
+</script>
+<style>
+  .intake-label {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #64748b;
+    margin-bottom: 0.375rem;
+  }
+  .intake-input {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: #1e293b;
+    background: #fff;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .intake-input:focus {
+    outline: none;
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96,165,250,0.2);
+  }
+  /* Fields pre-filled from previous year — amber tint until staff confirms */
+  .prefilled {
+    border-color: #f59e0b !important;
+    background: #fffbeb !important;
+  }
+  .prefilled:focus {
+    box-shadow: 0 0 0 3px rgba(245,158,11,0.2) !important;
+  }
+  .intake-input-sm {
+    width: 100%;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.8125rem;
+    color: #1e293b;
+    background: #fff;
+  }
+  .intake-input-sm:focus {
+    outline: none;
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 2px rgba(96,165,250,0.2);
+  }
+  .th-sm {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+    white-space: nowrap;
+  }
+</style>
+{% endblock %}
