@@ -55,6 +55,9 @@
         <a href="/payments?year={{ current_year }}" class="nav-link {% if active_page == 'payments' %}active{% endif %}">
           Payments
         </a>
+        <a href="/intake" class="nav-link {% if active_page == 'intake' %}active{% endif %}">
+          + New Intake
+        </a>
       </nav>
 
       <!-- Year picker + logout -->
@@ -115,6 +118,14 @@
       </div>
     </div>
   </header>
+
+  <!-- ── Demo banner ────────────────────────────────────────────────────── -->
+  {% if app_env == 'demo' %}
+  <div class="bg-amber-400 text-amber-900 text-center text-xs font-bold py-1.5 px-4
+              tracking-wide uppercase sticky top-[80px] z-20 shadow-sm">
+    ⚠ Demo Environment — changes here do not affect live data
+  </div>
+  {% endif %}
 
   <!-- ── Main ───────────────────────────────────────────────────────────── -->
   <main class="max-w-screen-2xl mx-auto px-4 py-5">

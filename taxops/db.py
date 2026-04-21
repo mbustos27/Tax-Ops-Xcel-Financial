@@ -143,6 +143,18 @@ def init_db(conn: sqlite3.Connection) -> None:
           raw_json TEXT,
           created_at TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS dependents (
+          id INTEGER PRIMARY KEY,
+          return_id INTEGER NOT NULL,
+          full_name TEXT,
+          ssn_last4 TEXT,
+          relationship TEXT,
+          date_of_birth TEXT,
+          medi_cal INTEGER DEFAULT 0,
+          created_at TEXT,
+          FOREIGN KEY (return_id) REFERENCES returns(id)
+        );
         """
     )
     _migrate_existing_tables(conn)
@@ -153,6 +165,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(last_name, first_name);
         CREATE INDEX IF NOT EXISTS idx_status_events_return ON status_events(return_id);
         CREATE INDEX IF NOT EXISTS idx_import_rows_batch ON import_rows(batch_id);
+        CREATE INDEX IF NOT EXISTS idx_dependents_return ON dependents(return_id);
         """
     )
     conn.commit()
@@ -166,6 +179,23 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "referral_flag INTEGER",
             "referred_by TEXT",
             "updated_at TEXT",
+            # intake form fields
+            "spouse_last_name TEXT",
+            "spouse_first_name TEXT",
+            "taxpayer_dob TEXT",
+            "spouse_dob TEXT",
+            "taxpayer_occupation TEXT",
+            "spouse_occupation TEXT",
+            "taxpayer_phone TEXT",
+            "taxpayer_cell TEXT",
+            "taxpayer_work_phone TEXT",
+            "spouse_cell TEXT",
+            "spouse_work_phone TEXT",
+            "taxpayer_email TEXT",
+            "spouse_email TEXT",
+            "address TEXT",
+            "is_new_client INTEGER DEFAULT 0",
+            "prior_year_log TEXT",
         ],
         "returns": [
             "processor TEXT",
@@ -187,10 +217,39 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "ack_date TEXT",
             "drake_status_raw TEXT",
             "created_at TEXT",
+            # intake form fields
+            "filing_status TEXT",
+            "interview_by TEXT",
+            "promise_date TEXT",
+            "delivered_by TEXT",
+            "date_signatures_emailed TEXT",
+            "date_reports_emailed TEXT",
+            "overtime_flag INTEGER DEFAULT 0",
+            "insurance_type TEXT",
+            "digital_assets INTEGER DEFAULT 0",
+            "bank_name TEXT",
+            "bank_routing TEXT",
+            "bank_account TEXT",
+            "bank_account_type TEXT",
+            "notes_intake TEXT",
+            "estimate_irs REAL",
+            "estimate_state REAL",
+            "final_irs REAL",
+            "final_state REAL",
         ],
         "payments": [
             "refund_amount REAL",
             "bank_deposit REAL",
+            # intake fee breakdown
+            "accounting_fee REAL",
+            "w7_fee REAL",
+            "form_1099_fee REAL",
+            "license_fee REAL",
+            "reprocess_fee REAL",
+            "discount_amount REAL",
+            "special_discount REAL",
+            "down_payment REAL",
+            "receipt2_number TEXT",
         ],
         "import_batches": [
             "row_count INTEGER DEFAULT 0",

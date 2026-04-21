@@ -3,12 +3,18 @@ from pathlib import Path
 # All paths are absolute, anchored to the taxops/ directory itself.
 # This ensures the importer works regardless of which directory you run
 # `python main.py` from.
+import os
+
 _HERE = Path(__file__).parent
 
-DB_PATH      = str(_HERE / "taxops.db")
-INCOMING_DIR = str(_HERE / "data" / "incoming")
+# Override DB path via env var — used for demo mode
+DB_PATH       = os.environ.get("TAXOPS_DB") or str(_HERE / "taxops.db")
+INCOMING_DIR  = str(_HERE / "data" / "incoming")
 PROCESSED_DIR = str(_HERE / "data" / "processed")
-ERROR_DIR    = str(_HERE / "data" / "error")
+ERROR_DIR     = str(_HERE / "data" / "error")
+
+# "demo" shows a banner in the UI; anything else is production
+APP_ENV = os.environ.get("TAXOPS_ENV", "production").lower()
 
 MANUAL_LOG_SOURCE = "MANUAL_LOG_IMPORT"
 DRAKE_SOURCE = "DRAKE_IMPORT"
@@ -27,20 +33,23 @@ DRAKE_STATUS_MAP: dict[str, str] = {
     "EXTENSION":                    "PROCESSING",
     "EF REJECTED":                  "PROCESSING",
     "EF REJECT":                    "PROCESSING",
-    # Finalized / printed
-    "READY TO FILE":                "FINALIZE",
-    "READY TO PRINT":               "FINALIZE",
-    "PRINTED":                      "FINALIZE",
-    # E-filed / acknowledged (CSM uses these exact strings)
+    # Drake "ready/printed" — prep done, client needs to sign before efiling
+    "READY TO FILE":                "PICKUP",
+    "READY TO PRINT":               "PICKUP",
+    "PRINTED":                      "PICKUP",
+    # Cleared to transmit (client signed)
+    "READY TO EFILE":               "EFILE READY",
+    # Transmitted, awaiting ack
     "E-FILED":                      "EFILE",
     "EFILED":                       "EFILE",
-    "EF ACCEPTED":                  "EFILE",
-    "EF EXT ACCEPTED":              "EFILE",
-    "EF ACCEPTED - STATE ONLY":     "EFILE",
-    "EF ACCEPTED STATE ONLY":       "EFILE",
-    "EF ACCEPT":                    "EFILE",
-    "ACCEPTED":                     "EFILE",
-    # Complete / mailed / picked up
+    # Acknowledged / accepted → case closed
+    "EF ACCEPTED":                  "LOG OUT",
+    "EF EXT ACCEPTED":              "LOG OUT",
+    "EF ACCEPTED - STATE ONLY":     "LOG OUT",
+    "EF ACCEPTED STATE ONLY":       "LOG OUT",
+    "EF ACCEPT":                    "LOG OUT",
+    "ACCEPTED":                     "LOG OUT",
+    # Complete / mailed
     "MAILED":                       "LOG OUT",
     "COMPLETE":                     "LOG OUT",
     "COMPLETED":                    "LOG OUT",
