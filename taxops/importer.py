@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import json
 import sqlite3
-from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from config import MANUAL_LOG_SOURCE
@@ -17,23 +16,9 @@ from normalizer import (
     normalize_status,
     normalize_string,
 )
-from utils import now
+from utils import ImportStats, now
 
 REQUIRED_COLUMNS = ["LOG 2025", "LAST", "FIRST", "YR"]
-
-
-@dataclass
-class ImportStats:
-    row_count: int = 0
-    success_count: int = 0
-    error_count: int = 0
-    review_count: int = 0
-    created_clients: int = 0
-    updated_clients: int = 0
-    created_returns: int = 0
-    updated_returns: int = 0
-    events_created: int = 0
-    notes_created: int = 0
 
 
 def process_csv(conn: sqlite3.Connection, csv_path: str, batch_id: int, source_file: str) -> ImportStats:

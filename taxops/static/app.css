@@ -1,0 +1,173 @@
+/* ── Status row left-border accent ────────────────────────────────────── */
+tr.status-row { border-left: 3px solid transparent; }
+tr.status-LOG-IN        { border-left-color: #3b82f6; }
+tr.status-PROCESSING    { border-left-color: #f59e0b; }
+tr.status-FINALIZE      { border-left-color: #f97316; }
+tr.status-EFILE         { border-left-color: #7c3aed; }
+tr.status-PICKUP        { border-left-color: #14b8a6; }
+tr.status-LOG-OUT       { border-left-color: #94a3b8; }
+
+/* ── Nav links ─────────────────────────────────────────────────────────── */
+.nav-link {
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #94a3b8;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.nav-link:hover { background: #334155; color: #e2e8f0; }
+.nav-link.active { background: #334155; color: #ffffff; }
+
+/* ── Status badge ─────────────────────────────────────────────────────── */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: box-shadow 0.12s;
+  user-select: none;
+  letter-spacing: 0.01em;
+}
+.status-badge:hover { box-shadow: 0 0 0 2px rgba(0,0,0,0.06); }
+
+/* ── Status dots ──────────────────────────────────────────────────────── */
+.status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-blue   { background: #60a5fa; }
+.dot-amber  { background: #fbbf24; }
+.dot-orange { background: #fb923c; }
+.dot-violet { background: #a78bfa; }
+.dot-teal   { background: #2dd4bf; }
+.dot-slate  { background: #94a3b8; }
+
+/* ── Filter pills ─────────────────────────────────────────────────────── */
+.pill {
+  padding: 0.2rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-decoration: none;
+  border: 1px solid;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.pill-active  { background: #1e293b; color: #fff; border-color: #1e293b; }
+.pill-inactive { background: #fff; color: #64748b; border-color: #e2e8f0; }
+.pill-inactive:hover { border-color: #94a3b8; color: #334155; }
+
+/* ── Table helpers ────────────────────────────────────────────────────── */
+.th {
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  white-space: nowrap;
+  /* solid background required — content scrolls underneath the sticky row */
+  background: #ffffff;
+  border-bottom: 2px solid #e2e8f0;
+}
+.td {
+  padding: 0.625rem 0.75rem;
+  vertical-align: middle;
+}
+.data-table tbody tr { transition: background 0.08s; }
+/* Keep tbody rows below the sticky header (z-index: 0 < z-20 on thead) */
+.data-table tbody tr { position: relative; z-index: 0; }
+
+/* Shadow that appears on the header row once it's stuck */
+thead.sticky tr th {
+  box-shadow: 0 2px 4px -1px rgba(0,0,0,0.06);
+}
+
+/* ── Form badges ──────────────────────────────────────────────────────── */
+.form-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+}
+
+/* ── Editable cell ────────────────────────────────────────────────────── */
+.editable {
+  cursor: text;
+  border-radius: 5px;
+  padding: 1px 5px;
+  margin: -1px -5px;
+  transition: background 0.12s, box-shadow 0.12s;
+}
+.editable:hover {
+  background: #eff6ff;
+  box-shadow: 0 0 0 1px #bfdbfe;
+}
+
+/* ── Section headers ──────────────────────────────────────────────────── */
+.section-header {
+  padding: 0.625rem 1rem;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ── Field labels ─────────────────────────────────────────────────────── */
+.field-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin-bottom: 2px;
+}
+
+/* ── Action buttons (logout queue) ───────────────────────────────────── */
+.action-btn {
+  padding: 0.3rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.12s;
+  border: none;
+  cursor: pointer;
+}
+.action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Scrollbar ────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #f8fafc; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ── Flash animation ──────────────────────────────────────────────────── */
+@keyframes flash-green {
+  0%   { background-color: transparent; }
+  25%  { background-color: #dcfce7; }
+  100% { background-color: transparent; }
+}
+.flash { animation: flash-green 0.7s ease; }

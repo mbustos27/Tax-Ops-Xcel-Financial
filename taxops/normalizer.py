@@ -84,12 +84,17 @@ def normalize_date(value: str | None) -> Tuple[str | None, str | None]:
     if text is None:
         return None, None
 
+    # Strip time component: "04/12/2026 12:25:08" → "04/12/2026"
+    date_part = text.split(" ")[0].strip()
+    if not date_part:
+        return None, None
+
     for fmt in DATE_FORMATS:
         try:
-            parsed = datetime.strptime(text, fmt)
+            parsed = datetime.strptime(date_part, fmt)
             return parsed.date().isoformat(), None
         except ValueError:
             pass
 
-    return None, f"Invalid date: {text}"
+    return None, f"Invalid date: {date_part}"
 

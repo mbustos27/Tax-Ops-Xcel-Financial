@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — TaxOps {{ current_year }}{% endblock %}
+
+{% block content %}
+<div class="space-y-3">
+
+  <!-- ── Filter bar ──────────────────────────────────────────────────────── -->
+  <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 flex flex-wrap items-center gap-3">
+
+    <!-- Status pills -->
+    <div class="flex items-center gap-1.5 flex-wrap">
+      <span class="text-xs text-slate-400 shrink-0">Status:</span>
+      <a href="/?year={{ current_year }}"
+         class="pill {% if not filters.status %}pill-active{% else %}pill-inactive{% endif %}">
+        All
+      </a>
+      {% for s in status_flow %}
+      <a href="/?status={{ s }}&year={{ current_year }}"
+         class="pill flex items-center gap-1 {% if filters.status and s in filters.status %}pill-active{% else %}pill-inactive{% endif %}">
+        <span class="status-dot {{ status_dot.get(s,'dot-slate') }}"></span>{{ s }}
+      </a>
+      {% endfor %}
+    </div>
+
+    <div class="w-px h-5 bg-slate-200 shrink-0"></div>
+
+    <!-- Preparer filter -->
+    <div class="flex items-center gap-1.5">
+      <span class="text-xs text-slate-400">Preparer:</span>
+      <select onchange="applyFilter('processor', this.value)"
+              class="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400">
+        <option value="">All</option>
+        {% for p in processors %}
+        <option value="{{ p }}" {% if filters.processor == p %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Balance filter -->
+    <label class="flex items-center gap-1.5 cursor-pointer select-none">
+      <input type="checkbox"
+             onchange="applyFilter('balance_due', this.checked ? '1' : '')"
+             {% if filters.balance_due %}checked{% endif %}
+             class="rounded border-slate-300 text-blue-600 focus:ring-blue-400">
+      <span class="text-xs text-slate-600">Balance due only</span>
+    </label>
+
+    <!-- Quick in-page filter -->
+    <div class="ml-auto flex items-center gap-2">
+      <input id="table-filter" type="text" placeholder="Quick filter…"
+             class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400 w-40">
+      <span class="text-xs text-slate-400 whitespace-nowrap">
+        <span id="row-count">{{ returns | length }}</span> returns
+      </span>
+    </div>
+  </div>
+
+  <!-- ── Returns table ───────────────────────────────────────────────────── -->
+  <!-- No overflow on this wrapper — any overflow value breaks position:sticky -->
+  <div class="rounded-xl border border-slate-200" style="contain: paint;">
+    <table class="data-table w-full text-sm bg-white">
+      <thead class="sticky top-[80px] z-20">
+        <tr>
+          <th class="th w-16 rounded-tl-xl">Log #</th>
+          <th class="th">Client</th>
+          <th class="th">Forms</th>
+          <th class="th w-40">Status</th>
+          <th class="th w-28">Preparer</th>
+          <th class="th text-right w-24">Fee</th>
+          <th class="th text-right w-28">Balance</th>
+          <th class="th w-28">Receipt #</th>
+          <th class="th text-center w-10 rounded-tr-xl">✓</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in returns %}
+        <tr class="status-row status-{{ (r.client_status or '') | replace(' ','-') }} group cursor-pointer"
+            data-search="{{ r.log_number }} {{ r.last_name }} {{ r.first_name }} {{ r.display_name or '' }}"
+            onclick="if(!event.target.closest('.status-dropdown,.editable')) window.location='/return/{{ r.id }}'">
+
+          <!-- Log # -->
+          <td class="td">
+            <span class="font-mono font-black text-slate-800 text-base tracking-tight">{{ r.log_number or '—' }}</span>
+          </td>
+
+          <!-- Client -->
+          <td class="td">
+            <div class="font-semibold text-slate-800 leading-tight">
+              {{ r.last_name }}{% if r.first_name %}, {{ r.first_name }}{% endif %}
+            </div>
+            {% if r.display_name and r.display_name != (r.last_name ~ ' ' ~ (r.first_name or '')) %}
+            <div class="text-xs text-slate-400 mt-0.5">{{ r.display_name }}</div>
+            {% endif %}
+          </td>
+
+          <!-- Forms -->
+          <td class="td">
+            <div class="flex flex-wrap gap-0.5">
+              {% for badge in r.forms %}
+              <span class="form-badge">{{ badge }}</span>
+              {% endfor %}
+            </div>
+          </td>
+
+          <!-- Status -->
+          <td class="td">
+            <div class="status-dropdown relative inline-block">
+              <button onclick="toggleStatusMenu(this)"
+                      class="status-badge {{ r.badge_class }} flex items-center gap-1">
+                {{ r.client_status or 'NO STATUS' }}
+                <svg class="w-2.5 h-2.5 opacity-40 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
+              <div class="status-menu hidden absolute left-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-20 min-w-max py-1 overflow-hidden">
+                {% for s in status_flow %}
+                <button onclick="setStatus({{ r.id }}, '{{ s }}', this)"
+                        class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs hover:bg-slate-50 transition-colors
+                               {% if s == r.client_status %}font-bold text-slate-900 bg-slate-50{% else %}text-slate-700{% endif %}">
+                  <span class="status-dot {{ status_dot.get(s,'dot-slate') }} shrink-0"></span>
+                  {{ s }}
+                  {% if s == r.client_status %}<span class="ml-auto text-blue-500">✓</span>{% endif %}
+                </button>
+                {% endfor %}
+              </div>
+            </div>
+          </td>
+
+          <!-- Preparer -->
+          <td class="td">
+            <span class="editable text-slate-700 text-xs"
+                  data-return-id="{{ r.id }}" data-field="processor"
+                  data-value="{{ r.processor or '' }}" data-placeholder="Preparer">
+              {{ r.processor or '—' }}
+            </span>
+          </td>
+
+          <!-- Fee -->
+          <td class="td text-right">
+            {% if r.total_fee %}
+            <span class="text-slate-700 tabular-nums">${{ "{:,.2f}".format(r.total_fee) }}</span>
+            {% else %}
+            <span class="text-slate-300">—</span>
+            {% endif %}
+          </td>
+
+          <!-- Balance -->
+          <td class="td text-right">
+            {% if r.total_fee %}
+              {% if r.paid_in_full %}
+              <span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">PAID</span>
+              {% elif r.balance %}
+              <span class="text-xs font-bold text-red-600 tabular-nums">${{ "{:,.2f}".format(r.balance) }}</span>
+              {% endif %}
+            {% else %}
+            <span class="text-slate-300">—</span>
+            {% endif %}
+          </td>
+
+          <!-- Receipt # -->
+          <td class="td">
+            <span class="editable font-mono text-xs text-slate-600"
+                  data-return-id="{{ r.id }}" data-field="receipt_number"
+                  data-value="{{ r.receipt_number or '' }}" data-placeholder="Receipt #">
+              {{ r.receipt_number or '—' }}
+            </span>
+          </td>
+
+          <!-- Verified -->
+          <td class="td text-center">
+            <span class="editable cursor-pointer select-none"
+                  data-return-id="{{ r.id }}" data-field="verified"
+                  data-type="bool" data-value="{{ '1' if r.verified else '0' }}">
+              {% if r.verified %}
+              <span class="text-green-500 font-bold text-lg">✓</span>
+              {% else %}
+              <span class="text-slate-200 text-lg">○</span>
+              {% endif %}
+            </span>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" class="px-6 py-16 text-center">
+            <div class="text-5xl mb-3">📂</div>
+            <div class="font-semibold text-slate-500 text-base">No returns found</div>
+            <div class="text-sm text-slate-400 mt-1">Import a CSV or adjust your filters</div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function applyFilter(key, value) {
+  const url = new URL(window.location);
+  if (value) url.searchParams.set(key, value);
+  else       url.searchParams.delete(key);
+  window.location = url.toString();
+}
+</script>
+{% endblock %}

@@ -21,6 +21,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           last_name TEXT,
           first_name TEXT,
           display_name TEXT,
+          ssn_last4 TEXT,
           referral_flag INTEGER,
           referred_by TEXT,
           created_at TEXT,
@@ -47,6 +48,9 @@ def init_db(conn: sqlite3.Connection) -> None:
           has_w7 INTEGER,
           is_extension INTEGER,
           transfer_flag INTEGER,
+          efile_date TEXT,
+          ack_date TEXT,
+          drake_status_raw TEXT,
           created_at TEXT,
           updated_at TEXT,
           FOREIGN KEY (client_id) REFERENCES clients(id)
@@ -77,6 +81,8 @@ def init_db(conn: sqlite3.Connection) -> None:
           cc_fee REAL,
           zelle_or_check_ref TEXT,
           cash_or_qpay_ref TEXT,
+          refund_amount REAL,
+          bank_deposit REAL,
           FOREIGN KEY (return_id) REFERENCES returns(id)
         );
 
@@ -156,6 +162,7 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
     table_columns: Dict[str, List[str]] = {
         "clients": [
             "display_name TEXT",
+            "ssn_last4 TEXT",
             "referral_flag INTEGER",
             "referred_by TEXT",
             "updated_at TEXT",
@@ -176,7 +183,14 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "has_w7 INTEGER",
             "is_extension INTEGER",
             "transfer_flag INTEGER",
+            "efile_date TEXT",
+            "ack_date TEXT",
+            "drake_status_raw TEXT",
             "created_at TEXT",
+        ],
+        "payments": [
+            "refund_amount REAL",
+            "bank_deposit REAL",
         ],
         "import_batches": [
             "row_count INTEGER DEFAULT 0",

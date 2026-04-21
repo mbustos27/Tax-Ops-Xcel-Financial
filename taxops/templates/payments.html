@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Payments — TaxOps {{ current_year }}{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-lg font-bold text-slate-800">Payments</h1>
+      <p class="text-sm text-slate-400 mt-0.5">Fee tracking for {{ current_year }}</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <label class="flex items-center gap-2 cursor-pointer select-none">
+        <input type="checkbox"
+               onchange="window.location='/payments?year={{ current_year }}'+(this.checked?'&balance_only=1':'')"
+               {% if balance_only %}checked{% endif %}
+               class="rounded border-slate-300 text-blue-600 focus:ring-blue-400">
+        <span class="text-sm text-slate-600 font-medium">Balance due only</span>
+      </label>
+      <input id="table-filter" type="text" placeholder="Quick filter…"
+             class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400 w-36">
+    </div>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="grid grid-cols-3 gap-4">
+    <div class="bg-white rounded-xl border border-slate-200 p-4">
+      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Total Billed</div>
+      <div class="text-2xl font-black text-slate-800 mt-1 tabular-nums">${{ "{:,.2f}".format(totals.billed) }}</div>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-4">
+      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Collected</div>
+      <div class="text-2xl font-black text-green-600 mt-1 tabular-nums">${{ "{:,.2f}".format(totals.collected) }}</div>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-4">
+      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Outstanding</div>
+      <div class="text-2xl font-black {{ 'text-red-600' if totals.outstanding > 0 else 'text-slate-400' }} mt-1 tabular-nums">
+        ${{ "{:,.2f}".format(totals.outstanding) }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Payments table -->
+  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <table class="data-table w-full text-sm">
+      <thead class="bg-slate-50 border-b border-slate-200 sticky top-[88px] z-10">
+        <tr>
+          <th class="th w-16">Log #</th>
+          <th class="th">Client</th>
+          <th class="th w-28">Status</th>
+          <th class="th text-right w-24">Total Fee</th>
+          <th class="th text-right w-24">Fee Paid</th>
+          <th class="th text-right w-20">CC Fee</th>
+          <th class="th w-28">Zelle / CK #</th>
+          <th class="th w-28">Cash / QPay</th>
+          <th class="th w-24">Receipt #</th>
+          <th class="th text-right w-28">Balance</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in returns %}
+        <tr class="hover:bg-slate-50/70 {% if r.balance and r.balance > 0 %}bg-red-50/20{% endif %}"
+            data-search="{{ r.log_number }} {{ r.last_name }} {{ r.first_name }}">
+
+          <td class="td">
+            <a href="/return/{{ r.id }}"
+               class="font-mono font-black text-blue-600 hover:text-blue-800 text-base tracking-tight">
+              {{ r.log_number }}
+            </a>
+          </td>
+
+          <td class="td">
+            <div class="font-semibold text-slate-800">{{ r.last_name }}{% if r.first_name %}, {{ r.first_name }}{% endif %}</div>
+          </td>
+
+          <td class="td">
+            <span class="text-xs px-2 py-0.5 rounded-full {{ r.badge_class }}">
+              {{ r.client_status or '—' }}
+            </span>
+          </td>
+
+          {% macro money_cell(field, val) %}
+          <td class="td text-right tabular-nums">
+            <span class="editable font-medium"
+                  data-return-id="{{ r.id }}" data-field="{{ field }}"
+                  data-value="{{ val or '' }}" data-placeholder="0.00">
+              {% if val %}${{ "{:,.2f}".format(val) }}{% else %}<span class="text-slate-300">—</span>{% endif %}
+            </span>
+          </td>
+          {% endmacro %}
+
+          {{ money_cell('total_fee', r.total_fee) }}
+          {{ money_cell('fee_paid',  r.fee_paid) }}
+          {{ money_cell('cc_fee',    r.cc_fee) }}
+
+          {% macro text_cell(field, val) %}
+          <td class="td">
+            <span class="editable font-mono text-xs text-slate-700"
+                  data-return-id="{{ r.id }}" data-field="{{ field }}"
+                  data-value="{{ val or '' }}">
+              {{ val or '—' }}
+            </span>
+          </td>
+          {% endmacro %}
+
+          {{ text_cell('zelle_or_check_ref', r.zelle_or_check_ref) }}
+          {{ text_cell('cash_or_qpay_ref',   r.cash_or_qpay_ref) }}
+          {{ text_cell('receipt_number',      r.receipt_number) }}
+
+          <!-- Balance -->
+          <td class="td text-right font-semibold tabular-nums">
+            {% if r.paid_in_full %}
+            <span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">PAID</span>
+            {% elif r.balance %}
+            <span class="text-red-600">${{ "{:,.2f}".format(r.balance) }}</span>
+            {% else %}
+            <span class="text-slate-300">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="10" class="px-6 py-16 text-center">
+            <div class="text-5xl mb-3">💳</div>
+            <div class="font-semibold text-slate-500 text-base">No payment records</div>
+            <div class="text-sm text-slate-400 mt-1">Import a CSV to populate payment data</div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sqlite3
 from pathlib import Path
 
 from config import ERROR_DIR, INCOMING_DIR, PROCESSED_DIR
 from db import get_connection, init_db
+from drake_importer import process_drake_csv
 from importer import process_csv
 from utils import hash_file, now
 
@@ -30,10 +32,29 @@ def main() -> None:
         return
 
     for csv_file in incoming_files:
+        name = csv_file.name
+        if _drake_year(name) is None and not _is_manual_log(name):
+            print(f"Skipping unrecognised file (not drake_YYYY.csv or manual log): {name}")
+            continue
         process_one_file(conn, csv_file)
 
     conn.close()
     print("taxops v2 ready")
+
+
+def _drake_year(filename: str) -> int | None:
+    """
+    Return the tax year for files routed to the Drake importer, or None.
+    Only files named  drake_YYYY.csv  (e.g. drake_2025.csv) are imported
+    as Drake exports.  All other CSVs go through the manual-log importer.
+    """
+    m = re.match(r"^drake_(\d{4})\.csv$", filename, re.IGNORECASE)
+    return int(m.group(1)) if m else None
+
+
+def _is_manual_log(filename: str) -> bool:
+    """Any CSV not named drake_YYYY.csv is treated as a manual-log file."""
+    return _drake_year(filename) is None
 
 
 def process_one_file(conn: sqlite3.Connection, csv_path: Path) -> None:
@@ -48,10 +69,14 @@ def process_one_file(conn: sqlite3.Connection, csv_path: Path) -> None:
         return
 
     batch_id = create_batch(conn, csv_path.name, file_hash)
+    drake_year = _drake_year(csv_path.name)
 
     try:
         conn.execute("BEGIN")
-        stats = process_csv(conn, str(csv_path), batch_id, csv_path.name)
+        if drake_year is not None:
+            stats = process_drake_csv(conn, str(csv_path), batch_id, csv_path.name, drake_year)
+        else:
+            stats = process_csv(conn, str(csv_path), batch_id, csv_path.name)
         conn.execute(
             """
             UPDATE import_batches SET
