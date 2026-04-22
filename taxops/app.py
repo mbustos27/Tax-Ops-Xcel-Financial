@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import os
 import sys
-from datetime import date
+from datetime import date, datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -25,6 +25,45 @@ app.secret_key = os.environ.get("TAXOPS_SECRET", os.urandom(24))
 # Login credentials — override via environment variables.
 _LOGIN_USER = os.environ.get("TAXOPS_USER", "info")
 _LOGIN_PASS = os.environ.get("TAXOPS_PASS", "2703Tax")
+
+
+def privacy_mode_enabled() -> bool:
+    return bool(session.get("privacy_mode"))
+
+
+def _mask_value(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return "XXXXX" if value.strip() else value
+    return "XXXXX"
+
+
+def _mask_return_payload(payload: dict) -> dict:
+    masked = dict(payload)
+    for key in (
+        "last_name", "first_name", "display_name", "name_full",
+        "referred_by", "ssn_last4", "zelle_or_check_ref",
+        "cash_or_qpay_ref", "receipt_number",
+    ):
+        if key in masked:
+            masked[key] = _mask_value(masked.get(key))
+    return masked
+
+
+def _mask_client_payload(payload: dict) -> dict:
+    masked = dict(payload)
+    for key in (
+        "last_name", "first_name", "display_name", "ssn_last4",
+        "spouse_last_name", "spouse_first_name",
+        "taxpayer_phone", "taxpayer_cell", "taxpayer_work_phone",
+        "spouse_cell", "spouse_work_phone",
+        "taxpayer_email", "spouse_email",
+        "address", "referred_by",
+    ):
+        if key in masked:
+            masked[key] = _mask_value(masked.get(key))
+    return masked
 
 
 def login_required(f):
@@ -76,6 +115,11 @@ STATUS_DATE_STAMP = {
     "PICKUP":      "pickup_date",      # client called in to sign
     "LOG OUT":     "logout_date",      # accepted, case closed
 }
+
+# Operational risk thresholds
+LATE_INTAKE_MONTH = 4
+LATE_INTAKE_DAY = 1
+SLOW_CYCLE_DAYS = 21
 
 # Fields that live in the returns table and may be edited via /api/return/<id>/field
 RETURN_EDITABLE = {
@@ -136,6 +180,25 @@ def _enrich(r: dict) -> dict:
     last  = r.get("last_name")  or ""
     r["name_full"] = r.get("display_name") or (f"{last}, {first}".strip(", ") if first else last)
     r["forms"]        = _form_badges(r)
+    intake_dt = _parse_iso_date(r.get("intake_date"))
+    completion_dt = _parse_iso_date(r.get("logout_date")) or _parse_iso_date(r.get("ack_date"))
+    r["cycle_days"] = (
+        (completion_dt - intake_dt).days
+        if intake_dt and completion_dt and completion_dt >= intake_dt
+        else None
+    )
+    r["late_intake_flag"] = (
+        bool(intake_dt) and
+        (intake_dt.month > LATE_INTAKE_MONTH or (intake_dt.month == LATE_INTAKE_MONTH and intake_dt.day >= LATE_INTAKE_DAY))
+    )
+    r["slow_cycle_flag"] = bool(r["cycle_days"] is not None and r["cycle_days"] >= SLOW_CYCLE_DAYS)
+    r["risk_flags"] = []
+    if r["late_intake_flag"]:
+        r["risk_flags"].append("LATE INTAKE")
+    if r["slow_cycle_flag"]:
+        r["risk_flags"].append("SLOW CYCLE")
+    if privacy_mode_enabled():
+        r = _mask_return_payload(r)
     return r
 
 
@@ -159,6 +222,15 @@ def _form_badges(r: dict) -> list[str]:
     if r.get("transfer_flag") or r.get("transfer_2025_flag") or r.get("transfer_2026_flag"):
         badges.append("XFER")
     return badges
+
+
+def _parse_iso_date(value: str | None):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
 
 
 def query_returns(filters: dict | None = None) -> list[dict]:
@@ -186,6 +258,20 @@ def query_returns(filters: dict | None = None) -> list[dict]:
         clauses.append(
             "(p.total_fee IS NOT NULL AND COALESCE(p.fee_paid,0) < p.total_fee)"
         )
+    if f.get("late_intake"):
+        clauses.append(
+            "(r.intake_date IS NOT NULL AND ("
+            "CAST(substr(r.intake_date,6,2) AS INTEGER) > 4 OR "
+            "(CAST(substr(r.intake_date,6,2) AS INTEGER) = 4 AND CAST(substr(r.intake_date,9,2) AS INTEGER) >= 1)"
+            "))"
+        )
+    if f.get("slow_cycle"):
+        clauses.append(
+            "(r.intake_date IS NOT NULL AND "
+            "(r.logout_date IS NOT NULL OR r.ack_date IS NOT NULL) AND "
+            "(julianday(COALESCE(r.logout_date, r.ack_date)) - julianday(r.intake_date)) >= ?)"
+        )
+        params.append(SLOW_CYCLE_DAYS)
 
     if f.get("form"):
         form_col = f["form"]
@@ -279,6 +365,124 @@ def base_ctx(year: int | None = None) -> dict:
         "totals":        get_totals(y),
         "processors":    get_processors(y),
         "app_env":       APP_ENV,
+        "privacy_mode":  privacy_mode_enabled(),
+    }
+
+
+def build_client_habit_profile(conn, client_id: int, target_year: int | None = None) -> dict:
+    """
+    Build planning reminders from prior-year filing behavior.
+    This is intentionally heuristic so staff can anticipate complexity
+    while still re-confirming items that tend to change year to year.
+    """
+    rows = conn.execute(
+        """
+        SELECT
+            r.id, r.tax_year, r.intake_date, r.is_extension, r.has_w7,
+            rf.sched_c, rf.sched_e, rf.form_1120, rf.form_1120s,
+            rf.form_1065_llc, rf.business_owner, rf.corp_officer,
+            r.insurance_type
+        FROM returns r
+        LEFT JOIN return_forms rf ON rf.return_id = r.id
+        WHERE r.client_id = ?
+        ORDER BY r.tax_year DESC, r.id DESC
+        """,
+        (client_id,),
+    ).fetchall()
+
+    if not rows:
+        return {
+            "target_year": target_year or date.today().year,
+            "risk_level": "standard",
+            "late_filer": False,
+            "late_years": [],
+            "recurring_forms": [],
+            "ask_again": [],
+            "reminders": [],
+        }
+
+    effective_target_year = target_year or date.today().year
+    prior_rows = [r for r in rows if (r["tax_year"] or 0) < effective_target_year] or rows
+
+    def _is_late_intake(intake_date: str | None) -> bool:
+        if not intake_date or len(intake_date) < 7:
+            return False
+        try:
+            month = int(intake_date[5:7])
+            day = int(intake_date[8:10]) if len(intake_date) >= 10 else 1
+            return month >= 4 or (month == 3 and day >= 25)
+        except ValueError:
+            return False
+
+    late_years = sorted(
+        [r["tax_year"] for r in prior_rows if r["tax_year"] and _is_late_intake(r["intake_date"])],
+        reverse=True,
+    )
+    slow_cycle_years: list[int] = []
+    for r in prior_rows:
+        start = _parse_iso_date(r["intake_date"])
+        end = _parse_iso_date(r["logout_date"])
+        if start and end and end >= start and (end - start).days >= SLOW_CYCLE_DAYS and r["tax_year"]:
+            slow_cycle_years.append(r["tax_year"])
+    slow_cycle_years = sorted(set(slow_cycle_years), reverse=True)
+
+    recurring_forms: list[str] = []
+    form_rules = [
+        ("sched_c", "Schedule C"),
+        ("sched_e", "Schedule E"),
+        ("form_1065_llc", "K-1/1065 partnership"),
+        ("form_1120", "1120 corporate"),
+        ("form_1120s", "1120S"),
+        ("business_owner", "Business owner"),
+        ("corp_officer", "Corporate officer"),
+        ("is_extension", "Extension filing"),
+        ("has_w7", "W-7 / ITIN"),
+    ]
+    for key, label in form_rules:
+        if any(r[key] for r in prior_rows):
+            recurring_forms.append(label)
+
+    ask_again: list[str] = []
+    had_marketplace = any(
+        (r["insurance_type"] or "").strip().lower().startswith("marketplace")
+        for r in prior_rows
+    )
+    if had_marketplace:
+        ask_again.append("Confirm current 1095-A / Marketplace coverage for this year")
+    if any((r["insurance_type"] or "").strip().lower() in {"medi-cal", "medicare"} for r in prior_rows):
+        ask_again.append("Reconfirm current Medi-Cal/Medicare status (can change year to year)")
+
+    reminders: list[str] = []
+    if late_years:
+        years = ", ".join(str(y) for y in late_years[:3])
+        reminders.append(
+            f"Historically filed late ({years}). Trigger early outreach before March."
+        )
+    if recurring_forms:
+        reminders.append(
+            "Prior complexity detected: " + ", ".join(recurring_forms[:5]) +
+            (", ..." if len(recurring_forms) > 5 else "")
+        )
+    if slow_cycle_years:
+        years = ", ".join(str(y) for y in slow_cycle_years[:3])
+        reminders.append(
+            f"Historically long turnaround ({years}). Ask for missing docs at intake to avoid delays."
+        )
+    reminders.extend(ask_again)
+
+    risk_level = "high" if (len(late_years) >= 2 or len(recurring_forms) >= 3 or len(slow_cycle_years) >= 2) else "watch"
+    if not late_years and len(recurring_forms) <= 1:
+        risk_level = "standard"
+
+    return {
+        "target_year": effective_target_year,
+        "risk_level": risk_level,
+        "late_filer": bool(late_years),
+        "late_years": late_years,
+        "slow_cycle_years": slow_cycle_years,
+        "recurring_forms": recurring_forms,
+        "ask_again": ask_again,
+        "reminders": reminders,
     }
 
 
@@ -316,6 +520,8 @@ def dashboard():
         "status":      request.args.getlist("status") or None,
         "processor":   request.args.get("processor"),
         "balance_due": request.args.get("balance_due"),
+        "late_intake": request.args.get("late_intake"),
+        "slow_cycle":  request.args.get("slow_cycle"),
         "form":        request.args.get("form"),
         "q":           request.args.get("q"),
     }
@@ -339,11 +545,16 @@ def return_detail(return_id: int):
         "SELECT * FROM status_events WHERE return_id=? ORDER BY event_timestamp DESC", (return_id,)
     ).fetchall()
     conn.close()
+    notes_payload = [dict(n) for n in notes]
+    if privacy_mode_enabled():
+        for note in notes_payload:
+            note["note_text"] = _mask_value(note.get("note_text"))
+
     ctx = base_ctx(ret.get("tax_year"))
     ctx.update({
         "active_page": "dashboard",
         "ret":    ret,
-        "notes":  [dict(n) for n in notes],
+        "notes":  notes_payload,
         "events": [dict(e) for e in events],
     })
     return render_template("return_detail.html", **ctx)
@@ -402,6 +613,7 @@ def intake():
             "active_page": "intake",
             "today": date.today().isoformat(),
             "error": None,
+            "habit_profile": None,
         })
         return render_template("intake.html", **ctx)
 
@@ -671,6 +883,8 @@ def api_client_search():
         first = r["first_name"] or ""
         last  = r["last_name"]  or ""
         name  = r["display_name"] or (f"{last}, {first}".strip(", ") if first else last)
+        if privacy_mode_enabled():
+            name = f"XXXXX #{r['id']}"
         results.append({
             "id":        r["id"],
             "name":      name,
@@ -718,21 +932,30 @@ def api_client_reintake(client_id: int):
         # strip SSN from dependents too
         for d in deps:
             d.pop("ssn_last4", None)
+            if privacy_mode_enabled():
+                d["full_name"] = _mask_value(d.get("full_name"))
+                d["relationship"] = _mask_value(d.get("relationship"))
 
+    habit_profile = build_client_habit_profile(conn, client_id)
     conn.close()
 
     data = dict(client)
     data.pop("ssn_last4", None)
+    if privacy_mode_enabled():
+        data = _mask_client_payload(data)
 
     last_return = {}
     if ret:
         last_return = dict(ret)
         last_return.pop("ssn_last4", None)
+        if privacy_mode_enabled():
+            last_return = _mask_return_payload(last_return)
 
     return jsonify({
         "client":      data,
         "last_return": last_return,
         "dependents":  deps,
+        "habit_profile": habit_profile,
     })
 
 
@@ -748,13 +971,22 @@ def api_search():
         {
             "id":         r["id"],
             "log_number": r["log_number"],
-            "name":       r["name_full"],
+            "name":       (f"XXXXX #{r['id']}" if privacy_mode_enabled() else r["name_full"]),
             "status":     r["client_status"],
             "badge":      r["badge_class"],
             "tax_year":   r["tax_year"],
         }
         for r in results[:12]
     ])
+
+
+@app.post("/api/privacy-mode")
+@login_required
+def api_privacy_mode():
+    data = request.get_json(force=True) if request.data else {}
+    enabled = data.get("enabled")
+    session["privacy_mode"] = bool(enabled)
+    return jsonify({"success": True, "privacy_mode": bool(session.get("privacy_mode"))})
 
 
 @app.post("/api/return/<int:return_id>/status")
@@ -894,7 +1126,8 @@ def api_note(return_id: int):
     )
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "text": text, "created_at": ts})
+    visible_text = _mask_value(text) if privacy_mode_enabled() else text
+    return jsonify({"success": True, "text": visible_text, "created_at": ts})
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

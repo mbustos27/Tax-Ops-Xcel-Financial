@@ -110,11 +110,32 @@
           {{ ef('Pickup Date',   'pickup_date',   ret.pickup_date,   ph='YYYY-MM-DD') }}
           {{ ef('Logout Date',   'logout_date',   ret.logout_date,   ph='YYYY-MM-DD') }}
           {{ ef('Updated Date',  'updated_date',  ret.updated_date,  ph='YYYY-MM-DD') }}
+          <div>
+            <div class="field-label">Cycle Days</div>
+            <span class="block font-medium text-slate-800">{{ ret.cycle_days if ret.cycle_days is not none else '—' }}</span>
+          </div>
           {{ ef('Verified',      'verified',      ret.verified,      'bool') }}
           {{ ef('2025 Transfer', 'transfer_2025_flag', ret.transfer_2025_flag, 'bool') }}
           {{ ef('2026 Transfer', 'transfer_2026_flag', ret.transfer_2026_flag, 'bool') }}
           {{ ef('Transfer Flag', 'transfer_flag', ret.transfer_flag, 'bool') }}
         </div>
+        {% if ret.risk_flags %}
+        <div class="px-4 pb-4">
+          <div class="field-label mb-1">Operational Flags</div>
+          <div class="flex flex-wrap gap-1.5">
+            {% for flag in ret.risk_flags %}
+            <span class="text-[11px] font-bold px-2.5 py-1 rounded-full border
+                         {% if flag == 'LATE INTAKE' %}
+                         bg-amber-50 text-amber-700 border-amber-200
+                         {% else %}
+                         bg-rose-50 text-rose-700 border-rose-200
+                         {% endif %}">
+              {{ flag }}
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
       </div>
 
       <!-- Forms -->
