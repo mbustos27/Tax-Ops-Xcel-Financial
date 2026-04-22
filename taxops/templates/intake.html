@@ -50,6 +50,10 @@
       </button>
     </div>
     <div id="selected-client-info" class="hidden mt-3 text-sm text-amber-800 font-medium"></div>
+    <div id="habit-profile-panel" class="hidden mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+      <p class="text-xs font-bold text-blue-700 uppercase tracking-widest mb-2">Client Habit Profile</p>
+      <div id="habit-profile-content" class="text-sm text-blue-900"></div>
+    </div>
   </div>
 
   <!-- ── Section A: Header info ───────────────────────────────────────────── -->
@@ -616,6 +620,8 @@
   const selectedInfo  = document.getElementById('selected-client-info');
   const intakeTitle   = document.getElementById('intake-title');
   const reintakeBadge = document.getElementById('reintake-badge');
+  const habitPanel    = document.getElementById('habit-profile-panel');
+  const habitContent  = document.getElementById('habit-profile-content');
 
   // client-level text fields (persist year to year)
   const CLIENT_TEXT = [
@@ -697,7 +703,7 @@
     lookupInput.value = name;
 
     const res  = await fetch(`/api/clients/${id}/reintake`);
-    const { client, last_return, dependents } = await res.json();
+    const { client, last_return, dependents, habit_profile } = await res.json();
 
     // ── Client-level fields ───────────────────────────────────────────────
     CLIENT_TEXT.forEach(key => prefillText(key, client[key], false));
@@ -724,6 +730,7 @@
          Highlighted fields carried over — update anything that changed for <strong>TY${newYear}</strong>.`
       : `Existing client found. A new TY${newYear} return will be created.`;
     selectedInfo.classList.remove('hidden');
+    renderHabitProfile(habit_profile);
   }
 
   // ── Prefill helpers ────────────────────────────────────────────────────────
@@ -774,6 +781,37 @@
 
   function markPrefilled(el) {
     el.classList.add('prefilled');
+  }
+
+  function renderHabitProfile(profile) {
+    if (!profile || !profile.reminders || !profile.reminders.length) {
+      habitPanel.classList.add('hidden');
+      habitContent.innerHTML = '';
+      return;
+    }
+
+    const riskLabel = (profile.risk_level || 'standard').toUpperCase();
+    const riskClass = profile.risk_level === 'high'
+      ? 'bg-red-100 text-red-700 border-red-300'
+      : profile.risk_level === 'watch'
+        ? 'bg-amber-100 text-amber-700 border-amber-300'
+        : 'bg-emerald-100 text-emerald-700 border-emerald-300';
+
+    const forms = (profile.recurring_forms || []).length
+      ? `<p class="mt-2 text-xs text-blue-700"><strong>Carry-forward complexity:</strong> ${(profile.recurring_forms || []).join(', ')}</p>`
+      : '';
+
+    habitContent.innerHTML = `
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-bold px-2 py-0.5 rounded-full border ${riskClass}">${riskLabel} PRIORITY</span>
+        <span class="text-xs text-blue-700">TY${profile.target_year || ''} planning reminders</span>
+      </div>
+      <ul class="mt-2 list-disc pl-5 space-y-1">
+        ${(profile.reminders || []).map(r => `<li>${r}</li>`).join('')}
+      </ul>
+      ${forms}
+    `;
+    habitPanel.classList.remove('hidden');
   }
 
   // ── Clear ──────────────────────────────────────────────────────────────────
@@ -860,6 +898,8 @@
     reintakeBadge.classList.add('hidden');
     clearBtn.classList.add('hidden');
     selectedInfo.classList.add('hidden');
+    habitPanel.classList.add('hidden');
+    habitContent.innerHTML = '';
 
     [...CLIENT_TEXT, ...RETURN_TEXT].forEach(key => {
       const el = document.getElementById(`field-${key}`);

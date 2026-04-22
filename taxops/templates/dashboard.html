@@ -47,6 +47,20 @@
                class="rounded border-slate-300 text-blue-600 focus:ring-blue-400">
         <span class="text-xs text-slate-600">Balance due only</span>
       </label>
+      <label class="flex items-center gap-1.5 cursor-pointer select-none">
+        <input type="checkbox"
+               onchange="applyFilter('late_intake', this.checked ? '1' : '')"
+               {% if filters.late_intake %}checked{% endif %}
+               class="rounded border-slate-300 text-blue-600 focus:ring-blue-400">
+        <span class="text-xs text-slate-600">Late intake only</span>
+      </label>
+      <label class="flex items-center gap-1.5 cursor-pointer select-none">
+        <input type="checkbox"
+               onchange="applyFilter('slow_cycle', this.checked ? '1' : '')"
+               {% if filters.slow_cycle %}checked{% endif %}
+               class="rounded border-slate-300 text-blue-600 focus:ring-blue-400">
+        <span class="text-xs text-slate-600">Slow cycle only</span>
+      </label>
 
       <!-- Quick in-page filter -->
       <div class="ml-auto flex items-center gap-2">
@@ -67,6 +81,8 @@
       {% if filters.status %} {% set base = base ~ '&status=' ~ filters.status[0] %} {% endif %}
       {% if filters.processor %} {% set base = base ~ '&processor=' ~ filters.processor %} {% endif %}
       {% if filters.balance_due %} {% set base = base ~ '&balance_due=1' %} {% endif %}
+      {% if filters.late_intake %} {% set base = base ~ '&late_intake=1' %} {% endif %}
+      {% if filters.slow_cycle %} {% set base = base ~ '&slow_cycle=1' %} {% endif %}
 
       <a href="{{ base }}"
          class="pill {% if not active_form %}pill-active{% else %}pill-inactive{% endif %}">
@@ -96,6 +112,7 @@
           <th class="th w-16 rounded-tl-xl">Log #</th>
           <th class="th">Client</th>
           <th class="th">Forms</th>
+          <th class="th w-36">Flags</th>
           <th class="th w-40">Status</th>
           <th class="th w-28">Preparer</th>
           <th class="th text-right w-24">Fee</th>
@@ -132,6 +149,26 @@
               <span class="form-badge">{{ badge }}</span>
               {% endfor %}
             </div>
+          </td>
+
+          <!-- Flags -->
+          <td class="td">
+            {% if r.risk_flags %}
+            <div class="flex flex-wrap gap-1">
+              {% for flag in r.risk_flags %}
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border
+                           {% if flag == 'LATE INTAKE' %}
+                           bg-amber-50 text-amber-700 border-amber-200
+                           {% else %}
+                           bg-rose-50 text-rose-700 border-rose-200
+                           {% endif %}">
+                {{ flag }}
+              </span>
+              {% endfor %}
+            </div>
+            {% else %}
+            <span class="text-slate-300">—</span>
+            {% endif %}
           </td>
 
           <!-- Status -->
@@ -213,7 +250,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="9" class="px-6 py-16 text-center">
+          <td colspan="10" class="px-6 py-16 text-center">
             <div class="text-5xl mb-3">📂</div>
             <div class="font-semibold text-slate-500 text-base">No returns found</div>
             <div class="text-sm text-slate-400 mt-1">Import a CSV or adjust your filters</div>

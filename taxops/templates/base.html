@@ -62,6 +62,18 @@
 
       <!-- Year picker + logout -->
       <div class="ml-auto flex items-center gap-3">
+        <button id="privacy-toggle"
+                type="button"
+                data-enabled="{{ '1' if privacy_mode else '0' }}"
+                class="text-xs font-semibold rounded-lg px-2.5 py-1.5 border transition-colors
+                       {% if privacy_mode %}
+                       bg-red-50 text-red-700 border-red-300 hover:bg-red-100
+                       {% else %}
+                       bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600
+                       {% endif %}">
+          {% if privacy_mode %}Privacy: ON{% else %}Privacy: OFF{% endif %}
+        </button>
+
         <select id="year-picker" class="bg-slate-700 text-slate-300 text-xs rounded-lg px-2.5 py-1.5 border-0 focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer">
           {% for y in [2023, 2024, 2025, 2026] %}
           <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
@@ -133,6 +145,38 @@
   </main>
 
   <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script>
+    (function () {
+      const btn = document.getElementById('privacy-toggle');
+      if (!btn) return;
+
+      function renderState(enabled) {
+        btn.dataset.enabled = enabled ? '1' : '0';
+        btn.textContent = enabled ? 'Privacy: ON' : 'Privacy: OFF';
+        btn.className = enabled
+          ? 'text-xs font-semibold rounded-lg px-2.5 py-1.5 border transition-colors bg-red-50 text-red-700 border-red-300 hover:bg-red-100'
+          : 'text-xs font-semibold rounded-lg px-2.5 py-1.5 border transition-colors bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600';
+      }
+
+      btn.addEventListener('click', async () => {
+        const current = btn.dataset.enabled === '1';
+        try {
+          const resp = await fetch('/api/privacy-mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: !current }),
+          });
+          const data = await resp.json();
+          if (data.success) {
+            renderState(!!data.privacy_mode);
+            window.location.reload();
+          }
+        } catch (e) {
+          console.error('Privacy mode toggle failed', e);
+        }
+      });
+    })();
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
