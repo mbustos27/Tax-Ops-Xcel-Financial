@@ -14,10 +14,8 @@ venv/
 .venv/
 env/
 
-# Database files — contain live client data, never commit
-*.db
-*.sqlite
-*.sqlite3
+# Database files — allowed for now for portability
+# *.db
 
 # Sensitive data files
 taxops/data/incoming/*.csv
