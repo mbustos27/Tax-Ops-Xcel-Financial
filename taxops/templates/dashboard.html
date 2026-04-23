@@ -76,7 +76,19 @@
         {% endfor %}
       </select>
 
-      <div class="ml-auto flex items-center gap-2 shrink-0">
+      <div class="ml-auto flex items-center flex-wrap gap-x-2 gap-y-1 justify-end shrink-0">
+        <div class="flex items-center gap-1.5 text-sm" title="Selection is kept when you change status, form, or preparer filters (this browser tab)">
+          <span id="selected-count" class="font-semibold text-blue-600 tabular-nums">0</span>
+          <span class="text-slate-500">selected <span class="text-slate-400 font-normal">(persists between filters)</span></span>
+          <button type="button" id="btn-select-all-visible"
+                  class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100">
+            Select all visible
+          </button>
+          <button type="button" id="btn-clear-row-selection"
+                  class="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
+            Clear
+          </button>
+        </div>
         <input id="table-filter" type="text" placeholder="Quick filter…"
                class="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 w-44">
         <span class="text-sm text-slate-500 whitespace-nowrap">
@@ -98,11 +110,15 @@
   </div>
 
   <!-- ── Returns table — only this div scrolls ────────────────────────── -->
-  <div class="rounded-xl border border-slate-200 flex-1 min-h-0 overflow-y-auto bg-white outline-none" tabindex="-1">
+  <div id="dashboard-table-wrap" class="rounded-xl border border-slate-200 flex-1 min-h-0 overflow-y-auto bg-white outline-none" tabindex="-1">
     <table class="data-table w-full text-sm">
       <thead class="sticky top-0 z-10">
         <tr>
-          <th class="th w-16 rounded-tl-xl sortable" data-col="log" data-type="num">Log # <span class="sort-arrow"></span></th>
+          <th class="th w-9 text-center pl-1 rounded-tl-xl">
+            <input type="checkbox" id="table-select-all" title="Select all visible rows" aria-label="Select all visible"
+                   class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-400">
+          </th>
+          <th class="th w-16 sortable" data-col="log" data-type="num">Log # <span class="sort-arrow"></span></th>
           <th class="th w-16 text-center sortable" data-col="taxyear" data-type="num">TY <span class="sort-arrow"></span></th>
           <th class="th sortable" data-col="name" data-type="str">Client <span class="sort-arrow"></span></th>
           <th class="th">Forms</th>
@@ -127,7 +143,17 @@
             data-fee="{{ r.total_fee or 0 }}"
             data-balance="{{ r.balance or 0 }}"
             data-intake="{{ r.intake_date or '' }}"
-            onclick="if(!event.target.closest('.status-dropdown,.editable')) window.location='/return/{{ r.id }}'">
+            data-return-id="{{ r.id }}"
+            onclick="if(!event.target.closest('.status-dropdown,.editable,.row-select-label')) window.location='/return/{{ r.id }}'">
+
+          <!-- Select -->
+          <td class="td text-center" onclick="event.stopPropagation()">
+            <input type="checkbox" class="row-select" id="row-sel-{{ r.id }}" data-return-id="{{ r.id }}">
+            <label for="row-sel-{{ r.id }}" class="row-select-label inline-flex items-center justify-center min-w-[2.75rem] min-h-11 -my-1 cursor-pointer rounded-lg hover:bg-slate-100"
+                   title="Select this return">
+              <span class="w-4 h-4 rounded border border-slate-300 bg-white pointer-events-none row-select-skin"></span>
+            </label>
+          </td>
 
           <!-- Log # -->
           <td class="td">
@@ -252,7 +278,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="10" class="px-6 py-16 text-center">
+          <td colspan="12" class="px-6 py-16 text-center">
             <div class="text-5xl mb-3">📂</div>
             <div class="font-semibold text-slate-500 text-base">No returns found</div>
             <div class="text-sm text-slate-400 mt-1">Import a CSV or adjust your filters</div>
@@ -314,22 +340,11 @@ function sortTable(col, type, asc) {
   updateRowCount();
 }
 
-// ── Quick filter ──────────────────────────────────────────────────────────
-const filterInput = document.getElementById('table-filter');
-if (filterInput) {
-  filterInput.addEventListener('input', () => {
-    const q = filterInput.value.toLowerCase();
-    document.querySelectorAll('.data-table tbody tr[data-search]').forEach(tr => {
-      tr.style.display = (tr.dataset.search || '').toLowerCase().includes(q) ? '' : 'none';
-    });
-    updateRowCount();
-  });
-}
-
 function updateRowCount() {
-  const visible = document.querySelectorAll('.data-table tbody tr[data-search]:not([style*="display: none"])').length;
+  const visible = document.querySelectorAll('.data-table tbody tr[data-search]:not(.tr-filter-hidden)').length;
   const el = document.getElementById('row-count');
   if (el) el.textContent = visible;
+  if (typeof syncDashboardTableSelection === "function") syncDashboardTableSelection();
 }
 </script>
 {% endblock %}
