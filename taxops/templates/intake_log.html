@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Intake Log — TaxOps {{ current_year }}{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold text-slate-800">Intake Log — TY{{ current_year }}</h1>
+      <p class="text-sm text-slate-500 mt-0.5">{{ total }} returns in chronological order</p>
+    </div>
+    <a href="/intake" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold
+                             rounded-xl px-5 py-2.5 text-sm shadow transition-colors">
+      + New Intake
+    </a>
+  </div>
+
+  {% for intake_date, returns in groups %}
+  <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+
+    <!-- Date header -->
+    <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="font-bold text-slate-700">
+          {% if intake_date == 'No Date' %}
+            No Date
+          {% else %}
+            {{ intake_date }}
+          {% endif %}
+        </span>
+        <span class="text-xs text-slate-400 font-medium">{{ returns | length }} return{{ 's' if returns | length != 1 }}</span>
+      </div>
+      <div class="flex gap-2">
+        {% set statuses = returns | map(attribute='client_status') | list %}
+        {% for s in status_flow %}
+          {% set cnt = statuses | select('equalto', s) | list | length %}
+          {% if cnt > 0 %}
+          <span class="text-xs px-2 py-0.5 rounded-full border {{ status_badge.get(s, 'bg-slate-100 text-slate-500 border-slate-200') }}">
+            {{ s }} {{ cnt }}
+          </span>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Returns for this date -->
+    <table class="w-full text-sm">
+      <tbody class="divide-y divide-slate-100">
+        {% for r in returns %}
+        <tr class="status-row status-{{ (r.client_status or '') | replace(' ','-') }}
+                   hover:bg-slate-50 cursor-pointer transition-colors"
+            onclick="window.location='/return/{{ r.id }}'">
+
+          <td class="td w-14">
+            <span class="font-mono font-black text-slate-800">{{ r.log_number or '—' }}</span>
+          </td>
+
+          <td class="td w-56">
+            <div class="font-semibold text-slate-800 leading-tight">
+              {{ r.last_name }}{% if r.first_name %}, {{ r.first_name }}{% endif %}
+            </div>
+            {% if r.display_name and r.display_name != r.last_name %}
+            <div class="text-xs text-slate-400">{{ r.display_name }}</div>
+            {% endif %}
+          </td>
+
+          <td class="td w-32">
+            <span class="status-badge {{ r.badge_class }}">{{ r.client_status or '—' }}</span>
+          </td>
+
+          <td class="td w-24">
+            <span class="text-xs text-slate-500">{{ r.processor or '—' }}</span>
+          </td>
+
+          <td class="td">
+            <div class="flex flex-wrap gap-0.5">
+              {% for badge in r.forms %}
+              <span class="form-badge">{{ badge }}</span>
+              {% endfor %}
+            </div>
+          </td>
+
+          <td class="td w-28 text-right">
+            {% if r.total_fee %}
+            <span class="text-slate-700 tabular-nums text-xs">${{ "{:,.2f}".format(r.total_fee) }}</span>
+            {% else %}
+            <span class="text-slate-300 text-xs">—</span>
+            {% endif %}
+          </td>
+
+          <td class="td w-24 text-right">
+            {% if r.total_fee %}
+              {% if r.paid_in_full %}
+              <span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">PAID</span>
+              {% elif r.balance %}
+              <span class="text-xs font-bold text-red-600">${{ "{:,.2f}".format(r.balance) }}</span>
+              {% endif %}
+            {% endif %}
+          </td>
+
+          <td class="td w-8 text-center">
+            {% if r.verified %}
+            <span class="text-green-500 font-bold">✓</span>
+            {% else %}
+            <span class="text-slate-200">○</span>
+            {% endif %}
+          </td>
+
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="bg-white rounded-2xl border border-slate-200 px-6 py-16 text-center">
+    <div class="text-5xl mb-3">📋</div>
+    <div class="font-semibold text-slate-500">No returns logged yet for TY{{ current_year }}</div>
+    <div class="text-sm text-slate-400 mt-1">Use + New Intake or import a CSV to get started</div>
+  </div>
+  {% endfor %}
+
+</div>
+{% endblock %}

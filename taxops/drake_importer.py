@@ -284,7 +284,7 @@ def _normalize_taxops(row: Dict[str, str], tax_year: int) -> tuple[Dict[str, Any
     if ack_date:
         client_status = "LOG OUT"      # acknowledged/accepted → case closed
     elif e_filed:
-        client_status = "EFILE"        # transmitted, awaiting ack
+        client_status = "EFILE READY"  # transmitted but no ack yet — stays in EFILE READY
     elif date_completed:
         client_status = "LOG OUT"
     else:

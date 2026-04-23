@@ -40,8 +40,8 @@ DRAKE_STATUS_MAP: dict[str, str] = {
     # Cleared to transmit (client signed)
     "READY TO EFILE":               "EFILE READY",
     # Transmitted, awaiting ack
-    "E-FILED":                      "EFILE",
-    "EFILED":                       "EFILE",
+    "E-FILED":                      "EFILE READY",
+    "EFILED":                       "EFILE READY",
     # Acknowledged / accepted → case closed
     "EF ACCEPTED":                  "LOG OUT",
     "EF EXT ACCEPTED":              "LOG OUT",

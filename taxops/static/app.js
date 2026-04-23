@@ -1,20 +1,20 @@
 // ── Status badge Tailwind classes (mirrors app.py STATUS_BADGE) ───────────
 const STATUS_BADGE = {
-  "LOG IN":     "bg-blue-50 text-blue-700 border-blue-200",
-  "PROCESSING": "bg-amber-50 text-amber-700 border-amber-200",
-  "FINALIZE":   "bg-orange-50 text-orange-700 border-orange-200",
-  "EFILE":      "bg-violet-50 text-violet-700 border-violet-200",
-  "PICKUP":     "bg-teal-50 text-teal-700 border-teal-200",
-  "LOG OUT":    "bg-slate-100 text-slate-500 border-slate-200",
+  "PROCESSING":  "bg-sky-50 text-sky-700 border-sky-200",
+  "FINALIZE":    "bg-yellow-50 text-yellow-700 border-yellow-200",
+  "PICKUP":      "bg-teal-50 text-teal-700 border-teal-200",
+  "EFILE READY": "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "LOG OUT":     "bg-slate-100 text-slate-500 border-slate-200",
+  "REJECTED":    "bg-red-50 text-red-700 border-red-200",
 };
 
 const STATUS_ROW = {
-  "LOG IN":     "status-LOG-IN",
-  "PROCESSING": "status-PROCESSING",
-  "FINALIZE":   "status-FINALIZE",
-  "EFILE":      "status-EFILE",
-  "PICKUP":     "status-PICKUP",
-  "LOG OUT":    "status-LOG-OUT",
+  "PROCESSING":  "status-PROCESSING",
+  "FINALIZE":    "status-FINALIZE",
+  "PICKUP":      "status-PICKUP",
+  "EFILE READY": "status-EFILE-READY",
+  "LOG OUT":     "status-LOG-OUT",
+  "REJECTED":    "status-REJECTED",
 };
 
 // ── Live global search ─────────────────────────────────────────────────────
