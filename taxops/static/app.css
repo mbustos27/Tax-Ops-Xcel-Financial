@@ -115,8 +115,18 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
 .data-table tbody tr { transition: background 0.08s; }
 .data-table tbody tr { position: relative; z-index: 0; }
 
+/* Quick filter: class toggle is cheaper than per-row style.display; avoids sync layout cost. */
+tr[data-search].tr-filter-hidden { display: none; }
+
+/* Scroll panel: less scroll chaining to parent; smoother on touch / trackpads */
+#dashboard-table-wrap {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 thead.sticky tr th {
   box-shadow: 0 2px 4px -1px rgba(0,0,0,0.08);
+  backface-visibility: hidden; /* crisper stickies while scrolling */
 }
 
 /* ── Form badges ──────────────────────────────────────────────────────── */
@@ -229,3 +239,28 @@ thead.sticky tr th {
 .sort-arrow::after { content: ''; margin-left: 4px; opacity: 0.35; font-size: 11px; }
 .sort-arrow.asc::after  { content: '▲'; opacity: 1; }
 .sort-arrow.desc::after { content: '▼'; opacity: 1; }
+
+/* Dashboard row select — large tap target, visible checked state */
+input.row-select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+input.row-select:focus + label {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #3b82f6;
+  border-radius: 0.5rem;
+}
+input.row-select:checked + label .row-select-skin {
+  background-color: #2563eb;
+  border-color: #1d4ed8;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='white'%3E%3Cpath d='M13.25 3.5a.75.75 0 0 1 0 1.06L6.3 12.2a.75.75 0 0 1-1.12 0L2.2 8.4a.75.75 0 0 1 1.12-1.0l1.7 1.7 5.2-5.2a.75.75 0 0 1 1.06.02z'/%3E%3C/svg%3E");
+  background-size: 0.75rem 0.75rem;
+  background-position: center;
+  background-repeat: no-repeat;
+}

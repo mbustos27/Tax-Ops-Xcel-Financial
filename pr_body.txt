@@ -1,0 +1,18 @@
+## Summary
+
+- **Status workflow overhaul**: Removed `LOG IN` (redundant with digital intake) and `EFILE` (returns don't sit in transit). New flow: `PROCESSING -> FINALIZE -> PICKUP -> EFILE READY -> LOG OUT / REJECTED`
+- **REJECTED status + bell alert**: Added red REJECTED status with a YouTube-style notification bell in the header showing all rejected returns with direct links
+- **Season/year architecture fix**: Dashboard now filters by intake year (season 2026) instead of tax year, so TY2025 main work and prior-year catch-up returns (TY2024, TY2023, etc.) all appear together. Tax Year column added to table.
+- **DB corrections**: Fixed 1,769 returns mislabeled as TY2026 -> TY2025; fixed 666 returns with logout_date but wrong status; migrated all EFILE -> EFILE READY
+- **Auto-advance logic**: Setting logout_date or ack_date now auto-advances any return to LOG OUT
+- **Return detail page**: Status badge is now a clickable dropdown; quick-flags bar for one-click boolean toggles; e-file/ack dates inline
+- **Season picker locked**: Detail page no longer resets season picker to a past tax year
+- **Added .gitignore**: Excludes .db files, __pycache__, and incoming CSV files (contain client PII)
+
+## Test plan
+- [ ] Dashboard loads at season 2026 showing all current-season returns with TY column
+- [ ] Status pills show PROCESSING, FINALIZE, PICKUP, EFILE READY, LOG OUT, REJECTED (no LOG IN or EFILE)
+- [ ] Reject bell appears red with count when any return is REJECTED
+- [ ] Clicking a return detail does not change the season picker
+- [ ] Setting ack_date or logout_date on a return auto-advances to LOG OUT
+- [ ] New intake creates return at PROCESSING status

@@ -66,8 +66,11 @@ function renderSearchResults(items, container) {
   container.innerHTML = items.map(r => `
     <a href="/return/${r.id}"
        class="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
-      <span class="font-mono font-black text-slate-800 w-12 shrink-0 text-sm">${r.log_number}</span>
-      <span class="flex-1 text-sm font-medium text-slate-800 truncate">${r.name}</span>
+      <span class="font-mono font-bold text-slate-400 w-10 shrink-0 text-xs">${r.log_number ?? '—'}</span>
+      <span class="flex-1 min-w-0">
+        <span class="block text-sm font-semibold text-slate-800">${r.name}</span>
+        <span class="text-xs text-slate-400">TY${r.tax_year ?? '—'}</span>
+      </span>
       <span class="text-xs px-2 py-px rounded-full border shrink-0 ${r.badge || "bg-slate-100 text-slate-500 border-slate-200"}">${r.status || "—"}</span>
     </a>
   `).join("");
@@ -254,22 +257,196 @@ async function submitNote(returnId) {
 
 // ── Table quick-filter (client-side) ────────────────────────────────────────
 
+let _tableFilterDebounce = 0;
+let _tableFilterRaf      = 0;
+
+function _cacheSearchLcase(row) {
+  if (row._searchLcase === undefined) {
+    row._searchLcase = (row.dataset.search || "").toLowerCase();
+  }
+  return row._searchLcase;
+}
+
+function runTableQuickFilter() {
+  const input = document.getElementById("table-filter");
+  if (!input) return;
+
+  const q   = input.value.trim().toLowerCase();
+  const all = document.querySelectorAll("tr[data-search]");
+  let visible = 0;
+  for (const row of all) {
+    const lc    = _cacheSearchLcase(row);
+    const match = !q || lc.includes(q);
+    row.classList.toggle("tr-filter-hidden", !match);
+    if (match) visible++;
+  }
+  const counter = document.getElementById("row-count");
+  if (counter) counter.textContent = visible;
+  syncDashboardTableSelection();
+}
+
+function scheduleTableQuickFilter(immediate) {
+  if (_tableFilterRaf) cancelAnimationFrame(_tableFilterRaf);
+  _tableFilterRaf = requestAnimationFrame(() => {
+    _tableFilterRaf = 0;
+    runTableQuickFilter();
+  });
+}
+
 function initTableFilter() {
   const input = document.getElementById("table-filter");
   if (!input) return;
 
-  input.addEventListener("input", () => {
-    const q       = input.value.trim().toLowerCase();
-    const rows    = document.querySelectorAll("tr[data-search]");
-    let   visible = 0;
-    rows.forEach(row => {
-      const match = !q || row.dataset.search.toLowerCase().includes(q);
-      row.style.display = match ? "" : "none";
-      if (match) visible++;
-    });
-    const counter = document.getElementById("row-count");
-    if (counter) counter.textContent = visible;
+  const onFilterInput = () => {
+    if (_tableFilterDebounce) {
+      clearTimeout(_tableFilterDebounce);
+    }
+    const shortQuery = (input.value || "").trim().length <= 1;
+    const delay      = shortQuery ? 0 : 100;
+    _tableFilterDebounce = setTimeout(() => {
+      _tableFilterDebounce = 0;
+      scheduleTableQuickFilter();
+    }, delay);
+  };
+
+  input.addEventListener("input", onFilterInput, { passive: true });
+}
+
+// ── Dashboard row checkboxes (persists in sessionStorage across status/form/preparer) ─
+
+function isDashboardRowVisible(tr) {
+  if (!tr?.matches("tr[data-search]")) return false;
+  if (tr.classList.contains("tr-filter-hidden")) return false;
+  return true;
+}
+
+function getVisibleDataRows() {
+  return Array.from(document.querySelectorAll(".data-table tbody tr[data-search]")).filter(
+    isDashboardRowVisible
+  );
+}
+
+function getSelectionStorageKey() {
+  const y = document.body?.dataset?.year || new Date().getFullYear();
+  return `taxops_selected_returns_${y}`;
+}
+
+function readPersistentSet() {
+  try {
+    const raw = sessionStorage.getItem(getSelectionStorageKey());
+    if (!raw) return new Set();
+    const ar = JSON.parse(raw);
+    if (!Array.isArray(ar)) return new Set();
+    return new Set(ar.map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n)));
+  } catch {
+    return new Set();
+  }
+}
+
+function writePersistentSet(s) {
+  try {
+    sessionStorage.setItem(getSelectionStorageKey(), JSON.stringify([...s].sort((a, b) => a - b)));
+  } catch { /* private mode, quota, etc. */ }
+}
+
+function applyPersistentToDom() {
+  const s = readPersistentSet();
+  document.querySelectorAll(".row-select").forEach((cb) => {
+    const id = parseInt(cb.dataset.returnId, 10);
+    if (Number.isNaN(id)) return;
+    const want = s.has(id);
+    if (cb.checked !== want) cb.checked = want;
   });
+}
+
+function setAllVisibleCheckboxes(checked) {
+  const s = readPersistentSet();
+  getVisibleDataRows().forEach((tr) => {
+    const cb = tr.querySelector(".row-select");
+    if (!cb) return;
+    const id = parseInt(cb.dataset.returnId, 10);
+    if (Number.isNaN(id)) return;
+    if (checked) s.add(id);
+    else s.delete(id);
+    cb.checked = checked;
+  });
+  writePersistentSet(s);
+  syncDashboardTableSelection();
+}
+
+function clearAllRowCheckboxes() {
+  try {
+    sessionStorage.removeItem(getSelectionStorageKey());
+  } catch { /* */ }
+  document.querySelectorAll(".row-select").forEach((cb) => {
+    cb.checked = false;
+  });
+  syncDashboardTableSelection();
+}
+
+function syncDashboardTableSelection() {
+  const master = document.getElementById("table-select-all");
+  if (!master) return;
+
+  const s = readPersistentSet();
+  const checkboxes = getVisibleDataRows()
+    .map((tr) => tr.querySelector(".row-select"))
+    .filter(Boolean);
+  const nInSetOnVisible = checkboxes.filter((cb) => {
+    const id = parseInt(cb.dataset.returnId, 10);
+    return !Number.isNaN(id) && s.has(id);
+  }).length;
+
+  if (checkboxes.length === 0) {
+    master.checked = false;
+    master.indeterminate = false;
+  } else {
+    master.checked = nInSetOnVisible === checkboxes.length;
+    master.indeterminate = nInSetOnVisible > 0 && nInSetOnVisible < checkboxes.length;
+  }
+
+  const sc = document.getElementById("selected-count");
+  if (sc) sc.textContent = String(s.size);
+}
+
+function initDashboardTableSelection() {
+  if (!document.getElementById("table-select-all")) return;
+
+  applyPersistentToDom();
+
+  const master = document.getElementById("table-select-all");
+  master.addEventListener("change", () => {
+    setAllVisibleCheckboxes(!!master.checked);
+  });
+
+  document.getElementById("btn-select-all-visible")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    setAllVisibleCheckboxes(true);
+  });
+
+  document.getElementById("btn-clear-row-selection")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    clearAllRowCheckboxes();
+  });
+
+  document.querySelector(".data-table tbody")?.addEventListener("change", (e) => {
+    if (e.target.classList?.contains("row-select")) {
+      const id = parseInt(e.target.dataset.returnId, 10);
+      if (Number.isNaN(id)) {
+        syncDashboardTableSelection();
+        return;
+      }
+      const s = readPersistentSet();
+      if (e.target.checked) s.add(id);
+      else s.delete(id);
+      writePersistentSet(s);
+      syncDashboardTableSelection();
+    }
+  });
+
+  window.getSelectedReturnIds = () => [...readPersistentSet()].sort((a, b) => a - b);
+
+  syncDashboardTableSelection();
 }
 
 // ── Year picker ──────────────────────────────────────────────────────────────
@@ -312,6 +489,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSearch();
   initInlineEdit();
   initTableFilter();
+  initDashboardTableSelection();
   initYearPicker();
 
   // Press "/" to focus search from anywhere

@@ -18,6 +18,7 @@ import tempfile
 from config import APP_ENV
 from csv_analyzer import analyze, iter_data_rows, normalize_status
 from db import get_connection, init_db
+from merge_ops import merge_client_into
 from name_matcher import find_client as fuzzy_find_client, is_business, parse_name, _all_clients_cache
 from normalizer import normalize_date, normalize_currency, normalize_string
 from utils import now
@@ -1787,6 +1788,263 @@ def api_note(return_id: int):
     conn.close()
     visible_text = _mask_value(text) if privacy_mode_enabled() else text
     return jsonify({"success": True, "text": visible_text, "created_at": ts})
+
+
+# ── Duplicate client detection & merge ───────────────────────────────────────
+
+# For joint clients, "CARLOS G & MARIA" → compare only the primary ("CARLOS G").
+def _first_primary_for_compare(first_name: str) -> str:
+    s = (first_name or "").upper().strip()
+    if " & " in s:
+        s = s.split(" & ")[0].strip()
+    return s
+
+
+def _name_tokens(s: str) -> list[str]:
+    return _first_primary_for_compare(s).split()
+
+
+# Extra tokens 1–2 letters (O, A) or Jr/Sr/II, etc. — treat as middle / suffix, same person
+_MIDDLE_LIKE: frozenset = frozenset(
+    {
+        "JR", "SR", "II", "III", "IV", "V",
+    }
+)
+
+
+def _token_is_initial_or_suffix(tok: str) -> bool:
+    t = tok.strip(".,'").upper()
+    if t in _MIDDLE_LIKE:
+        return True
+    if not t or not t.isalpha():
+        return False
+    if len(t) == 1:
+        return True
+    if len(t) == 2 and t.isupper():
+        return True
+    return False
+
+
+def _first_names_likely_same_middles(a_first: str, b_first: str) -> bool:
+    """
+    Same person when the only first-name difference is missing vs middle initial
+    (e.g. BRYAN vs BRYAN O, JOSE vs JOSE A, CARLOS vs CARLOS G for one-char 'G').
+
+    If the shorter token list is a prefix of the longer, and every extra token is
+    1–2 letter initial/suffix, treat as a duplicate.
+    """
+    ta, tb = _name_tokens(a_first), _name_tokens(b_first)
+    if not ta or not tb:
+        return False
+    if ta == tb:
+        return True
+    if len(ta) > len(tb):
+        ta, tb = tb, ta
+    # ta is shorter
+    if len(ta) > len(tb) or not tb:
+        return False
+    if ta != tb[: len(ta)]:
+        return False
+    rest = tb[len(ta) :]
+    return all(_token_is_initial_or_suffix(x) for x in rest)
+
+
+def _first_names_likely_duplicate(fa: str, fb: str) -> bool:
+    fa_st = (fa or "").upper().strip()
+    fb_st = (fb or "").upper().strip()
+    if not fa_st or not fb_st:
+        return False
+    # String containment / one side extends the other (incl. joint "X" in "X & Y")
+    if (
+        fa_st.startswith(fb_st) or fb_st.startswith(fa_st) or
+        fa_st in fb_st or fb_st in fa_st
+    ):
+        return True
+    if _first_names_likely_same_middles(fa, fb):
+        return True
+    return False
+
+
+def _find_duplicate_pairs() -> list[dict]:
+    """
+    Find likely duplicate client records with the same last_name and either:
+    - overlapping / contained first_name strings, or
+    - first names that differ only by middle initials / extra 1–2 char tokens
+      (BRYAN vs BRYAN O) using the primary name before " & " for joint filers.
+    """
+    conn = get_connection()
+    clients = conn.execute(
+        """
+        SELECT c.id, c.last_name, c.first_name, c.display_name,
+               COUNT(r.id)                         AS return_count,
+               MAX(r.log_number)                   AS best_log,
+               GROUP_CONCAT(r.id)                  AS return_ids,
+               GROUP_CONCAT(COALESCE(r.log_number,''))  AS log_numbers,
+               GROUP_CONCAT(r.tax_year)            AS tax_years,
+               GROUP_CONCAT(r.client_status)       AS statuses
+        FROM clients c
+        LEFT JOIN returns r ON r.client_id = c.id
+        GROUP BY c.id
+        ORDER BY c.last_name, c.first_name
+        """
+    ).fetchall()
+    conn.close()
+
+    # Group by last_name
+    by_last: dict[str, list] = {}
+    for row in clients:
+        key = (row["last_name"] or "").upper().strip()
+        by_last.setdefault(key, []).append(dict(row))
+
+    pairs = []
+    seen = set()
+    for last, group in by_last.items():
+        if len(group) < 2:
+            continue
+        for i, a in enumerate(group):
+            for b in group[i + 1:]:
+                if not (a.get("first_name") or "").strip() or not (b.get("first_name") or "").strip():
+                    continue
+                if not _first_names_likely_duplicate(
+                    a["first_name"] or "", b["first_name"] or ""
+                ):
+                    continue
+                key = tuple(sorted([a["id"], b["id"]]))
+                if key in seen:
+                    continue
+                seen.add(key)
+                # Prefer keeping the one with a log number / more returns
+                a_score = (1 if a["best_log"] else 0) + (a["return_count"] or 0)
+                b_score = (1 if b["best_log"] else 0) + (b["return_count"] or 0)
+                keep, discard = (a, b) if a_score >= b_score else (b, a)
+                pairs.append({
+                    "keep":    keep,
+                    "discard": discard,
+                })
+
+    return sorted(pairs, key=lambda p: (p["keep"]["last_name"] or ""))
+
+
+def _merge_pair_key(ka: int, kb: int) -> str:
+    return f"{min(ka, kb)}-{max(ka, kb)}"
+
+
+def _merge_pairs_for_session() -> list[dict]:
+    skipped = set(session.get("merge_skipped", []))
+    out: list[dict] = []
+    for p in _find_duplicate_pairs():
+        k, d = int(p["keep"]["id"]), int(p["discard"]["id"])
+        if _merge_pair_key(k, d) in skipped:
+            continue
+        out.append(p)
+    return out
+
+
+@app.get("/merge-clients")
+@login_required
+def merge_clients_page():
+    pairs = _merge_pairs_for_session()
+    ctx = base_ctx(date.today().year)
+    ctx.update({"active_page": "merge", "pairs": pairs})
+    return render_template("merge_clients.html", **ctx)
+
+
+@app.post("/api/merge-clients")
+@login_required
+def api_merge_clients():
+    """
+    Merge 'discard' client into 'keep' client.
+    Moves all returns (and review_queue refs) from discard → keep, then deletes discard.
+    """
+    data       = request.get_json(force=True)
+    keep_id    = int(data.get("keep_id", 0))
+    discard_id = int(data.get("discard_id", 0))
+    if not keep_id or not discard_id or keep_id == discard_id:
+        return jsonify({"error": "Invalid IDs"}), 400
+
+    conn = get_connection()
+    try:
+        keep    = conn.execute("SELECT * FROM clients WHERE id=?", (keep_id,)).fetchone()
+        discard = conn.execute("SELECT * FROM clients WHERE id=?", (discard_id,)).fetchone()
+        if not keep or not discard:
+            return jsonify({"error": "Client not found"}), 404
+
+        ts = now()
+        merge_client_into(conn, keep_id, discard_id, ts)
+        conn.commit()
+
+        keep_name = (keep["display_name"] or
+                     f"{keep['last_name']}, {keep['first_name']}".strip(", "))
+        return jsonify({"success": True, "kept": keep_name})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.post("/api/merge-clients/bulk")
+@login_required
+def api_merge_clients_bulk():
+    """
+    Auto-merge all duplicate pairs (same as Merge Dupes list, respecting skipped pairs in session).
+    `dry_run: true` returns a count and sample; false runs the merge in separate transactions.
+    """
+    data    = request.get_json(silent=True) or {}
+    dry_run = bool(data.get("dry_run"))
+    limit   = int(data.get("limit", 2000))
+    if limit < 1 or limit > 5000:
+        limit = 2000
+
+    pairs = _merge_pairs_for_session()[:limit]
+    if dry_run:
+        return jsonify({
+            "success":  True,
+            "dry_run":  True,
+            "count":    len(pairs),
+            "previews": [
+                {
+                    "keep_id":    int(p["keep"]["id"]),
+                    "discard_id": int(p["discard"]["id"]),
+                    "name": (p["keep"]["last_name"] or "")
+                    + ", " + (p["keep"].get("first_name") or ""),
+                }
+                for p in pairs[:50]
+            ],
+        })
+
+    merged = 0
+    errors: list[dict] = []
+    for p in pairs:
+        k = int(p["keep"]["id"])
+        d = int(p["discard"]["id"])
+        conn = get_connection()
+        try:
+            merge_client_into(conn, k, d, now())
+            conn.commit()
+            merged += 1
+        except Exception as e:
+            conn.rollback()
+            errors.append({
+                "keep_id":    k, "discard_id": d, "error": str(e),
+            })
+        finally:
+            conn.close()
+
+    return jsonify({"success": True, "merged": merged, "errors": errors})
+
+
+@app.post("/api/merge-clients/skip")
+@login_required
+def api_merge_skip():
+    """Mark a pair as 'not duplicates' by storing a skip record (simple session list)."""
+    data = request.get_json(force=True)
+    skipped = session.get("merge_skipped", [])
+    pair_key = f"{min(data['keep_id'], data['discard_id'])}-{max(data['keep_id'], data['discard_id'])}"
+    if pair_key not in skipped:
+        skipped.append(pair_key)
+    session["merge_skipped"] = skipped
+    return jsonify({"success": True})
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

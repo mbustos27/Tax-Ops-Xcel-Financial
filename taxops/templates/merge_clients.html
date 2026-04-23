@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %}Merge Duplicate Clients – TaxOps{% endblock %}
+
+{% block content %}
+<div class="px-6 py-6 max-w-5xl mx-auto">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-800">Duplicate Client Review</h1>
+      <p class="text-sm text-slate-500 mt-1">
+        Review likely duplicates and merge them — or skip pairs that are actually different people.
+        <span class="block mt-2 text-slate-600">
+          <strong class="font-semibold">Auto-merge</strong> applies the same rules (including same tax year: the richer return wins, data is combined). Skipped pairs are respected.
+        </span>
+      </p>
+    </div>
+    <div class="flex flex-col items-end gap-2 shrink-0">
+      <span id="pair-count" class="text-sm font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
+        {{ pairs | length }} pair{{ 's' if pairs | length != 1 else '' }} found
+      </span>
+      <div class="flex flex-wrap gap-2 justify-end">
+        <button type="button" id="bulk-preview"
+                class="text-sm font-semibold px-3 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50">
+          Preview auto-merge
+        </button>
+        <button type="button" id="bulk-run"
+                class="text-sm font-semibold px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-sm">
+          Merge all automatically
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <p id="bulk-preview-msg" class="hidden text-sm text-slate-600 mb-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2"></p>
+
+  {% if not pairs %}
+  <div class="bg-green-50 border border-green-200 rounded-xl px-6 py-10 text-center">
+    <svg class="mx-auto w-10 h-10 text-green-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+    </svg>
+    <p class="text-green-700 font-semibold text-lg">No duplicates detected!</p>
+    <p class="text-green-600 text-sm mt-1">All client records look unique.</p>
+  </div>
+  {% else %}
+
+  <!-- Toast -->
+  <div id="toast" class="hidden fixed bottom-6 right-6 z-50 bg-slate-800 text-white text-sm font-medium px-5 py-3 rounded-xl shadow-xl transition-all"></div>
+
+  <div id="pairs-container" class="space-y-4">
+    {% for p in pairs %}
+    {% set keep    = p.keep %}
+    {% set discard = p.discard %}
+    <div class="pair-card bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden"
+         data-keep="{{ keep.id }}" data-discard="{{ discard.id }}">
+
+      <!-- Card header -->
+      <div class="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-200">
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Possible Duplicate</span>
+        <div class="flex gap-2">
+          <button onclick="skipPair(this)"
+                  class="text-xs px-3 py-1.5 rounded-lg border border-slate-300 text-slate-500 hover:bg-slate-100 transition-colors font-medium">
+            Not a duplicate — Skip
+          </button>
+          <button onclick="mergePair(this)"
+                  class="text-xs px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold transition-colors shadow-sm">
+            Merge →
+          </button>
+        </div>
+      </div>
+
+      <!-- Side-by-side comparison -->
+      <div class="grid grid-cols-2 divide-x divide-slate-100">
+
+        <!-- KEEP side -->
+        <div class="px-5 py-4">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-xs font-bold uppercase tracking-wide bg-green-100 text-green-700 px-2 py-0.5 rounded">Keep</span>
+            <span class="text-xs text-slate-400">ID {{ keep.id }}</span>
+          </div>
+          <p class="text-base font-bold text-slate-800">
+            {{ keep.last_name }}, {{ keep.first_name }}
+          </p>
+          {% if keep.display_name %}
+          <p class="text-xs text-slate-500 mt-0.5">{{ keep.display_name }}</p>
+          {% endif %}
+          <div class="mt-3 space-y-1">
+            <div class="flex gap-2 text-xs text-slate-500">
+              <span class="font-medium text-slate-600">Returns:</span> {{ keep.return_count or 0 }}
+            </div>
+            <div class="flex gap-2 text-xs text-slate-500">
+              <span class="font-medium text-slate-600">Log #s:</span>
+              {% set logs = (keep.log_numbers or '').split(',') | select | list %}
+              {% if logs %}{{ logs | join(', ') }}{% else %}<span class="italic text-slate-400">none</span>{% endif %}
+            </div>
+            <div class="flex gap-2 text-xs text-slate-500">
+              <span class="font-medium text-slate-600">Tax years:</span>
+              {% set years = (keep.tax_years or '').split(',') | unique | list %}
+              {{ years | join(', ') if years else '—' }}
+            </div>
+            <div class="flex gap-2 text-xs text-slate-500">
+              <span class="font-medium text-slate-600">Statuses:</span>
+              {% set sts = (keep.statuses or '').split(',') | unique | list %}
+              {{ sts | join(', ') if sts else '—' }}
+            </div>
+          </div>
+        </div>
+
+        <!-- DISCARD side -->
+        <div class="px-5 py-4 bg-red-50/30">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-xs font-bold uppercase tracking-wide bg-red-100 text-red-600 px-2 py-0.5 rounded">Discard</span>
+            <span class="text-xs text-slate-400">ID {{ discard.id }}</span>
+          </div>
+          <p class="text-base font-bold text-slate-700">
+            {{ discard.last_name }}, {{ discard.first_name }}
+          </p>
+          {% if discard.display_name %}
+          <p class="text-xs text-slate-500 mt-0.5">{{ discard.display_name }}</p>
+          {% endif %}
+          <div class="mt-3 space-y-1">
+            <div class="flex gap-2 text-xs text-slate-500">
+              <span class="font-medium text-slate-600">Returns:</span> {{ discard.return_count or 0 }}
+            </div>
+            <div class="flex gap-2 text-xs text-slate-500">
+              <span class="font-medium text-slate-600">Log #s:</span>
+              {% set dlogs = (discard.log_numbers or '').split(',') | select | list %}
+              {% if dlogs %}{{ dlogs | join(', ') }}{% else %}<span class="italic text-slate-400">none</span>{% endif %}
+            </div>
+            <div class="flex gap-2 text-xs text-slate-500">
+              <span class="font-medium text-slate-600">Tax years:</span>
+              {% set dyears = (discard.tax_years or '').split(',') | unique | list %}
+              {{ dyears | join(', ') if dyears else '—' }}
+            </div>
+            <div class="flex gap-2 text-xs text-slate-500">
+              <span class="font-medium text-slate-600">Statuses:</span>
+              {% set dsts = (discard.statuses or '').split(',') | unique | list %}
+              {{ dsts | join(', ') if dsts else '—' }}
+            </div>
+          </div>
+          <p class="mt-3 text-xs text-red-500 italic">Returns will be moved to "Keep" record, then this client will be deleted.</p>
+        </div>
+
+      </div>
+
+      <!-- Swap button -->
+      <div class="px-5 py-2 bg-slate-50 border-t border-slate-100 flex justify-center">
+        <button onclick="swapKeepDiscard(this)"
+                class="text-xs text-slate-400 hover:text-slate-600 underline transition-colors">
+          ⇄ Swap Keep / Discard
+        </button>
+      </div>
+
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- All done state (shown when all cards dismissed) -->
+  <div id="all-done" class="hidden bg-green-50 border border-green-200 rounded-xl px-6 py-10 text-center mt-4">
+    <svg class="mx-auto w-10 h-10 text-green-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+    </svg>
+    <p class="text-green-700 font-semibold text-lg">All pairs reviewed!</p>
+    <p class="text-green-600 text-sm mt-1">Reload the page to re-scan for any remaining duplicates.</p>
+    <a href="/merge-clients" class="inline-block mt-4 text-sm text-blue-600 hover:underline">Re-scan</a>
+  </div>
+
+  {% endif %}
+</div>
+
+<script>
+function showToast(msg, color = 'bg-slate-800') {
+  const t = document.getElementById('toast');
+  t.className = `fixed bottom-6 right-6 z-50 text-white text-sm font-medium px-5 py-3 rounded-xl shadow-xl transition-all ${color}`;
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), 3000);
+}
+
+function getCard(btn) {
+  return btn.closest('.pair-card');
+}
+
+function dismissCard(card) {
+  card.style.transition = 'opacity 0.3s, transform 0.3s';
+  card.style.opacity = '0';
+  card.style.transform = 'translateY(-6px)';
+  setTimeout(() => {
+    card.remove();
+    const remaining = document.querySelectorAll('.pair-card').length;
+    document.getElementById('pair-count').textContent =
+      `${remaining} pair${remaining !== 1 ? 's' : ''} found`;
+    if (remaining === 0) document.getElementById('all-done').classList.remove('hidden');
+  }, 300);
+}
+
+async function mergePair(btn) {
+  const card      = getCard(btn);
+  const keepId    = parseInt(card.dataset.keep);
+  const discardId = parseInt(card.dataset.discard);
+  btn.disabled = true;
+  btn.textContent = 'Merging…';
+
+  const resp = await fetch('/api/merge-clients', {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify({ keep_id: keepId, discard_id: discardId }),
+  });
+  const data = await resp.json();
+  if (data.success) {
+    showToast(`✓ Merged into ${data.kept}`, 'bg-green-700');
+    dismissCard(card);
+  } else {
+    showToast(`Error: ${data.error}`, 'bg-red-700');
+    btn.disabled = false;
+    btn.textContent = 'Merge →';
+  }
+}
+
+async function skipPair(btn) {
+  const card      = getCard(btn);
+  const keepId    = parseInt(card.dataset.keep);
+  const discardId = parseInt(card.dataset.discard);
+
+  await fetch('/api/merge-clients/skip', {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify({ keep_id: keepId, discard_id: discardId }),
+  });
+  showToast('Skipped — marked as not a duplicate', 'bg-slate-700');
+  dismissCard(card);
+}
+
+function swapKeepDiscard(btn) {
+  const card = getCard(btn);
+  const keepId    = parseInt(card.dataset.keep);
+  const discardId = parseInt(card.dataset.discard);
+
+  // Swap data attributes
+  card.dataset.keep    = discardId;
+  card.dataset.discard = keepId;
+
+  // Swap labels visually
+  const sides = card.querySelectorAll('.grid > div');
+  const [keepSide, discardSide] = sides;
+
+  // Swap badge text + color
+  const keepBadge    = keepSide.querySelector('span.bg-green-100');
+  const discardBadge = discardSide.querySelector('span.bg-red-100');
+  if (keepBadge && discardBadge) {
+    keepBadge.textContent    = 'Discard';
+    keepBadge.className      = keepBadge.className.replace('bg-green-100 text-green-700', 'bg-red-100 text-red-600');
+    discardBadge.textContent = 'Keep';
+    discardBadge.className   = discardBadge.className.replace('bg-red-100 text-red-600', 'bg-green-100 text-green-700');
+  }
+
+  // Swap background tint
+  keepSide.classList.toggle('bg-red-50/30');
+  discardSide.classList.toggle('bg-red-50/30');
+
+  showToast('Swapped Keep / Discard', 'bg-slate-600');
+}
+
+document.getElementById('bulk-preview')?.addEventListener('click', async () => {
+  const resp = await fetch('/api/merge-clients/bulk', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ dry_run: true }),
+  });
+  const d = await resp.json();
+  const el = document.getElementById('bulk-preview-msg');
+  if (!d.success) {
+    el.classList.remove('hidden');
+    el.textContent = d.error || 'Could not load preview';
+    return;
+  }
+  el.classList.remove('hidden');
+  el.textContent = `Auto-merge will process ${d.count} pair(s) (excludes any you skipped in this session). ` +
+    (d.previews?.length ? 'See the first 50 in the devtools Network response under \"previews\".' : '');
+  console.log('merge bulk preview', d);
+  showToast(`Preview: ${d.count} pair(s)`, 'bg-slate-700');
+});
+
+document.getElementById('bulk-run')?.addEventListener('click', async () => {
+  if (!confirm('Merge ALL duplicate pairs at once? This cannot be undone. Make a backup of taxops.db first if unsure.')) return;
+  const resp = await fetch('/api/merge-clients/bulk', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ dry_run: false }),
+  });
+  const d = await resp.json();
+  if (d.merged != null) {
+    showToast(`Merged ${d.merged} pair(s)${d.errors?.length ? `, ${d.errors.length} error(s)` : ''}. Reloading…`, d.errors?.length ? 'bg-amber-800' : 'bg-green-700');
+    if (d.errors?.length) console.error(d.errors);
+    setTimeout(() => { window.location.reload(); }, 2000);
+  } else {
+    showToast(d.error || 'Failed', 'bg-red-700');
+  }
+});
+</script>
+{% endblock %}
