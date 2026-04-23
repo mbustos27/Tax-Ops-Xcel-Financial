@@ -12,8 +12,14 @@ from flask import (
     request, session, url_for,
 )
 
+import json
+import tempfile
+
 from config import APP_ENV
+from csv_analyzer import analyze, iter_data_rows, normalize_status
 from db import get_connection, init_db
+from name_matcher import find_client as fuzzy_find_client, is_business, parse_name, _all_clients_cache
+from normalizer import normalize_date, normalize_currency, normalize_string
 from utils import now
 
 app = Flask(__name__)
@@ -86,34 +92,31 @@ def _security_headers(response):
 
 # ── Workflow constants ────────────────────────────────────────────────────────
 
-STATUS_FLOW = ["LOG IN", "PROCESSING", "FINALIZE", "PICKUP", "EFILE READY", "EFILE", "LOG OUT"]
+STATUS_FLOW = ["PROCESSING", "FINALIZE", "PICKUP", "EFILE READY", "LOG OUT", "REJECTED"]
 
 STATUS_BADGE = {
-    "LOG IN":      "bg-blue-50 text-blue-700 border-blue-200",
-    "PROCESSING":  "bg-amber-50 text-amber-700 border-amber-200",
-    "FINALIZE":    "bg-orange-50 text-orange-700 border-orange-200",
+    "PROCESSING":  "bg-sky-50 text-sky-700 border-sky-200",
+    "FINALIZE":    "bg-yellow-50 text-yellow-700 border-yellow-200",
     "PICKUP":      "bg-teal-50 text-teal-700 border-teal-200",
     "EFILE READY": "bg-indigo-50 text-indigo-700 border-indigo-200",
-    "EFILE":       "bg-violet-50 text-violet-700 border-violet-200",
     "LOG OUT":     "bg-slate-100 text-slate-500 border-slate-200",
+    "REJECTED":    "bg-red-50 text-red-700 border-red-200",
 }
 
 STATUS_DOT = {
-    "LOG IN":      "dot-blue",
-    "PROCESSING":  "dot-amber",
-    "FINALIZE":    "dot-orange",
+    "PROCESSING":  "dot-amber",   # sky blue (#0ea5e9)
+    "FINALIZE":    "dot-orange",  # yellow (#eab308)
     "PICKUP":      "dot-teal",
     "EFILE READY": "dot-indigo",
-    "EFILE":       "dot-violet",
     "LOG OUT":     "dot-slate",
+    "REJECTED":    "dot-red",
 }
 
 # When advancing to these statuses, auto-stamp the corresponding date field
 # only if it hasn't been set yet.
 STATUS_DATE_STAMP = {
-    "LOG IN":      "intake_date",
-    "PICKUP":      "pickup_date",      # client called in to sign
-    "LOG OUT":     "logout_date",      # accepted, case closed
+    "PICKUP":  "pickup_date",   # client called in to sign
+    "LOG OUT": "logout_date",   # accepted, case closed
 }
 
 # Operational risk thresholds
@@ -239,9 +242,16 @@ def query_returns(filters: dict | None = None) -> list[dict]:
     clauses: list[str] = []
     params:  list      = []
 
+    # "year" here is the INTAKE/SEASON year (e.g. 2026 = the 2025-2026 filing season).
+    # A return belongs to season Y if it was brought in during calendar year Y,
+    # OR if it has no intake date but its tax_year = Y-1 (Drake-imported TY2025 records).
     year = f.get("year") or date.today().year
-    clauses.append("r.tax_year = ?")
-    params.append(year)
+    clauses.append(
+        "(strftime('%Y', r.intake_date) = ? OR "
+        "(r.intake_date IS NULL AND r.tax_year = ?))"
+    )
+    params.append(str(year))
+    params.append(year - 1)
 
     if f.get("status"):
         statuses = f["status"] if isinstance(f["status"], list) else [f["status"]]
@@ -318,8 +328,10 @@ def get_one(return_id: int) -> dict | None:
 def get_status_counts(year: int) -> dict[str, int]:
     conn = get_connection()
     rows = conn.execute(
-        "SELECT client_status, COUNT(*) n FROM returns WHERE tax_year=? GROUP BY client_status",
-        (year,),
+        "SELECT client_status, COUNT(*) n FROM returns "
+        "WHERE (strftime('%Y', intake_date) = ? OR (intake_date IS NULL AND tax_year = ?)) "
+        "GROUP BY client_status",
+        (str(year), year - 1),
     ).fetchall()
     conn.close()
     return {r["client_status"]: r["n"] for r in rows if r["client_status"]}
@@ -334,9 +346,9 @@ def get_totals(year: int) -> dict:
             COALESCE(SUM(p.fee_paid),0)  collected
         FROM returns r
         LEFT JOIN payments p ON p.return_id = r.id
-        WHERE r.tax_year = ?
+        WHERE (strftime('%Y', r.intake_date) = ? OR (r.intake_date IS NULL AND r.tax_year = ?))
         """,
-        (year,),
+        (str(year), year - 1),
     ).fetchone()
     conn.close()
     billed    = row["billed"]    if row else 0
@@ -347,25 +359,43 @@ def get_totals(year: int) -> dict:
 def get_processors(year: int) -> list[str]:
     conn = get_connection()
     rows = conn.execute(
-        "SELECT DISTINCT processor FROM returns WHERE tax_year=? AND processor IS NOT NULL ORDER BY processor",
-        (year,),
+        "SELECT DISTINCT processor FROM returns "
+        "WHERE (strftime('%Y', intake_date) = ? OR (intake_date IS NULL AND tax_year = ?)) "
+        "AND processor IS NOT NULL ORDER BY processor",
+        (str(year), year - 1),
     ).fetchall()
     conn.close()
     return [r["processor"] for r in rows]
 
 
 def base_ctx(year: int | None = None) -> dict:
-    y = year or date.today().year
+    today_year = date.today().year
+    # Never let the season picker go backwards to a tax year.
+    # Callers should pass the intake/season year, not the tax year.
+    y = year if (year and year >= today_year) else today_year
+    conn = get_connection()
+    pending_review = conn.execute(
+        "SELECT COUNT(*) n FROM review_queue WHERE status='pending'"
+    ).fetchone()["n"]
+    # Rejected returns — always pulled regardless of season filter
+    rejected_rows = conn.execute(
+        f"{_SELECT} WHERE r.client_status = 'REJECTED' ORDER BY r.updated_at DESC"
+    ).fetchall()
+    conn.close()
+    rejected = [_enrich(dict(r)) for r in rejected_rows]
     return {
-        "current_year":  y,
-        "status_flow":   STATUS_FLOW,
-        "status_badge":  STATUS_BADGE,
-        "status_dot":    STATUS_DOT,
-        "status_counts": get_status_counts(y),
-        "totals":        get_totals(y),
-        "processors":    get_processors(y),
-        "app_env":       APP_ENV,
-        "privacy_mode":  privacy_mode_enabled(),
+        "current_year":         y,
+        "status_flow":          STATUS_FLOW,
+        "status_badge":         STATUS_BADGE,
+        "status_dot":           STATUS_DOT,
+        "status_counts":        get_status_counts(y),
+        "totals":               get_totals(y),
+        "processors":           get_processors(y),
+        "app_env":              APP_ENV,
+        "privacy_mode":         privacy_mode_enabled(),
+        "pending_review_count": pending_review,
+        "rejected_returns":     rejected,
+        "rejected_count":       len(rejected),
     }
 
 
@@ -550,7 +580,8 @@ def return_detail(return_id: int):
         for note in notes_payload:
             note["note_text"] = _mask_value(note.get("note_text"))
 
-    ctx = base_ctx(ret.get("tax_year"))
+    # Always use current calendar year for the season picker — never the return's tax year.
+    ctx = base_ctx(date.today().year)
     ctx.update({
         "active_page": "dashboard",
         "ret":    ret,
@@ -566,9 +597,9 @@ def logout_queue():
     year = int(request.args.get("year", date.today().year))
     conn = get_connection()
     rows = conn.execute(
-        f"{_SELECT} WHERE r.tax_year=? AND r.client_status = 'PICKUP' "
-        "ORDER BY CAST(r.log_number AS INTEGER)",
-        (year,),
+        f"{_SELECT} WHERE (strftime('%Y', r.intake_date) = ? OR (r.intake_date IS NULL AND r.tax_year = ?)) "
+        "AND r.client_status = 'PICKUP' ORDER BY CAST(r.log_number AS INTEGER)",
+        (str(year), year - 1),
     ).fetchall()
     conn.close()
     ctx = base_ctx(year)
@@ -744,7 +775,7 @@ def intake():
                 client_id,
                 log_number,
                 tax_year,
-                "LOG IN",
+                "PROCESSING",
                 _v("processor"),
                 1 if f.get("verified") else 0,
                 _v("intake_date") or today_iso,
@@ -828,7 +859,7 @@ def intake():
             """
             INSERT INTO status_events
               (return_id, event_type, old_status, new_status, event_timestamp, source_file, note)
-            VALUES (?, 'STATUS_CHANGED', NULL, 'LOG IN', ?, 'INTAKE', 'Created via intake form')
+            VALUES (?, 'STATUS_CHANGED', NULL, 'PROCESSING', ?, 'INTAKE', 'Created via intake form')
             """,
             (return_id, ts),
         )
@@ -850,6 +881,626 @@ def intake():
         return render_template("intake.html", **ctx), 500
     finally:
         conn.close()
+
+
+# ── CSV Upload / Analyze ──────────────────────────────────────────────────────
+
+@app.route("/upload", methods=["GET"])
+@login_required
+def upload_get():
+    ctx = base_ctx()
+    ctx.update({"active_page": "upload", "error": None})
+    return render_template("upload.html", **ctx)
+
+
+@app.route("/upload/preview", methods=["POST"])
+@login_required
+def upload_preview():
+    f = request.files.get("csv_file")
+    if not f or not f.filename:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file_bytes = f.read()
+    result = analyze(file_bytes, f.filename)
+
+    # Store file bytes in a temp file keyed by a token for the confirm step
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", prefix="taxops_upload_")
+    tmp.write(file_bytes)
+    tmp.close()
+
+    cols = [
+        {
+            "index":      c.col_index,
+            "raw_header": c.raw_header,
+            "table":      c.table,
+            "field":      c.field,
+            "field_type": c.field_type,
+            "confidence": c.confidence,
+            "skip":       c.skip,
+        }
+        for c in result.columns
+    ]
+
+    return jsonify({
+        "tmp_path":    tmp.name,
+        "filename":    f.filename,
+        "total_rows":  result.total_rows,
+        "warnings":    result.warnings,
+        "columns":     cols,
+        "sample_rows": result.sample_rows[:8],
+        "data_start":  result.data_start_index,
+        "header_row":  result.header_row_index,
+    })
+
+
+@app.route("/upload/confirm", methods=["POST"])
+@login_required
+def upload_confirm():
+    """Execute import using the analysis result confirmed by staff."""
+    data       = request.get_json(force=True)
+    tmp_path   = data.get("tmp_path", "")
+    overrides  = data.get("overrides", {})   # {str(col_index): "table.field" | "skip"}
+    tax_year   = int(data.get("tax_year", date.today().year))
+
+    if not tmp_path or not os.path.exists(tmp_path):
+        return jsonify({"error": "Upload session expired — please re-upload."}), 400
+
+    with open(tmp_path, "rb") as fh:
+        file_bytes = fh.read()
+
+    result    = analyze(file_bytes)
+    ts        = now()
+    today_iso = date.today().isoformat()
+
+    # Apply overrides to column mappings
+    for c in result.columns:
+        key = str(c.col_index)
+        if key in overrides:
+            ov = overrides[key]
+            if ov == "skip":
+                c.skip = True
+                c.table = c.field = ""
+            elif "." in ov:
+                parts = ov.split(".", 1)
+                c.table, c.field = parts[0], parts[1]
+                c.skip = False
+
+    rows = iter_data_rows(file_bytes, result)
+
+    conn = get_connection()
+    stats = {"created": 0, "updated": 0, "skipped": 0, "review": 0, "errors": []}
+
+    try:
+        # Build client cache once so fuzzy matching doesn't hammer the DB per row
+        client_cache = _all_clients_cache(conn)
+        for row_data in rows:
+            try:
+                _import_row(conn, row_data, tax_year, ts, today_iso, stats, _client_cache=client_cache)
+            except Exception as exc:
+                stats["errors"].append(str(exc))
+                if len(stats["errors"]) > 20:
+                    break
+        conn.commit()
+    finally:
+        conn.close()
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    return jsonify(stats)
+
+
+def _import_row_forced(conn, row_data: dict, tax_year: int, ts: str, today_iso: str,
+                       stats: dict, *, client_id: int | None):
+    """Run _import_row but skip fuzzy matching — use the supplied client_id directly,
+    or create a new client if client_id is None."""
+    # Temporarily patch the row so _import_row's name-parse produces something
+    # that will definitely match (or not) based on client_id override.
+    # Easiest: delegate to _import_row with a single-entry cache that forces the match.
+    if client_id is not None:
+        forced_cache = [{"id": client_id, "ln": "\x00FORCED\x00", "fn": ""}]
+        # Pre-seed row name with the sentinel so exact match fires
+        patched = dict(row_data)
+        patched["clients.last_name"]  = "\x00FORCED\x00"
+        patched["clients.first_name"] = ""
+        _import_row(conn, patched, tax_year, ts, today_iso, stats, _client_cache=forced_cache)
+    else:
+        # No client_id → force new client by using an empty cache
+        _import_row(conn, row_data, tax_year, ts, today_iso, stats, _client_cache=[])
+
+
+def _import_row(conn, row_data: dict, tax_year: int, ts: str, today_iso: str, stats: dict,
+                _client_cache: list | None = None):
+    """Import a single analyzed row into the database."""
+    def g(table, field):
+        return row_data.get(f"{table}.{field}", "") or ""
+
+    raw_last  = normalize_string(g("clients", "last_name"))
+    raw_first = normalize_string(g("clients", "first_name"))
+    display   = normalize_string(g("clients", "display_name"))
+
+    if not raw_last and display:
+        raw_last = display
+
+    log_number = normalize_string(g("returns", "log_number"))
+
+    # Placeholder row: reserved log slot with no client data — skip silently
+    if not raw_last:
+        stats["skipped"] += 1
+        return
+
+    if not log_number:
+        stats["skipped"] += 1
+        return
+
+    # ── Parse name via name_matcher ───────────────────────────────────────────
+    last_name, first_name = parse_name(raw_last)
+    # If the CSV already split first/last, prefer that
+    if raw_first:
+        first_name = raw_first.upper().strip() or None
+    last_name = last_name.upper().strip()
+    first_name = (first_name or "").upper().strip() or None
+
+    # ── Match or create client ────────────────────────────────────────────────
+    match = fuzzy_find_client(conn, last_name, first_name, cache=_client_cache)
+
+    if match and not match["needs_review"]:
+        # Confident match — upsert against existing client
+        client_id = match["client_id"]
+        conn.execute("UPDATE clients SET updated_at=? WHERE id=?", (ts, client_id))
+        stats["updated"] = stats.get("updated", 0) + 1
+        match_method = match["method"]
+    elif match and match["needs_review"]:
+        # Low-confidence — park in review queue for human decision, don't process yet
+        stats["review"] = stats.get("review", 0) + 1
+        raw_yr = g("returns", "tax_year")
+        ret_year_q = int(raw_yr) if raw_yr.isdigit() else tax_year
+        conn.execute(
+            """INSERT INTO review_queue
+               (status, csv_last, csv_first, csv_log, csv_year,
+                proposed_client_id, match_score, match_method,
+                raw_json, reason, created_at)
+               VALUES ('pending',?,?,?,?,?,?,?,?,?,?)""",
+            (
+                last_name, first_name, log_number, ret_year_q,
+                match["client_id"], match["score"], match["method"],
+                json.dumps(row_data),
+                f"Fuzzy score={match['score']} method={match['method']}",
+                ts,
+            ),
+        )
+        return  # do not create return — wait for staff to resolve
+    else:
+        # No match — create new client
+        conn.execute(
+            """INSERT INTO clients (last_name, first_name, referral_flag, referred_by,
+                                    prior_year_log, is_new_client, created_at, updated_at)
+               VALUES (?,?,?,?,?,1,?,?)""",
+            (
+                last_name, first_name,
+                1 if g("clients", "referral_flag") else 0,
+                normalize_string(g("clients", "referred_by")),
+                normalize_string(g("clients", "prior_year_log")),
+                ts, ts,
+            ),
+        )
+        client_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        # Add to cache so subsequent rows for the same new client match
+        if _client_cache is not None:
+            _client_cache.append({"id": client_id, "ln": last_name.upper(), "fn": (first_name or "").upper()})
+        stats["created"] = stats.get("created", 0) + 1
+        match_method = "new"
+
+    # ── Match or create return ────────────────────────────────────────────────
+    ret_year = tax_year
+    raw_yr = g("returns", "tax_year")
+    if raw_yr.isdigit() and 2000 <= int(raw_yr) <= 2030:
+        ret_year = int(raw_yr)
+
+    # Match by client + year only — log_number may be absent on Drake-imported
+    # returns and will be written onto the record if the CSV supplies it.
+    existing_ret = conn.execute(
+        "SELECT id, log_number FROM returns WHERE client_id=? AND tax_year=?",
+        (client_id, ret_year),
+    ).fetchone()
+
+    raw_status  = g("returns", "client_status")
+    norm_status = normalize_status(raw_status) if raw_status else "PROCESSING"
+
+    intake_dt,  _ = normalize_date(g("returns", "intake_date"))
+    pickup_dt,  _ = normalize_date(g("returns", "pickup_date"))
+    logout_dt,  _ = normalize_date(g("returns", "logout_date"))
+    emailed_dt, _ = normalize_date(g("returns", "date_emailed"))
+    updated_dt, _ = normalize_date(g("returns", "updated_date"))
+
+    def flag(table, field):
+        v = g(table, field).strip()
+        return 1 if v and v not in ("0", "", " ") else None
+
+    ret_fields = dict(
+        client_id=client_id,
+        log_number=log_number,
+        tax_year=ret_year,
+        client_status=norm_status,
+        processor=normalize_string(g("returns", "processor")),
+        verified=flag("returns", "verified"),
+        intake_date=intake_dt or today_iso,
+        date_emailed=emailed_dt,
+        pickup_date=pickup_dt,
+        logout_date=logout_dt,
+        updated_date=updated_dt,
+        is_amended=flag("returns", "is_amended"),
+        has_w7=flag("returns", "has_w7"),
+        is_extension=flag("returns", "is_extension"),
+        transfer_flag=flag("returns", "transfer_flag"),
+        transfer_2025_flag=flag("returns", "transfer_2025_flag"),
+        transfer_2026_flag=flag("returns", "transfer_2026_flag"),
+    )
+
+    if existing_ret:
+        ret_id = existing_ret["id"]
+        # Stamp log_number from CSV onto the return if it didn't have one yet
+        # (Drake imports don't carry log numbers; the manual log is the source).
+        existing_log = existing_ret["log_number"]
+        new_log = log_number if log_number else existing_log
+        conn.execute(
+            """UPDATE returns
+               SET log_number=?,
+                   client_status=?, processor=?, verified=?,
+                   intake_date=COALESCE(intake_date,?),
+                   pickup_date=COALESCE(pickup_date,?),
+                   logout_date=COALESCE(logout_date,?),
+                   updated_at=?
+               WHERE id=?""",
+            (new_log, norm_status, ret_fields["processor"], ret_fields["verified"],
+             ret_fields["intake_date"], pickup_dt, logout_dt, ts, ret_id),
+        )
+    else:
+        cols = ", ".join(ret_fields.keys()) + ", created_at, updated_at"
+        vals = ", ".join("?" for _ in ret_fields) + ", ?, ?"
+        conn.execute(
+            f"INSERT INTO returns ({cols}) VALUES ({vals})",
+            list(ret_fields.values()) + [ts, ts],
+        )
+        ret_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    # ── Forms ─────────────────────────────────────────────────────────────────
+    form_fields = {
+        "form_1040": flag("return_forms", "form_1040"),
+        "sched_a_d": flag("return_forms", "sched_a_d"),
+        "sched_c":   flag("return_forms", "sched_c"),
+        "sched_e":   flag("return_forms", "sched_e"),
+        "form_1120": flag("return_forms", "form_1120"),
+        "form_1120s":flag("return_forms", "form_1120s"),
+        "form_1065_llc": flag("return_forms", "form_1065_llc"),
+        "corp_officer":  flag("return_forms", "corp_officer"),
+        "business_owner":flag("return_forms", "business_owner"),
+        "form_990_1041": flag("return_forms", "form_990_1041"),
+    }
+    existing_forms = conn.execute("SELECT id FROM return_forms WHERE return_id=?", (ret_id,)).fetchone()
+    if existing_forms:
+        sets = ", ".join(f"{k}=?" for k in form_fields)
+        conn.execute(f"UPDATE return_forms SET {sets} WHERE return_id=?",
+                     list(form_fields.values()) + [ret_id])
+    else:
+        fcols = "return_id, " + ", ".join(form_fields.keys())
+        fvals = "?, " + ", ".join("?" for _ in form_fields)
+        conn.execute(f"INSERT INTO return_forms ({fcols}) VALUES ({fvals})",
+                     [ret_id] + list(form_fields.values()))
+
+    # ── Payment ───────────────────────────────────────────────────────────────
+    total_fee = normalize_currency(g("payments", "total_fee"))
+    fee_paid  = normalize_currency(g("payments", "fee_paid"))
+    cc_fee    = normalize_currency(g("payments", "cc_fee"))
+    receipt   = normalize_string(g("payments", "receipt_number"))
+    zelle     = normalize_string(g("payments", "zelle_or_check_ref"))
+    cash      = normalize_string(g("payments", "cash_or_qpay_ref"))
+
+    if any(v is not None for v in [total_fee, fee_paid, cc_fee, receipt]):
+        existing_pay = conn.execute("SELECT id FROM payments WHERE return_id=?", (ret_id,)).fetchone()
+        if existing_pay:
+            conn.execute(
+                """UPDATE payments SET
+                   total_fee=COALESCE(?,total_fee), fee_paid=COALESCE(?,fee_paid),
+                   cc_fee=COALESCE(?,cc_fee), receipt_number=COALESCE(?,receipt_number),
+                   zelle_or_check_ref=COALESCE(?,zelle_or_check_ref),
+                   cash_or_qpay_ref=COALESCE(?,cash_or_qpay_ref)
+                   WHERE return_id=?""",
+                (total_fee, fee_paid, cc_fee, receipt, zelle, cash, ret_id),
+            )
+        else:
+            conn.execute(
+                """INSERT INTO payments
+                   (return_id, total_fee, fee_paid, cc_fee, receipt_number,
+                    zelle_or_check_ref, cash_or_qpay_ref)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (ret_id, total_fee, fee_paid, cc_fee, receipt, zelle, cash),
+            )
+
+    # ── Note ──────────────────────────────────────────────────────────────────
+    note_text = normalize_string(g("notes", "note_text"))
+    if note_text:
+        dup = conn.execute(
+            "SELECT id FROM notes WHERE return_id=? AND lower(note_text)=lower(?)",
+            (ret_id, note_text),
+        ).fetchone()
+        if not dup:
+            conn.execute(
+                "INSERT INTO notes (return_id, note_text, source, created_at) VALUES (?,?,'CSV_UPLOAD',?)",
+                (ret_id, note_text, ts),
+            )
+
+
+# ── Export ────────────────────────────────────────────────────────────────────
+
+@app.route("/export")
+@login_required
+def export_excel():
+    """Export the current filtered view as an .xlsx file."""
+    import io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    year = int(request.args.get("year", date.today().year))
+    filters = {
+        "year":        year,
+        "status":      request.args.getlist("status") or None,
+        "processor":   request.args.get("processor"),
+        "balance_due": request.args.get("balance_due"),
+        "late_intake": request.args.get("late_intake"),
+        "slow_cycle":  request.args.get("slow_cycle"),
+        "form":        request.args.get("form"),
+        "q":           request.args.get("q"),
+    }
+    rows = query_returns(filters)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = f"TaxOps {year}"
+
+    # ── Styles ────────────────────────────────────────────────────────────────
+    HEADER_FILL  = PatternFill("solid", fgColor="1E293B")
+    HEADER_FONT  = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+    DATA_FONT    = Font(name="Calibri", size=11)
+    BOLD_FONT    = Font(name="Calibri", bold=True, size=11)
+    CENTER       = Alignment(horizontal="center", vertical="center")
+    LEFT         = Alignment(horizontal="left",   vertical="center", wrap_text=False)
+    MONEY        = '#,##0.00'
+    thin         = Side(style="thin", color="E2E8F0")
+    BORDER       = Border(bottom=thin)
+
+    STATUS_COLORS = {
+        "PROCESSING":  "E0F2FE",
+        "FINALIZE":    "FEF9C3", "PICKUP":      "CCFBF1",
+        "EFILE READY": "E0E7FF", "EFILE":       "EDE9FE",
+        "LOG OUT":     "F1F5F9",
+    }
+
+    # ── Header row ────────────────────────────────────────────────────────────
+    COLUMNS = [
+        ("Log #",        9),  ("Last Name",    22), ("First Name",   18),
+        ("Year",         7),  ("Status",       14), ("Preparer",     12),
+        ("Forms",        18), ("Intake Date",  13), ("Pickup Date",  13),
+        ("Logout Date",  13), ("Total Fee",    12), ("Fee Paid",     12),
+        ("Balance",      12), ("Receipt #",    13), ("✓",             5),
+    ]
+    for col_idx, (label, width) in enumerate(COLUMNS, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=label)
+        cell.font      = HEADER_FONT
+        cell.fill      = HEADER_FILL
+        cell.alignment = CENTER
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    ws.row_dimensions[1].height = 22
+    ws.freeze_panes = "A2"
+
+    # ── Data rows ─────────────────────────────────────────────────────────────
+    for row_idx, r in enumerate(rows, start=2):
+        status  = r.get("client_status") or ""
+        fill_hex = STATUS_COLORS.get(status, "FFFFFF")
+        row_fill = PatternFill("solid", fgColor=fill_hex)
+
+        forms_str = "  ".join(r.get("forms") or [])
+        balance   = r.get("balance") or 0
+        total_fee = r.get("total_fee") or 0
+        fee_paid  = r.get("fee_paid") or 0
+
+        values = [
+            r.get("log_number") or "",
+            r.get("last_name")  or "",
+            r.get("first_name") or "",
+            r.get("tax_year")   or "",
+            status,
+            r.get("processor")  or "",
+            forms_str,
+            r.get("intake_date")  or "",
+            r.get("pickup_date")  or "",
+            r.get("logout_date")  or "",
+            total_fee,
+            fee_paid,
+            balance,
+            r.get("receipt_number") or "",
+            "✓" if r.get("verified") else "",
+        ]
+
+        for col_idx, value in enumerate(values, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.fill   = row_fill
+            cell.border = BORDER
+            cell.font   = DATA_FONT
+            # Money columns
+            if col_idx in (11, 12, 13) and isinstance(value, (int, float)) and value:
+                cell.number_format = MONEY
+                cell.alignment     = Alignment(horizontal="right", vertical="center")
+                if col_idx == 13 and balance > 0:
+                    cell.font = Font(name="Calibri", size=11, bold=True, color="DC2626")
+            elif col_idx == 1:
+                cell.font      = Font(name="Calibri", bold=True, size=11)
+                cell.alignment = CENTER
+            elif col_idx in (4, 15):
+                cell.alignment = CENTER
+            else:
+                cell.alignment = LEFT
+
+        ws.row_dimensions[row_idx].height = 18
+
+    # ── Auto-filter ───────────────────────────────────────────────────────────
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(COLUMNS))}1"
+
+    # ── Footer summary ────────────────────────────────────────────────────────
+    footer_row = len(rows) + 2
+    ws.cell(row=footer_row, column=10, value="TOTALS").font = BOLD_FONT
+    total_fee_sum = sum(r.get("total_fee") or 0 for r in rows)
+    fee_paid_sum  = sum(r.get("fee_paid")  or 0 for r in rows)
+    balance_sum   = sum(r.get("balance")   or 0 for r in rows)
+    for col_idx, val in [(11, total_fee_sum), (12, fee_paid_sum), (13, balance_sum)]:
+        c = ws.cell(row=footer_row, column=col_idx, value=val)
+        c.font         = BOLD_FONT
+        c.number_format = MONEY
+        c.alignment    = Alignment(horizontal="right", vertical="center")
+        if col_idx == 13 and val > 0:
+            c.font = Font(name="Calibri", bold=True, size=11, color="DC2626")
+
+    # ── Stream to response ────────────────────────────────────────────────────
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    status_label = (filters["status"][0] if filters["status"] else "ALL").replace(" ", "-")
+    filename = f"TaxOps_{year}_{status_label}.xlsx"
+
+    from flask import send_file
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+# ── Intake log (chronological register) ───────────────────────────────────────
+
+@app.route("/review")
+@login_required
+def review_queue_page():
+    conn = get_connection()
+    items = conn.execute(
+        """SELECT rq.*,
+                  c.last_name  AS db_last,
+                  c.first_name AS db_first
+           FROM review_queue rq
+           LEFT JOIN clients c ON c.id = rq.proposed_client_id
+           WHERE rq.status = 'pending'
+           ORDER BY rq.id ASC"""
+    ).fetchall()
+    conn.close()
+    ctx = base_ctx()
+    ctx.update({"active_page": "review", "items": [dict(i) for i in items]})
+    return render_template("review_queue.html", **ctx)
+
+
+@app.route("/review/resolve", methods=["POST"])
+@login_required
+def review_resolve():
+    """Staff resolves a review_queue item.
+
+    JSON body:
+      queue_id  : int
+      action    : 'confirm' | 'new' | 'link'
+      client_id : int  (required for 'link'; ignored otherwise)
+    """
+    data     = request.get_json(force=True)
+    queue_id = int(data.get("queue_id", 0))
+    action   = data.get("action", "")   # confirm | new | link
+    override_client_id = data.get("client_id")  # for 'link'
+
+    conn = get_connection()
+    item = conn.execute(
+        "SELECT * FROM review_queue WHERE id=? AND status='pending'", (queue_id,)
+    ).fetchone()
+
+    if not item:
+        conn.close()
+        return jsonify({"error": "Item not found or already resolved"}), 404
+
+    row_data  = json.loads(item["raw_json"])
+    ts        = now()
+    today_iso = date.today().isoformat()
+
+    try:
+        if action == "new":
+            # Force-create a brand-new client by wiping the cache entry
+            forced_cache: list = []
+            stats = {"created": 0, "updated": 0, "skipped": 0, "review": 0, "errors": []}
+            _import_row_forced(conn, row_data, item["csv_year"] or date.today().year,
+                               ts, today_iso, stats, client_id=None)
+
+        elif action in ("confirm", "link"):
+            cid = override_client_id if action == "link" else item["proposed_client_id"]
+            stats = {"created": 0, "updated": 0, "skipped": 0, "review": 0, "errors": []}
+            _import_row_forced(conn, row_data, item["csv_year"] or date.today().year,
+                               ts, today_iso, stats, client_id=int(cid))
+        else:
+            conn.close()
+            return jsonify({"error": f"Unknown action '{action}'"}), 400
+
+        # Mark resolved
+        resolved_cid = override_client_id if action == "link" else (
+            item["proposed_client_id"] if action == "confirm" else None
+        )
+        conn.execute(
+            "UPDATE review_queue SET status=?, resolved_client_id=?, resolved_at=? WHERE id=?",
+            (action, resolved_cid, ts, queue_id),
+        )
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        conn.close()
+        return jsonify({"error": str(exc)}), 500
+
+    # Return remaining pending count
+    remaining = conn.execute(
+        "SELECT COUNT(*) n FROM review_queue WHERE status='pending'"
+    ).fetchone()["n"]
+    conn.close()
+    return jsonify({"ok": True, "remaining": remaining, "stats": stats})
+
+
+@app.route("/intake-log")
+@login_required
+def intake_log():
+    year = int(request.args.get("year", date.today().year))
+    conn = get_connection()
+    rows = conn.execute(
+        f"""
+        {_SELECT}
+        WHERE (strftime('%Y', r.intake_date) = ? OR (r.intake_date IS NULL AND r.tax_year = ?))
+        ORDER BY CAST(r.log_number AS INTEGER) ASC
+        """,
+        (str(year), year - 1),
+    ).fetchall()
+    conn.close()
+
+    enriched = [_enrich(dict(r)) for r in rows]
+
+    # Group by intake date
+    from collections import defaultdict
+    groups: dict[str, list] = defaultdict(list)
+    for r in enriched:
+        key = r.get("intake_date") or "No Date"
+        groups[key].append(r)
+
+    sorted_groups = sorted(groups.items(), key=lambda x: x[0])
+
+    ctx = base_ctx(year)
+    ctx.update({
+        "active_page":  "intake_log",
+        "groups":       sorted_groups,
+        "total":        len(enriched),
+    })
+    return render_template("intake_log.html", **ctx)
 
 
 # ── JSON API ──────────────────────────────────────────────────────────────────
@@ -1057,22 +1708,30 @@ def api_field(return_id: int):
                 f"UPDATE returns SET {field}=?, updated_at=? WHERE id=?",
                 (value, now(), return_id),
             )
-            # When ack_date is set on a transmitted return, auto-advance to LOG OUT
-            if field == "ack_date" and value:
+            # Auto-advance to LOG OUT when a completion date is recorded.
+            # logout_date = physically logged out; ack_date = IRS accepted.
+            # Either one means the engagement is closed.
+            auto_logout = (
+                (field == "ack_date"    and value) or
+                (field == "logout_date" and value)
+            )
+            if auto_logout:
                 cur = conn.execute(
                     "SELECT client_status FROM returns WHERE id=?", (return_id,)
                 ).fetchone()
-                if cur and cur["client_status"] == "EFILE":
+                if cur and cur["client_status"] != "LOG OUT":
+                    old_status = cur["client_status"]
                     ts = now()
+                    note = "Auto-advanced: ack date set" if field == "ack_date" else "Auto-advanced: logout date set"
                     conn.execute(
-                        "UPDATE returns SET client_status='LOG OUT', logout_date=COALESCE(logout_date,?), updated_at=? WHERE id=?",
-                        (date.today().isoformat(), ts, return_id),
+                        "UPDATE returns SET client_status='LOG OUT', updated_at=? WHERE id=?",
+                        (ts, return_id),
                     )
                     conn.execute(
                         """INSERT INTO status_events
                            (return_id, event_type, old_status, new_status, event_timestamp, source_file, note)
-                           VALUES (?, 'STATUS_CHANGED', 'EFILE', 'LOG OUT', ?, 'APP', 'Auto-advanced: ack date set')""",
-                        (return_id, ts),
+                           VALUES (?, 'STATUS_CHANGED', ?, 'LOG OUT', ?, 'APP', ?)""",
+                        (return_id, old_status, ts, note),
                     )
         elif field in CLIENT_EDITABLE:
             cid = conn.execute("SELECT client_id FROM returns WHERE id=?", (return_id,)).fetchone()

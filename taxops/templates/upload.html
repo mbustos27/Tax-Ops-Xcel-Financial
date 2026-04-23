@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+{% block title %}Import CSV — TaxOps {{ current_year }}{% endblock %}
+
+{% block content %}
+<div class="space-y-5" id="upload-page">
+
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold text-slate-800">CSV Import</h1>
+      <p class="text-sm text-slate-500 mt-0.5">Upload any tax log CSV — the analyzer will detect columns and map them automatically.</p>
+    </div>
+  </div>
+
+  <!-- ── Step 1: Upload ──────────────────────────────────────────────────── -->
+  <div id="step-upload" class="bg-white rounded-2xl border border-slate-200 p-8">
+    <div class="max-w-lg mx-auto text-center space-y-5">
+
+      <div id="drop-zone"
+           class="border-2 border-dashed border-slate-300 rounded-2xl p-10 cursor-pointer
+                  hover:border-blue-400 hover:bg-blue-50 transition-colors"
+           onclick="document.getElementById('file-input').click()">
+        <div class="text-4xl mb-3">📂</div>
+        <p class="font-semibold text-slate-700">Drop a CSV here or click to browse</p>
+        <p class="text-sm text-slate-400 mt-1">Supports any tax log format — messy headers OK</p>
+        <input type="file" id="file-input" accept=".csv" class="hidden">
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div class="flex-1 h-px bg-slate-200"></div>
+        <span class="text-xs text-slate-400">or</span>
+        <div class="flex-1 h-px bg-slate-200"></div>
+      </div>
+
+      <div>
+        <label class="intake-label">Tax Year for this import</label>
+        <select id="tax-year-select" class="intake-input max-w-xs mx-auto">
+          {% for y in [2026, 2025, 2024, 2023] %}
+          <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div id="upload-status" class="hidden text-sm text-blue-600 font-medium"></div>
+    </div>
+  </div>
+
+  <!-- ── Step 2: Preview / Confirm ──────────────────────────────────────── -->
+  <div id="step-preview" class="hidden space-y-5">
+
+    <!-- Analysis summary -->
+    <div id="analysis-banner" class="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-4 flex items-start gap-4">
+      <div class="text-2xl">🔍</div>
+      <div class="flex-1">
+        <p class="font-semibold text-blue-800" id="analysis-title"></p>
+        <p class="text-sm text-blue-600 mt-0.5" id="analysis-subtitle"></p>
+        <div id="analysis-warnings" class="mt-2 space-y-1"></div>
+      </div>
+    </div>
+
+    <!-- Column mapping table -->
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div class="px-5 py-3 bg-slate-800 flex items-center justify-between">
+        <span class="text-white font-bold text-sm">Detected Column Mapping</span>
+        <span class="text-slate-400 text-xs">Review and override any column below</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm" id="mapping-table">
+          <thead>
+            <tr>
+              <th class="th-sm w-12">#</th>
+              <th class="th-sm">CSV Header</th>
+              <th class="th-sm">Maps To</th>
+              <th class="th-sm w-24 text-center">Confidence</th>
+              <th class="th-sm w-48">Override</th>
+            </tr>
+          </thead>
+          <tbody id="mapping-body" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Sample data preview -->
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div class="px-5 py-3 bg-slate-800">
+        <span class="text-white font-bold text-sm">Sample Data (first 8 rows)</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs" id="sample-table">
+          <thead><tr id="sample-head" class="bg-slate-50"></tr></thead>
+          <tbody id="sample-body" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Confirm button -->
+    <div class="flex items-center justify-between">
+      <button onclick="resetUpload()"
+              class="text-sm text-slate-500 hover:text-slate-700 px-4 py-2.5 rounded-xl
+                     border border-slate-200 hover:bg-slate-50 transition-colors">
+        ← Upload different file
+      </button>
+      <button id="confirm-btn" onclick="confirmImport()"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl
+                     px-8 py-2.5 text-sm shadow transition-colors">
+        Import <span id="confirm-count"></span> rows
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Step 3: Result ──────────────────────────────────────────────────── -->
+  <div id="step-result" class="hidden">
+    <div class="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-4">
+      <div id="result-icon" class="text-5xl"></div>
+      <p class="font-bold text-slate-800 text-lg" id="result-title"></p>
+      <p class="text-slate-500 text-sm" id="result-detail"></p>
+      <div class="flex gap-3 justify-center mt-4">
+        <a href="/" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-6 py-2.5 text-sm">
+          Go to Dashboard
+        </a>
+        <button onclick="resetUpload()"
+                class="border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium rounded-xl px-6 py-2.5 text-sm">
+          Import Another
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .conf-high   { color: #16a34a; font-weight: 700; }
+  .conf-med    { color: #d97706; font-weight: 600; }
+  .conf-low    { color: #dc2626; font-weight: 600; }
+  .conf-skip   { color: #94a3b8; }
+  .th-sm { padding: 0.4rem 0.75rem; font-size: 0.65rem; font-weight: 700;
+           text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; }
+  .intake-label { display: block; font-size: 0.68rem; font-weight: 700;
+                  text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; margin-bottom: 0.375rem; }
+  .intake-input { width: 100%; border: 1px solid #cbd5e1; border-radius: 0.5rem;
+                  padding: 0.5rem 0.75rem; font-size: 0.875rem; color: #1e293b; }
+</style>
+<script>
+let _analysisData = null;
+
+const fileInput  = document.getElementById('file-input');
+const dropZone   = document.getElementById('drop-zone');
+
+// Drag-and-drop
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('border-blue-500','bg-blue-50'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-blue-500','bg-blue-50'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('border-blue-500','bg-blue-50');
+  const file = e.dataTransfer.files[0];
+  if (file) uploadFile(file);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) uploadFile(fileInput.files[0]);
+});
+
+async function uploadFile(file) {
+  const status = document.getElementById('upload-status');
+  status.textContent = `Analyzing ${file.name}…`;
+  status.classList.remove('hidden');
+
+  const fd = new FormData();
+  fd.append('csv_file', file);
+
+  const res  = await fetch('/upload/preview', { method: 'POST', body: fd });
+  const data = await res.json();
+
+  if (data.error) { status.textContent = 'Error: ' + data.error; return; }
+
+  _analysisData = data;
+  renderPreview(data);
+  document.getElementById('step-upload').classList.add('hidden');
+  document.getElementById('step-preview').classList.remove('hidden');
+}
+
+function renderPreview(data) {
+  // Banner
+  document.getElementById('analysis-title').textContent =
+    `Detected ${data.total_rows} data rows in "${data.filename}"`;
+  const mapped = data.columns.filter(c => !c.skip && c.field).length;
+  document.getElementById('analysis-subtitle').textContent =
+    `${mapped} of ${data.columns.length} columns mapped — review below before importing.`;
+
+  const warnBox = document.getElementById('analysis-warnings');
+  warnBox.innerHTML = (data.warnings || []).map(w =>
+    `<p class="text-xs text-amber-700 bg-amber-50 px-3 py-1 rounded-lg">⚠ ${w}</p>`
+  ).join('');
+
+  document.getElementById('confirm-count').textContent = data.total_rows;
+
+  // Mapping table
+  const tbody = document.getElementById('mapping-body');
+  tbody.innerHTML = data.columns.map((c, i) => {
+    if (c.skip && !c.raw_header) return ''; // completely blank
+    const confClass = c.skip ? 'conf-skip' : c.confidence >= 80 ? 'conf-high' : c.confidence >= 50 ? 'conf-med' : 'conf-low';
+    const confLabel = c.skip ? 'skipped' : `${c.confidence}%`;
+    const mapped    = c.skip ? '—' : `${c.table}.${c.field}`;
+    return `<tr class="hover:bg-slate-50">
+      <td class="px-3 py-2 text-slate-400 font-mono text-xs">${c.index}</td>
+      <td class="px-3 py-2 font-medium text-slate-700">${c.raw_header || '<span class="text-slate-300 italic">blank</span>'}</td>
+      <td class="px-3 py-2 font-mono text-xs text-slate-600">${mapped}</td>
+      <td class="px-3 py-2 text-center text-xs <span class="${confClass}">${confLabel}</span>"></td>
+      <td class="px-3 py-2">
+        <select data-col="${c.index}"
+                class="override-select text-xs border border-slate-200 rounded-lg px-2 py-1 w-full focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <option value="skip">— skip —</option>
+          ${allFieldOptions(c.table && c.field ? c.table+'.'+c.field : '')}
+        </select>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Sample table
+  const visibleCols = data.columns.filter(c => !c.skip && c.raw_header);
+  const sHead = document.getElementById('sample-head');
+  sHead.innerHTML = visibleCols.map(c =>
+    `<th class="px-2 py-2 text-left font-semibold text-slate-500 whitespace-nowrap text-xs border-b border-slate-200">${c.raw_header}</th>`
+  ).join('');
+
+  const sBody = document.getElementById('sample-body');
+  sBody.innerHTML = (data.sample_rows || []).map(row =>
+    `<tr class="hover:bg-slate-50">${visibleCols.map(c =>
+      `<td class="px-2 py-1.5 text-slate-700 whitespace-nowrap">${row[c.index] || ''}</td>`
+    ).join('')}</tr>`
+  ).join('');
+}
+
+function allFieldOptions(selected) {
+  const fields = [
+    ['returns.log_number','Log #'],['clients.prior_year_log','Prior Log #'],
+    ['clients.last_name','Last Name'],['clients.first_name','First Name'],
+    ['clients.display_name','Display Name'],['returns.tax_year','Tax Year'],
+    ['returns.processor','Processor'],['returns.verified','Verified'],
+    ['returns.client_status','Status'],['returns.intake_date','Intake Date'],
+    ['returns.pickup_date','Pickup Date'],['returns.logout_date','Logout Date'],
+    ['returns.date_emailed','Date Emailed'],['returns.updated_date','Updated Date'],
+    ['returns.transfer_2025_flag','Transfer 2025'],['returns.transfer_2026_flag','Transfer 2026'],
+    ['returns.is_amended','Amended'],['returns.has_w7','W-7'],['returns.is_extension','Extension'],
+    ['returns.transfer_flag','Transfer'],['returns.email_marker','Email Marker'],
+    ['payments.total_fee','Total Fee'],['payments.receipt_number','Receipt #'],
+    ['payments.fee_paid','Fee Paid'],['payments.cc_fee','CC Fee'],
+    ['payments.zelle_or_check_ref','Zelle/CK'],['payments.cash_or_qpay_ref','Cash/QPay'],
+    ['return_forms.form_1040','1040'],['return_forms.sched_a_d','Sch A&D'],
+    ['return_forms.sched_c','Sch C'],['return_forms.sched_e','Sch E'],
+    ['return_forms.form_1120','1120'],['return_forms.form_1120s','1120S'],
+    ['return_forms.form_1065_llc','1065'],['return_forms.form_990_1041','990/1041'],
+    ['clients.referral_flag','Referral'],['clients.referred_by','Referred By'],
+    ['notes.note_text','Notes'],
+  ];
+  return fields.map(([val, label]) =>
+    `<option value="${val}" ${selected===val?'selected':''}>${label}</option>`
+  ).join('');
+}
+
+async function confirmImport() {
+  if (!_analysisData) return;
+  const btn = document.getElementById('confirm-btn');
+  btn.textContent = 'Importing…';
+  btn.disabled = true;
+
+  // Collect overrides
+  const overrides = {};
+  document.querySelectorAll('.override-select').forEach(sel => {
+    overrides[sel.dataset.col] = sel.value;
+  });
+
+  const taxYear = parseInt(document.getElementById('tax-year-select').value);
+
+  const res  = await fetch('/upload/confirm', {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify({ tmp_path: _analysisData.tmp_path, overrides, tax_year: taxYear }),
+  });
+  const data = await res.json();
+
+  document.getElementById('step-preview').classList.add('hidden');
+  document.getElementById('step-result').classList.remove('hidden');
+
+  if (data.error) {
+    document.getElementById('result-icon').textContent = '❌';
+    document.getElementById('result-title').textContent = 'Import failed';
+    document.getElementById('result-detail').textContent = data.error;
+  } else {
+    document.getElementById('result-icon').textContent = '✅';
+    document.getElementById('result-title').textContent = 'Import complete';
+    document.getElementById('result-detail').textContent =
+      `Created ${data.created} · Updated ${data.updated} · Skipped ${data.skipped}` +
+      (data.errors.length ? ` · ${data.errors.length} errors` : '');
+  }
+}
+
+function resetUpload() {
+  _analysisData = null;
+  document.getElementById('step-upload').classList.remove('hidden');
+  document.getElementById('step-preview').classList.add('hidden');
+  document.getElementById('step-result').classList.add('hidden');
+  document.getElementById('upload-status').classList.add('hidden');
+  fileInput.value = '';
+}
+</script>
+{% endblock %}

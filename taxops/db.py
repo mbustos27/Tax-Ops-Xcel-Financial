@@ -136,12 +136,22 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
 
         CREATE TABLE IF NOT EXISTS review_queue (
-          id INTEGER PRIMARY KEY,
-          batch_id INTEGER,
-          row_number INTEGER,
-          reason TEXT,
-          raw_json TEXT,
-          created_at TEXT
+          id          INTEGER PRIMARY KEY,
+          status      TEXT    DEFAULT 'pending',
+          csv_last    TEXT,
+          csv_first   TEXT,
+          csv_log     TEXT,
+          csv_year    INTEGER,
+          proposed_client_id INTEGER,
+          match_score INTEGER,
+          match_method TEXT,
+          raw_json    TEXT,
+          resolved_client_id INTEGER,
+          reason      TEXT,
+          created_at  TEXT,
+          resolved_at TEXT,
+          FOREIGN KEY (proposed_client_id)  REFERENCES clients(id),
+          FOREIGN KEY (resolved_client_id)  REFERENCES clients(id)
         );
 
         CREATE TABLE IF NOT EXISTS dependents (
@@ -250,6 +260,21 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "special_discount REAL",
             "down_payment REAL",
             "receipt2_number TEXT",
+        ],
+        "review_queue": [
+            "status TEXT DEFAULT 'pending'",
+            "csv_last TEXT",
+            "csv_first TEXT",
+            "csv_log TEXT",
+            "csv_year INTEGER",
+            "proposed_client_id INTEGER",
+            "match_score INTEGER",
+            "match_method TEXT",
+            "raw_json TEXT",
+            "resolved_client_id INTEGER",
+            "reason TEXT",
+            "created_at TEXT",
+            "resolved_at TEXT",
         ],
         "import_batches": [
             "row_count INTEGER DEFAULT 0",

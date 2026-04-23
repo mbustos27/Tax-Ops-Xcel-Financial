@@ -1,123 +1,117 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — TaxOps {{ current_year }}{% endblock %}
 
+{# Dashboard uses its own scroll model — only the table rows scroll #}
+{% block main_class %}overflow-hidden flex flex-col{% endblock %}
+{% block content_class %}flex flex-col flex-1 min-h-0 h-full py-3{% endblock %}
+
 {% block content %}
-<div class="space-y-3">
+{# Outer column — fills the viewport below the header, nothing scrolls here #}
+<div class="flex flex-col gap-3 h-full min-h-0">
 
-  <!-- ── Filter bar ──────────────────────────────────────────────────────── -->
-  <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 space-y-2.5">
+  <!-- ── Filter bar — static, never moves ──────────────────────────────── -->
+  <div id="filter-bar"
+       class="bg-white rounded-xl border border-slate-200 px-4 py-3 space-y-2.5 shadow-sm flex-shrink-0">
 
-    <!-- Row 1: status + preparer + balance + search -->
-    <div class="flex flex-wrap items-center gap-3">
+    {% set active_form = filters.form or '' %}
+    {% set base = '/?year=' ~ current_year %}
+    {% if filters.status %} {% set base = base ~ '&status=' ~ filters.status[0] %} {% endif %}
+    {% if filters.processor %} {% set base = base ~ '&processor=' ~ filters.processor %} {% endif %}
+    {% if filters.balance_due %} {% set base = base ~ '&balance_due=1' %} {% endif %}
+    {% if filters.late_intake %} {% set base = base ~ '&late_intake=1' %} {% endif %}
+    {% if filters.slow_cycle %} {% set base = base ~ '&slow_cycle=1' %} {% endif %}
 
-      <!-- Status pills -->
-      <div class="flex items-center gap-1.5 flex-wrap">
-        <span class="text-xs text-slate-400 shrink-0">Status:</span>
-        <a href="/?year={{ current_year }}{% if filters.form %}&form={{ filters.form }}{% endif %}"
-           class="pill {% if not filters.status %}pill-active{% else %}pill-inactive{% endif %}">
-          All
-        </a>
-        {% for s in status_flow %}
-        <a href="/?status={{ s }}&year={{ current_year }}{% if filters.form %}&form={{ filters.form }}{% endif %}"
-           class="pill flex items-center gap-1 {% if filters.status and s in filters.status %}pill-active{% else %}pill-inactive{% endif %}">
-          <span class="status-dot {{ status_dot.get(s,'dot-slate') }}"></span>{{ s }}
-        </a>
-        {% endfor %}
-      </div>
-
-      <div class="w-px h-5 bg-slate-200 shrink-0"></div>
-
-      <!-- Preparer filter -->
-      <div class="flex items-center gap-1.5">
-        <span class="text-xs text-slate-400">Preparer:</span>
-        <select onchange="applyFilter('processor', this.value)"
-                class="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400">
-          <option value="">All</option>
-          {% for p in processors %}
-          <option value="{{ p }}" {% if filters.processor == p %}selected{% endif %}>{{ p }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <!-- Balance filter -->
-      <label class="flex items-center gap-1.5 cursor-pointer select-none">
-        <input type="checkbox"
-               onchange="applyFilter('balance_due', this.checked ? '1' : '')"
-               {% if filters.balance_due %}checked{% endif %}
-               class="rounded border-slate-300 text-blue-600 focus:ring-blue-400">
-        <span class="text-xs text-slate-600">Balance due only</span>
-      </label>
-      <label class="flex items-center gap-1.5 cursor-pointer select-none">
-        <input type="checkbox"
-               onchange="applyFilter('late_intake', this.checked ? '1' : '')"
-               {% if filters.late_intake %}checked{% endif %}
-               class="rounded border-slate-300 text-blue-600 focus:ring-blue-400">
-        <span class="text-xs text-slate-600">Late intake only</span>
-      </label>
-      <label class="flex items-center gap-1.5 cursor-pointer select-none">
-        <input type="checkbox"
-               onchange="applyFilter('slow_cycle', this.checked ? '1' : '')"
-               {% if filters.slow_cycle %}checked{% endif %}
-               class="rounded border-slate-300 text-blue-600 focus:ring-blue-400">
-        <span class="text-xs text-slate-600">Slow cycle only</span>
-      </label>
-
-      <!-- Quick in-page filter -->
-      <div class="ml-auto flex items-center gap-2">
-        <input id="table-filter" type="text" placeholder="Quick filter…"
-               class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400 w-40">
-        <span class="text-xs text-slate-400 whitespace-nowrap">
-          <span id="row-count">{{ returns | length }}</span> returns
-        </span>
-      </div>
+    <!-- Row 1: status pills -->
+    <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
+      <span class="text-sm font-medium text-slate-500 shrink-0">Status:</span>
+      <a href="/?year={{ current_year }}{% if active_form %}&form={{ active_form }}{% endif %}"
+         class="pill shrink-0 {% if not filters.status %}pill-active{% else %}pill-inactive{% endif %}">All</a>
+      {% for s in status_flow %}
+      <a href="/?status={{ s }}&year={{ current_year }}{% if active_form %}&form={{ active_form }}{% endif %}"
+         class="pill shrink-0 flex items-center gap-1.5 {% if filters.status and s in filters.status %}pill-active{% else %}pill-inactive{% endif %}">
+        <span class="status-dot {{ status_dot.get(s,'dot-slate') }}"></span>{{ s }}
+      </a>
+      {% endfor %}
     </div>
 
-    <!-- Row 2: form type filter -->
-    <div class="flex items-center gap-1.5 flex-wrap border-t border-slate-100 pt-2.5">
-      <span class="text-xs text-slate-400 shrink-0">Form:</span>
+    <!-- Row 2: flag buttons + form pills -->
+    <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto border-t border-slate-100 pt-2.5">
+      <button onclick="applyFilter('balance_due', '{{ '' if filters.balance_due else '1' }}')"
+              class="pill shrink-0 {% if filters.balance_due %}bg-red-600 text-white border-red-600{% else %}pill-inactive{% endif %}">
+        💰 Balance Due
+      </button>
+      <button onclick="applyFilter('late_intake', '{{ '' if filters.late_intake else '1' }}')"
+              class="pill shrink-0 {% if filters.late_intake %}bg-amber-500 text-white border-amber-500{% else %}pill-inactive{% endif %}">
+        ⏰ Late Intake
+      </button>
+      <button onclick="applyFilter('slow_cycle', '{{ '' if filters.slow_cycle else '1' }}')"
+              class="pill shrink-0 {% if filters.slow_cycle %}bg-rose-600 text-white border-rose-600{% else %}pill-inactive{% endif %}">
+        🐢 Slow Cycle
+      </button>
 
-      {% set active_form = filters.form or '' %}
-      {% set base = '/?year=' ~ current_year %}
-      {% if filters.status %} {% set base = base ~ '&status=' ~ filters.status[0] %} {% endif %}
-      {% if filters.processor %} {% set base = base ~ '&processor=' ~ filters.processor %} {% endif %}
-      {% if filters.balance_due %} {% set base = base ~ '&balance_due=1' %} {% endif %}
-      {% if filters.late_intake %} {% set base = base ~ '&late_intake=1' %} {% endif %}
-      {% if filters.slow_cycle %} {% set base = base ~ '&slow_cycle=1' %} {% endif %}
+      <div class="w-px h-5 bg-slate-200 shrink-0 mx-1"></div>
 
-      <a href="{{ base }}"
-         class="pill {% if not active_form %}pill-active{% else %}pill-inactive{% endif %}">
-        All
-      </a>
-
+      <span class="text-sm font-medium text-slate-500 shrink-0">Form:</span>
+      <a href="{{ base }}" class="pill shrink-0 {% if not active_form %}pill-active{% else %}pill-inactive{% endif %}">All</a>
       {% for col, label in [
         ('form_1040','1040'),('form_1120','1120'),('form_1120s','1120S'),
         ('form_1065_llc','1065'),('form_990_1041','990/1041'),
         ('is_amended','1040X'),('has_w7','W-7'),('is_extension','EXT')
       ] %}
       <a href="{{ base }}&form={{ col }}"
-         class="pill {% if active_form == col %}pill-active{% else %}pill-inactive{% endif %}">
+         class="pill shrink-0 {% if active_form == col %}pill-active{% else %}pill-inactive{% endif %}">
         {{ label }}
       </a>
       {% endfor %}
     </div>
 
+    <!-- Row 3: preparer + quick filter -->
+    <div class="flex items-center gap-2 flex-nowrap border-t border-slate-100 pt-2.5">
+      <span class="text-sm font-medium text-slate-500 shrink-0">Preparer:</span>
+      <select onchange="applyFilter('processor', this.value)"
+              class="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 shrink-0">
+        <option value="">All</option>
+        {% for p in processors %}
+        <option value="{{ p }}" {% if filters.processor == p %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+
+      <div class="ml-auto flex items-center gap-2 shrink-0">
+        <input id="table-filter" type="text" placeholder="Quick filter…"
+               class="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 w-44">
+        <span class="text-sm text-slate-500 whitespace-nowrap">
+          <span id="row-count">{{ returns | length }}</span> returns
+        </span>
+        <a id="export-btn"
+           href="/export?{{ request.query_string.decode() }}"
+           class="flex items-center gap-1.5 pill pill-inactive font-semibold whitespace-nowrap"
+           title="Export to Excel">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          Export
+        </a>
+      </div>
+    </div>
+
   </div>
 
-  <!-- ── Returns table ───────────────────────────────────────────────────── -->
-  <!-- No overflow on this wrapper — any overflow value breaks position:sticky -->
-  <div class="rounded-xl border border-slate-200" style="contain: paint;">
-    <table class="data-table w-full text-sm bg-white">
-      <thead class="sticky top-[80px] z-20">
+  <!-- ── Returns table — only this div scrolls ────────────────────────── -->
+  <div class="rounded-xl border border-slate-200 flex-1 min-h-0 overflow-y-auto bg-white outline-none" tabindex="-1">
+    <table class="data-table w-full text-sm">
+      <thead class="sticky top-0 z-10">
         <tr>
-          <th class="th w-16 rounded-tl-xl">Log #</th>
-          <th class="th">Client</th>
+          <th class="th w-16 rounded-tl-xl sortable" data-col="log" data-type="num">Log # <span class="sort-arrow"></span></th>
+          <th class="th w-16 text-center sortable" data-col="taxyear" data-type="num">TY <span class="sort-arrow"></span></th>
+          <th class="th sortable" data-col="name" data-type="str">Client <span class="sort-arrow"></span></th>
           <th class="th">Forms</th>
           <th class="th w-36">Flags</th>
-          <th class="th w-40">Status</th>
-          <th class="th w-28">Preparer</th>
-          <th class="th text-right w-24">Fee</th>
-          <th class="th text-right w-28">Balance</th>
-          <th class="th w-28">Receipt #</th>
+          <th class="th w-40 sortable" data-col="status" data-type="status">Status <span class="sort-arrow"></span></th>
+          <th class="th w-28 sortable" data-col="preparer" data-type="str">Preparer <span class="sort-arrow"></span></th>
+          <th class="th text-right w-24 sortable" data-col="fee" data-type="num">Fee <span class="sort-arrow"></span></th>
+          <th class="th text-right w-28 sortable" data-col="balance" data-type="num">Balance <span class="sort-arrow"></span></th>
+          <th class="th w-28 sortable" data-col="intake" data-type="str">Intake <span class="sort-arrow"></span></th>
           <th class="th text-center w-10 rounded-tr-xl">✓</th>
         </tr>
       </thead>
@@ -125,11 +119,28 @@
         {% for r in returns %}
         <tr class="status-row status-{{ (r.client_status or '') | replace(' ','-') }} group cursor-pointer"
             data-search="{{ r.log_number }} {{ r.last_name }} {{ r.first_name }} {{ r.display_name or '' }}"
+            data-log="{{ r.log_number or '' }}"
+            data-taxyear="{{ r.tax_year or '' }}"
+            data-name="{{ r.last_name }},{{ r.first_name or '' }}"
+            data-status="{{ r.client_status or '' }}"
+            data-preparer="{{ r.processor or '' }}"
+            data-fee="{{ r.total_fee or 0 }}"
+            data-balance="{{ r.balance or 0 }}"
+            data-intake="{{ r.intake_date or '' }}"
             onclick="if(!event.target.closest('.status-dropdown,.editable')) window.location='/return/{{ r.id }}'">
 
           <!-- Log # -->
           <td class="td">
             <span class="font-mono font-black text-slate-800 text-base tracking-tight">{{ r.log_number or '—' }}</span>
+          </td>
+
+          <!-- Tax Year -->
+          <td class="td text-center">
+            {% if r.tax_year and r.tax_year != current_year - 1 %}
+            <span class="inline-block px-1.5 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">{{ r.tax_year }}</span>
+            {% else %}
+            <span class="text-xs text-slate-400">{{ r.tax_year or '—' }}</span>
+            {% endif %}
           </td>
 
           <!-- Client -->
@@ -156,12 +167,7 @@
             {% if r.risk_flags %}
             <div class="flex flex-wrap gap-1">
               {% for flag in r.risk_flags %}
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border
-                           {% if flag == 'LATE INTAKE' %}
-                           bg-amber-50 text-amber-700 border-amber-200
-                           {% else %}
-                           bg-rose-50 text-rose-700 border-rose-200
-                           {% endif %}">
+              <span class="risk-badge {% if flag == 'LATE INTAKE' %}risk-late{% else %}risk-slow{% endif %}">
                 {{ flag }}
               </span>
               {% endfor %}
@@ -226,13 +232,9 @@
             {% endif %}
           </td>
 
-          <!-- Receipt # -->
+          <!-- Intake date -->
           <td class="td">
-            <span class="editable font-mono text-xs text-slate-600"
-                  data-return-id="{{ r.id }}" data-field="receipt_number"
-                  data-value="{{ r.receipt_number or '' }}" data-placeholder="Receipt #">
-              {{ r.receipt_number or '—' }}
-            </span>
+            <span class="text-xs text-slate-500 tabular-nums">{{ r.intake_date or '—' }}</span>
           </td>
 
           <!-- Verified -->
@@ -271,6 +273,63 @@ function applyFilter(key, value) {
   if (value) url.searchParams.set(key, value);
   else       url.searchParams.delete(key);
   window.location = url.toString();
+}
+
+// ── Column sort ────────────────────────────────────────────────────────────
+const STATUS_ORDER = ['LOG IN','PROCESSING','FINALIZE','PICKUP','EFILE READY','LOG OUT','REJECTED'];
+let _sortCol = null, _sortAsc = true;
+
+document.querySelectorAll('th.sortable').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (_sortCol === col) _sortAsc = !_sortAsc;
+    else { _sortCol = col; _sortAsc = true; }
+
+    // Update arrow indicators
+    document.querySelectorAll('th.sortable .sort-arrow').forEach(a => a.className = 'sort-arrow');
+    th.querySelector('.sort-arrow').className = 'sort-arrow ' + (_sortAsc ? 'asc' : 'desc');
+
+    sortTable(col, th.dataset.type, _sortAsc);
+  });
+});
+
+function sortTable(col, type, asc) {
+  const tbody = document.querySelector('.data-table tbody');
+  const rows  = Array.from(tbody.querySelectorAll('tr[data-log]')); // skip empty-state row
+  rows.sort((a, b) => {
+    let va = a.dataset[col] || '';
+    let vb = b.dataset[col] || '';
+    let cmp = 0;
+    if (type === 'num') {
+      cmp = (parseFloat(va) || 0) - (parseFloat(vb) || 0);
+    } else if (type === 'status') {
+      cmp = STATUS_ORDER.indexOf(va) - STATUS_ORDER.indexOf(vb);
+    } else {
+      cmp = va.localeCompare(vb, undefined, {sensitivity: 'base'});
+    }
+    return asc ? cmp : -cmp;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+  // recount visible rows after sort
+  updateRowCount();
+}
+
+// ── Quick filter ──────────────────────────────────────────────────────────
+const filterInput = document.getElementById('table-filter');
+if (filterInput) {
+  filterInput.addEventListener('input', () => {
+    const q = filterInput.value.toLowerCase();
+    document.querySelectorAll('.data-table tbody tr[data-search]').forEach(tr => {
+      tr.style.display = (tr.dataset.search || '').toLowerCase().includes(q) ? '' : 'none';
+    });
+    updateRowCount();
+  });
+}
+
+function updateRowCount() {
+  const visible = document.querySelectorAll('.data-table tbody tr[data-search]:not([style*="display: none"])').length;
+  const el = document.getElementById('row-count');
+  if (el) el.textContent = visible;
 }
 </script>
 {% endblock %}
