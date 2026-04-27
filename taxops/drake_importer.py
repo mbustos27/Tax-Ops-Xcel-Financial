@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional
 from config import CSMDATA_SOURCE, DRAKE_SOURCE, DRAKE_STATUS_MAP, DRAKE_TYPE_FORMS
 from events import create_status_events
 from normalizer import normalize_currency, normalize_date, normalize_string
+from preparer import normalize_preparer
 from utils import ImportStats, now
 
 # ---------------------------------------------------------------------------
@@ -128,6 +129,39 @@ def process_drake_csv(
             stats.error_count += 1
 
     return stats
+
+
+def iter_drake_csv_rows(csv_path: str, tax_year: int):
+    """
+    Parse a Drake/CSM export without touching the database.
+    Yields: (row_number, normalized | None, warnings, error | None)
+    """
+    reader, fmt = _open_and_detect(csv_path)
+    if fmt == "UNKNOWN":
+        raise ValueError(
+            "Unrecognised Drake CSV format. Expected CSM Data or Tax Ops Export columns."
+        )
+
+    for row_number, row in enumerate(reader, start=2):
+        if _is_totals_row(row):
+            continue
+        try:
+            if fmt == "CSM_DATA":
+                normalized, warnings = _normalize_csm(row, tax_year)
+            else:
+                normalized, warnings = _normalize_taxops(row, tax_year)
+            last = normalized["clients"].get("last_name")
+            if not last:
+                yield (
+                    row_number,
+                    None,
+                    warnings,
+                    "Row has empty client name / Taxpayer Last Name.",
+                )
+            else:
+                yield row_number, normalized, warnings, None
+        except Exception as exc:  # noqa: BLE001
+            yield row_number, None, [], str(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +265,9 @@ def _normalize_csm(row: Dict[str, str], tax_year: int) -> tuple[Dict[str, Any], 
             },
             "returns": {
                 "tax_year":         tax_year,
-                "processor":        normalize_string(_col(row, "Preparer")),
+                "processor":        normalize_preparer(
+                    normalize_string(_col(row, "Preparer"))
+                ),
                 "client_status":    client_status,
                 "intake_date":      _d("Started"),
                 "logout_date":      _d("Completed"),
@@ -303,6 +339,9 @@ def _normalize_taxops(row: Dict[str, str], tax_year: int) -> tuple[Dict[str, Any
             "returns": {
                 "tax_year":         tax_year,
                 "client_status":    client_status,
+                "processor":        normalize_preparer(
+                    normalize_string(_col(row, "Preparer"))
+                ),
                 "intake_date":      _d("Date Started"),
                 "logout_date":      date_completed,
                 "updated_date":     _d("Date Changed"),

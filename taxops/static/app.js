@@ -135,6 +135,43 @@ async function setStatus(returnId, status, btn) {
   }
 }
 
+// ── Preparer: mirror taxops/preparer.py (full names in DB) ─────────────────
+const LUCILA_YANEZ = "Lucila Yanez";
+const MOISES_BUSTOS = "Moises Bustos";
+
+function preparerListLabelJs(code) {
+  if (!code || !String(code).trim()) return "—";
+  const raw = String(code).trim();
+  const k = raw.toLowerCase().replace(/\s+/g, " ");
+  const map = {
+    ly: LUCILA_YANEZ,
+    "l.y.": LUCILA_YANEZ,
+    "l y": LUCILA_YANEZ,
+    lucila: LUCILA_YANEZ,
+    yanez: LUCILA_YANEZ,
+    "lucila yanez": LUCILA_YANEZ,
+    mb: MOISES_BUSTOS,
+    "m.b.": MOISES_BUSTOS,
+    "m b": MOISES_BUSTOS,
+    moises: MOISES_BUSTOS,
+    bustos: MOISES_BUSTOS,
+    "moises bustos": MOISES_BUSTOS,
+  };
+  if (map[k] !== undefined) return map[k];
+  if (raw.length <= 3 && raw === raw.toUpperCase() && /^[A-Z.]+$/.test(raw)) {
+    if (raw.replace(/\./g, "") === "LY") return LUCILA_YANEZ;
+    if (raw.replace(/\./g, "") === "MB") return MOISES_BUSTOS;
+  }
+  return raw;
+}
+
+/** Restore visible text after cancel or no-op edit (inline fields). */
+function inlineFieldDisplay(el, storedValue) {
+  if (!storedValue || storedValue === "—") return "—";
+  if (el.dataset.field === "processor") return preparerListLabelJs(storedValue);
+  return storedValue;
+}
+
 // ── Inline cell editing ──────────────────────────────────────────────────────
 
 function initInlineEdit() {
@@ -165,7 +202,7 @@ function startEdit(el) {
   input.addEventListener("blur",    save);
   input.addEventListener("keydown", e => {
     if (e.key === "Enter")  { e.preventDefault(); save(); }
-    if (e.key === "Escape") { el.textContent = el.dataset.original || "—"; }
+    if (e.key === "Escape") { el.textContent = inlineFieldDisplay(el, el.dataset.original); }
   });
 
   el.appendChild(input);
@@ -180,7 +217,7 @@ async function commitEdit(el, value) {
   const original = el.dataset.original;
 
   const unchanged = (value === original) || (!value && (!original || original === "—"));
-  if (unchanged) { el.textContent = original || "—"; return; }
+  if (unchanged) { el.textContent = inlineFieldDisplay(el, original); return; }
 
   try {
     const resp = await fetch(`/api/return/${returnId}/field`, {
@@ -189,11 +226,21 @@ async function commitEdit(el, value) {
       body:    JSON.stringify({ field, value: value || null }),
     });
     const data = await resp.json();
-    el.textContent    = value || "—";
-    el.dataset.value  = value;
-    if (data.success) flash(el);
+    if (data.success) {
+      const finalVal = field === "processor" && data.value != null ? data.value : value;
+      if (field === "processor") {
+        el.textContent   = (finalVal || "—");
+        el.dataset.value = finalVal != null ? String(finalVal) : "";
+      } else {
+        el.textContent   = value || "—";
+        el.dataset.value = value;
+      }
+      flash(el);
+    } else {
+      el.textContent = inlineFieldDisplay(el, original);
+    }
   } catch {
-    el.textContent = original || "—";
+    el.textContent = inlineFieldDisplay(el, original);
   }
 }
 

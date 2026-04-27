@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 
 from config import MANUAL_LOG_SOURCE
 from events import create_status_events
+from preparer import normalize_preparer
 from normalizer import (
     build_header_lookup,
     get_value,
@@ -114,7 +115,9 @@ def _normalize_row(row: Dict[str, str], header_lookup: Dict[str, str]) -> tuple[
             "returns": {
                 "log_number": normalize_string(get_value(row, header_lookup, "LOG 2025")),
                 "tax_year": tax_year,
-                "processor": normalize_string(get_value(row, header_lookup, "PROCESSOR")),
+                "processor": normalize_preparer(
+                    normalize_string(get_value(row, header_lookup, "PROCESSOR"))
+                ),
                 "verified": normalize_bool_flag(get_value(row, header_lookup, "VERIFIED")),
                 "client_status": normalize_status(get_value(row, header_lookup, "CLIENT STATUS")),
                 "intake_date": intake_date,
@@ -489,3 +492,30 @@ def _bool_to_int(value: Any) -> int | None:
     if value is None:
         return None
     return 1 if bool(value) else 0
+
+
+def iter_manual_csv_rows(csv_path: str):
+    """
+    Parse a manual log CSV without touching the database.
+    Yields: (row_number, normalized | None, warnings, error | None)
+    """
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        if not reader.fieldnames:
+            raise ValueError("CSV is missing header row.")
+        header_lookup = build_header_lookup(reader.fieldnames)
+        missing = [name for name in REQUIRED_COLUMNS if name.upper() not in header_lookup]
+        if missing:
+            raise ValueError(f"CSV missing required columns: {', '.join(missing)}")
+
+        for row_number, row in enumerate(reader, start=2):
+            try:
+                normalized, warnings = _normalize_row(row, header_lookup)
+                if not normalized["returns"]["log_number"] or normalized["returns"]["tax_year"] is None:
+                    yield row_number, None, [], "Missing required values: LOG 2025 and/or YR"
+                elif not normalized["clients"]["last_name"] or not normalized["clients"]["first_name"]:
+                    yield row_number, None, [], "Missing required values: LAST and/or FIRST"
+                else:
+                    yield row_number, normalized, warnings, None
+            except Exception as exc:  # noqa: BLE001 — surface row errors for the compare view
+                yield row_number, None, [], str(exc)

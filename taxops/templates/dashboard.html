@@ -2,7 +2,7 @@
 {% block title %}Dashboard — TaxOps {{ current_year }}{% endblock %}
 
 {# Dashboard uses its own scroll model — only the table rows scroll #}
-{% block main_class %}overflow-hidden flex flex-col{% endblock %}
+{% block main_class %}overflow-hidden{% endblock %}
 {% block content_class %}flex flex-col flex-1 min-h-0 h-full py-3{% endblock %}
 
 {% block content %}
@@ -14,20 +14,25 @@
        class="bg-white rounded-xl border border-slate-200 px-4 py-3 space-y-2.5 shadow-sm flex-shrink-0">
 
     {% set active_form = filters.form or '' %}
-    {% set base = '/?year=' ~ current_year %}
-    {% if filters.status %} {% set base = base ~ '&status=' ~ filters.status[0] %} {% endif %}
-    {% if filters.processor %} {% set base = base ~ '&processor=' ~ filters.processor %} {% endif %}
-    {% if filters.balance_due %} {% set base = base ~ '&balance_due=1' %} {% endif %}
-    {% if filters.late_intake %} {% set base = base ~ '&late_intake=1' %} {% endif %}
-    {% if filters.slow_cycle %} {% set base = base ~ '&slow_cycle=1' %} {% endif %}
+    {# Shared query tail: keep preparer, flags, and form when switching status or other filters #}
+    {% set pproc = ('&processor=' ~ (filters.processor|urlencode)) if filters.processor else '' %}
+    {% set pbal  = ('&balance_due=1') if filters.balance_due else '' %}
+    {% set plate = ('&late_intake=1') if filters.late_intake else '' %}
+    {% set pslow = ('&slow_cycle=1') if filters.slow_cycle else '' %}
+    {% set pform = ('&form=' ~ (active_form|urlencode)) if active_form else '' %}
+    {% set persist = pproc ~ pbal ~ plate ~ pslow ~ pform %}
+
+    {% set base = '/?year=' ~ current_year
+        ~ (('&status=' ~ (filters.status[0]|urlencode)) if filters.status else '')
+        ~ pproc ~ pbal ~ plate ~ pslow %}
 
     <!-- Row 1: status pills -->
     <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
       <span class="text-sm font-medium text-slate-500 shrink-0">Status:</span>
-      <a href="/?year={{ current_year }}{% if active_form %}&form={{ active_form }}{% endif %}"
+      <a href="/?year={{ current_year }}{{ persist }}"
          class="pill shrink-0 {% if not filters.status %}pill-active{% else %}pill-inactive{% endif %}">All</a>
       {% for s in status_flow %}
-      <a href="/?status={{ s }}&year={{ current_year }}{% if active_form %}&form={{ active_form }}{% endif %}"
+      <a href="/?year={{ current_year }}&status={{ s|urlencode }}{{ persist }}"
          class="pill shrink-0 flex items-center gap-1.5 {% if filters.status and s in filters.status %}pill-active{% else %}pill-inactive{% endif %}">
         <span class="status-dot {{ status_dot.get(s,'dot-slate') }}"></span>{{ s }}
       </a>
@@ -58,7 +63,7 @@
         ('form_1065_llc','1065'),('form_990_1041','990/1041'),
         ('is_amended','1040X'),('has_w7','W-7'),('is_extension','EXT')
       ] %}
-      <a href="{{ base }}&form={{ col }}"
+      <a href="{{ base }}&form={{ col|urlencode }}"
          class="pill shrink-0 {% if active_form == col %}pill-active{% else %}pill-inactive{% endif %}">
         {{ label }}
       </a>
@@ -67,12 +72,12 @@
 
     <!-- Row 3: preparer + quick filter -->
     <div class="flex items-center gap-2 flex-nowrap border-t border-slate-100 pt-2.5">
-      <span class="text-sm font-medium text-slate-500 shrink-0">Preparer:</span>
+      <span class="text-sm font-medium text-slate-500 shrink-0">Filter by preparer:</span>
       <select onchange="applyFilter('processor', this.value)"
-              class="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 shrink-0">
+              class="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 shrink-0 min-w-[12rem] max-w-[20rem]">
         <option value="">All</option>
         {% for p in processors %}
-        <option value="{{ p }}" {% if filters.processor == p %}selected{% endif %}>{{ p }}</option>
+        <option value="{{ p }}" {% if filters.processor == p %}selected{% endif %}>{{ preparer_list_label(p) }}</option>
         {% endfor %}
       </select>
 
@@ -232,7 +237,7 @@
             <span class="editable text-slate-700 text-xs"
                   data-return-id="{{ r.id }}" data-field="processor"
                   data-value="{{ r.processor or '' }}" data-placeholder="Preparer">
-              {{ r.processor or '—' }}
+              {{ preparer_list_label(r.processor) }}
             </span>
           </td>
 

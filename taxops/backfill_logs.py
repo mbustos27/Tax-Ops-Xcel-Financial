@@ -14,6 +14,7 @@ from csv_analyzer import analyze, iter_data_rows
 from name_matcher import find_client, parse_name, _all_clients_cache
 from normalizer import normalize_string, normalize_date
 from csv_analyzer import normalize_status
+from preparer import normalize_preparer
 from utils import now
 
 DB   = "taxops.db"
@@ -66,7 +67,9 @@ for row in rows:
     raw_status  = (row.get("returns.client_status","") or "").strip()
     norm_status = normalize_status(raw_status) if raw_status else "LOG IN"
 
-    processor   = normalize_string(row.get("returns.processor","")) or None
+    processor   = normalize_preparer(
+        normalize_string(row.get("returns.processor", "")) or None
+    )
     intake_dt,  _ = normalize_date(row.get("returns.intake_date","") or "")
     pickup_dt,  _ = normalize_date(row.get("returns.pickup_date","") or "")
     logout_dt,  _ = normalize_date(row.get("returns.logout_date","") or "")

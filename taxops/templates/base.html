@@ -64,6 +64,9 @@
         <a href="/upload" class="nav-link {% if active_page == 'upload' %}active{% endif %}">
           Import CSV
         </a>
+        <a href="/source-compare?year={{ current_year }}" class="nav-link {% if active_page == 'source_compare' %}active{% endif %}">
+          Source compare
+        </a>
         <a href="/merge-clients" class="nav-link {% if active_page == 'merge' %}active{% endif %}">
           Merge Dupes
         </a>
@@ -132,7 +135,7 @@
                     <span>TY{{ r.tax_year }}</span>
                     {% if r.processor %}
                     <span class="text-slate-300">·</span>
-                    <span>{{ r.processor }}</span>
+                    <span>{{ preparer_list_label(r.processor) }}</span>
                     {% endif %}
                   </div>
                 </div>
@@ -236,12 +239,17 @@
   </div>
   {% endif %}
 
-  <!-- ── Main ───────────────────────────────────────────────────────────── -->
+  <!-- ── Main (footer is inside <main> so the dashboard flex/scroll model cannot clip it) ── -->
   <main id="main-content"
-        class="flex-1 min-h-0 {% block main_class %}overflow-y-auto{% endblock %}">
-    <div class="max-w-screen-2xl mx-auto px-4 py-5 {% block content_class %}{% endblock %}">
+        class="flex-1 min-h-0 flex flex-col {% block main_class %}overflow-y-auto{% endblock %}">
+    <div class="max-w-screen-2xl mx-auto w-full px-4 py-5 {% block content_class %}{% endblock %}">
       {% block content %}{% endblock %}
     </div>
+    <footer class="mt-auto shrink-0 border-t border-slate-200 bg-slate-100/90 py-2 px-4">
+      <div class="max-w-screen-2xl mx-auto text-center text-[11px] text-slate-500 select-none">
+        <span title="TaxOps">&copy; {{ current_year }} Moises Bustos</span>
+      </div>
+    </footer>
   </main>
 
   <!-- ── Back to top ───────────────────────────────────────────────────── -->
@@ -250,7 +258,7 @@
           title="Back to top"
           onclick="window.scrollTo({top:0,behavior:'smooth'})"
           style="display:none"
-          class="fixed bottom-6 right-6 z-50
+          class="fixed bottom-14 right-6 z-50
                  w-12 h-12 rounded-full shadow-lg
                  bg-slate-700 hover:bg-slate-600 active:bg-slate-500
                  text-white flex items-center justify-center

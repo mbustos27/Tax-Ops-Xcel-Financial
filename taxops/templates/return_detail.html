@@ -164,7 +164,7 @@
               {% if typ == 'bool' %}
                 {% if val %}<span class="text-green-600 font-semibold">✓ Yes</span>{% else %}<span class="text-slate-300">No</span>{% endif %}
               {% else %}
-                {{ val or '—' }}
+                {% if field == 'processor' %}{{ preparer_list_label(val) }}{% else %}{{ val or '—' }}{% endif %}
               {% endif %}
             </span>
           </div>

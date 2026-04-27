@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Source compare — TaxOps {{ current_year }}{% endblock %}
+
+{% block content %}
+<div class="space-y-4 max-w-7xl mx-auto px-1">
+
+  <div>
+    <h1 class="text-xl font-bold text-slate-800">Database vs source files</h1>
+    <p class="text-sm text-slate-500 mt-0.5 max-w-3xl">
+      Compares each return in the database for the selected tax year to the <strong>office log CSV</strong>
+      (manually re-parsed) and a <strong>Drake</strong> export (Tax Ops or CSM), using the same row-matching
+      rules as a normal import. Only rows for that year in the log are included. Amber highlights = value differs from the database.
+    </p>
+  </div>
+
+  <form method="get" action="/source-compare" class="bg-white rounded-2xl border border-slate-200 p-5 flex flex-wrap gap-4 items-end">
+    <div>
+      <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Tax year</label>
+      <input name="year" type="number" value="{{ cmp.year }}"
+             class="w-24 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono" min="2018" max="2032">
+    </div>
+    <div class="min-w-[12rem] flex-1">
+      <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Manual log CSV</label>
+      <select name="manual" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <option value="">Default: newest non-Drake .csv in data folders</option>
+        {% for name in csv_list %}
+        <option value="{{ name }}" {% if manual_param == name %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="min-w-[12rem] flex-1">
+      <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Drake / CSM</label>
+      <select name="drake" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+        <option value="">Default: drake_&lt;year&gt;.csv if present, else most recent in folders</option>
+        {% for name in csv_list %}
+        <option value="{{ name }}" {% if drake_param == name %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="flex items-center gap-3 pb-2 text-sm text-slate-600">
+      <span class="font-medium text-slate-500">Show:</span>
+      <label class="inline-flex items-center gap-1.5">
+        <input type="radio" name="only" value="miss" {% if only_mismatch %}checked{% endif %}>
+        Mismatches only
+      </label>
+      <label class="inline-flex items-center gap-1.5">
+        <input type="radio" name="only" value="all" {% if not only_mismatch %}checked{% endif %}>
+        All returns
+      </label>
+    </div>
+    <button type="submit" class="bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">
+      Run compare
+    </button>
+  </form>
+
+  {% if cmp.error %}
+  <div class="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm">
+    {{ cmp.error }}
+  </div>
+  {% elif cmp.file_note %}
+  <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-3 text-sm">
+    {{ cmp.file_note }}
+  </div>
+  {% endif %}
+
+  {% if not cmp.error and cmp.summary %}
+  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-sm">
+    <div class="bg-white border border-slate-200 rounded-xl px-3 py-2">
+      <div class="text-slate-400 text-xs uppercase">DB returns</div>
+      <div class="font-mono font-bold text-slate-800">{{ cmp.summary.db_returns }}</div>
+    </div>
+    <div class="bg-white border border-slate-200 rounded-xl px-3 py-2">
+      <div class="text-slate-400 text-xs uppercase">Log matched</div>
+      <div class="font-mono font-bold text-slate-800">{{ cmp.summary.manual_matched }}</div>
+    </div>
+    <div class="bg-white border border-slate-200 rounded-xl px-3 py-2">
+      <div class="text-slate-400 text-xs uppercase">Drake matched</div>
+      <div class="font-mono font-bold text-slate-800">{{ cmp.summary.drake_matched }}</div>
+    </div>
+    <div class="bg-white border border-slate-200 rounded-xl px-3 py-2">
+      <div class="text-slate-400 text-xs uppercase">Log orphans</div>
+      <div class="font-mono font-bold text-slate-800">{{ cmp.summary.manual_orphan_rows }}</div>
+    </div>
+    <div class="bg-white border border-slate-200 rounded-xl px-3 py-2">
+      <div class="text-slate-400 text-xs uppercase">Drake orphans</div>
+      <div class="font-mono font-bold text-slate-800">{{ cmp.summary.drake_orphan_rows }}</div>
+    </div>
+  </div>
+
+  <div class="text-xs text-slate-500 font-mono break-all">
+    {% if cmp.manual_path_resolved %}<div><span class="text-slate-400">Manual:</span> {{ cmp.manual_path_resolved }}</div>{% endif %}
+    {% if cmp.drake_path_resolved %}<div><span class="text-slate-400">Drake:</span> {{ cmp.drake_path_resolved }}</div>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if cmp.rows and cmp.rows | length == 0 and only_mismatch and not cmp.error %}
+  <div class="bg-white rounded-xl border border-slate-200 px-6 py-8 text-center text-slate-600 text-sm">
+    No mismatches in this filter (or no overlapping rows with source files). Uncheck &quot;Mismatches only&quot; to list every return.
+  </div>
+  {% endif %}
+
+  {% for row in cmp.rows %}
+  <details class="bg-white rounded-xl border border-slate-200 overflow-hidden group" {% if row.n_diffs > 0 %}open{% endif %}>
+    <summary class="cursor-pointer px-4 py-3 flex flex-wrap items-center gap-2 bg-slate-50 border-b border-slate-200 hover:bg-slate-100 list-none
+                   [&::-webkit-details-marker]:hidden">
+      <span class="font-mono text-slate-500 text-sm w-20">#{{ row.log }}</span>
+      <span class="font-semibold text-slate-800 flex-1 min-w-0">{{ row.name }}</span>
+      {% if row.n_diffs > 0 %}
+      <span class="text-xs font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">{{ row.n_diffs }} diffs</span>
+      {% else %}
+      <span class="text-xs text-slate-400">in sync</span>
+      {% endif %}
+      <a href="/return/{{ row.return_id }}?year={{ cmp.year }}"
+         class="text-sm text-blue-600 hover:underline" onclick="event.stopPropagation()">Open return →</a>
+    </summary>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="bg-slate-100 text-slate-500 text-left">
+            <th class="px-3 py-2 font-semibold w-1/4">Field</th>
+            <th class="px-3 py-2 font-semibold w-1/4">Database</th>
+            <th class="px-3 py-2 font-semibold w-1/4">Manual log</th>
+            <th class="px-3 py-2 font-semibold w-1/4">Drake / CSM</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for f in row.fields %}
+          <tr>
+            <td class="px-3 py-1.5 text-slate-600 whitespace-nowrap">{{ f.label }}</td>
+            <td class="px-3 py-1.5 font-mono text-slate-800">{{ f.db }}</td>
+            <td class="px-3 py-1.5 font-mono {% if f.m_diff %}bg-amber-50 text-amber-900{% else %}text-slate-700{% endif %}">
+              {{ f.manual }}
+            </td>
+            <td class="px-3 py-1.5 font-mono {% if f.d_diff %}bg-amber-50 text-amber-900{% else %}text-slate-700{% endif %}">
+              {{ f.drake }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endfor %}
+
+  {% if cmp.manual_orphans and cmp.manual_orphans | length > 0 %}
+  <div class="bg-white rounded-xl border border-slate-200 p-4">
+    <h2 class="text-sm font-bold text-slate-700 mb-2">Rows in the manual file with no (unique) match in the DB</h2>
+    <ul class="text-xs text-slate-600 space-y-1 max-h-48 overflow-y-auto">
+      {% for o in cmp.manual_orphans %}
+      <li class="font-mono">Row {{ o.row }}: {{ o.error }}{% if o.hint %} — {{ o.hint }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if cmp.drake_orphans and cmp.drake_orphans | length > 0 %}
+  <div class="bg-white rounded-xl border border-slate-200 p-4">
+    <h2 class="text-sm font-bold text-slate-700 mb-2">Rows in the Drake/CSM file with no (unique) match in the DB</h2>
+    <ul class="text-xs text-slate-600 space-y-1 max-h-48 overflow-y-auto">
+      {% for o in cmp.drake_orphans %}
+      <li class="font-mono">Row {{ o.row }}: {{ o.error }}{% if o.hint %} — {{ o.hint }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

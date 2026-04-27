@@ -21,9 +21,23 @@ from db import get_connection, init_db
 from merge_ops import merge_client_into
 from name_matcher import find_client as fuzzy_find_client, is_business, parse_name, _all_clients_cache
 from normalizer import normalize_date, normalize_currency, normalize_string
+from preparer import (
+    normalize_preparer,
+    preparer_dropdown_options,
+    preparer_filter_match_values,
+    preparer_list_label,
+)
+from source_compare import (
+    discover_default_paths,
+    list_csv_basenames,
+    run_compare,
+    safe_resolve_csv,
+)
 from utils import now
 
 app = Flask(__name__)
+
+app.jinja_env.globals["preparer_list_label"] = preparer_list_label
 
 # Secret key for signing session cookies.
 # Set TAXOPS_SECRET env-var in production; a random fallback is fine for dev.
@@ -262,8 +276,10 @@ def query_returns(filters: dict | None = None) -> list[dict]:
             params.extend(statuses)
 
     if f.get("processor"):
-        clauses.append("r.processor = ?")
-        params.append(f["processor"])
+        pvals = preparer_filter_match_values(f["processor"])
+        if pvals:
+            clauses.append("r.processor IN (" + ",".join("?" for _ in pvals) + ")")
+            params.extend(pvals)
 
     if f.get("balance_due"):
         clauses.append(
@@ -391,7 +407,7 @@ def base_ctx(year: int | None = None) -> dict:
         "status_dot":           STATUS_DOT,
         "status_counts":        get_status_counts(y),
         "totals":               get_totals(y),
-        "processors":           get_processors(y),
+        "processors":           preparer_dropdown_options(get_processors(y)),
         "app_env":              APP_ENV,
         "privacy_mode":         privacy_mode_enabled(),
         "pending_review_count": pending_review,
@@ -777,7 +793,7 @@ def intake():
                 log_number,
                 tax_year,
                 "PROCESSING",
-                _v("processor"),
+                normalize_preparer(_v("processor")),
                 1 if f.get("verified") else 0,
                 _v("intake_date") or today_iso,
                 _v("interview_by"),
@@ -1124,7 +1140,7 @@ def _import_row(conn, row_data: dict, tax_year: int, ts: str, today_iso: str, st
         log_number=log_number,
         tax_year=ret_year,
         client_status=norm_status,
-        processor=normalize_string(g("returns", "processor")),
+        processor=normalize_preparer(normalize_string(g("returns", "processor"))),
         verified=flag("returns", "verified"),
         intake_date=intake_dt or today_iso,
         date_emailed=emailed_dt,
@@ -1379,6 +1395,80 @@ def export_excel():
         download_name=filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+# ── Source compare (database vs office log + Drake files on disk) ─────────────
+
+@app.route("/source-compare")
+@login_required
+def source_compare_page():
+    year = int(request.args.get("year", date.today().year))
+    # only=miss (default) | all — so "show all returns" is stable after form submit
+    only_mismatch = (request.args.get("only", "miss") or "miss") != "all"
+    m_arg = (request.args.get("manual") or "").strip()
+    d_arg = (request.args.get("drake") or "").strip()
+
+    m_path, d_path = discover_default_paths(year)
+    req_err: str | None = None
+    if m_arg:
+        p = safe_resolve_csv(m_arg)
+        if p is None:
+            req_err = f"Unknown manual file {m_arg!r} (put it in data/incoming or data/processed)"
+        else:
+            m_path = p
+    if d_arg:
+        p = safe_resolve_csv(d_arg)
+        if p is None:
+            extra = f"Unknown Drake file {d_arg!r} (put it in data/incoming or data/processed)"
+            req_err = f"{req_err} · {extra}" if req_err else extra
+        else:
+            d_path = p
+
+    conn = get_connection()
+    if req_err:
+        n = conn.execute(
+            "SELECT COUNT(*) c FROM returns WHERE tax_year=?", (year,)
+        ).fetchone()["c"]
+        conn.close()
+        rep = {
+            "year": year,
+            "error": req_err,
+            "file_note": None,
+            "rows": [],
+            "manual_file": m_arg,
+            "drake_file": d_arg,
+            "db_count": n,
+            "summary": {
+                "db_returns": n,
+                "manual_matched": 0,
+                "drake_matched": 0,
+                "manual_orphan_rows": 0,
+                "drake_orphan_rows": 0,
+            },
+            "manual_orphans": [],
+            "drake_orphans": [],
+        }
+    else:
+        rep = run_compare(
+            conn, year, m_path, d_path, only_mismatch=only_mismatch
+        )
+        conn.close()
+
+    if privacy_mode_enabled() and not req_err:
+        for r in rep.get("rows") or []:
+            r["name"] = "XXXXX"
+    ctx = base_ctx(year=year)
+    ctx.update(
+        {
+            "active_page": "source_compare",
+            "cmp": rep,
+            "only_mismatch": only_mismatch,
+            "csv_list": list_csv_basenames(),
+            "manual_param": m_arg,
+            "drake_param": d_arg,
+        }
+    )
+    return render_template("source_compare.html", **ctx)
 
 
 # ── Intake log (chronological register) ───────────────────────────────────────
@@ -1701,6 +1791,8 @@ def api_field(return_id: int):
     data  = request.get_json(force=True)
     field = (data.get("field") or "").strip()
     value = data.get("value")
+    if field == "processor":
+        value = normalize_preparer(value) if (value is not None and str(value).strip() != "") else None
 
     conn = get_connection()
     try:

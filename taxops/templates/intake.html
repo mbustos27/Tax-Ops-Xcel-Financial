@@ -94,7 +94,7 @@
         <select name="interview_by" class="intake-input">
           <option value="">— select —</option>
           {% for p in processors %}
-          <option value="{{ p }}">{{ p }}</option>
+          <option value="{{ p }}">{{ preparer_list_label(p) }}</option>
           {% endfor %}
         </select>
       </div>
@@ -422,7 +422,7 @@
         <select name="processor" id="field-processor" class="intake-input">
           <option value="">— select —</option>
           {% for p in processors %}
-          <option value="{{ p }}">{{ p }}</option>
+          <option value="{{ p }}">{{ preparer_list_label(p) }}</option>
           {% endfor %}
         </select>
       </div>
