@@ -52,11 +52,24 @@
             {% endif %}
           </td>
           <td class="px-4 py-3">
-            <span class="px-2 py-0.5 text-xs rounded-full font-semibold
-              {% if b.status == 'closed' %}bg-green-100 text-green-700
-              {% else %}bg-indigo-100 text-indigo-700{% endif %}">
+            {% if b.status == 'transmitted' %}
+            <div class="flex flex-col gap-0.5">
+              <span class="px-2 py-0.5 text-xs rounded-full font-semibold bg-green-100 text-green-700 w-fit">
+                &#10003; TRANSMITTED
+              </span>
+              {% if b.transmitted_at %}
+              <span class="text-xs text-slate-400 tabular-nums pl-0.5">{{ b.transmitted_at[:10] }}</span>
+              {% endif %}
+            </div>
+            {% elif b.status == 'closed' %}
+            <span class="px-2 py-0.5 text-xs rounded-full font-semibold bg-green-100 text-green-700">
+              CLOSED
+            </span>
+            {% else %}
+            <span class="px-2 py-0.5 text-xs rounded-full font-semibold bg-indigo-100 text-indigo-700">
               {{ b.status | upper }}
             </span>
+            {% endif %}
           </td>
           <td class="px-4 py-3 text-xs text-slate-500">{{ b.notes or '—' }}</td>
           <td class="px-4 py-3 text-xs text-slate-400 tabular-nums">

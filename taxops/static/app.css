@@ -228,6 +228,7 @@ thead.sticky tr th {
 }
 .risk-late   { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
 .risk-slow   { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.risk-contact { background: #ffedd5; color: #9a3412; border-color: #fdba74; }
 
 /* ── Scrollbar ────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }

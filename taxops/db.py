@@ -51,6 +51,8 @@ def init_db(conn: sqlite3.Connection) -> None:
           efile_date TEXT,
           ack_date TEXT,
           drake_status_raw TEXT,
+          contact_status TEXT,
+          last_contacted_date TEXT,
           created_at TEXT,
           updated_at TEXT,
           FOREIGN KEY (client_id) REFERENCES clients(id)
@@ -182,6 +184,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           id               INTEGER PRIMARY KEY,
           transmission_date TEXT NOT NULL,
           notes            TEXT,
+          transmitted_at   TEXT,
           status           TEXT NOT NULL DEFAULT 'open',
           created_at       TEXT NOT NULL
         );
@@ -196,6 +199,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           tax_year         INTEGER,
           receipt_number   TEXT,
           fee_paid         REAL,
+          cc_fee           REAL,
           pickup_date      TEXT,
           transmission_date TEXT,
           ack_status       TEXT NOT NULL DEFAULT 'pending',
@@ -271,6 +275,8 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "efile_date TEXT",
             "ack_date TEXT",
             "drake_status_raw TEXT",
+            "contact_status TEXT",
+            "last_contacted_date TEXT",
             "created_at TEXT",
             # intake form fields
             "filing_status TEXT",

@@ -156,6 +156,42 @@
     </div>
   </div>
 
+  {% if ret.client_status == 'REJECTED' %}
+  {% set cc_cur = ret.contact_status or 'not_contacted' %}
+  <!-- ── Client contact (rejected returns) ─────────────────────────────── -->
+  <div id="client-contact-card" class="rounded-xl border overflow-hidden
+       {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}border-red-300 bg-red-50/40{% else %}border-slate-200 bg-white{% endif %}">
+    <div class="section-header flex flex-wrap items-center justify-between gap-2
+         {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}bg-red-50 border-b border-red-200{% endif %}">
+      <span class="flex items-center gap-2">
+        Client contact
+        {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}
+        <span class="text-xs font-bold uppercase tracking-wide text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-full">Needs client contact</span>
+        {% endif %}
+      </span>
+      <a href="#notes-card" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold">Notes &rarr;</a>
+    </div>
+    <div class="p-4 flex flex-wrap items-end gap-4">
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-slate-500 font-medium">Contact status</span>
+        <select id="contact-status-sel" onchange="saveContactStatus({{ ret.id }})"
+                class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 min-w-[13rem] focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          {% for k, lab in contact_labels.items() %}
+          <option value="{{ k }}" {% if cc_cur == k %}selected{% endif %}>{{ lab }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-slate-500 font-medium">Last contacted</span>
+        <input type="date" id="contact-date-input" value="{{ ret.last_contacted_date[:10] if ret.last_contacted_date else '' }}"
+               onchange="saveContactDate({{ ret.id }})"
+               class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-400">
+      </label>
+      <p class="text-xs text-slate-500 max-w-md">Use <strong>Notes</strong> below for call details. Marking <em>Contacted</em> or <em>Follow-up needed</em> stamps today&apos;s date unless you pick another.</p>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- ── Two-column layout ──────────────────────────────────────────────── -->
   <div class="grid grid-cols-3 gap-4">
 
@@ -206,6 +242,8 @@
             <span class="text-[11px] font-bold px-2.5 py-1 rounded-full border
                          {% if flag == 'LATE INTAKE' %}
                          bg-amber-50 text-amber-700 border-amber-200
+                         {% elif flag == 'CLIENT CONTACT' %}
+                         bg-orange-50 text-orange-800 border-orange-200
                          {% else %}
                          bg-rose-50 text-rose-700 border-rose-200
                          {% endif %}">
@@ -355,7 +393,7 @@
     <div class="space-y-4">
 
       <!-- Notes -->
-      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div id="notes-card" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
         <div class="section-header">Notes</div>
         <div class="p-3 border-b border-slate-100">
           <textarea id="note-input" rows="2" placeholder="Add a note… (Ctrl+Enter to save)"
@@ -472,6 +510,43 @@ window.setStatus = async function(returnId, status, btn) {
 // Legacy alias used by old workflow bar buttons (now removed, kept for safety)
 async function setStatusDetail(returnId, status) {
   window.setStatus(returnId, status, null);
+}
+
+async function saveContactStatus(returnId) {
+  const sel = document.getElementById('contact-status-sel');
+  const dIn = document.getElementById('contact-date-input');
+  if (!sel) return;
+  const body = { contact_status: sel.value };
+  if (sel.value === 'not_contacted') body.last_contacted_date = null;
+  const resp = await fetch(`/api/return/${returnId}/contact`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  if (data.error) { alert(data.error); return; }
+  if (!data.success) return;
+  if (data.last_contacted_date && dIn) dIn.value = data.last_contacted_date.slice(0, 10);
+  if ((data.contact_status === 'not_contacted') && dIn) dIn.value = '';
+  window.location.reload();
+}
+
+async function saveContactDate(returnId) {
+  const sel = document.getElementById('contact-status-sel');
+  const dIn = document.getElementById('contact-date-input');
+  if (!dIn || !sel) return;
+  const resp = await fetch(`/api/return/${returnId}/contact`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contact_status: sel.value,
+      last_contacted_date: dIn.value || null,
+    }),
+  });
+  const data = await resp.json();
+  if (data.error) { alert(data.error); return; }
+  if (!data.success) return;
+  window.location.reload();
 }
 
 async function saveField(returnId, field, value) {

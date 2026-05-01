@@ -109,6 +109,15 @@ def _security_headers(response):
 
 STATUS_FLOW = ["PROCESSING", "HOLD", "FINALIZE", "PICKUP", "EFILE READY", "LOG OUT", "REJECTED"]
 
+# Rejected-return client contact tracking (stored on returns; privacy: no SSN fields)
+CONTACT_STATUS_VALUES = ("not_contacted", "contacted", "follow_up_needed", "resolved")
+CONTACT_LABELS = {
+    "not_contacted":    "Not contacted",
+    "contacted":        "Contacted",
+    "follow_up_needed": "Follow-up needed",
+    "resolved":         "Resolved (contact)",
+}
+
 STATUS_BADGE = {
     "PROCESSING":  "bg-sky-50 text-sky-700 border-sky-200",
     "HOLD":        "bg-orange-50 text-orange-700 border-orange-200",
@@ -173,6 +182,7 @@ SELECT
     r.is_amended, r.has_w7, r.is_extension,
     r.transfer_flag, r.transfer_2025_flag, r.transfer_2026_flag,
     r.efile_date, r.ack_date, r.drake_status_raw,
+    r.contact_status, r.last_contacted_date,
     r.created_at, r.updated_at,
     c.id   AS client_id,
     c.last_name, c.first_name, c.display_name,
@@ -229,6 +239,9 @@ def _enrich(r: dict) -> dict:
         r["risk_flags"].append("LATE INTAKE")
     if r["slow_cycle_flag"]:
         r["risk_flags"].append("SLOW CYCLE")
+    cs = r.get("contact_status") or ""
+    if r.get("client_status") == "REJECTED" and cs in ("", "not_contacted", "follow_up_needed"):
+        r["risk_flags"].append("CLIENT CONTACT")
     if privacy_mode_enabled():
         r = _mask_return_payload(r)
     return r
@@ -328,6 +341,28 @@ def query_returns(filters: dict | None = None) -> list[dict]:
                 clauses.append(f"r.{form_col} = 1")
             else:
                 clauses.append(f"rf.{form_col} = 1")
+
+    if f.get("reject_contact"):
+        st_raw = f.get("status")
+        st_list = st_raw if isinstance(st_raw, list) else ([st_raw] if st_raw else [])
+        if st_list and "REJECTED" not in st_list:
+            pass
+        else:
+            rc = (f["reject_contact"] or "").strip().lower()
+            clauses.append("r.client_status = 'REJECTED'")
+            if rc == "needs_followup":
+                clauses.append(
+                    "(r.contact_status IS NULL OR r.contact_status = '' OR "
+                    "r.contact_status IN ('not_contacted','follow_up_needed'))"
+                )
+            elif rc in CONTACT_STATUS_VALUES:
+                if rc == "not_contacted":
+                    clauses.append(
+                        "(r.contact_status IS NULL OR r.contact_status = '' OR r.contact_status = 'not_contacted')"
+                    )
+                else:
+                    clauses.append("r.contact_status = ?")
+                    params.append(rc)
 
     if f.get("q"):
         q = f["q"].strip()
@@ -584,6 +619,7 @@ def dashboard():
         "late_intake": request.args.get("late_intake"),
         "slow_cycle":  request.args.get("slow_cycle"),
         "form":        request.args.get("form"),
+        "reject_contact": request.args.get("reject_contact"),
         "q":           request.args.get("q"),
     }
     returns = query_returns(filters)
@@ -623,6 +659,7 @@ def return_detail(return_id: int):
         "notes":         notes_payload,
         "events":        [dict(e) for e in events],
         "missing_docs":  [dict(d) for d in missing_docs],
+        "contact_labels": CONTACT_LABELS,
     })
     return render_template("return_detail.html", **ctx)
 
@@ -1439,6 +1476,7 @@ def export_excel():
         "late_intake": request.args.get("late_intake"),
         "slow_cycle":  request.args.get("slow_cycle"),
         "form":        request.args.get("form"),
+        "reject_contact": request.args.get("reject_contact"),
         "q":           request.args.get("q"),
     }
     rows = query_returns(filters)
@@ -2097,6 +2135,17 @@ def api_status(return_id: int):
             (return_id, old_status, new_status, timestamp),
         )
 
+    if new_status == "REJECTED":
+        conn.execute(
+            "UPDATE returns SET contact_status='not_contacted', last_contacted_date=NULL, updated_at=? WHERE id=?",
+            (timestamp, return_id),
+        )
+    elif old_status == "REJECTED" and new_status != "REJECTED":
+        conn.execute(
+            "UPDATE returns SET contact_status=NULL, last_contacted_date=NULL, updated_at=? WHERE id=?",
+            (timestamp, return_id),
+        )
+
     conn.commit()
     conn.close()
     return jsonify({
@@ -2201,6 +2250,45 @@ def api_note(return_id: int):
     conn.close()
     visible_text = _mask_value(text) if privacy_mode_enabled() else text
     return jsonify({"success": True, "text": visible_text, "created_at": ts})
+
+
+@app.post("/api/return/<int:return_id>/contact")
+@login_required
+def api_return_contact(return_id: int):
+    """Update client-contact follow-up fields for REJECTED returns."""
+    data  = request.get_json(force=True) or {}
+    cs_in = (data.get("contact_status") or "").strip().lower()
+    if cs_in not in CONTACT_STATUS_VALUES:
+        return jsonify({"error": "Invalid contact_status"}), 400
+    lcd_raw = (data.get("last_contacted_date") or "").strip() or None
+
+    conn = get_connection()
+    row  = conn.execute("SELECT client_status FROM returns WHERE id=?", (return_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+    if row["client_status"] != "REJECTED":
+        conn.close()
+        return jsonify({"error": "Contact tracking is only for REJECTED returns"}), 400
+
+    today_iso = date.today().isoformat()
+    if cs_in == "not_contacted":
+        lcd_val = None
+    else:
+        lcd_val = lcd_raw if lcd_raw else today_iso
+
+    ts = now()
+    conn.execute(
+        "UPDATE returns SET contact_status=?, last_contacted_date=?, updated_at=? WHERE id=?",
+        (cs_in, lcd_val, ts, return_id),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({
+        "success": True,
+        "contact_status": cs_in,
+        "last_contacted_date": lcd_val,
+    })
 
 
 # ── Missing documents tracker ────────────────────────────────────────────────
@@ -2556,16 +2644,15 @@ def efile_batch_create():
 
             conn.execute(
                 """INSERT OR IGNORE INTO efile_batch_items
-                   (batch_id, return_id, log_number, client_name, ssn_last4,
+                   (batch_id, return_id, log_number, client_name,
                     tax_year, receipt_number, fee_paid, cc_fee, pickup_date,
                     transmission_date, ack_status, created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     batch_id,
                     rid,
                     r.get("log_number") or None,
                     client_name or None,
-                    r.get("ssn_last4") or None,
                     r.get("tax_year") or None,
                     r.get("receipt_number") or None,
                     r.get("fee_paid") or None,
@@ -2652,7 +2739,7 @@ def efile_batch_list():
     """List all e-file batches."""
     conn = get_connection()
     batches = [dict(b) for b in conn.execute(
-        "SELECT b.id, b.transmission_date, b.status, b.notes, b.created_at, "
+        "SELECT b.id, b.transmission_date, b.transmitted_at, b.status, b.notes, b.created_at, "
         "COUNT(i.id) AS item_count, "
         "SUM(CASE WHEN i.ack_status='accepted' THEN 1 ELSE 0 END) AS accepted_count, "
         "SUM(CASE WHEN i.ack_status='rejected' THEN 1 ELSE 0 END) AS rejected_count "
@@ -2753,6 +2840,7 @@ def efile_batch_item_ack(batch_id: int, item_id: int):
             if not is_locked_status(current_status):
                 conn.execute(
                     "UPDATE returns SET client_status='REJECTED', "
+                    "contact_status='not_contacted', last_contacted_date=NULL, "
                     "ack_date=COALESCE(ack_date,?), "
                     "updated_at=? WHERE id=?",
                     (ack_date_val, now(), return_id),
@@ -2761,19 +2849,36 @@ def efile_batch_item_ack(batch_id: int, item_id: int):
         elif ack_status == "pending":
             # Revert return to EFILE READY if it was moved to LOG OUT or REJECTED by this batch
             if current_status in ("LOG OUT", "REJECTED") and not is_locked_status(current_status):
+                if current_status == "REJECTED":
+                    conn.execute(
+                        "UPDATE returns SET client_status='EFILE READY', "
+                        "contact_status=NULL, last_contacted_date=NULL, ack_date=NULL, "
+                        "updated_at=? WHERE id=?",
+                        (now(), return_id),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE returns SET client_status='EFILE READY', updated_at=? WHERE id=?",
+                        (now(), return_id),
+                    )
+            # Clear stale ack_date on the return regardless of whether status reverted
+            # Only safe when return is in a state this batch would have set it
+            if current_status in ("LOG OUT", "REJECTED"):
                 conn.execute(
-                    "UPDATE returns SET client_status='EFILE READY', updated_at=? WHERE id=?",
-                    (now(), return_id),
+                    "UPDATE returns SET ack_date=NULL WHERE id=? "
+                    "AND client_status IN ('EFILE READY','REJECTED','LOG OUT')",
+                    (return_id,)
                 )
 
-    # Auto-close batch if all items are resolved
+    # Auto-close batch if all items are resolved — never overwrite 'transmitted'
     unresolved = conn.execute(
         "SELECT COUNT(*) FROM efile_batch_items WHERE batch_id=? AND ack_status='pending'",
         (batch_id,),
     ).fetchone()[0]
     if unresolved == 0:
         conn.execute(
-            "UPDATE efile_batches SET status='closed' WHERE id=?", (batch_id,)
+            "UPDATE efile_batches SET status='closed' WHERE id=? AND status NOT IN ('transmitted','closed')",
+            (batch_id,)
         )
 
     conn.commit()
