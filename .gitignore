@@ -24,6 +24,9 @@ taxops/data/incoming/*.csv
 .DS_Store
 Thumbs.db
 
+# Pytest log output (see taxops/write_test_log.py)
+taxops/test_logs/
+
 # Editor
 .vscode/
 *.swp

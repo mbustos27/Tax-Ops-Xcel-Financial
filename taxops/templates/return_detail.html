@@ -48,6 +48,18 @@
       </div>
     </div>
 
+    <!-- Pickup workflow shortcut -->
+    {% if ret.client_status in ('PICKUP', 'EFILE READY') %}
+    <a href="/pickup/{{ ret.id }}"
+       class="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg px-3 py-2 transition-all">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+      </svg>
+      Pickup Workflow
+    </a>
+    {% endif %}
+
     <!-- Print sticker button -->
     <button onclick="printSticker()"
             class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
@@ -203,6 +215,69 @@
           </div>
         </div>
         {% endif %}
+      </div>
+
+      <!-- Missing Documents -->
+      {% set open_docs   = missing_docs | selectattr('is_resolved', 'equalto', 0) | list %}
+      {% set closed_docs = missing_docs | selectattr('is_resolved', 'equalto', 1) | list %}
+      <div id="missing-docs-card"
+           class="bg-white rounded-xl border overflow-hidden
+                  {% if open_docs %}border-orange-300{% else %}border-slate-200{% endif %}">
+        <div class="section-header flex items-center justify-between
+                    {% if open_docs %}bg-orange-50 border-b border-orange-200{% endif %}">
+          <span class="flex items-center gap-2">
+            Missing Documents
+            {% if open_docs %}
+            <span class="text-xs font-bold bg-orange-500 text-white px-2 py-0.5 rounded-full">
+              {{ open_docs | length }} open
+            </span>
+            {% elif missing_docs %}
+            <span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
+              All resolved &#10003;
+            </span>
+            {% endif %}
+          </span>
+          {% if ret.client_status == 'HOLD' and not open_docs and missing_docs %}
+          <span class="text-xs text-slate-400 font-normal">All docs in — clear HOLD when ready</span>
+          {% endif %}
+        </div>
+
+        <!-- Add new item -->
+        <div class="p-3 border-b border-slate-100 flex gap-2">
+          <input id="missing-doc-input" type="text" placeholder="e.g. W-2, Prior year return, SSN card…"
+                 class="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                 onkeydown="if(event.key==='Enter') addMissingDoc({{ ret.id }})">
+          <button onclick="addMissingDoc({{ ret.id }})"
+                  class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white transition-colors">
+            + Add
+          </button>
+        </div>
+
+        <!-- Items list -->
+        <div id="missing-docs-list" class="divide-y divide-slate-100 max-h-52 overflow-y-auto">
+          {% for doc in missing_docs %}
+          <div id="mdoc-{{ doc.id }}"
+               class="flex items-center gap-3 px-4 py-2.5 {% if doc.is_resolved %}opacity-50{% endif %}">
+            <button onclick="toggleMissingDoc({{ ret.id }}, {{ doc.id }}, this)"
+                    title="{% if doc.is_resolved %}Mark open{% else %}Mark resolved{% endif %}"
+                    class="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 transition-colors
+                           {% if doc.is_resolved %}bg-green-100 border-green-400 text-green-600{% else %}border-slate-300 hover:border-orange-400{% endif %}">
+              {% if doc.is_resolved %}<span class="text-xs font-bold">&#10003;</span>{% endif %}
+            </button>
+            <span class="flex-1 text-sm {% if doc.is_resolved %}line-through text-slate-400{% else %}text-slate-800{% endif %}">
+              {{ doc.item_text }}
+            </span>
+            <button onclick="deleteMissingDoc({{ ret.id }}, {{ doc.id }})"
+                    class="text-slate-300 hover:text-red-400 transition-colors text-xs" title="Remove">
+              &#10005;
+            </button>
+          </div>
+          {% else %}
+          <div id="missing-docs-empty" class="px-4 py-5 text-center text-sm text-slate-400">
+            No missing documents tracked
+          </div>
+          {% endfor %}
+        </div>
       </div>
 
       <!-- Forms -->
@@ -405,6 +480,94 @@ async function saveField(returnId, field, value) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ field, value }),
   });
+}
+
+// ── Missing documents tracker ─────────────────────────────────────────────
+async function addMissingDoc(returnId) {
+  const input = document.getElementById('missing-doc-input');
+  const text  = (input.value || '').trim();
+  if (!text) return;
+  input.disabled = true;
+  try {
+    const resp = await fetch(`/api/return/${returnId}/missing-doc`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ text }),
+    });
+    const data = await resp.json();
+    if (!data.success) { input.disabled = false; return; }
+    input.value    = '';
+    input.disabled = false;
+    // Remove empty placeholder
+    document.getElementById('missing-docs-empty')?.remove();
+    // Append new row
+    const list = document.getElementById('missing-docs-list');
+    const div  = document.createElement('div');
+    div.id = `mdoc-${data.id}`;
+    div.className = 'flex items-center gap-3 px-4 py-2.5';
+    div.innerHTML = `
+      <button onclick="toggleMissingDoc(${returnId}, ${data.id}, this)" title="Mark resolved"
+              class="w-5 h-5 rounded border border-slate-300 hover:border-orange-400 flex items-center justify-center flex-shrink-0 transition-colors">
+      </button>
+      <span class="flex-1 text-sm text-slate-800">${data.text}</span>
+      <button onclick="deleteMissingDoc(${returnId}, ${data.id})"
+              class="text-slate-300 hover:text-red-400 transition-colors text-xs" title="Remove">&#10005;</button>`;
+    list.appendChild(div);
+    refreshDocsBadge(returnId);
+  } catch(e) { input.disabled = false; }
+}
+
+async function toggleMissingDoc(returnId, docId, btn) {
+  const resp = await fetch(`/api/return/${returnId}/missing-doc/${docId}/toggle`, { method: 'POST' });
+  const data = await resp.json();
+  if (!data.success) return;
+  const row  = document.getElementById(`mdoc-${docId}`);
+  const span = row.querySelector('span.flex-1');
+  if (data.is_resolved) {
+    btn.classList.replace('border-slate-300','border-green-400');
+    btn.classList.add('bg-green-100','text-green-600');
+    btn.innerHTML = '<span class="text-xs font-bold">&#10003;</span>';
+    btn.title = 'Mark open';
+    span.classList.add('line-through','text-slate-400');
+    span.classList.remove('text-slate-800');
+    row.classList.add('opacity-50');
+  } else {
+    btn.classList.replace('border-green-400','border-slate-300');
+    btn.classList.remove('bg-green-100','text-green-600');
+    btn.innerHTML = '';
+    btn.title = 'Mark resolved';
+    span.classList.remove('line-through','text-slate-400');
+    span.classList.add('text-slate-800');
+    row.classList.remove('opacity-50');
+  }
+  refreshDocsBadge(returnId);
+}
+
+async function deleteMissingDoc(returnId, docId) {
+  await fetch(`/api/return/${returnId}/missing-doc/${docId}`, { method: 'DELETE' });
+  document.getElementById(`mdoc-${docId}`)?.remove();
+  if (!document.querySelector('#missing-docs-list [id^="mdoc-"]')) {
+    const list = document.getElementById('missing-docs-list');
+    list.innerHTML = '<div id="missing-docs-empty" class="px-4 py-5 text-center text-sm text-slate-400">No missing documents tracked</div>';
+  }
+  refreshDocsBadge(returnId);
+}
+
+function refreshDocsBadge(returnId) {
+  const rows   = document.querySelectorAll('#missing-docs-list [id^="mdoc-"]');
+  const open   = [...rows].filter(r => !r.classList.contains('opacity-50')).length;
+  const card   = document.getElementById('missing-docs-card');
+  const header = card?.querySelector('.section-header');
+  // Update border color
+  if (card) {
+    card.classList.toggle('border-orange-300', open > 0);
+    card.classList.toggle('border-slate-200',  open === 0);
+  }
+  if (header) {
+    header.classList.toggle('bg-orange-50',         open > 0);
+    header.classList.toggle('border-b',             open > 0);
+    header.classList.toggle('border-orange-200',    open > 0);
+  }
 }
 
 async function quickToggle(returnId, field, btn) {

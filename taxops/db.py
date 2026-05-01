@@ -95,6 +95,16 @@ def init_db(conn: sqlite3.Connection) -> None:
           FOREIGN KEY (return_id) REFERENCES returns(id)
         );
 
+        CREATE TABLE IF NOT EXISTS missing_docs (
+          id          INTEGER PRIMARY KEY,
+          return_id   INTEGER NOT NULL,
+          item_text   TEXT    NOT NULL,
+          is_resolved INTEGER DEFAULT 0,
+          created_at  TEXT,
+          resolved_at TEXT,
+          FOREIGN KEY (return_id) REFERENCES returns(id)
+        );
+
         CREATE TABLE IF NOT EXISTS status_events (
           id INTEGER PRIMARY KEY,
           return_id INTEGER NOT NULL,
@@ -137,6 +147,8 @@ def init_db(conn: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS review_queue (
           id          INTEGER PRIMARY KEY,
+          batch_id    INTEGER,
+          row_number  INTEGER,
           status      TEXT    DEFAULT 'pending',
           csv_last    TEXT,
           csv_first   TEXT,
@@ -165,6 +177,37 @@ def init_db(conn: sqlite3.Connection) -> None:
           created_at TEXT,
           FOREIGN KEY (return_id) REFERENCES returns(id)
         );
+
+        CREATE TABLE IF NOT EXISTS efile_batches (
+          id               INTEGER PRIMARY KEY,
+          transmission_date TEXT NOT NULL,
+          notes            TEXT,
+          status           TEXT NOT NULL DEFAULT 'open',
+          created_at       TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS efile_batch_items (
+          id               INTEGER PRIMARY KEY,
+          batch_id         INTEGER NOT NULL,
+          return_id        INTEGER NOT NULL,
+          log_number       TEXT,
+          client_name      TEXT,
+          ssn_last4        TEXT,
+          tax_year         INTEGER,
+          receipt_number   TEXT,
+          fee_paid         REAL,
+          pickup_date      TEXT,
+          transmission_date TEXT,
+          ack_status       TEXT NOT NULL DEFAULT 'pending',
+          ack_date         TEXT,
+          rejection_code   TEXT,
+          rejection_reason TEXT,
+          needs_calculation INTEGER NOT NULL DEFAULT 0,
+          created_at       TEXT NOT NULL,
+          FOREIGN KEY (batch_id)  REFERENCES efile_batches(id),
+          FOREIGN KEY (return_id) REFERENCES returns(id),
+          UNIQUE (batch_id, return_id)
+        );
         """
     )
     _migrate_existing_tables(conn)
@@ -174,8 +217,10 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_returns_client_year ON returns(client_id, tax_year);
         CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(last_name, first_name);
         CREATE INDEX IF NOT EXISTS idx_status_events_return ON status_events(return_id);
-        CREATE INDEX IF NOT EXISTS idx_import_rows_batch ON import_rows(batch_id);
-        CREATE INDEX IF NOT EXISTS idx_dependents_return ON dependents(return_id);
+        CREATE INDEX IF NOT EXISTS idx_import_rows_batch   ON import_rows(batch_id);
+        CREATE INDEX IF NOT EXISTS idx_dependents_return   ON dependents(return_id);
+        CREATE INDEX IF NOT EXISTS idx_efile_items_batch   ON efile_batch_items(batch_id);
+        CREATE INDEX IF NOT EXISTS idx_efile_items_return  ON efile_batch_items(return_id);
         """
     )
     conn.commit()
@@ -246,9 +291,13 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "estimate_state REAL",
             "final_irs REAL",
             "final_state REAL",
+            # pickup workflow
+            "signatures_given INTEGER DEFAULT 0",
+            "signatures_received INTEGER DEFAULT 0",
         ],
         "payments": [
             "refund_amount REAL",
+            "balance_due REAL",
             "bank_deposit REAL",
             # intake fee breakdown
             "accounting_fee REAL",
@@ -260,8 +309,12 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "special_discount REAL",
             "down_payment REAL",
             "receipt2_number TEXT",
+            # pickup workflow
+            "payment_method TEXT",
         ],
         "review_queue": [
+            "batch_id INTEGER",
+            "row_number INTEGER",
             "status TEXT DEFAULT 'pending'",
             "csv_last TEXT",
             "csv_first TEXT",
@@ -275,6 +328,14 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "reason TEXT",
             "created_at TEXT",
             "resolved_at TEXT",
+        ],
+        "efile_batches": [
+            "transmitted_at TEXT",
+            "notes TEXT",
+        ],
+        "efile_batch_items": [
+            "needs_calculation INTEGER NOT NULL DEFAULT 0",
+            "cc_fee REAL",
         ],
         "import_batches": [
             "row_count INTEGER DEFAULT 0",
@@ -295,7 +356,11 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         for col_def in columns:
             col_name = col_def.split(" ", 1)[0]
             if col_name not in existing:
-                conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {col_def}")
+                try:
+                    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {col_def}")
+                except sqlite3.OperationalError as exc:
+                    if "duplicate column" not in str(exc).lower():
+                        raise
 
 
 def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:

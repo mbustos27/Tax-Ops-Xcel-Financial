@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}Import Audit{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-6">
+
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-800">Import Audit</h1>
+      <p class="text-sm text-gray-500 mt-1">Diagnose unmatched, orphaned, and inconsistent records from all imports.</p>
+    </div>
+  </div>
+
+  {# ── Summary cards ── #}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+      <div class="text-3xl font-bold text-gray-800">{{ batches|length }}</div>
+      <div class="text-xs text-gray-500 mt-1">Import Batches</div>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+      <div class="text-3xl font-bold {{ 'text-red-600' if parse_errors else 'text-green-600' }}">{{ parse_errors|length }}</div>
+      <div class="text-xs text-gray-500 mt-1">Parse Errors</div>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+      <div class="text-3xl font-bold {{ 'text-amber-600' if close_matches else 'text-green-600' }}">{{ close_matches|length }}</div>
+      <div class="text-xs text-gray-500 mt-1">Close / Unmatched Returns</div>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+      <div class="text-3xl font-bold text-gray-400">{{ unmatched|length }}</div>
+      <div class="text-xs text-gray-500 mt-1">Drake-Only (No Log)</div>
+    </div>
+  </div>
+
+  {# ── Tab nav ── #}
+  <div class="flex gap-2 border-b border-gray-200 mb-6" id="tab-nav">
+    <button onclick="showTab('batches')"  class="tab-btn active" data-tab="batches">Batches</button>
+    <button onclick="showTab('errors')"   class="tab-btn" data-tab="errors">
+      Parse Errors
+      {% if parse_errors %}<span class="ml-1 px-1.5 py-0.5 text-xs bg-red-100 text-red-700 rounded-full">{{ parse_errors|length }}</span>{% endif %}
+    </button>
+    <button onclick="showTab('review')"   class="tab-btn" data-tab="review">
+      Ambiguous
+      {% if review_items %}<span class="ml-1 px-1.5 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full">{{ review_items|length }}</span>{% endif %}
+    </button>
+    <button onclick="showTab('close')"    class="tab-btn" data-tab="close">
+      Close Matches
+      {% if close_matches %}<span class="ml-1 px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded-full">{{ close_matches|length }}</span>{% endif %}
+    </button>
+    <button onclick="showTab('unmatched')" class="tab-btn" data-tab="unmatched">
+      Drake-Only
+      <span class="ml-1 px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600 rounded-full">{{ unmatched|length }}</span>
+    </button>
+  </div>
+
+  {# ── Batches tab ── #}
+  <div id="tab-batches" class="tab-panel">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-600 uppercase text-xs">
+        <tr>
+          <th class="px-3 py-2 text-left">File</th>
+          <th class="px-3 py-2 text-left">Imported At</th>
+          <th class="px-3 py-2 text-right">Rows</th>
+          <th class="px-3 py-2 text-right">Created</th>
+          <th class="px-3 py-2 text-right">Updated</th>
+          <th class="px-3 py-2 text-right">Errors</th>
+          <th class="px-3 py-2 text-right">Review</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for b in batches %}
+        <tr class="hover:bg-gray-50">
+          <td class="px-3 py-2 font-medium text-gray-800">{{ b.filename }}</td>
+          <td class="px-3 py-2 text-gray-500">{{ b.imported_at[:16] if b.imported_at else '—' }}</td>
+          <td class="px-3 py-2 text-right text-gray-600">{{ b.row_count or 0 }}</td>
+          <td class="px-3 py-2 text-right text-green-700">{{ b.created_clients or 0 }}c / {{ b.created_returns or 0 }}r</td>
+          <td class="px-3 py-2 text-right text-blue-700">{{ b.updated_clients or 0 }}c / {{ b.updated_returns or 0 }}r</td>
+          <td class="px-3 py-2 text-right {{ 'text-red-600 font-semibold' if b.error_count else 'text-gray-400' }}">{{ b.error_count or 0 }}</td>
+          <td class="px-3 py-2 text-right {{ 'text-amber-600 font-semibold' if b.review_count else 'text-gray-400' }}">{{ b.review_count or 0 }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="px-3 py-4 text-center text-gray-400">No import batches found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# ── Parse errors tab ── #}
+  <div id="tab-errors" class="tab-panel hidden">
+    {% if not parse_errors %}
+    <div class="text-center py-12 text-green-600 font-medium">No parse errors — all rows processed cleanly.</div>
+    {% else %}
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-600 uppercase text-xs">
+        <tr>
+          <th class="px-3 py-2 text-left">File</th>
+          <th class="px-3 py-2 text-right">Row</th>
+          <th class="px-3 py-2 text-left">Name</th>
+          <th class="px-3 py-2 text-left">Error</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for e in parse_errors %}
+        <tr class="hover:bg-red-50">
+          <td class="px-3 py-2 text-gray-500 text-xs">{{ e.filename }}</td>
+          <td class="px-3 py-2 text-right text-gray-500">{{ e.row_number }}</td>
+          <td class="px-3 py-2 font-medium text-gray-800">{{ e.name }}</td>
+          <td class="px-3 py-2 text-red-600">{{ e.error }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+
+  {# ── Ambiguous / review queue tab ── #}
+  <div id="tab-review" class="tab-panel hidden">
+    {% if not review_items %}
+    <div class="text-center py-12 text-green-600 font-medium">No ambiguous matches pending review.</div>
+    {% else %}
+    <p class="text-sm text-gray-500 mb-3">These rows had multiple potential client matches. Open the return to manually confirm the correct client.</p>
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-600 uppercase text-xs">
+        <tr>
+          <th class="px-3 py-2 text-left">File</th>
+          <th class="px-3 py-2 text-right">Row</th>
+          <th class="px-3 py-2 text-left">Name</th>
+          <th class="px-3 py-2 text-left">Reason</th>
+          <th class="px-3 py-2 text-left">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for item in review_items %}
+        <tr class="hover:bg-amber-50">
+          <td class="px-3 py-2 text-gray-500 text-xs">{{ item.filename or '—' }}</td>
+          <td class="px-3 py-2 text-right text-gray-500">{{ item.row_number }}</td>
+          <td class="px-3 py-2 font-medium text-gray-800">{{ item.csv_last }}, {{ item.csv_first }}</td>
+          <td class="px-3 py-2 text-amber-700">{{ item.reason }}</td>
+          <td class="px-3 py-2">
+            <span class="px-2 py-0.5 text-xs rounded-full {{ 'bg-amber-100 text-amber-700' if item.status == 'pending' else 'bg-green-100 text-green-700' }}">{{ item.status }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+
+  {# ── Close matches tab ── #}
+  <div id="tab-close" class="tab-panel hidden">
+    {% if not close_matches %}
+    <div class="text-center py-12 text-green-600 font-medium">No close-match orphans found.</div>
+    {% else %}
+    <p class="text-sm text-gray-500 mb-3">
+      These Drake-sourced returns have no log number but score ≥ {{ review_threshold }}% similarity to a logged client.
+      High-confidence matches (≥ {{ accept_threshold }}%) can be merged directly.
+    </p>
+    <div class="mb-3">
+      <input id="close-filter" type="text" placeholder="Filter by name..."
+        class="w-72 px-3 py-1.5 text-sm border border-gray-300 rounded-lg"
+        oninput="filterTable('close-tbody', this.value)">
+    </div>
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-600 uppercase text-xs">
+        <tr>
+          <th class="px-3 py-2 text-left">Orphan (no log)</th>
+          <th class="px-3 py-2 text-left">Closest Logged Match</th>
+          <th class="px-3 py-2 text-right">Log #</th>
+          <th class="px-3 py-2 text-right">Score</th>
+          <th class="px-3 py-2 text-left">Status</th>
+          <th class="px-3 py-2 text-left">Year</th>
+          <th class="px-3 py-2 text-center">Action</th>
+        </tr>
+      </thead>
+      <tbody id="close-tbody" class="divide-y divide-gray-100">
+        {% for m in close_matches %}
+        <tr class="hover:bg-blue-50" id="close-row-{{ m.cid }}">
+          <td class="px-3 py-2 font-medium text-gray-800">
+            <a href="/return/{{ m.rid }}" class="hover:underline text-blue-700">{{ m.name }}</a>
+          </td>
+          <td class="px-3 py-2 text-gray-600">{{ m.match_name }}</td>
+          <td class="px-3 py-2 text-right text-gray-600">{{ m.match_log or '—' }}</td>
+          <td class="px-3 py-2 text-right">
+            <span class="px-1.5 py-0.5 text-xs rounded-full font-medium
+              {{ 'bg-green-100 text-green-700' if m.match_score >= accept_threshold else 'bg-amber-100 text-amber-700' }}">
+              {{ m.match_score | round(0) | int }}%
+            </span>
+          </td>
+          <td class="px-3 py-2 text-gray-600 text-xs">{{ m.status }}</td>
+          <td class="px-3 py-2 text-gray-600">{{ m.year }}</td>
+          <td class="px-3 py-2 text-center">
+            {% if m.match_score >= accept_threshold %}
+            <button onclick="mergeClient({{ m.cid }}, {{ m.match_cid }}, this)"
+              class="px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+              Merge →
+            </button>
+            {% else %}
+            <a href="/return/{{ m.rid }}" class="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Review</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+
+  {# ── Unmatched / Drake-only tab ── #}
+  <div id="tab-unmatched" class="tab-panel hidden">
+    <p class="text-sm text-gray-500 mb-3">
+      These {{ unmatched|length }} records came from Drake exports but have no matching entry in the manual log.
+      They are legitimate Drake-only clients (not in the office intake log) or clients whose names differ too much to auto-match.
+    </p>
+    <div class="mb-3">
+      <input id="unmatched-filter" type="text" placeholder="Filter by name or status..."
+        class="w-72 px-3 py-1.5 text-sm border border-gray-300 rounded-lg"
+        oninput="filterTable('unmatched-tbody', this.value)">
+    </div>
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 text-gray-600 uppercase text-xs">
+        <tr>
+          <th class="px-3 py-2 text-left">Name</th>
+          <th class="px-3 py-2 text-left">Status</th>
+          <th class="px-3 py-2 text-left">Year</th>
+          <th class="px-3 py-2 text-left">Intake Date</th>
+          <th class="px-3 py-2 text-center">Detail</th>
+        </tr>
+      </thead>
+      <tbody id="unmatched-tbody" class="divide-y divide-gray-100">
+        {% for u in unmatched %}
+        <tr class="hover:bg-gray-50">
+          <td class="px-3 py-2 font-medium text-gray-700">{{ u.name }}</td>
+          <td class="px-3 py-2 text-xs text-gray-500">{{ u.status or '—' }}</td>
+          <td class="px-3 py-2 text-gray-600">{{ u.year }}</td>
+          <td class="px-3 py-2 text-gray-500 text-xs">{{ u.intake or '—' }}</td>
+          <td class="px-3 py-2 text-center">
+            <a href="/return/{{ u.rid }}" class="text-xs text-blue-600 hover:underline">View →</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<style>
+.tab-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6b7280;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  white-space: nowrap;
+}
+.tab-btn:hover { color: #374151; }
+.tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+</style>
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.remove('hidden');
+  document.querySelector(`[data-tab="${name}"]`).classList.add('active');
+}
+
+function filterTable(tbodyId, query) {
+  const q = query.toLowerCase();
+  document.querySelectorAll('#' + tbodyId + ' tr').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+async function mergeClient(discardId, keepId, btn) {
+  if (!confirm(`Merge client #${discardId} into #${keepId}? This cannot be undone.`)) return;
+  btn.disabled = true;
+  btn.textContent = 'Merging…';
+  const res = await fetch('/api/audit/merge-client', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({discard_id: discardId, keep_id: keepId})
+  });
+  const data = await res.json();
+  if (data.success) {
+    const row = document.getElementById('close-row-' + discardId);
+    if (row) {
+      row.style.opacity = '0.4';
+      row.querySelectorAll('td').forEach(td => td.style.textDecoration = 'line-through');
+      btn.textContent = 'Merged';
+      btn.className = 'px-3 py-1 text-xs bg-gray-300 text-gray-600 rounded-lg cursor-default';
+    }
+  } else {
+    btn.textContent = 'Error';
+    btn.className = 'px-3 py-1 text-xs bg-red-200 text-red-700 rounded-lg';
+    alert('Merge failed: ' + (data.error || 'unknown error'));
+  }
+}
+</script>
+{% endblock %}
