@@ -37,6 +37,9 @@ from utils import now
 
 app = Flask(__name__)
 
+from ai_routes import ai as ai_blueprint
+app.register_blueprint(ai_blueprint)
+
 app.jinja_env.globals["preparer_list_label"] = preparer_list_label
 
 # Secret key for signing session cookies.

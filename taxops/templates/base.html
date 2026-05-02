@@ -71,6 +71,10 @@
           {% endif %}
         </a>
 
+        <a href="/ai/chat" class="nav-link {% if request.path.startswith('/ai/') %}active{% endif %}">
+          AI Assistant
+        </a>
+
         <!-- Tools dropdown -->
         {% set tools_active = active_page in ('upload','source_compare','import_audit','merge','efile_batch') %}
         <div class="relative" id="tools-menu-wrap">

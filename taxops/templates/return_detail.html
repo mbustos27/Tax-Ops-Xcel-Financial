@@ -190,6 +190,47 @@
       <p class="text-xs text-slate-500 max-w-md">Use <strong>Notes</strong> below for call details. Marking <em>Contacted</em> or <em>Follow-up needed</em> stamps today&apos;s date unless you pick another.</p>
     </div>
   </div>
+
+  <!-- ── AI draft email (rejected returns only) ────────────────────────── -->
+  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="section-header">Draft follow-up email</div>
+    <div class="p-4 flex flex-col gap-3">
+      <div class="flex items-center gap-3">
+        <button id="draft-email-btn"
+                onclick="draftEmail({{ ret.id }})"
+                class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          </svg>
+          Draft follow-up email
+        </button>
+        <span id="draft-email-error" class="hidden text-xs text-red-600 font-medium"></span>
+      </div>
+      <div id="draft-email-warning"
+           class="hidden flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 font-medium">
+        <svg class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
+        This draft is for review only — nothing is sent automatically.
+        Edit it below, then copy and send it yourself through your email client.
+      </div>
+      <textarea id="draft-email-textarea"
+                rows="10"
+                class="hidden w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y"
+                placeholder="Draft will appear here…"></textarea>
+      <button id="draft-email-copy-btn"
+              onclick="copyDraft()"
+              class="hidden shrink-0 self-start flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+        Copy to clipboard
+      </button>
+    </div>
+  </div>
   {% endif %}
 
   <!-- ── Two-column layout ──────────────────────────────────────────────── -->
@@ -690,6 +731,59 @@ function printSticker() {
   const win = window.open('', '_blank', 'width=320,height=200');
   win.document.write(`<html><body onload="window.print();window.close()">${content}</body></html>`);
   win.document.close();
+}
+
+async function draftEmail(returnId) {
+  const btn      = document.getElementById('draft-email-btn');
+  const textarea = document.getElementById('draft-email-textarea');
+  const errSpan  = document.getElementById('draft-email-error');
+  const warning  = document.getElementById('draft-email-warning');
+  const copyBtn  = document.getElementById('draft-email-copy-btn');
+
+  btn.disabled    = true;
+  btn.textContent = 'Drafting…';
+  errSpan.classList.add('hidden');
+  errSpan.textContent = '';
+
+  try {
+    const resp = await fetch(`/ai/return/${returnId}/draft-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await resp.json();
+
+    if (data.draft) {
+      textarea.value = data.draft;
+      textarea.classList.remove('hidden');
+      warning.classList.remove('hidden');
+      copyBtn.classList.remove('hidden');
+    } else {
+      errSpan.textContent = data.error || 'Failed to generate draft.';
+      errSpan.classList.remove('hidden');
+    }
+  } catch (e) {
+    errSpan.textContent = 'Could not reach server. Is Ollama running?';
+    errSpan.classList.remove('hidden');
+  } finally {
+    btn.disabled  = false;
+    btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg> Regenerate draft';
+  }
+}
+
+async function copyDraft() {
+  const textarea = document.getElementById('draft-email-textarea');
+  const copyBtn  = document.getElementById('draft-email-copy-btn');
+  if (!textarea || !textarea.value) return;
+  try {
+    await navigator.clipboard.writeText(textarea.value);
+    const orig = copyBtn.innerHTML;
+    copyBtn.textContent = '✓ Copied';
+    copyBtn.classList.add('text-green-700', 'border-green-300');
+    setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.classList.remove('text-green-700','border-green-300'); }, 2000);
+  } catch (e) {
+    textarea.select();
+    document.execCommand('copy');
+  }
 }
 </script>
 {% endblock %}
