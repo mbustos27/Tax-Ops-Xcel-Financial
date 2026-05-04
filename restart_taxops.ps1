@@ -20,7 +20,8 @@ if ($listening) {
 
 # Start Flask
 Write-Host "  Starting TaxOps..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$appDir'; python app.py"
+$env:OLLAMA_BASE_URL = "http://192.168.1.141:11434"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$appDir'; `$env:OLLAMA_BASE_URL='http://192.168.1.141:11434'; python app.py"
 
 # Wait and confirm
 Start-Sleep -Seconds 3

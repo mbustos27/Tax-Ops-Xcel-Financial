@@ -212,6 +212,21 @@ def init_db(conn: sqlite3.Connection) -> None:
           FOREIGN KEY (return_id) REFERENCES returns(id),
           UNIQUE (batch_id, return_id)
         );
+
+        CREATE TABLE IF NOT EXISTS return_documents (
+          id                INTEGER PRIMARY KEY AUTOINCREMENT,
+          return_id         INTEGER NOT NULL REFERENCES returns(id),
+          filename          TEXT NOT NULL,
+          original_filename TEXT,
+          doc_type          TEXT,
+          source            TEXT,
+          file_path         TEXT NOT NULL,
+          file_size_bytes   INTEGER,
+          uploaded_by       TEXT,
+          uploaded_at       TEXT,
+          notes             TEXT,
+          is_deleted        INTEGER NOT NULL DEFAULT 0
+        );
         """
     )
     _migrate_existing_tables(conn)
@@ -367,6 +382,26 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
                 except sqlite3.OperationalError as exc:
                     if "duplicate column" not in str(exc).lower():
                         raise
+
+    # New-table migrations — safe to run on existing databases
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS return_documents (
+          id                INTEGER PRIMARY KEY AUTOINCREMENT,
+          return_id         INTEGER NOT NULL REFERENCES returns(id),
+          filename          TEXT NOT NULL,
+          original_filename TEXT,
+          doc_type          TEXT,
+          source            TEXT,
+          file_path         TEXT NOT NULL,
+          file_size_bytes   INTEGER,
+          uploaded_by       TEXT,
+          uploaded_at       TEXT,
+          notes             TEXT,
+          is_deleted        INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
 
 
 def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:

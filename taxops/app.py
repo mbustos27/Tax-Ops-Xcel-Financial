@@ -674,15 +674,18 @@ def logout_queue():
     conn = get_connection()
     rows = conn.execute(
         f"{_SELECT} WHERE (strftime('%Y', r.intake_date) = ? OR (r.intake_date IS NULL AND r.tax_year = ?)) "
-        "AND r.client_status IN ('PICKUP','EFILE READY') ORDER BY CAST(r.log_number AS INTEGER)",
+        "AND r.client_status = 'PICKUP' ORDER BY CAST(r.log_number AS INTEGER)",
         (str(year), year - 1),
     ).fetchall()
     conn.close()
+    saved = request.args.get("saved")
+    success = request.args.get("msg", "Saved.") if saved else None
     ctx = base_ctx(year)
     ctx.update({
         "active_page": "logout",
         "returns":     [_enrich(dict(r)) for r in rows],
         "today":       date.today().isoformat(),
+        "success":     success,
     })
     return render_template("logout_queue.html", **ctx)
 
@@ -820,6 +823,19 @@ def pickup_workflow(return_id: int):
         success_msg = "Saved."
         if new_status == "EFILE READY":
             success_msg = "Pickup complete — status moved to EFILE READY."
+            intake = ret.get("intake_date") or ""
+            try:
+                year_for_queue = int(intake[:4]) if len(intake) >= 4 else date.today().year
+            except (ValueError, TypeError):
+                year_for_queue = date.today().year
+            return redirect(
+                url_for(
+                    "logout_queue",
+                    year=year_for_queue,
+                    saved=1,
+                    msg=success_msg,
+                )
+            )
         return redirect(f"/pickup/{return_id}?saved=1&msg={success_msg}")
 
     saved = request.args.get("saved")

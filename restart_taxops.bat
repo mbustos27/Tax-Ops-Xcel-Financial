@@ -14,6 +14,7 @@ taskkill /F /IM python.exe /FI "WINDOWTITLE eq TaxOps*" >nul 2>&1
 
 echo Starting TaxOps...
 cd /d "%~dp0taxops"
+set OLLAMA_BASE_URL=http://192.168.1.141:11434
 start "" python app.py
 
 timeout /t 3 /nobreak >nul
