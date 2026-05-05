@@ -39,6 +39,30 @@
       {% endfor %}
     </div>
 
+    {% if filters.status and 'REJECTED' in filters.status %}
+    <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto border-t border-slate-100 pt-2.5">
+      <span class="text-sm font-medium text-slate-500 shrink-0">Reject follow-up:</span>
+      {% set rbase = '/?year=' ~ current_year ~ '&status=' ~ ('REJECTED'|urlencode) ~ pproc ~ pbal ~ plate ~ pslow ~ pform %}
+      <a href="{{ rbase }}"
+         class="pill shrink-0 {% if not filters.reject_contact %}pill-active{% else %}pill-inactive{% endif %}">All</a>
+      <a href="{{ rbase }}&reject_contact=needs_followup"
+         class="pill shrink-0 {% if filters.reject_contact == 'needs_followup' %}pill-active{% else %}pill-inactive{% endif %}">
+        Needs contact
+      </a>
+      {% for rc_key, rc_label in [
+        ('not_contacted','Not contacted'),
+        ('contacted','Contacted'),
+        ('follow_up_needed','Follow-up needed'),
+        ('resolved','Resolved')
+      ] %}
+      <a href="{{ rbase }}&reject_contact={{ rc_key|urlencode }}"
+         class="pill shrink-0 {% if filters.reject_contact == rc_key %}pill-active{% else %}pill-inactive{% endif %}">
+        {{ rc_label }}
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     <!-- Row 2: flag buttons + form pills -->
     <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto border-t border-slate-100 pt-2.5">
       <button onclick="applyFilter('balance_due', '{{ '' if filters.balance_due else '1' }}')"
@@ -198,7 +222,7 @@
             {% if r.risk_flags %}
             <div class="flex flex-wrap gap-1">
               {% for flag in r.risk_flags %}
-              <span class="risk-badge {% if flag == 'LATE INTAKE' %}risk-late{% else %}risk-slow{% endif %}">
+              <span class="risk-badge {% if flag == 'LATE INTAKE' %}risk-late{% elif flag == 'CLIENT CONTACT' %}risk-contact{% else %}risk-slow{% endif %}">
                 {{ flag }}
               </span>
               {% endfor %}

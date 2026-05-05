@@ -37,7 +37,8 @@ from typing import Any, Dict, List, Optional
 
 from config import CSMDATA_SOURCE, DRAKE_SOURCE, DRAKE_STATUS_MAP, DRAKE_TYPE_FORMS
 from events import create_status_events
-from normalizer import normalize_currency, normalize_date, normalize_string
+from name_matcher import find_client as fuzzy_find_client, ACCEPT_THRESHOLD, strip_spouse, split_spouse_name_chunk
+from normalizer import normalize_currency, normalize_date, normalize_string, normalize_tax_year, is_locked_status
 from preparer import normalize_preparer
 from utils import ImportStats, now
 
@@ -277,7 +278,9 @@ def _normalize_csm(row: Dict[str, str], tax_year: int) -> tuple[Dict[str, Any], 
             "return_forms": _type_to_forms(normalize_string(_col(row, "Type")) or ""),
             "payments": {
                 "total_fee":     normalize_currency(_col(row, "Total Bill")),
-                "fee_paid":      normalize_currency(_col(row, "Client Payments")),
+                # "Client Payments" in Drake reflects internal discounts, not office payments.
+                # fee_paid is manual-log-only; never pull it from Drake.
+                "fee_paid":      None,
                 "bank_deposit":  normalize_currency(_col(row, "Bank Deposits")),
                 "refund_amount": normalize_currency(_col(row, "Refund")),
             },
@@ -356,6 +359,7 @@ def _normalize_taxops(row: Dict[str, str], tax_year: int) -> tuple[Dict[str, Any
                 "fee_paid":      None,
                 "bank_deposit":  None,
                 "refund_amount": normalize_currency(_col(row, "Refund")),
+                "balance_due":   normalize_currency(_col(row, "Balance Due")),
             },
             "note": None,
         },
@@ -433,7 +437,9 @@ def _match_return(conn: sqlite3.Connection, normalized: Dict[str, Any]) -> Dict[
     cli      = normalized["clients"]
     tax_year = normalized["returns"]["tax_year"]
     last     = cli.get("last_name") or ""
-    first    = cli.get("first_name")
+    first_raw = cli.get("first_name")
+    # Strip "& SPOUSE" so joint names like "GANEM B & MONA N" match "GANEM B"
+    first    = strip_spouse(first_raw) if first_raw else first_raw
 
     if first:
         rows = conn.execute(
@@ -478,6 +484,21 @@ def _match_return(conn: sqlite3.Connection, normalized: Dict[str, Any]) -> Dict[
                 }
         return {"return_id": None, "client_id": None, "ambiguous": True}
 
+    # Exact SQL match found nothing — try fuzzy matching on client name
+    # before creating a new client (handles middle initials, spelling variants, etc.)
+    fuzzy = fuzzy_find_client(conn, last, first)
+    if fuzzy and not fuzzy["needs_review"] and fuzzy["score"] >= ACCEPT_THRESHOLD:
+        # Fuzzy-matched client — look for an existing return for this tax year
+        existing_return = conn.execute(
+            "SELECT id FROM returns WHERE client_id=? AND tax_year=?",
+            (fuzzy["client_id"], tax_year),
+        ).fetchone()
+        return {
+            "return_id": int(existing_return["id"]) if existing_return else None,
+            "client_id": int(fuzzy["client_id"]),
+            "ambiguous": False,
+        }
+
     return {"return_id": None, "client_id": None, "ambiguous": False}
 
 
@@ -488,21 +509,22 @@ def _upsert_client(
 ) -> tuple[int, bool, bool]:
     existing = None
     if forced_client_id is not None:
-        existing = conn.execute("SELECT * FROM clients WHERE id=?", (forced_client_id,)).fetchone()
+        existing = dict(conn.execute("SELECT * FROM clients WHERE id=?", (forced_client_id,)).fetchone() or {})
 
     if existing is None:
         last  = data.get("last_name") or ""
         first = data.get("first_name")
         if first:
-            existing = conn.execute(
+            row = conn.execute(
                 "SELECT * FROM clients WHERE lower(last_name)=lower(?) AND lower(first_name)=lower(?) LIMIT 1",
                 (last, first),
             ).fetchone()
         else:
-            existing = conn.execute(
+            row = conn.execute(
                 "SELECT * FROM clients WHERE lower(last_name)=lower(?) AND (first_name IS NULL OR first_name='') LIMIT 1",
                 (last,),
             ).fetchone()
+        existing = dict(row) if row else None
 
     if existing is None:
         cur = conn.execute(
@@ -513,16 +535,40 @@ def _upsert_client(
 
     changed = False
     updates: Dict[str, Any] = {}
-    for key in ("ssn_last4",):
-        incoming = data.get(key)
-        if incoming is not None and existing[key] != incoming:
-            updates[key] = incoming
+
+    # Drake name spellings win — update if Drake has a non-empty value that differs
+    for name_key in ("last_name", "first_name"):
+        incoming_raw = data.get(name_key)
+        # For first_name, strip the spouse part to get the primary taxpayer name
+        incoming = strip_spouse(incoming_raw) if name_key == "first_name" and incoming_raw else incoming_raw
+        if incoming and (not existing.get(name_key) or existing.get(name_key, "").upper() != incoming.upper()):
+            updates[name_key] = incoming
             changed = True
+
+    # ssn_last4 fills in if missing
+    ssn = data.get("ssn_last4")
+    if ssn is not None and existing.get("ssn_last4") != ssn:
+        updates["ssn_last4"] = ssn
+        changed = True
+
+    # Extract and store spouse from joint first name (e.g. "GANEM B & MONA N")
+    raw_first = data.get("first_name") or ""
+    if "&" in raw_first:
+        spouse_chunk = raw_first.split("&", 1)[1].strip()
+        sp_first, sp_last_rest = split_spouse_name_chunk(spouse_chunk)
+        # spouse_last_name defaults to same last_name when not provided
+        sp_last = sp_last_rest if sp_last_rest else (updates.get("last_name") or existing.get("last_name") or "")
+        if sp_first and not existing.get("spouse_first_name"):
+            updates["spouse_first_name"] = sp_first
+            updates["spouse_last_name"]  = sp_last or None
+            changed = True
+
     if changed:
-        conn.execute(
-            "UPDATE clients SET ssn_last4=COALESCE(?,ssn_last4), updated_at=? WHERE id=?",
-            (updates.get("ssn_last4"), now(), int(existing["id"])),
-        )
+        set_clauses = ", ".join(f"{k}=?" for k in updates)
+        set_clauses += ", updated_at=?"
+        vals = list(updates.values()) + [now(), int(existing["id"])]
+        conn.execute(f"UPDATE clients SET {set_clauses} WHERE id=?", vals)
+
     return int(existing["id"]), False, changed
 
 
@@ -534,12 +580,13 @@ def _upsert_return(
 ) -> tuple[int, bool, bool, Dict[str, Any], Dict[str, Any]]:
     existing = None
     if forced_return_id is not None:
-        existing = conn.execute("SELECT * FROM returns WHERE id=?", (forced_return_id,)).fetchone()
+        existing = dict(conn.execute("SELECT * FROM returns WHERE id=?", (forced_return_id,)).fetchone() or {})
     if existing is None:
-        existing = conn.execute(
+        row = conn.execute(
             "SELECT * FROM returns WHERE client_id=? AND tax_year=? LIMIT 1",
             (client_id, data["tax_year"]),
         ).fetchone()
+        existing = dict(row) if row else None
 
     if existing is None:
         cur = conn.execute(
@@ -569,55 +616,88 @@ def _upsert_return(
         return int(cur.lastrowid), True, False, {}, dict(data)
 
     before = dict(existing)
-    payload: Dict[str, Any] = {}
     changed = False
-    update_keys = (
-        "processor", "client_status", "intake_date", "logout_date",
-        "updated_date", "efile_date", "ack_date", "is_extension", "drake_status_raw",
-    )
-    for key in update_keys:
+
+    # --- Field priority rules -------------------------------------------------
+    # Manual-wins: Drake only fills NULLs — COALESCE(drake_val, existing_val)
+    _MANUAL_WINS = {"processor", "client_status", "intake_date", "logout_date"}
+    # Drake-wins: Drake always overwrites when it has a value
+    _DRAKE_WINS  = {"updated_date", "efile_date", "ack_date", "is_extension", "drake_status_raw"}
+
+    manual_payload: Dict[str, Any] = {}   # only written if existing is NULL
+    drake_payload:  Dict[str, Any] = {}   # always written when Drake has a value
+
+    status_is_locked = is_locked_status(existing.get("client_status"))
+
+    for key in _MANUAL_WINS | _DRAKE_WINS:
         val = data.get(key)
         if val is None:
             continue
-        if existing[key] != val:
-            payload[key] = val
-            changed = True
+        if key == "client_status" and status_is_locked:
+            continue
+        if key in _MANUAL_WINS:
+            # Only queue if existing is NULL (manual log has already populated it)
+            if existing.get(key) is None and val != existing.get(key):
+                manual_payload[key] = val
+                changed = True
+        else:
+            # Drake-wins: always queue when the value differs
+            if existing.get(key) != val:
+                drake_payload[key] = val
+                changed = True
+
     if existing["client_id"] != client_id:
-        payload["client_id"] = client_id
+        drake_payload["client_id"] = client_id
         changed = True
 
     if changed:
-        conn.execute(
-            """
-            UPDATE returns SET
-              client_id        = COALESCE(?, client_id),
-              processor        = COALESCE(?, processor),
-              client_status    = COALESCE(?, client_status),
-              intake_date      = COALESCE(?, intake_date),
-              logout_date      = COALESCE(?, logout_date),
-              updated_date     = COALESCE(?, updated_date),
-              efile_date       = COALESCE(?, efile_date),
-              ack_date         = COALESCE(?, ack_date),
-              is_extension     = COALESCE(?, is_extension),
-              drake_status_raw = COALESCE(?, drake_status_raw),
-              updated_at       = ?
-            WHERE id = ?
-            """,
-            (
-                payload.get("client_id"),
-                payload.get("processor"),
-                payload.get("client_status"),
-                payload.get("intake_date"),
-                payload.get("logout_date"),
-                payload.get("updated_date"),
-                payload.get("efile_date"),
-                payload.get("ack_date"),
-                payload.get("is_extension"),
-                payload.get("drake_status_raw"),
-                now(),
-                int(existing["id"]),
-            ),
-        )
+        # Manual-wins fields: COALESCE so we never overwrite an existing value
+        if manual_payload or "client_id" in drake_payload:
+            conn.execute(
+                """
+                UPDATE returns SET
+                  client_id     = COALESCE(?, client_id),
+                  processor     = COALESCE(?, processor),
+                  client_status = COALESCE(?, client_status),
+                  intake_date   = COALESCE(?, intake_date),
+                  logout_date   = COALESCE(?, logout_date),
+                  updated_at    = ?
+                WHERE id = ?
+                """,
+                (
+                    drake_payload.get("client_id"),
+                    manual_payload.get("processor"),
+                    manual_payload.get("client_status"),
+                    manual_payload.get("intake_date"),
+                    manual_payload.get("logout_date"),
+                    now(),
+                    int(existing["id"]),
+                ),
+            )
+        # Drake-wins fields: always set when Drake has a value
+        if drake_payload:
+            conn.execute(
+                """
+                UPDATE returns SET
+                  updated_date     = CASE WHEN ? IS NOT NULL THEN ? ELSE updated_date END,
+                  efile_date       = CASE WHEN ? IS NOT NULL THEN ? ELSE efile_date END,
+                  ack_date         = CASE WHEN ? IS NOT NULL THEN ? ELSE ack_date END,
+                  is_extension     = CASE WHEN ? IS NOT NULL THEN ? ELSE is_extension END,
+                  drake_status_raw = CASE WHEN ? IS NOT NULL THEN ? ELSE drake_status_raw END,
+                  updated_at       = ?
+                WHERE id = ?
+                """,
+                (
+                    drake_payload.get("updated_date"),     drake_payload.get("updated_date"),
+                    drake_payload.get("efile_date"),       drake_payload.get("efile_date"),
+                    drake_payload.get("ack_date"),         drake_payload.get("ack_date"),
+                    drake_payload.get("is_extension"),     drake_payload.get("is_extension"),
+                    drake_payload.get("drake_status_raw"), drake_payload.get("drake_status_raw"),
+                    now(),
+                    int(existing["id"]),
+                ),
+            )
+
     fresh = conn.execute("SELECT * FROM returns WHERE id=?", (int(existing["id"]),)).fetchone()
     return int(existing["id"]), False, changed, before, dict(fresh)
 
@@ -672,9 +752,12 @@ def _upsert_payment(conn: sqlite3.Connection, return_id: int, payment: Dict[str,
     row = conn.execute("SELECT id FROM payments WHERE return_id=? LIMIT 1", (return_id,)).fetchone()
     if row is None:
         conn.execute(
-            "INSERT INTO payments (return_id, total_fee, fee_paid, bank_deposit, refund_amount) VALUES (?,?,?,?,?)",
+            """INSERT INTO payments
+               (return_id, total_fee, fee_paid, bank_deposit, refund_amount, balance_due)
+               VALUES (?,?,?,?,?,?)""",
             (return_id, payment.get("total_fee"), payment.get("fee_paid"),
-             payment.get("bank_deposit"), payment.get("refund_amount")),
+             payment.get("bank_deposit"), payment.get("refund_amount"),
+             payment.get("balance_due")),
         )
     else:
         conn.execute(
@@ -683,11 +766,18 @@ def _upsert_payment(conn: sqlite3.Connection, return_id: int, payment: Dict[str,
               total_fee     = COALESCE(?, total_fee),
               fee_paid      = COALESCE(?, fee_paid),
               bank_deposit  = COALESCE(?, bank_deposit),
-              refund_amount = COALESCE(?, refund_amount)
+              refund_amount = CASE WHEN ? IS NOT NULL THEN ? ELSE refund_amount END,
+              balance_due   = CASE WHEN ? IS NOT NULL THEN ? ELSE balance_due END
             WHERE return_id = ?
             """,
-            (payment.get("total_fee"), payment.get("fee_paid"),
-             payment.get("bank_deposit"), payment.get("refund_amount"), return_id),
+            (
+                payment.get("total_fee"),
+                payment.get("fee_paid"),
+                payment.get("bank_deposit"),
+                payment.get("refund_amount"), payment.get("refund_amount"),
+                payment.get("balance_due"),   payment.get("balance_due"),
+                return_id,
+            ),
         )
 
 

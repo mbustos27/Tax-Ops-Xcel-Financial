@@ -104,7 +104,7 @@ def merge_return_into(
         conn.execute("UPDATE payments SET return_id=? WHERE return_id=?", (winner_id, loser_id))
     conn.execute("DELETE FROM payments WHERE return_id=?", (loser_id,))
 
-    for t in ("notes", "status_events", "dependents"):
+    for t in ("notes", "status_events", "dependents", "missing_docs"):
         try:
             conn.execute(
                 f"UPDATE {t} SET return_id=? WHERE return_id=?", (winner_id, loser_id)
@@ -165,5 +165,10 @@ def merge_client_into(
     conn.execute(
         "UPDATE review_queue SET resolved_client_id=? WHERE resolved_client_id=?",
         (keep_id, discard_id),
+    )
+    # Re-point any remaining returns that weren't caught above (edge case)
+    conn.execute(
+        "UPDATE returns SET client_id=?, updated_at=? WHERE client_id=?",
+        (keep_id, updated_ts, discard_id),
     )
     conn.execute("DELETE FROM clients WHERE id=?", (discard_id,))

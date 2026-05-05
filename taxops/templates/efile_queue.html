@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% block title %}E-File Ready Queue — TaxOps {{ current_year }}{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <div class="flex items-center justify-between gap-4 flex-wrap">
+    <div>
+      <h1 class="text-lg font-bold text-slate-800">E-File Ready Queue</h1>
+      <p class="text-sm text-slate-400 mt-0.5">Returns ready for IRS transmission &mdash; {{ today }}</p>
+    </div>
+    <div class="flex items-center gap-3 flex-wrap">
+
+      <!-- Sort toggle -->
+      <div class="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+        <a href="/efile-queue?year={{ current_year }}&sort=log"
+           class="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors
+                  {% if sort == 'log' %}bg-white text-slate-800 shadow-sm{% else %}text-slate-500 hover:text-slate-700{% endif %}">
+          Log #
+        </a>
+        <a href="/efile-queue?year={{ current_year }}&sort=name"
+           class="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors
+                  {% if sort == 'name' %}bg-white text-slate-800 shadow-sm{% else %}text-slate-500 hover:text-slate-700{% endif %}">
+          Last Name
+        </a>
+      </div>
+
+      <!-- Quick filter -->
+      <input id="table-filter" type="text" placeholder="Quick filter…"
+             class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 w-36">
+
+      <!-- Count -->
+      <span class="text-sm text-slate-500">
+        <span id="sel-count" class="font-bold text-slate-800">0</span> / {{ returns | length }} selected
+      </span>
+
+      <!-- Export CSV -->
+      <a href="/efile-queue/export?year={{ current_year }}&sort={{ sort }}"
+         class="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
+        </svg>
+        Export
+      </a>
+
+      <!-- View Batches -->
+      <a href="/efile-batch"
+         class="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 border border-indigo-200 bg-indigo-50 rounded-lg text-indigo-700 hover:bg-indigo-100 transition-colors">
+        View Batches
+      </a>
+    </div>
+  </div>
+
+  <!-- ── Create Batch panel (shown when rows are selected) ─────────────── -->
+  <form id="batch-form" method="POST" action="/efile-batch/create">
+    <div id="batch-panel"
+         class="hidden bg-indigo-50 border border-indigo-200 rounded-xl px-5 py-4 flex items-center gap-4 flex-wrap">
+      <div class="flex-1 min-w-0">
+        <span class="font-semibold text-indigo-800 text-sm">
+          Create E-file Batch
+        </span>
+        <span id="batch-sel-label" class="text-indigo-600 text-sm ml-2">0 returns selected</span>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <label class="text-xs font-medium text-indigo-700">
+          Transmission Date
+          <input type="date" name="transmission_date" value="{{ today }}"
+                 class="ml-2 text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400">
+        </label>
+        <label class="text-xs font-medium text-indigo-700">
+          Notes
+          <input type="text" name="notes" placeholder="Optional batch notes"
+                 class="ml-2 text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white w-44 focus:outline-none focus:ring-1 focus:ring-indigo-400">
+        </label>
+        <button type="submit"
+                class="px-4 py-1.5 text-xs font-bold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
+          Create Batch
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Table ──────────────────────────────────────────────────────────── -->
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <table class="data-table w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th class="th w-8 text-center">
+              <input type="checkbox" id="select-all" class="rounded cursor-pointer">
+            </th>
+            <th class="th w-14">
+              <a href="/efile-queue?year={{ current_year }}&sort=log"
+                 class="hover:text-slate-900 {% if sort == 'log' %}text-indigo-600 font-bold{% endif %}">
+                Log #
+              </a>
+            </th>
+            <th class="th">
+              <a href="/efile-queue?year={{ current_year }}&sort=name"
+                 class="hover:text-slate-900 {% if sort == 'name' %}text-indigo-600 font-bold{% endif %}">
+                Client
+              </a>
+            </th>
+            <th class="th w-14 text-center">SSN</th>
+            <th class="th w-10 text-center">TY</th>
+            <th class="th w-28">Preparer</th>
+            <th class="th w-24">Pickup Date</th>
+            <th class="th text-right w-24">Fee Paid</th>
+            <th class="th w-28">Receipt #</th>
+            <th class="th w-10 text-center">Action</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for r in returns %}
+          <tr class="hover:bg-slate-50/80 transition-colors"
+              data-search="{{ r.log_number }} {{ r.last_name }} {{ r.first_name }} {{ r.processor }}">
+
+            <!-- Checkbox -->
+            <td class="td text-center">
+              <input type="checkbox" name="return_ids" value="{{ r.id }}"
+                     class="row-check rounded cursor-pointer">
+            </td>
+
+            <!-- Log # -->
+            <td class="td">
+              <a href="/return/{{ r.id }}"
+                 class="font-mono font-black text-indigo-600 hover:text-indigo-800 text-base tracking-tight">
+                {{ r.log_number or '—' }}
+              </a>
+            </td>
+
+            <!-- Client -->
+            <td class="td">
+              <div class="font-semibold text-slate-800">
+                {{ r.last_name }}{% if r.first_name %}, {{ r.first_name }}{% endif %}
+              </div>
+              {% if r.display_name and r.display_name != (r.last_name ~ ', ' ~ r.first_name) %}
+              <div class="text-xs text-slate-400">{{ r.display_name }}</div>
+              {% endif %}
+            </td>
+
+            <!-- SSN last 4 -->
+            <td class="td text-center">
+              {% if r.ssn_last4 %}
+              <span class="font-mono text-xs text-slate-600">****{{ r.ssn_last4 }}</span>
+              {% else %}
+              <span class="text-slate-300">—</span>
+              {% endif %}
+            </td>
+
+            <!-- Tax year -->
+            <td class="td text-center">
+              <span class="text-xs font-mono text-slate-600">{{ r.tax_year }}</span>
+            </td>
+
+            <!-- Preparer -->
+            <td class="td text-xs text-slate-600">
+              {{ r.processor or '—' }}
+            </td>
+
+            <!-- Pickup date -->
+            <td class="td text-xs text-slate-600 tabular-nums">
+              {{ r.pickup_date or '—' }}
+            </td>
+
+            <!-- Fee paid -->
+            <td class="td text-right tabular-nums">
+              {% if r.fee_paid %}
+              <span class="font-semibold text-slate-800">${{ "{:,.2f}".format(r.fee_paid) }}</span>
+              {% elif r.total_fee %}
+              <span class="text-amber-600 font-semibold text-xs">Owed ${{ "{:,.2f}".format(r.total_fee) }}</span>
+              {% else %}
+              <span class="text-slate-300">—</span>
+              {% endif %}
+            </td>
+
+            <!-- Receipt # -->
+            <td class="td font-mono text-xs text-slate-700">
+              {% if r.receipt_number %}
+              {{ r.receipt_number }}
+              {% else %}
+              <span class="text-amber-500 font-semibold text-xs">Missing</span>
+              {% endif %}
+            </td>
+
+            <!-- Open -->
+            <td class="td text-center">
+              <a href="/return/{{ r.id }}"
+                 class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline">
+                Open
+              </a>
+            </td>
+
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="10" class="px-6 py-16 text-center">
+              <div class="text-5xl mb-3">&#10003;</div>
+              <div class="font-semibold text-slate-500 text-base">No returns at EFILE READY</div>
+              <div class="text-sm text-slate-400 mt-1">Move returns to EFILE READY from the Pickup Queue or return detail page.</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form><!-- end batch-form -->
+
+  <!-- ── Summary bar ────────────────────────────────────────────────────── -->
+  {% if returns %}
+  <div class="bg-white rounded-xl border border-slate-200 px-5 py-3 flex items-center gap-6 text-sm flex-wrap">
+    <span class="text-slate-500">
+      <span class="font-bold text-slate-800">{{ returns | length }}</span> total
+    </span>
+    {% set missing_receipt = returns | selectattr('receipt_number', 'none') | list %}
+    {% set missing_fee     = returns | selectattr('fee_paid', 'none') | list %}
+    {% if missing_receipt %}
+    <span class="text-amber-600 font-medium">
+      &#9888; {{ missing_receipt | length }} missing receipt #
+    </span>
+    {% endif %}
+    {% if missing_fee %}
+    <span class="text-amber-600 font-medium">
+      &#9888; {{ missing_fee | length }} no fee paid recorded
+    </span>
+    {% endif %}
+    {% if not missing_receipt and not missing_fee %}
+    <span class="text-green-600 font-medium">&#10003; All returns have receipt # and fee paid</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const filterInput  = document.getElementById('table-filter');
+const selectAll    = document.getElementById('select-all');
+const batchPanel   = document.getElementById('batch-panel');
+const selCountEl   = document.getElementById('sel-count');
+const batchSelLbl  = document.getElementById('batch-sel-label');
+
+function updateSelectionUI() {
+  const checked = document.querySelectorAll('.row-check:checked');
+  const n = checked.length;
+  selCountEl.textContent = n;
+  batchSelLbl.textContent = n + ' return' + (n !== 1 ? 's' : '') + ' selected';
+  batchPanel.classList.toggle('hidden', n === 0);
+  selectAll.indeterminate = n > 0 && n < document.querySelectorAll('.row-check').length;
+  selectAll.checked = n > 0 && n === document.querySelectorAll('.row-check').length;
+}
+
+document.querySelectorAll('.row-check').forEach(cb => {
+  cb.addEventListener('change', updateSelectionUI);
+});
+
+selectAll.addEventListener('change', () => {
+  document.querySelectorAll('.row-check').forEach(cb => {
+    // Only check visible rows
+    if (cb.closest('tr').style.display !== 'none') {
+      cb.checked = selectAll.checked;
+    }
+  });
+  updateSelectionUI();
+});
+
+if (filterInput) {
+  filterInput.addEventListener('input', () => {
+    const q = filterInput.value.toLowerCase();
+    document.querySelectorAll('tbody tr[data-search]').forEach(row => {
+      row.style.display = row.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+    });
+    updateSelectionUI();
+  });
+}
+</script>
+{% endblock %}

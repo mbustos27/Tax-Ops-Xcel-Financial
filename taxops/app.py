@@ -8,7 +8,7 @@ from datetime import date, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flask import (
-    Flask, abort, jsonify, redirect, render_template,
+    Flask, abort, flash, jsonify, redirect, render_template,
     request, session, url_for,
 )
 
@@ -20,7 +20,7 @@ from csv_analyzer import analyze, iter_data_rows, normalize_status
 from db import get_connection, init_db
 from merge_ops import merge_client_into
 from name_matcher import find_client as fuzzy_find_client, is_business, parse_name, _all_clients_cache
-from normalizer import normalize_date, normalize_currency, normalize_string
+from normalizer import normalize_date, normalize_currency, normalize_string, canonical_status, is_locked_status
 from preparer import (
     normalize_preparer,
     preparer_dropdown_options,
@@ -36,6 +36,9 @@ from source_compare import (
 from utils import now
 
 app = Flask(__name__)
+
+from ai_routes import ai as ai_blueprint
+app.register_blueprint(ai_blueprint)
 
 app.jinja_env.globals["preparer_list_label"] = preparer_list_label
 
@@ -107,10 +110,20 @@ def _security_headers(response):
 
 # ── Workflow constants ────────────────────────────────────────────────────────
 
-STATUS_FLOW = ["PROCESSING", "FINALIZE", "PICKUP", "EFILE READY", "LOG OUT", "REJECTED"]
+STATUS_FLOW = ["PROCESSING", "HOLD", "FINALIZE", "PICKUP", "EFILE READY", "LOG OUT", "REJECTED"]
+
+# Rejected-return client contact tracking (stored on returns; privacy: no SSN fields)
+CONTACT_STATUS_VALUES = ("not_contacted", "contacted", "follow_up_needed", "resolved")
+CONTACT_LABELS = {
+    "not_contacted":    "Not contacted",
+    "contacted":        "Contacted",
+    "follow_up_needed": "Follow-up needed",
+    "resolved":         "Resolved (contact)",
+}
 
 STATUS_BADGE = {
     "PROCESSING":  "bg-sky-50 text-sky-700 border-sky-200",
+    "HOLD":        "bg-orange-50 text-orange-700 border-orange-200",
     "FINALIZE":    "bg-yellow-50 text-yellow-700 border-yellow-200",
     "PICKUP":      "bg-teal-50 text-teal-700 border-teal-200",
     "EFILE READY": "bg-indigo-50 text-indigo-700 border-indigo-200",
@@ -119,8 +132,9 @@ STATUS_BADGE = {
 }
 
 STATUS_DOT = {
-    "PROCESSING":  "dot-amber",   # sky blue (#0ea5e9)
-    "FINALIZE":    "dot-orange",  # yellow (#eab308)
+    "PROCESSING":  "dot-amber",
+    "HOLD":        "dot-hold",
+    "FINALIZE":    "dot-orange",
     "PICKUP":      "dot-teal",
     "EFILE READY": "dot-indigo",
     "LOG OUT":     "dot-slate",
@@ -146,6 +160,7 @@ RETURN_EDITABLE = {
     "efile_date", "ack_date",
     "is_amended", "has_w7", "is_extension",
     "transfer_flag", "transfer_2025_flag", "transfer_2026_flag",
+    "signatures_given", "signatures_received",
 }
 
 # Fields that live in the clients table
@@ -155,8 +170,10 @@ CLIENT_EDITABLE = {"display_name", "referred_by", "referral_flag"}
 PAYMENT_EDITABLE = {
     "total_fee", "fee_paid", "receipt_number",
     "cc_fee", "zelle_or_check_ref", "cash_or_qpay_ref",
-    "bank_deposit", "refund_amount",
+    "bank_deposit", "refund_amount", "payment_method",
 }
+
+CARD_FEE_RATE = 0.03   # 3 % card processing surcharge
 
 # ── SQL fragment shared by all queries ───────────────────────────────────────
 
@@ -168,14 +185,16 @@ SELECT
     r.is_amended, r.has_w7, r.is_extension,
     r.transfer_flag, r.transfer_2025_flag, r.transfer_2026_flag,
     r.efile_date, r.ack_date, r.drake_status_raw,
+    r.contact_status, r.last_contacted_date,
     r.created_at, r.updated_at,
     c.id   AS client_id,
     c.last_name, c.first_name, c.display_name,
-    c.referral_flag, c.referred_by,
+    c.referral_flag, c.referred_by, c.ssn_last4,
     p.id   AS payment_id,
     p.total_fee, p.fee_paid, p.receipt_number,
     p.cc_fee, p.zelle_or_check_ref, p.cash_or_qpay_ref,
-    p.refund_amount, p.bank_deposit,
+    p.refund_amount, p.bank_deposit, p.payment_method,
+    r.signatures_given, r.signatures_received,
     rf.form_1040, rf.sched_a_d, rf.sched_c, rf.sched_e,
     rf.form_1120, rf.form_1120s, rf.form_1065_llc,
     rf.corp_officer, rf.business_owner, rf.form_990_1041
@@ -187,9 +206,17 @@ LEFT JOIN return_forms rf ON rf.return_id = r.id
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
+def _to_float(v) -> float:
+    """Coerce DB value (float, int, str, or None) to float safely."""
+    try:
+        return float(v) if v is not None and v != "" else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _enrich(r: dict) -> dict:
-    total = r.get("total_fee") or 0
-    paid  = r.get("fee_paid")  or 0
+    total = _to_float(r.get("total_fee"))
+    paid  = _to_float(r.get("fee_paid"))
     r["balance"]      = round(total - paid, 2) if total else None
     r["paid_in_full"] = bool(total and paid >= total)
     r["color"]        = STATUS_DOT.get(r.get("client_status") or "", "dot-slate")
@@ -215,6 +242,9 @@ def _enrich(r: dict) -> dict:
         r["risk_flags"].append("LATE INTAKE")
     if r["slow_cycle_flag"]:
         r["risk_flags"].append("SLOW CYCLE")
+    cs = r.get("contact_status") or ""
+    if r.get("client_status") == "REJECTED" and cs in ("", "not_contacted", "follow_up_needed"):
+        r["risk_flags"].append("CLIENT CONTACT")
     if privacy_mode_enabled():
         r = _mask_return_payload(r)
     return r
@@ -315,6 +345,28 @@ def query_returns(filters: dict | None = None) -> list[dict]:
             else:
                 clauses.append(f"rf.{form_col} = 1")
 
+    if f.get("reject_contact"):
+        st_raw = f.get("status")
+        st_list = st_raw if isinstance(st_raw, list) else ([st_raw] if st_raw else [])
+        if st_list and "REJECTED" not in st_list:
+            pass
+        else:
+            rc = (f["reject_contact"] or "").strip().lower()
+            clauses.append("r.client_status = 'REJECTED'")
+            if rc == "needs_followup":
+                clauses.append(
+                    "(r.contact_status IS NULL OR r.contact_status = '' OR "
+                    "r.contact_status IN ('not_contacted','follow_up_needed'))"
+                )
+            elif rc in CONTACT_STATUS_VALUES:
+                if rc == "not_contacted":
+                    clauses.append(
+                        "(r.contact_status IS NULL OR r.contact_status = '' OR r.contact_status = 'not_contacted')"
+                    )
+                else:
+                    clauses.append("r.contact_status = ?")
+                    params.append(rc)
+
     if f.get("q"):
         q = f["q"].strip()
         if q.isdigit():
@@ -328,7 +380,7 @@ def query_returns(filters: dict | None = None) -> list[dict]:
             params.extend([qp, qp, qp])
 
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-    sql   = f"{_SELECT} {where} ORDER BY CAST(r.log_number AS INTEGER), r.id"
+    sql   = f"{_SELECT} {where} ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END, CAST(r.log_number AS INTEGER), r.id"
 
     rows = conn.execute(sql, params).fetchall()
     conn.close()
@@ -570,6 +622,7 @@ def dashboard():
         "late_intake": request.args.get("late_intake"),
         "slow_cycle":  request.args.get("slow_cycle"),
         "form":        request.args.get("form"),
+        "reject_contact": request.args.get("reject_contact"),
         "q":           request.args.get("q"),
     }
     returns = query_returns(filters)
@@ -591,6 +644,10 @@ def return_detail(return_id: int):
     events = conn.execute(
         "SELECT * FROM status_events WHERE return_id=? ORDER BY event_timestamp DESC", (return_id,)
     ).fetchall()
+    missing_docs = conn.execute(
+        "SELECT * FROM missing_docs WHERE return_id=? ORDER BY is_resolved, created_at",
+        (return_id,)
+    ).fetchall()
     conn.close()
     notes_payload = [dict(n) for n in notes]
     if privacy_mode_enabled():
@@ -600,10 +657,12 @@ def return_detail(return_id: int):
     # Always use current calendar year for the season picker — never the return's tax year.
     ctx = base_ctx(date.today().year)
     ctx.update({
-        "active_page": "dashboard",
-        "ret":    ret,
-        "notes":  notes_payload,
-        "events": [dict(e) for e in events],
+        "active_page":   "dashboard",
+        "ret":           ret,
+        "notes":         notes_payload,
+        "events":        [dict(e) for e in events],
+        "missing_docs":  [dict(d) for d in missing_docs],
+        "contact_labels": CONTACT_LABELS,
     })
     return render_template("return_detail.html", **ctx)
 
@@ -619,13 +678,179 @@ def logout_queue():
         (str(year), year - 1),
     ).fetchall()
     conn.close()
+    saved = request.args.get("saved")
+    success = request.args.get("msg", "Saved.") if saved else None
     ctx = base_ctx(year)
     ctx.update({
         "active_page": "logout",
         "returns":     [_enrich(dict(r)) for r in rows],
         "today":       date.today().isoformat(),
+        "success":     success,
     })
     return render_template("logout_queue.html", **ctx)
+
+
+@app.route("/efile-queue")
+@login_required
+def efile_queue():
+    year  = int(request.args.get("year", date.today().year))
+    sort  = request.args.get("sort", "log")   # "log" or "name"
+    conn  = get_connection()
+    order = (
+        "ORDER BY c.last_name, c.first_name" if sort == "name"
+        else "ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END, CAST(r.log_number AS INTEGER)"
+    )
+    rows = conn.execute(
+        f"{_SELECT} WHERE r.client_status = 'EFILE READY' "
+        f"AND (strftime('%Y', r.intake_date) = ? OR (r.intake_date IS NULL AND r.tax_year = ?)) "
+        f"{order}",
+        (str(year), year - 1),
+    ).fetchall()
+    conn.close()
+    ctx = base_ctx(year)
+    ctx.update({
+        "active_page": "efile",
+        "returns":     [_enrich(dict(r)) for r in rows],
+        "sort":        sort,
+        "today":       date.today().isoformat(),
+    })
+    return render_template("efile_queue.html", **ctx)
+
+
+@app.route("/efile-queue/export")
+@login_required
+def efile_queue_export():
+    import csv, io
+    year  = int(request.args.get("year", date.today().year))
+    sort  = request.args.get("sort", "log")
+    conn  = get_connection()
+    order = (
+        "ORDER BY c.last_name, c.first_name" if sort == "name"
+        else "ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END, CAST(r.log_number AS INTEGER)"
+    )
+    rows = conn.execute(
+        f"{_SELECT} WHERE r.client_status = 'EFILE READY' "
+        f"AND (strftime('%Y', r.intake_date) = ? OR (r.intake_date IS NULL AND r.tax_year = ?)) "
+        f"{order}",
+        (str(year), year - 1),
+    ).fetchall()
+    conn.close()
+
+    buf = io.StringIO()
+    w   = csv.writer(buf)
+    w.writerow(["Log #", "Last Name", "First Name", "SSN Last 4", "Tax Year",
+                "Preparer", "Pickup Date", "Fee Paid", "Receipt #"])
+    for r in rows:
+        w.writerow([
+            r["log_number"] or "",
+            r["last_name"]  or "",
+            r["first_name"] or "",
+            r["ssn_last4"]  or "",
+            r["tax_year"]   or "",
+            r["processor"]  or "",
+            r["pickup_date"] or "",
+            r["fee_paid"]   or "",
+            r["receipt_number"] or "",
+        ])
+
+    from flask import Response
+    filename = f"efile_ready_{year}_{date.today().isoformat()}.csv"
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.route("/pickup/<int:return_id>", methods=["GET", "POST"])
+@login_required
+def pickup_workflow(return_id: int):
+    conn = get_connection()
+    ret = get_one(return_id)
+    if not ret:
+        conn.close()
+        abort(404)
+
+    error = None
+    success = None
+
+    if request.method == "POST":
+        f = request.form
+        sigs_given    = 1 if f.get("signatures_given") else 0
+        sigs_received = 1 if f.get("signatures_received") else 0
+        method        = f.get("payment_method", "").strip()
+        base_fee      = _to_float(f.get("total_fee"))
+        cc_fee        = round(base_fee * CARD_FEE_RATE, 2) if method == "Card/Visa" else 0.0
+        fee_paid      = round(base_fee + cc_fee, 2)
+        receipt       = normalize_string(f.get("receipt_number")) or None
+        pickup_date   = normalize_string(f.get("pickup_date")) or None
+        notes         = normalize_string(f.get("notes")) or None
+
+        ready = sigs_received and fee_paid > 0 and receipt
+        new_status = "EFILE READY" if ready else ret.get("client_status")
+        if is_locked_status(ret.get("client_status")):
+            new_status = ret.get("client_status")
+
+        conn.execute(
+            "UPDATE returns SET signatures_given=?, signatures_received=?, "
+            "pickup_date=COALESCE(?,pickup_date), client_status=?, updated_at=? WHERE id=?",
+            (sigs_given, sigs_received, pickup_date, new_status, datetime.now().isoformat(), return_id),
+        )
+
+        pay_row = conn.execute("SELECT id FROM payments WHERE return_id=?", (return_id,)).fetchone()
+        if pay_row:
+            conn.execute(
+                "UPDATE payments SET total_fee=?, cc_fee=?, fee_paid=?, "
+                "payment_method=?, receipt_number=COALESCE(?,receipt_number) WHERE return_id=?",
+                (base_fee or None, cc_fee or None, fee_paid or None,
+                 method or None, receipt, return_id),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO payments (return_id, total_fee, cc_fee, fee_paid, payment_method, receipt_number) "
+                "VALUES (?,?,?,?,?,?)",
+                (return_id, base_fee or None, cc_fee or None, fee_paid or None, method or None, receipt),
+            )
+
+        if notes:
+            conn.execute(
+                "INSERT INTO notes (return_id, note_text, created_at) VALUES (?,?,?)",
+                (return_id, notes, datetime.now().isoformat()),
+            )
+
+        conn.commit()
+        conn.close()
+        success_msg = "Saved."
+        if new_status == "EFILE READY":
+            success_msg = "Pickup complete — status moved to EFILE READY."
+            intake = ret.get("intake_date") or ""
+            try:
+                year_for_queue = int(intake[:4]) if len(intake) >= 4 else date.today().year
+            except (ValueError, TypeError):
+                year_for_queue = date.today().year
+            return redirect(
+                url_for(
+                    "logout_queue",
+                    year=year_for_queue,
+                    saved=1,
+                    msg=success_msg,
+                )
+            )
+        return redirect(f"/pickup/{return_id}?saved=1&msg={success_msg}")
+
+    saved = request.args.get("saved")
+    if saved:
+        success = request.args.get("msg", "Saved.")
+
+    conn.close()
+    ctx = base_ctx()
+    ctx.update({
+        "active_page": "logout",
+        "ret":         ret,
+        "success":     success,
+        "card_fee_rate": CARD_FEE_RATE,
+    })
+    return render_template("pickup_workflow.html", **ctx)
 
 
 @app.route("/payments")
@@ -927,13 +1152,14 @@ def upload_preview():
 
     cols = [
         {
-            "index":      c.col_index,
-            "raw_header": c.raw_header,
-            "table":      c.table,
-            "field":      c.field,
-            "field_type": c.field_type,
-            "confidence": c.confidence,
-            "skip":       c.skip,
+            "index":       c.col_index,
+            "raw_header":  c.raw_header,
+            "table":       c.table,
+            "field":       c.field,
+            "field_type":  c.field_type,
+            "confidence":  c.confidence,
+            "skip":        c.skip,
+            "skip_reason": c.skip_reason,
         }
         for c in result.columns
     ]
@@ -1269,6 +1495,7 @@ def export_excel():
         "late_intake": request.args.get("late_intake"),
         "slow_cycle":  request.args.get("slow_cycle"),
         "form":        request.args.get("form"),
+        "reject_contact": request.args.get("reject_contact"),
         "q":           request.args.get("q"),
     }
     rows = query_returns(filters)
@@ -1441,11 +1668,20 @@ def source_compare_page():
             "summary": {
                 "db_returns": n,
                 "manual_matched": 0,
+                "manual_rows_matched_other_years": 0,
                 "drake_matched": 0,
                 "manual_orphan_rows": 0,
+                "manual_orphan_parse": 0,
+                "manual_orphan_ambiguous": 0,
+                "manual_orphan_no_db": 0,
+                "manual_review_pending_rows": 0,
+                "manual_orphans_other_ty_rows": 0,
+                "manual_other_ty_ambiguous": 0,
+                "manual_other_ty_no_db": 0,
                 "drake_orphan_rows": 0,
             },
             "manual_orphans": [],
+            "manual_orphans_other_ty": [],
             "drake_orphans": [],
         }
     else:
@@ -1469,6 +1705,148 @@ def source_compare_page():
         }
     )
     return render_template("source_compare.html", **ctx)
+
+
+# ── Source compare: apply a source's values to the database ──────────────────
+# Which compare fields map to which table / column, and their types.
+_APPLY_FIELDS: Dict[str, Dict[str, str]] = {
+    # returns table
+    "client_status": {"table": "returns", "col": "client_status", "type": "status"},
+    "processor":     {"table": "returns", "col": "processor",     "type": "str"},
+    "intake_date":   {"table": "returns", "col": "intake_date",   "type": "date"},
+    "logout_date":   {"table": "returns", "col": "logout_date",   "type": "date"},
+    "updated_date":  {"table": "returns", "col": "updated_date",  "type": "date"},
+    "date_emailed":  {"table": "returns", "col": "date_emailed",  "type": "date"},
+    "pickup_date":   {"table": "returns", "col": "pickup_date",   "type": "date"},
+    "efile_date":    {"table": "returns", "col": "efile_date",    "type": "date"},
+    "ack_date":      {"table": "returns", "col": "ack_date",      "type": "date"},
+    "drake_status_raw": {"table": "returns", "col": "drake_status_raw", "type": "str"},
+    "verified":      {"table": "returns", "col": "verified",      "type": "bool"},
+    "is_extension":  {"table": "returns", "col": "is_extension",  "type": "bool"},
+    # payments table
+    "total_fee":     {"table": "payments", "col": "total_fee",    "type": "currency"},
+    "fee_paid":      {"table": "payments", "col": "fee_paid",     "type": "currency"},
+    "refund_amount": {"table": "payments", "col": "refund_amount","type": "currency"},
+    "balance_due":   {"table": "payments", "col": "balance_due",  "type": "currency"},
+}
+# Read-only in compare — matched by, or client-level; not writable here
+_READONLY_COMPARE_FIELDS = {"log_number", "last_name", "first_name"}
+# These fields may only be applied from the manual log, never from Drake
+_MANUAL_ONLY_APPLY_FIELDS = {"client_status", "drake_status_raw"}
+
+
+def _coerce_apply_value(raw: str, ftype: str):
+    """Convert a string value from the compare table into a DB-ready Python value."""
+    from normalizer import canonical_status
+    s = (raw or "").strip()
+    if not s or s == "—":
+        return None
+    if ftype == "status":
+        return canonical_status(s)
+    if ftype == "date":
+        val, _ = normalize_date(s)
+        return val
+    if ftype == "currency":
+        try:
+            return float(s.replace("$", "").replace(",", ""))
+        except ValueError:
+            return None
+    if ftype == "bool":
+        return 1 if s in {"1", "true", "True", "yes", "Yes", "YES"} else 0
+    return s or None
+
+
+@app.route("/api/source-compare/apply", methods=["POST"])
+@login_required
+def source_compare_apply():
+    """Apply selected source values (manual or drake) for a single return to the DB."""
+    body = request.get_json(silent=True) or {}
+    return_id = body.get("return_id")
+    # source: 'manual' | 'drake' — lets endpoint enforce manual-only restrictions
+    source: str = (body.get("source") or "manual").strip().lower()
+    # fields: {field_key: value_string}  — only the fields the user chose to apply
+    fields: Dict[str, str] = body.get("fields") or {}
+
+    if not return_id:
+        return jsonify({"error": "return_id required"}), 400
+    if not fields:
+        return jsonify({"error": "No fields to apply"}), 400
+
+    conn = get_connection()
+    ret = conn.execute("SELECT id FROM returns WHERE id=?", (int(return_id),)).fetchone()
+    if not ret:
+        conn.close()
+        return jsonify({"error": "Return not found"}), 404
+
+    # Check whether the current DB status is locked (CANCELLED).
+    current_status_row = conn.execute(
+        "SELECT client_status FROM returns WHERE id=?", (int(return_id),)
+    ).fetchone()
+    db_status_locked = is_locked_status(
+        current_status_row["client_status"] if current_status_row else None
+    )
+
+    returns_updates: Dict[str, Any] = {}
+    payments_updates: Dict[str, Any] = {}
+    skipped: List[str] = []
+
+    for field, raw_val in fields.items():
+        if field in _READONLY_COMPARE_FIELDS:
+            skipped.append(field)
+            continue
+        # Status fields are manual-log only — Drake's formatting is non-standard
+        if source == "drake" and field in _MANUAL_ONLY_APPLY_FIELDS:
+            skipped.append(field)
+            continue
+        # CANCELLED is terminal — block any attempt to overwrite it via the UI.
+        # Staff must edit the return directly to reverse a cancellation.
+        if field == "client_status" and db_status_locked:
+            conn.close()
+            return jsonify({
+                "error": "This return is CANCELLED — status cannot be changed via source compare. "
+                         "Open the return record to manually reverse the cancellation."
+            }), 409
+        meta = _APPLY_FIELDS.get(field)
+        if not meta:
+            skipped.append(field)
+            continue
+        coerced = _coerce_apply_value(str(raw_val), meta["type"])
+        if coerced is None:
+            skipped.append(field)
+            continue
+        if meta["table"] == "returns":
+            returns_updates[meta["col"]] = coerced
+        else:
+            payments_updates[meta["col"]] = coerced
+
+    ts = now()
+    if returns_updates:
+        set_clause = ", ".join(f"{col}=?" for col in returns_updates)
+        vals = list(returns_updates.values()) + [ts, int(return_id)]
+        conn.execute(f"UPDATE returns SET {set_clause}, updated_at=? WHERE id=?", vals)
+
+    if payments_updates:
+        existing_pay = conn.execute(
+            "SELECT id FROM payments WHERE return_id=?", (int(return_id),)
+        ).fetchone()
+        if existing_pay:
+            set_clause = ", ".join(f"{col}=?" for col in payments_updates)
+            vals = list(payments_updates.values()) + [int(return_id)]
+            conn.execute(f"UPDATE payments SET {set_clause} WHERE return_id=?", vals)
+        else:
+            cols = ", ".join(["return_id"] + list(payments_updates))
+            placeholders = ", ".join(["?"] * (1 + len(payments_updates)))
+            vals = [int(return_id)] + list(payments_updates.values())
+            conn.execute(f"INSERT INTO payments ({cols}) VALUES ({placeholders})", vals)
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "applied": list(returns_updates) + list(payments_updates),
+        "skipped": skipped,
+    })
 
 
 # ── Intake log (chronological register) ───────────────────────────────────────
@@ -1776,6 +2154,17 @@ def api_status(return_id: int):
             (return_id, old_status, new_status, timestamp),
         )
 
+    if new_status == "REJECTED":
+        conn.execute(
+            "UPDATE returns SET contact_status='not_contacted', last_contacted_date=NULL, updated_at=? WHERE id=?",
+            (timestamp, return_id),
+        )
+    elif old_status == "REJECTED" and new_status != "REJECTED":
+        conn.execute(
+            "UPDATE returns SET contact_status=NULL, last_contacted_date=NULL, updated_at=? WHERE id=?",
+            (timestamp, return_id),
+        )
+
     conn.commit()
     conn.close()
     return jsonify({
@@ -1880,6 +2269,97 @@ def api_note(return_id: int):
     conn.close()
     visible_text = _mask_value(text) if privacy_mode_enabled() else text
     return jsonify({"success": True, "text": visible_text, "created_at": ts})
+
+
+@app.post("/api/return/<int:return_id>/contact")
+@login_required
+def api_return_contact(return_id: int):
+    """Update client-contact follow-up fields for REJECTED returns."""
+    data  = request.get_json(force=True) or {}
+    cs_in = (data.get("contact_status") or "").strip().lower()
+    if cs_in not in CONTACT_STATUS_VALUES:
+        return jsonify({"error": "Invalid contact_status"}), 400
+    lcd_raw = (data.get("last_contacted_date") or "").strip() or None
+
+    conn = get_connection()
+    row  = conn.execute("SELECT client_status FROM returns WHERE id=?", (return_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+    if row["client_status"] != "REJECTED":
+        conn.close()
+        return jsonify({"error": "Contact tracking is only for REJECTED returns"}), 400
+
+    today_iso = date.today().isoformat()
+    if cs_in == "not_contacted":
+        lcd_val = None
+    else:
+        lcd_val = lcd_raw if lcd_raw else today_iso
+
+    ts = now()
+    conn.execute(
+        "UPDATE returns SET contact_status=?, last_contacted_date=?, updated_at=? WHERE id=?",
+        (cs_in, lcd_val, ts, return_id),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({
+        "success": True,
+        "contact_status": cs_in,
+        "last_contacted_date": lcd_val,
+    })
+
+
+# ── Missing documents tracker ────────────────────────────────────────────────
+
+@app.post("/api/return/<int:return_id>/missing-doc")
+@login_required
+def api_missing_doc_add(return_id: int):
+    data = request.get_json(force=True)
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "Empty item"}), 400
+    ts = now()
+    conn = get_connection()
+    cur = conn.execute(
+        "INSERT INTO missing_docs (return_id, item_text, is_resolved, created_at) VALUES (?,?,0,?)",
+        (return_id, text, ts),
+    )
+    doc_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "id": doc_id, "text": text, "is_resolved": 0, "created_at": ts})
+
+
+@app.post("/api/return/<int:return_id>/missing-doc/<int:doc_id>/toggle")
+@login_required
+def api_missing_doc_toggle(return_id: int, doc_id: int):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT is_resolved FROM missing_docs WHERE id=? AND return_id=?", (doc_id, return_id)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+    new_val = 0 if row["is_resolved"] else 1
+    ts = now() if new_val else None
+    conn.execute(
+        "UPDATE missing_docs SET is_resolved=?, resolved_at=? WHERE id=?",
+        (new_val, ts, doc_id),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "is_resolved": new_val})
+
+
+@app.delete("/api/return/<int:return_id>/missing-doc/<int:doc_id>")
+@login_required
+def api_missing_doc_delete(return_id: int, doc_id: int):
+    conn = get_connection()
+    conn.execute("DELETE FROM missing_docs WHERE id=? AND return_id=?", (doc_id, return_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
 
 
 # ── Duplicate client detection & merge ───────────────────────────────────────
@@ -2137,6 +2617,600 @@ def api_merge_skip():
         skipped.append(pair_key)
     session["merge_skipped"] = skipped
     return jsonify({"success": True})
+
+
+# ── E-file Batches ────────────────────────────────────────────────────────────
+
+@app.post("/efile-batch/create")
+@login_required
+def efile_batch_create():
+    """Create a new e-file batch from a list of EFILE READY return IDs."""
+    return_ids = request.form.getlist("return_ids")
+    if not return_ids:
+        flash("No returns selected.", "error")
+        return redirect(url_for("efile_queue"))
+
+    transmission_date = request.form.get("transmission_date") or date.today().isoformat()
+    notes = request.form.get("notes", "").strip()
+    ts = now()
+
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO efile_batches (transmission_date, notes, status, created_at) VALUES (?,?,?,?)",
+            (transmission_date, notes or None, "open", ts),
+        )
+        batch_id = cur.lastrowid
+
+        added = 0
+        for rid in return_ids:
+            try:
+                rid = int(rid)
+            except ValueError:
+                continue
+
+            # Pull autofill data from the return + payment rows
+            row = conn.execute(
+                f"{_SELECT} WHERE r.id=?", (rid,)
+            ).fetchone()
+            if not row:
+                continue
+            r = _enrich(dict(row))
+
+            client_name = r.get("last_name", "")
+            if r.get("first_name"):
+                client_name += f", {r['first_name']}"
+
+            conn.execute(
+                """INSERT OR IGNORE INTO efile_batch_items
+                   (batch_id, return_id, log_number, client_name,
+                    tax_year, receipt_number, fee_paid, cc_fee, pickup_date,
+                    transmission_date, ack_status, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    batch_id,
+                    rid,
+                    r.get("log_number") or None,
+                    client_name or None,
+                    r.get("tax_year") or None,
+                    r.get("receipt_number") or None,
+                    r.get("fee_paid") or None,
+                    r.get("cc_fee") or None,
+                    r.get("pickup_date") or None,
+                    transmission_date,
+                    "pending",
+                    ts,
+                ),
+            )
+            added += 1
+
+        conn.commit()
+        flash(f"Batch #{batch_id} created with {added} return(s).", "success")
+        return redirect(url_for("efile_batch_detail", batch_id=batch_id))
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error creating batch: {e}", "error")
+        return redirect(url_for("efile_queue"))
+    finally:
+        conn.close()
+
+
+@app.route("/efile-batch/<int:batch_id>")
+@login_required
+def efile_batch_detail(batch_id: int):
+    conn = get_connection()
+    batch = conn.execute(
+        "SELECT * FROM efile_batches WHERE id=?", (batch_id,)
+    ).fetchone()
+    if not batch:
+        conn.close()
+        abort(404)
+
+    sort = request.args.get("sort", "name_desc")
+    if sort == "name":
+        order = "ORDER BY i.client_name ASC"
+    elif sort == "log":
+        order = "ORDER BY CASE WHEN i.log_number IS NULL OR i.log_number='' THEN 1 ELSE 0 END, CAST(i.log_number AS INTEGER)"
+    else:  # name_desc (default)
+        order = "ORDER BY i.client_name DESC"
+    items = conn.execute(
+        f"SELECT i.*, r.client_status FROM efile_batch_items i "
+        f"JOIN returns r ON r.id = i.return_id "
+        f"WHERE i.batch_id=? {order}",
+        (batch_id,),
+    ).fetchall()
+    items = [dict(i) for i in items]
+
+    # Summary counts
+    counts = {s: 0 for s in ("pending", "accepted", "rejected", "needs_calculation", "ready")}
+    for item in items:
+        ack = item.get("ack_status", "pending")
+        counts[ack] = counts.get(ack, 0) + 1
+        if item.get("needs_calculation"):
+            counts["needs_calculation"] += 1
+        elif ack == "pending":
+            # "ready" = pending ACK and not flagged as needing calculation
+            counts["ready"] += 1
+
+    # All batches for the sidebar list
+    all_batches = [dict(b) for b in conn.execute(
+        "SELECT id, transmission_date, status, created_at, "
+        "(SELECT COUNT(*) FROM efile_batch_items WHERE batch_id=efile_batches.id) AS item_count "
+        "FROM efile_batches ORDER BY created_at DESC"
+    ).fetchall()]
+    conn.close()
+
+    ctx = base_ctx()
+    ctx.update(
+        active_page="efile",
+        batch=dict(batch),
+        items=items,
+        counts=counts,
+        sort=sort,
+        all_batches=all_batches,
+    )
+    return render_template("efile_batch.html", **ctx)
+
+
+@app.route("/efile-batch")
+@login_required
+def efile_batch_list():
+    """List all e-file batches."""
+    conn = get_connection()
+    batches = [dict(b) for b in conn.execute(
+        "SELECT b.id, b.transmission_date, b.transmitted_at, b.status, b.notes, b.created_at, "
+        "COUNT(i.id) AS item_count, "
+        "SUM(CASE WHEN i.ack_status='accepted' THEN 1 ELSE 0 END) AS accepted_count, "
+        "SUM(CASE WHEN i.ack_status='rejected' THEN 1 ELSE 0 END) AS rejected_count "
+        "FROM efile_batches b "
+        "LEFT JOIN efile_batch_items i ON i.batch_id=b.id "
+        "GROUP BY b.id ORDER BY b.created_at DESC"
+    ).fetchall()]
+    conn.close()
+    ctx = base_ctx()
+    ctx.update(active_page="efile", batches=batches)
+    return render_template("efile_batch_list.html", **ctx)
+
+
+@app.post("/api/efile-batch/<int:batch_id>/transmit")
+@login_required
+def efile_batch_transmit(batch_id: int):
+    """Mark batch as transmitted (sent to IRS via Drake)."""
+    conn = get_connection()
+    batch = conn.execute("SELECT * FROM efile_batches WHERE id=?", (batch_id,)).fetchone()
+    if not batch:
+        conn.close()
+        return jsonify({"success": False, "error": "Batch not found"}), 404
+    ts = now()
+    conn.execute(
+        "UPDATE efile_batches SET transmitted_at=?, status='transmitted' WHERE id=?",
+        (ts, batch_id),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "transmitted_at": ts})
+
+
+@app.post("/api/efile-batch/<int:batch_id>/item/<int:item_id>/ack")
+@login_required
+def efile_batch_item_ack(batch_id: int, item_id: int):
+    """Update ACK status on a single batch item."""
+    data       = request.get_json(force=True)
+    ack_status = data.get("ack_status", "").lower()
+    if ack_status not in ("pending", "accepted", "rejected"):
+        return jsonify({"success": False, "error": "Invalid ack_status"}), 400
+
+    if ack_status == "rejected":
+        if not (data.get("rejection_code") or "").strip():
+            return jsonify({"success": False, "error": "Rejection code is required."}), 400
+        if not (data.get("rejection_reason") or "").strip():
+            return jsonify({"success": False, "error": "Rejection reason is required."}), 400
+
+    conn = get_connection()
+    conn.execute(
+        """UPDATE efile_batch_items
+           SET ack_status=?, ack_date=?, rejection_code=?, rejection_reason=?
+           WHERE id=? AND batch_id=?""",
+        (
+            ack_status,
+            data.get("ack_date") or (date.today().isoformat() if ack_status != "pending" else None),
+            data.get("rejection_code") or None,
+            data.get("rejection_reason") or None,
+            item_id,
+            batch_id,
+        ),
+    )
+
+    # Fetch return_id + snapshot fields for status updates below
+    item_row = conn.execute(
+        "SELECT return_id, transmission_date FROM efile_batch_items WHERE id=?", (item_id,)
+    ).fetchone()
+
+    if item_row:
+        return_id       = item_row["return_id"]
+        transmission_dt = item_row["transmission_date"]
+        current = conn.execute(
+            "SELECT client_status FROM returns WHERE id=?", (return_id,)
+        ).fetchone()
+        current_status = current["client_status"] if current else None
+        ack_date_val   = data.get("ack_date") or date.today().isoformat()
+
+        if ack_status == "accepted":
+            if not is_locked_status(current_status) and current_status not in ("LOG OUT",):
+                conn.execute(
+                    "UPDATE returns SET client_status='LOG OUT', "
+                    "logout_date=COALESCE(logout_date,?), "
+                    "efile_date=COALESCE(efile_date,?), "
+                    "ack_date=COALESCE(ack_date,?), "
+                    "updated_at=? WHERE id=?",
+                    (date.today().isoformat(), transmission_dt, ack_date_val, now(), return_id),
+                )
+            else:
+                # Return already in LOG OUT or locked — still sync efile_date and ack_date
+                conn.execute(
+                    "UPDATE returns SET "
+                    "efile_date=COALESCE(efile_date,?), "
+                    "ack_date=COALESCE(ack_date,?), "
+                    "updated_at=? WHERE id=?",
+                    (transmission_dt, ack_date_val, now(), return_id),
+                )
+
+        elif ack_status == "rejected":
+            if not is_locked_status(current_status):
+                conn.execute(
+                    "UPDATE returns SET client_status='REJECTED', "
+                    "contact_status='not_contacted', last_contacted_date=NULL, "
+                    "ack_date=COALESCE(ack_date,?), "
+                    "updated_at=? WHERE id=?",
+                    (ack_date_val, now(), return_id),
+                )
+
+        elif ack_status == "pending":
+            # Revert return to EFILE READY if it was moved to LOG OUT or REJECTED by this batch
+            if current_status in ("LOG OUT", "REJECTED") and not is_locked_status(current_status):
+                if current_status == "REJECTED":
+                    conn.execute(
+                        "UPDATE returns SET client_status='EFILE READY', "
+                        "contact_status=NULL, last_contacted_date=NULL, ack_date=NULL, "
+                        "updated_at=? WHERE id=?",
+                        (now(), return_id),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE returns SET client_status='EFILE READY', updated_at=? WHERE id=?",
+                        (now(), return_id),
+                    )
+            # Clear stale ack_date on the return regardless of whether status reverted
+            # Only safe when return is in a state this batch would have set it
+            if current_status in ("LOG OUT", "REJECTED"):
+                conn.execute(
+                    "UPDATE returns SET ack_date=NULL WHERE id=? "
+                    "AND client_status IN ('EFILE READY','REJECTED','LOG OUT')",
+                    (return_id,)
+                )
+
+    # Auto-close batch if all items are resolved — never overwrite 'transmitted'
+    unresolved = conn.execute(
+        "SELECT COUNT(*) FROM efile_batch_items WHERE batch_id=? AND ack_status='pending'",
+        (batch_id,),
+    ).fetchone()[0]
+    if unresolved == 0:
+        conn.execute(
+            "UPDATE efile_batches SET status='closed' WHERE id=? AND status NOT IN ('transmitted','closed')",
+            (batch_id,)
+        )
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.post("/api/efile-batch/<int:batch_id>/item/<int:item_id>/flag")
+@login_required
+def efile_batch_item_flag(batch_id: int, item_id: int):
+    """Toggle 'needs calculation' flag on a batch item."""
+    data = request.get_json(force=True)
+    conn = get_connection()
+    conn.execute(
+        "UPDATE efile_batch_items SET needs_calculation=? WHERE id=? AND batch_id=?",
+        (1 if data.get("needs_calculation") else 0, item_id, batch_id),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.post("/api/efile-batch/<int:batch_id>/item/<int:item_id>/logout")
+@login_required
+def efile_batch_item_logout(batch_id: int, item_id: int):
+    """Manually move an accepted return to LOG OUT (fallback for edge cases)."""
+    conn = get_connection()
+    item_row = conn.execute(
+        "SELECT return_id, ack_status, transmission_date, ack_date FROM efile_batch_items "
+        "WHERE id=? AND batch_id=?",
+        (item_id, batch_id),
+    ).fetchone()
+
+    if not item_row:
+        conn.close()
+        return jsonify({"success": False, "error": "Item not found"}), 404
+    if item_row["ack_status"] != "accepted":
+        conn.close()
+        return jsonify({"success": False, "error": "Only accepted items can be moved to LOG OUT"}), 400
+
+    return_id = item_row["return_id"]
+    current   = conn.execute(
+        "SELECT client_status FROM returns WHERE id=?", (return_id,)
+    ).fetchone()
+    current_status = current["client_status"] if current else None
+
+    if is_locked_status(current_status):
+        conn.close()
+        return jsonify({"success": False, "error": f"Return status '{current_status}' is locked and cannot be changed"}), 400
+
+    today = date.today().isoformat()
+    conn.execute(
+        "UPDATE returns SET client_status='LOG OUT', "
+        "logout_date=COALESCE(logout_date,?), "
+        "efile_date=COALESCE(efile_date,?), "
+        "ack_date=COALESCE(ack_date,?), "
+        "updated_at=? WHERE id=?",
+        (today, item_row["transmission_date"], item_row["ack_date"], now(), return_id),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/efile-batch/<int:batch_id>/export")
+@login_required
+def efile_batch_export(batch_id: int):
+    """Download batch as CSV.
+    ?filter=all (default) | accepted | rejected
+    """
+    import csv, io as _io
+    from flask import Response
+
+    report = request.args.get("filter", "all").lower()
+    if report not in ("all", "accepted", "rejected"):
+        report = "all"
+
+    conn = get_connection()
+    batch = conn.execute("SELECT * FROM efile_batches WHERE id=?", (batch_id,)).fetchone()
+    if not batch:
+        conn.close()
+        abort(404)
+
+    base_query = (
+        "SELECT * FROM efile_batch_items WHERE batch_id=? "
+        "{where}"
+        "ORDER BY CASE WHEN log_number IS NULL OR log_number='' THEN 1 ELSE 0 END, CAST(log_number AS INTEGER)"
+    )
+    where_clause = ""
+    params = [batch_id]
+    if report == "accepted":
+        where_clause = "AND ack_status='accepted' "
+    elif report == "rejected":
+        where_clause = "AND ack_status='rejected' "
+
+    items = conn.execute(base_query.format(where=where_clause), params).fetchall()
+    conn.close()
+
+    buf = _io.StringIO()
+    w = csv.writer(buf)
+
+    if report == "rejected":
+        w.writerow(["Log #", "Client Name", "Tax Year",
+                    "Receipt #", "Fee Paid", "CC Fee", "Pickup Date", "Transmission Date",
+                    "ACK Date", "Rejection Code", "Rejection Reason"])
+        for i in items:
+            w.writerow([
+                i["log_number"] or "",
+                i["client_name"] or "",
+                i["tax_year"] or "",
+                i["receipt_number"] or "",
+                i["fee_paid"] or "",
+                i["cc_fee"] or "",
+                i["pickup_date"] or "",
+                i["transmission_date"] or "",
+                i["ack_date"] or "",
+                i["rejection_code"] or "",
+                i["rejection_reason"] or "",
+            ])
+    elif report == "accepted":
+        w.writerow(["Log #", "Client Name", "Tax Year",
+                    "Receipt #", "Fee Paid", "CC Fee", "Pickup Date", "Transmission Date",
+                    "ACK Date"])
+        for i in items:
+            w.writerow([
+                i["log_number"] or "",
+                i["client_name"] or "",
+                i["tax_year"] or "",
+                i["receipt_number"] or "",
+                i["fee_paid"] or "",
+                i["cc_fee"] or "",
+                i["pickup_date"] or "",
+                i["transmission_date"] or "",
+                i["ack_date"] or "",
+            ])
+    else:
+        w.writerow(["Log #", "Client Name", "Tax Year",
+                    "Receipt #", "Fee Paid", "CC Fee", "Pickup Date", "Transmission Date",
+                    "ACK Status", "ACK Date", "Rejection Code", "Rejection Reason",
+                    "Needs Calculation"])
+        for i in items:
+            w.writerow([
+                i["log_number"] or "",
+                i["client_name"] or "",
+                i["tax_year"] or "",
+                i["receipt_number"] or "",
+                i["fee_paid"] or "",
+                i["cc_fee"] or "",
+                i["pickup_date"] or "",
+                i["transmission_date"] or "",
+                i["ack_status"] or "",
+                i["ack_date"] or "",
+                i["rejection_code"] or "",
+                i["rejection_reason"] or "",
+                "Yes" if i["needs_calculation"] else "",
+            ])
+
+    tdate = dict(batch).get("transmission_date") or "nodateset"
+    label = {"all": "full", "accepted": "accepted", "rejected": "rejected"}[report]
+    fname = f"efile_batch_{batch_id}_{tdate}_{label}.csv"
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )
+
+
+# ── Import Audit ──────────────────────────────────────────────────────────────
+
+@app.route("/import-audit")
+@login_required
+def import_audit():
+    """Diagnostic page showing orphaned / unmatched records and import health."""
+    conn = get_connection()
+
+    # --- Import batch summary ---
+    batches = [dict(r) for r in conn.execute(
+        "SELECT * FROM import_batches ORDER BY imported_at DESC"
+    ).fetchall()]
+
+    # --- Parse errors from import_rows ---
+    parse_errors = [dict(r) for r in conn.execute(
+        """SELECT ir.row_number, ir.action, ir.error, ir.raw_json,
+                  ib.filename
+           FROM import_rows ir
+           JOIN import_batches ib ON ib.id = ir.batch_id
+           WHERE ir.error IS NOT NULL AND ir.error != ''
+           ORDER BY ib.filename, ir.row_number"""
+    ).fetchall()]
+    import json as _json
+    for e in parse_errors:
+        try:
+            raw = _json.loads(e["raw_json"] or "{}")
+            e["name"]     = f"{raw.get('last_name','?')}, {raw.get('first_name','?')}"
+            e["log"]      = raw.get("log_number", "")
+            e["tax_year"] = raw.get("tax_year", "")
+        except Exception:
+            e["name"] = "?"
+
+    # --- Ambiguous / review queue ---
+    review_items = [dict(r) for r in conn.execute(
+        """SELECT rq.*, ib.filename
+           FROM review_queue rq
+           LEFT JOIN import_batches ib ON ib.id = rq.batch_id
+           WHERE rq.status = 'pending'
+           ORDER BY ib.filename, rq.row_number"""
+    ).fetchall()]
+    for item in review_items:
+        try:
+            raw = _json.loads(item["raw_json"] or "{}")
+            item["csv_last"]  = item["csv_last"]  or raw.get("Taxpayer Last Name")  or raw.get("last_name")  or raw.get("TAX PAYER NAME (S) LAST") or "?"
+            item["csv_first"] = item["csv_first"] or raw.get("Taxpayer First Name") or raw.get("first_name") or raw.get("FIRST") or "?"
+        except Exception:
+            pass
+
+    # --- No-log returns: returns that came from Drake but have no log_number ---
+    # Grouped into: (a) exact/near-exact name match with a logged client, (b) genuinely unmatched
+    no_log_rows = conn.execute(
+        """SELECT c.id as cid, c.last_name, c.first_name, r.id as rid,
+                  r.tax_year, r.client_status, r.intake_date, r.processor
+           FROM returns r JOIN clients c ON c.id = r.client_id
+           WHERE (r.log_number IS NULL OR r.log_number = '')
+             AND r.tax_year >= 2024
+           ORDER BY r.tax_year DESC, c.last_name"""
+    ).fetchall()
+
+    logged_clients = conn.execute(
+        """SELECT DISTINCT c.id, upper(trim(c.last_name)) as ln,
+                  upper(trim(COALESCE(c.first_name,''))) as fn
+           FROM clients c
+           JOIN returns r ON r.client_id = c.id
+           WHERE r.log_number IS NOT NULL AND r.log_number != ''"""
+    ).fetchall()
+    logged_cache = [{"id": r["id"], "ln": r["ln"], "fn": r["fn"]} for r in logged_clients]
+
+    from name_matcher import find_client, ACCEPT_THRESHOLD, REVIEW_THRESHOLD
+
+    close_matches   = []  # score between REVIEW_THRESHOLD and ACCEPT_THRESHOLD (needs review)
+    unmatched       = []  # score < REVIEW_THRESHOLD (genuinely unmatched)
+
+    for row in no_log_rows:
+        result = find_client(conn, row["last_name"] or "", row["first_name"], cache=logged_cache)
+        entry = {
+            "cid":    row["cid"],
+            "rid":    row["rid"],
+            "name":   f"{row['last_name']}, {row['first_name'] or ''}".strip(", "),
+            "status": row["client_status"],
+            "year":   row["tax_year"],
+            "intake": row["intake_date"],
+        }
+        if result and result["score"] >= ACCEPT_THRESHOLD:
+            # High confidence match but not yet merged — surface as fixable
+            match_client = conn.execute(
+                "SELECT last_name, first_name FROM clients WHERE id=?", (result["client_id"],)
+            ).fetchone()
+            log = conn.execute(
+                "SELECT log_number FROM returns WHERE client_id=? AND log_number IS NOT NULL AND log_number!='' ORDER BY CAST(log_number AS INTEGER) LIMIT 1",
+                (result["client_id"],)
+            ).fetchone()
+            entry["match_name"]  = f"{match_client['last_name']}, {match_client['first_name'] or ''}".strip(", ") if match_client else "?"
+            entry["match_log"]   = log["log_number"] if log else ""
+            entry["match_score"] = result["score"]
+            entry["match_cid"]   = result["client_id"]
+            close_matches.append(entry)
+        elif result and result["score"] >= REVIEW_THRESHOLD:
+            match_client = conn.execute(
+                "SELECT last_name, first_name FROM clients WHERE id=?", (result["client_id"],)
+            ).fetchone()
+            log = conn.execute(
+                "SELECT log_number FROM returns WHERE client_id=? AND log_number IS NOT NULL AND log_number!='' ORDER BY CAST(log_number AS INTEGER) LIMIT 1",
+                (result["client_id"],)
+            ).fetchone()
+            entry["match_name"]  = f"{match_client['last_name']}, {match_client['first_name'] or ''}".strip(", ") if match_client else "?"
+            entry["match_log"]   = log["log_number"] if log else ""
+            entry["match_score"] = result["score"]
+            entry["match_cid"]   = result["client_id"]
+            close_matches.append(entry)
+        else:
+            unmatched.append(entry)
+
+    conn.close()
+
+    ctx = base_ctx()
+    ctx.update(
+        active_page="import_audit",
+        batches=batches,
+        parse_errors=parse_errors,
+        review_items=review_items,
+        close_matches=close_matches,
+        unmatched=unmatched,
+        accept_threshold=ACCEPT_THRESHOLD,
+        review_threshold=REVIEW_THRESHOLD,
+    )
+    return render_template("import_audit.html", **ctx)
+
+
+@app.post("/api/audit/merge-client")
+@login_required
+def api_audit_merge_client():
+    """Merge an unlogged client into a logged one (from the audit page)."""
+    data       = request.get_json(force=True)
+    discard_id = int(data["discard_id"])
+    keep_id    = int(data["keep_id"])
+    conn = get_connection()
+    try:
+        merge_client_into(conn, keep_id=keep_id, discard_id=discard_id, updated_ts=now())
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        conn.close()
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

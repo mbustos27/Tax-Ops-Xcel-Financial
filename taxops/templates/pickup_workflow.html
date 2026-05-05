@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}Pickup Workflow — {{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %} — TaxOps{% endblock %}
+
+{% block content %}
+{% set r = ret %}
+{% set is_done = r.client_status in ('EFILE READY','LOG OUT','EFILE','CANCELLED') %}
+{% set base_fee = r.total_fee or 0 %}
+{% set cc_fee   = r.cc_fee or 0 %}
+{% set paid     = r.fee_paid or 0 %}
+
+<div class="max-w-2xl mx-auto space-y-5">
+
+  {# ── Header ─────────────────────────────────────────────────────────── #}
+  <div class="flex items-start justify-between gap-4">
+    <div>
+      <a href="/return/{{ r.id }}" class="text-xs text-blue-500 hover:underline">&larr; Back to return</a>
+      <h1 class="text-xl font-bold text-slate-800 mt-1">
+        Pickup / Final Signature
+      </h1>
+      <p class="text-sm text-slate-500 mt-0.5">
+        {% if r.log_number %}<span class="font-mono font-black text-slate-700">Log #{{ r.log_number }}</span> &mdash;{% endif %}
+        {{ r.last_name }}{% if r.first_name %}, {{ r.first_name }}{% endif %}
+        &mdash; TY {{ r.tax_year }}
+      </p>
+    </div>
+    <span class="mt-6 inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border
+      {% if r.client_status == 'EFILE READY' %}bg-indigo-50 text-indigo-700 border-indigo-200
+      {% elif r.client_status == 'PICKUP' %}bg-teal-50 text-teal-700 border-teal-200
+      {% elif r.client_status == 'LOG OUT' %}bg-slate-100 text-slate-600 border-slate-200
+      {% else %}bg-slate-100 text-slate-500 border-slate-200{% endif %}">
+      {{ r.client_status or 'No Status' }}
+    </span>
+  </div>
+
+  {# ── Success banner ─────────────────────────────────────────────────── #}
+  {% if success %}
+  <div class="bg-green-50 border border-green-200 text-green-800 rounded-xl px-4 py-3 text-sm font-medium flex items-center gap-2">
+    <span class="text-green-500 text-base">&#10003;</span> {{ success }}
+  </div>
+  {% endif %}
+
+  {# ── Progress checklist ─────────────────────────────────────────────── #}
+  {% set chk_sigs  = r.signatures_given and r.signatures_received %}
+  {% set chk_pay   = r.payment_method and r.fee_paid and r.fee_paid > 0 %}
+  {% set chk_rcpt  = r.receipt_number %}
+  {% set all_done  = chk_sigs and chk_pay and chk_rcpt %}
+
+  <div class="bg-white rounded-xl border border-slate-200 p-4">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Completion checklist</p>
+    <div class="flex gap-6 flex-wrap">
+      <div class="flex items-center gap-2 text-sm {% if chk_sigs %}text-green-700{% else %}text-slate-400{% endif %}">
+        <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
+          {% if chk_sigs %}bg-green-100 text-green-600{% else %}bg-slate-100 text-slate-400{% endif %}">
+          {% if chk_sigs %}&#10003;{% else %}1{% endif %}
+        </span>
+        Signatures received
+      </div>
+      <div class="flex items-center gap-2 text-sm {% if chk_pay %}text-green-700{% else %}text-slate-400{% endif %}">
+        <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
+          {% if chk_pay %}bg-green-100 text-green-600{% else %}bg-slate-100 text-slate-400{% endif %}">
+          {% if chk_pay %}&#10003;{% else %}2{% endif %}
+        </span>
+        Payment collected
+      </div>
+      <div class="flex items-center gap-2 text-sm {% if chk_rcpt %}text-green-700{% else %}text-slate-400{% endif %}">
+        <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
+          {% if chk_rcpt %}bg-green-100 text-green-600{% else %}bg-slate-100 text-slate-400{% endif %}">
+          {% if chk_rcpt %}&#10003;{% else %}3{% endif %}
+        </span>
+        Receipt # entered
+      </div>
+      {% if all_done %}
+      <div class="ml-auto text-xs font-semibold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-200">
+        Ready for E-File &#10003;
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Main form ──────────────────────────────────────────────────────── #}
+  <form method="POST" action="/pickup/{{ r.id }}" class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+
+    {# Signatures section #}
+    <div class="p-5 space-y-4">
+      <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Signatures</p>
+      <div class="flex flex-col sm:flex-row gap-4">
+        <label class="flex items-center gap-3 cursor-pointer select-none flex-1 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors
+          {% if r.signatures_given %}bg-blue-50 border-blue-200{% endif %}">
+          <input type="checkbox" name="signatures_given" value="1" class="w-4 h-4 accent-blue-600"
+                 {% if r.signatures_given %}checked{% endif %}>
+          <div>
+            <div class="text-sm font-semibold text-slate-700">Forms given to client</div>
+            <div class="text-xs text-slate-400">Signature pages handed out</div>
+          </div>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer select-none flex-1 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors
+          {% if r.signatures_received %}bg-green-50 border-green-200{% endif %}">
+          <input type="checkbox" name="signatures_received" value="1" class="w-4 h-4 accent-green-600"
+                 {% if r.signatures_received %}checked{% endif %}>
+          <div>
+            <div class="text-sm font-semibold text-slate-700">Forms signed &amp; returned</div>
+            <div class="text-xs text-slate-400">Client has signed all required forms</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    {# Payment section #}
+    <div class="p-5 space-y-4">
+      <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Payment</p>
+
+      {# Payment method #}
+      <div>
+        <label class="block text-xs font-medium text-slate-500 mb-1.5">Payment Method</label>
+        <div class="flex flex-wrap gap-2" id="method-group">
+          {% for m in ['Cash','Zelle','Card/Visa','Other'] %}
+          <label class="method-option flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 cursor-pointer text-sm font-medium
+            hover:border-blue-300 hover:bg-blue-50 transition-colors
+            {% if r.payment_method == m %}bg-blue-50 border-blue-400 text-blue-700{% else %}text-slate-600{% endif %}">
+            <input type="radio" name="payment_method" value="{{ m }}" class="sr-only"
+                   {% if r.payment_method == m %}checked{% endif %}
+                   onchange="onMethodChange()">
+            {{ m }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# Fee fields #}
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label for="total_fee" class="block text-xs font-medium text-slate-500 mb-1">Base Tax Prep Fee</label>
+          <div class="relative">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+            <input type="number" step="0.01" min="0" name="total_fee" id="total_fee"
+                   value="{{ '%.2f'|format(r.total_fee) if r.total_fee else '' }}"
+                   oninput="recalc()"
+                   class="w-full pl-6 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+                   placeholder="0.00">
+          </div>
+        </div>
+        <div id="cc-fee-box" class="{% if r.payment_method != 'Card/Visa' %}opacity-40 pointer-events-none{% endif %}">
+          <label class="block text-xs font-medium text-slate-500 mb-1">
+            Card Fee ({{ (card_fee_rate * 100)|int }}%)
+          </label>
+          <div class="relative">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+            <input type="text" id="cc_fee_display" readonly
+                   value="{{ '%.2f'|format(r.cc_fee) if r.cc_fee else '0.00' }}"
+                   class="w-full pl-6 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-500">
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
+        <span class="text-sm font-semibold text-slate-600">Total Collected</span>
+        <span id="total-display" class="text-xl font-black text-slate-800 tabular-nums">
+          ${{ '%.2f'|format((r.total_fee or 0) + (r.cc_fee or 0)) }}
+        </span>
+        <input type="hidden" name="fee_paid" id="fee_paid_hidden"
+               value="{{ ((r.total_fee or 0) + (r.cc_fee or 0)) }}">
+      </div>
+    </div>
+
+    {# QuickBooks + date section #}
+    <div class="p-5 space-y-4">
+      <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">QuickBooks &amp; Date</p>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label for="receipt_number" class="block text-xs font-medium text-slate-500 mb-1">QuickBooks Receipt #</label>
+          <input type="text" name="receipt_number" id="receipt_number"
+                 value="{{ r.receipt_number or '' }}"
+                 class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono"
+                 placeholder="e.g. 1042">
+        </div>
+        <div>
+          <label for="pickup_date" class="block text-xs font-medium text-slate-500 mb-1">Pickup / Payment Date</label>
+          <input type="date" name="pickup_date" id="pickup_date"
+                 value="{{ r.pickup_date or '' }}"
+                 class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300">
+        </div>
+      </div>
+      <div>
+        <label for="notes" class="block text-xs font-medium text-slate-500 mb-1">Notes (optional)</label>
+        <textarea name="notes" id="notes" rows="2"
+                  class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+                  placeholder="Any notes about this pickup…"></textarea>
+      </div>
+    </div>
+
+    {# Submit #}
+    <div class="p-5 flex items-center justify-between gap-4">
+      <p id="ready-hint" class="text-xs text-slate-400"></p>
+      <button type="submit"
+              class="px-6 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all shadow-sm">
+        Save Pickup
+      </button>
+    </div>
+
+  </form>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CARD_FEE_RATE = {{ card_fee_rate }};
+
+function getMethod() {
+  const checked = document.querySelector('input[name="payment_method"]:checked');
+  return checked ? checked.value : '';
+}
+
+function recalc() {
+  const base    = parseFloat(document.getElementById('total_fee').value) || 0;
+  const method  = getMethod();
+  const isCard  = method === 'Card/Visa';
+  const ccFee   = isCard ? Math.round(base * CARD_FEE_RATE * 100) / 100 : 0;
+  const total   = Math.round((base + ccFee) * 100) / 100;
+
+  document.getElementById('cc_fee_display').value = ccFee.toFixed(2);
+  document.getElementById('total-display').textContent = '$' + total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  document.getElementById('fee_paid_hidden').value = total;
+
+  const box = document.getElementById('cc-fee-box');
+  box.classList.toggle('opacity-40', !isCard);
+  box.classList.toggle('pointer-events-none', !isCard);
+
+  updateReadyHint(base, total);
+}
+
+function onMethodChange() {
+  // Update visual highlight on method labels
+  document.querySelectorAll('.method-option').forEach(lbl => {
+    const inp = lbl.querySelector('input[type="radio"]');
+    lbl.classList.toggle('bg-blue-50', inp.checked);
+    lbl.classList.toggle('border-blue-400', inp.checked);
+    lbl.classList.toggle('text-blue-700', inp.checked);
+    lbl.classList.toggle('text-slate-600', !inp.checked);
+  });
+  recalc();
+}
+
+function updateReadyHint(base, total) {
+  const sigs    = document.querySelector('input[name="signatures_given"]')?.checked &&
+                  document.querySelector('input[name="signatures_received"]')?.checked;
+  const method  = getMethod();
+  const receipt = document.getElementById('receipt_number').value.trim();
+  const hint    = document.getElementById('ready-hint');
+  const missing = [];
+  if (!sigs)             missing.push('signatures');
+  if (!method || !total) missing.push('payment method + fee');
+  if (!receipt)          missing.push('receipt #');
+  if (missing.length === 0) {
+    hint.textContent = '✓ All required — will advance to EFILE READY on save.';
+    hint.className   = 'text-xs text-green-600 font-medium';
+  } else {
+    hint.textContent = 'Still needed: ' + missing.join(', ');
+    hint.className   = 'text-xs text-slate-400';
+  }
+}
+
+// Wire receipt + sig changes to hint update
+document.getElementById('receipt_number').addEventListener('input', recalc);
+document.querySelectorAll('input[name="signatures_given"], input[name="signatures_received"]').forEach(el =>
+  el.addEventListener('change', recalc)
+);
+
+// Init
+recalc();
+</script>
+{% endblock %}

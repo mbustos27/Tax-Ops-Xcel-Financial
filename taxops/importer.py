@@ -1,93 +1,472 @@
 from __future__ import annotations
 
 import csv
+import io
 import json
+import re
 import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List
 
 from config import MANUAL_LOG_SOURCE
+from csv_analyzer import _is_skip_row, analyze
+from csv_analyzer import _clean as _clean_header_cell
 from events import create_status_events
 from preparer import normalize_preparer
 from normalizer import (
     build_header_lookup,
+    canonical_header,
     get_value,
+    get_value_any,
     normalize_bool_flag,
     normalize_currency,
     normalize_date,
     normalize_status,
     normalize_string,
+    normalize_tax_year,
+    is_locked_status,
+)
+from name_matcher import (
+    ACCEPT_THRESHOLD,
+    REVIEW_THRESHOLD,
+    score_client_names_pair,
+    spouse_parts_from_display_line,
+    split_joint_first_column,
+    split_spouse_name_chunk,
 )
 from utils import ImportStats, now
 
-REQUIRED_COLUMNS = ["LOG 2025", "LAST", "FIRST", "YR"]
+_LOG_COL_RE = re.compile(r"^LOG (20\d{2})$")
 
+# Canonical header synonyms for tax year column (Excel often exports "Year" instead of "YR").
+_TAX_YEAR_SYNONYMS: tuple[str, ...] = ("YR", "YEAR", "TAX YEAR", "TY", "TAX YR")
+
+# Gap between fuzzy name scores when two plausible DB rows collide (same tax year scope).
+FUZZY_AMBIGUOUS_MARGIN = 8
+
+
+def resolve_manual_log_column_key(
+    header_lookup: Dict[str, str], tax_year_hint: int | None
+) -> tuple[str | None, str | None]:
+    """
+    Pick which ``LOG yyyy`` column carries the office-assigned log number.
+
+    - Prefer exact ``LOG <tax_year_hint>`` when Source compare passes a year and that column exists.
+    - Otherwise prefer the newest ``LOG yyyy`` with ``yyyy <= tax_year_hint`` (e.g. file has only
+      LOG 2024/2025 but you are comparing DB TY 2026 → use LOG 2025).
+    - If all ``LOG yyyy`` are strictly after the hint, use the oldest such column with a note.
+
+    Returns ``(canonical_key_or_none, user_facing_note_when_not_exact)``.
+    """
+    keys = [k for k in header_lookup if _LOG_COL_RE.match(k)]
+    if not keys:
+        return None, None
+
+    year_key: list[tuple[int, str]] = []
+    for k in keys:
+        m = _LOG_COL_RE.match(k)
+        if m:
+            year_key.append((int(m.group(1)), k))
+    year_key.sort(key=lambda x: x[0])
+
+    if tax_year_hint is None:
+        best_k = max(year_key, key=lambda x: x[0])[1]
+        return best_k, None
+
+    exact_canon = canonical_header(f"LOG {tax_year_hint}")
+    if exact_canon in header_lookup:
+        return exact_canon, None
+
+    le = [(y, k) for y, k in year_key if y <= tax_year_hint]
+    if le:
+        picked_y, picked_k = max(le, key=lambda x: x[0])
+        return picked_k, (
+            f"Using LOG {picked_y} as file default when no LOG {tax_year_hint} column exists. "
+            "Rows still read log numbers from LOG matching each row's YR when that column is present."
+        )
+
+    picked_y, picked_k = min(year_key, key=lambda x: x[0])
+    return picked_k, (
+        f"Using LOG {picked_y} for log numbers (only \"LOG\" columns after {tax_year_hint} were found)."
+    )
+
+
+def effective_log_canonical_key(
+    header_lookup: Dict[str, str],
+    row_tax_year: int | None,
+    file_fallback_log_key: str,
+    row: Dict[str, str] | None = None,
+) -> str:
+    """
+    Return the best LOG yyyy column key for this row.
+
+    Priority:
+    1. File-level intake log key (e.g. LOG 2025 for a 2025 intake log) — if non-empty in this row.
+       This is the definitive intake-season sequence number and takes precedence over the tax-year
+       column.  A client filing a 2024 or 2023 return during the 2025 season gets a LOG 2025 number
+       that IS their primary log number for this season; LOG 2024 is their prior-year reference.
+    2. Exact ``LOG {row_tax_year}`` — only used when the file-level key is absent/empty for this row.
+    3. ``resolve_manual_log_column_key`` fallback (nearest LOG column).
+    """
+    # 1. Prefer the file's own intake-season log key.
+    if file_fallback_log_key:
+        raw_key = header_lookup.get(file_fallback_log_key, file_fallback_log_key)
+        if row is None or (row.get(raw_key) or "").strip():
+            return file_fallback_log_key
+
+    # 2. Fall back to the row's own tax-year log column.
+    if row_tax_year is not None:
+        exact_canon = canonical_header(f"LOG {row_tax_year}")
+        if exact_canon in header_lookup:
+            raw_key = header_lookup[exact_canon]
+            if row is None or (row.get(raw_key) or "").strip():
+                return exact_canon
+
+    # 3. Last resort: nearest LOG column from resolve helper.
+    resolved, _ = resolve_manual_log_column_key(header_lookup, row_tax_year)
+    if resolved:
+        raw_key = header_lookup.get(resolved, resolved)
+        if row is None or (row.get(raw_key) or "").strip():
+            return resolved
+
+    return file_fallback_log_key
+
+
+def resolve_tax_year_column_key(header_lookup: Dict[str, str]) -> str | None:
+    """First matching tax-year column (YR, Year, Tax year, …); ``header_lookup`` keys are canonical."""
+    for syn in _TAX_YEAR_SYNONYMS:
+        c = canonical_header(syn)
+        if c in header_lookup:
+            return c
+    return None
+
+
+def validate_manual_log_headers(
+    header_lookup: Dict[str, str], tax_year_hint: int | None
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """
+    Returns ``(resolved_LOG_yyyy_canonical_key, resolved_tax_year_canonical_key, error_or_none, fallback_note)``.
+    ``fallback_note`` is set when ``LOG <season>`` needed a different ``LOG yyyy`` column.
+    """
+    yr_key = resolve_tax_year_column_key(header_lookup)
+    if not yr_key:
+        return (
+            None,
+            None,
+            "CSV missing a tax-year column (looks for "
+            + ", ".join(_TAX_YEAR_SYNONYMS)
+            + "). If Excel put the title rows above columns, Save As CSV again or use the importer after headers are detected.",
+            None,
+        )
+
+    last_ok = canonical_header("LAST") in header_lookup or canonical_header("TAX PAYER NAME (S) LAST") in header_lookup
+    if not last_ok:
+        return None, None, "CSV missing Last name column: need LAST or TAX PAYER NAME (S) LAST", None
+
+    if canonical_header("FIRST") not in header_lookup:
+        return None, None, "CSV missing required column: FIRST", None
+
+    log_key, fallback_note = resolve_manual_log_column_key(header_lookup, tax_year_hint)
+    if not log_key:
+        log_like = [k for k in header_lookup if "LOG" in k]
+        log_like.sort()
+        extra = ", ".join(log_like[:12]) if log_like else "none"
+        return (
+            None,
+            None,
+            f"CSV has no LOG yyyy column for assigned log numbers (expected something like LOG 2025). Found: {extra}",
+            None,
+        )
+
+    return log_key, yr_key, None, fallback_note
+
+
+@dataclass
+class PreparedManualCsv:
+    """Result of scanning a manual office log once."""
+
+    path: str
+    fieldnames: List[str]
+    all_rows: List[List[str]]
+    data_start: int
+    header_lookup: Dict[str, str]
+    log_key: str  # file-level fallback when choosing among LOG yyyy columns; rows prefer LOG matching YR
+    yr_key: str
+    fallback_note: str | None
+
+
+def prepare_manual_csv(csv_path: str, tax_year_hint: int | None) -> PreparedManualCsv:
+    """
+    Detect headers (including Excel title rows), validate columns, resolve LOG yyyy + tax-year keys.
+    """
+    fieldnames, all_rows, data_start, _ = _manual_csv_layout(csv_path)
+    header_lookup = build_header_lookup(fieldnames)
+    log_key, yr_key, req_err, fb = validate_manual_log_headers(header_lookup, tax_year_hint)
+    if req_err or not log_key or not yr_key:
+        raise ValueError(req_err or "manual log validation failed")
+    return PreparedManualCsv(csv_path, fieldnames, all_rows, data_start, header_lookup, log_key, yr_key, fb)
+
+
+def iterate_manual_prep(prep: PreparedManualCsv):
+    """Yield ``(row_number, normalized | None, warnings, error_or None)`` for a prepared manual CSV."""
+    for row_number, row_cells in enumerate(prep.all_rows[prep.data_start :], start=prep.data_start + 1):
+        if _is_skip_row(row_cells):
+            continue
+        if not any(c.strip() for c in row_cells):
+            continue
+        padded = row_cells + [""] * (len(prep.fieldnames) - len(row_cells))
+        row = {prep.fieldnames[i]: padded[i] for i in range(len(prep.fieldnames))}
+        try:
+            normalized, warnings = _normalize_row(row, prep.header_lookup, prep.log_key, prep.yr_key)
+            if not normalized["returns"]["log_number"] or normalized["returns"]["tax_year"] is None:
+                yield row_number, None, [], "Missing required values: LOG yyyy column and/or tax year column"
+            elif not normalized["clients"]["last_name"] or not normalized["clients"]["first_name"]:
+                yield row_number, None, [], "Missing required values: LAST (or TAX PAYER NAME (S) LAST) and/or FIRST"
+            else:
+                yield row_number, normalized, warnings, None
+        except Exception as exc:  # noqa: BLE001
+            yield row_number, None, [], str(exc)
+
+
+def _stable_fieldnames_merged(merged_headers: List[str]) -> List[str]:
+    """Unique non-empty-ish headers for DictReader-style row mapping (blank cells get placeholder names)."""
+    out: List[str] = []
+    for i, raw in enumerate(merged_headers):
+        t = _clean_header_cell(raw)
+        out.append(t if t else f"_BLANK_{i}")
+    return out
+
+
+def _manual_csv_layout(csv_path: str):
+    """
+    Read an office export with the same header detection as csv_analyzer (title rows, merged headers).
+    Returns (fieldnames, all_rows, data_start_index, analysis_result).
+    """
+    raw = Path(csv_path).read_bytes()
+    result = analyze(raw, Path(csv_path).name)
+    merged = result.merged_headers
+    if not merged:
+        raise ValueError("CSV has no header row (try re-saving from Excel or check the file is not empty).")
+    names = _stable_fieldnames_merged(merged)
+    text = raw.decode("utf-8-sig", errors="replace")
+    all_rows = list(csv.reader(io.StringIO(text)))
+    return names, all_rows, result.data_start_index, result
 
 def process_csv(conn: sqlite3.Connection, csv_path: str, batch_id: int, source_file: str) -> ImportStats:
     stats = ImportStats()
-    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        if not reader.fieldnames:
-            raise ValueError("CSV is missing header row.")
+    prep = prepare_manual_csv(csv_path, tax_year_hint=None)
+    returns_cache: Dict[int, List[sqlite3.Row]] = {}
 
-        header_lookup = build_header_lookup(reader.fieldnames)
-        missing = [name for name in REQUIRED_COLUMNS if name.upper() not in header_lookup]
-        if missing:
-            raise ValueError(f"CSV missing required columns: {', '.join(missing)}")
-
-        for row_number, row in enumerate(reader, start=2):
-            stats.row_count += 1
-            try:
-                normalized, warnings = _normalize_row(row, header_lookup)
-                if not normalized["returns"]["log_number"] or normalized["returns"]["tax_year"] is None:
-                    raise ValueError("Missing required values: LOG 2025 and/or YR")
-                if not normalized["clients"]["last_name"] or not normalized["clients"]["first_name"]:
-                    raise ValueError("Missing required values: LAST and/or FIRST")
-
-                match = _match_return(conn, normalized)
-                if match["ambiguous"]:
-                    _insert_review_row(conn, batch_id, row_number, row, "AMBIGUOUS_MATCH")
-                    _insert_import_row(conn, batch_id, row_number, row, "REVIEW", "; ".join(warnings) if warnings else None)
-                    stats.review_count += 1
-                    continue
-
-                client_id, created_client, updated_client = _upsert_client(conn, normalized["clients"], match["client_id"])
-                return_id, created_return, updated_return, before_row, after_row = _upsert_return(
-                    conn, client_id, normalized["returns"], match["return_id"]
+    for idx, row_cells in enumerate(prep.all_rows[prep.data_start :], start=prep.data_start + 1):
+        if _is_skip_row(row_cells):
+            continue
+        if not any(c.strip() for c in row_cells):
+            continue
+        stats.row_count += 1
+        row_number = idx
+        padded = row_cells + [""] * (len(prep.fieldnames) - len(row_cells))
+        row = {prep.fieldnames[i]: padded[i] for i in range(len(prep.fieldnames))}
+        # Skip truly blank rows (no name and no year) — these are spacer rows in Excel
+        last_raw = (row.get(prep.header_lookup.get("taxpayer name s last", "TAX PAYER NAME (S) LAST"), "")
+                    or row.get(prep.header_lookup.get("last name", "LAST"), "")
+                    or row.get(prep.header_lookup.get("last", "LAST"), "")).strip()
+        yr_raw  = (row.get(prep.header_lookup.get(prep.yr_key, prep.yr_key), "") if prep.yr_key else "").strip()
+        if not last_raw and not yr_raw:
+            continue
+        try:
+            normalized, warnings = _normalize_row(row, prep.header_lookup, prep.log_key, prep.yr_key)
+            # If year is missing but the row has a name, default to the log's own year (intake year)
+            if normalized["returns"]["tax_year"] is None and normalized["clients"]["last_name"]:
+                normalized["returns"]["tax_year"] = getattr(prep, "tax_year_hint", None) or 2025
+            if not normalized["returns"]["log_number"] or normalized["returns"]["tax_year"] is None:
+                raise ValueError(
+                    "Missing required values: office log #(LOG yyyy column) and/or tax year column"
                 )
-                _upsert_forms(conn, return_id, normalized["return_forms"])
-                _upsert_payment(conn, return_id, normalized["payments"])
+            # Business/entity returns have no first name — only last_name (the entity name) is required.
+            if not normalized["clients"]["last_name"]:
+                raise ValueError("Missing required values: LAST (or TAX PAYER NAME (S) LAST) and/or FIRST")
 
-                if _insert_note_if_new(conn, return_id, normalized["notes"]["note_text"]):
-                    stats.notes_created += 1
+            ty = normalized["returns"]["tax_year"]
+            prefetch = returns_cache.setdefault(ty, fetch_returns_clients_for_tax_year(conn, ty))
+            match = _match_return(conn, normalized, prefetch)
 
-                stats.events_created += create_status_events(
-                    conn=conn,
-                    return_id=return_id,
-                    before=before_row,
-                    after=after_row,
-                    import_time=now(),
-                    source_file=source_file,
-                )
-                stats.created_clients += int(created_client)
-                stats.updated_clients += int(updated_client)
-                stats.created_returns += int(created_return)
-                stats.updated_returns += int(updated_return)
-                stats.success_count += 1
+            if match["ambiguous"]:
+                _insert_review_row(conn, batch_id, row_number, row, "AMBIGUOUS_MATCH")
+                _insert_import_row(conn, batch_id, row_number, row, "REVIEW", "; ".join(warnings) if warnings else None)
+                stats.review_count += 1
+                continue
 
-                action = "CREATED" if created_return else "UPDATED"
-                _insert_import_row(conn, batch_id, row_number, row, action, "; ".join(warnings) if warnings else None)
-            except Exception as exc:
-                _insert_import_row(conn, batch_id, row_number, row, "ERROR", str(exc))
-                stats.error_count += 1
+            if match["needs_review"]:
+                reason = match.get("review_reason") or "REVIEW"
+                _insert_review_row(conn, batch_id, row_number, row, f"MANUAL_{reason}")
+                _insert_import_row(conn, batch_id, row_number, row, "REVIEW", "; ".join(warnings) if warnings else None)
+                stats.review_count += 1
+                continue
+
+            client_id, created_client, updated_client = _upsert_client(conn, normalized["clients"], match["client_id"])
+            return_id, created_return, updated_return, before_row, after_row = _upsert_return(
+                conn, client_id, normalized["returns"], match["return_id"], apply_manual_log_number=True
+            )
+            _upsert_forms(conn, return_id, normalized["return_forms"])
+            _upsert_payment(conn, return_id, normalized["payments"])
+
+            if _insert_note_if_new(conn, return_id, normalized["notes"]["note_text"]):
+                stats.notes_created += 1
+
+            stats.events_created += create_status_events(
+                conn=conn,
+                return_id=return_id,
+                before=before_row,
+                after=after_row,
+                import_time=now(),
+                source_file=source_file,
+            )
+            stats.created_clients += int(created_client)
+            stats.updated_clients += int(updated_client)
+            stats.created_returns += int(created_return)
+            stats.updated_returns += int(updated_return)
+            stats.success_count += 1
+
+            action = "CREATED" if created_return else "UPDATED"
+            _insert_import_row(conn, batch_id, row_number, row, action, "; ".join(warnings) if warnings else None)
+        except Exception as exc:
+            _insert_import_row(conn, batch_id, row_number, row, "ERROR", str(exc))
+            stats.error_count += 1
     return stats
 
 
-def _normalize_row(row: Dict[str, str], header_lookup: Dict[str, str]) -> tuple[Dict[str, Any], List[str]]:
-    warnings: List[str] = []
-    tax_year_val = normalize_string(get_value(row, header_lookup, "YR"))
-    tax_year = int(tax_year_val) if tax_year_val and tax_year_val.isdigit() else None
 
-    intake_date, warn = normalize_date(get_value(row, header_lookup, "INT'D"))
+def fetch_returns_clients_for_tax_year(conn: sqlite3.Connection, tax_year: int) -> List[sqlite3.Row]:
+    """All DB returns (+ client names) for a tax season — prefetch for manual matching."""
+    return conn.execute(
+        """
+        SELECT
+          r.id AS return_id,
+          r.client_id,
+          r.log_number AS return_log_number,
+          c.last_name,
+          c.first_name
+        FROM returns r
+        JOIN clients c ON c.id = r.client_id
+        WHERE r.tax_year = ?
+        """,
+        (tax_year,),
+    ).fetchall()
+
+
+def _augment_clients_joint_spouse(clients: Dict[str, Any]) -> None:
+    """
+    Derive spouse fields from LAST/FIRST/display when logs encode joint households
+    (e.g. ``JOHN & JANE`` in FIRST or comma+ampersand lines in ``TAX PAYER NAME (S)``).
+    """
+    disp = (clients.get("display_name") or "").strip()
+    fn = (clients.get("first_name") or "").strip()
+    primary_fn, spouse_first_chunk = split_joint_first_column(fn)
+    disp_spouse = spouse_parts_from_display_line(disp)
+    if disp_spouse:
+        sf, sl = disp_spouse
+        if sf:
+            clients["spouse_first_name"] = sf.strip()
+        if sl:
+            clients["spouse_last_name"] = sl.strip()
+        return
+
+    if spouse_first_chunk:
+        clients["first_name"] = primary_fn
+        sf2, sl2 = split_spouse_name_chunk(spouse_first_chunk)
+        if sf2:
+            clients["spouse_first_name"] = sf2
+        if sl2:
+            clients["spouse_last_name"] = sl2
+
+
+def _fuzzy_pick_for_manual(
+    csv_last: str,
+    csv_first: str,
+    year_rows: List[sqlite3.Row],
+    *,
+    excluded_return_ids: set[int],
+    fuzzy_ambiguous_margin: int = FUZZY_AMBIGUOUS_MARGIN,
+) -> Dict[str, Any]:
+    """Best DB return (same tax year) by fuzzy name excluding recycled LOG misses."""
+    scored: List[tuple[int, int, int]] = []
+    for row in year_rows:
+        rid = int(row["return_id"])
+        if rid in excluded_return_ids:
+            continue
+        s = score_client_names_pair(
+            csv_last,
+            csv_first,
+            row["last_name"],
+            row["first_name"],
+        )
+        scored.append((s, rid, int(row["client_id"])))
+    if not scored:
+        return _empty_manual_match_payload()
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    best_s, best_rid, best_cid = scored[0]
+    second_s = scored[1][0] if len(scored) > 1 else -1
+
+    ambiguous = False
+    if len(scored) > 1 and second_s >= REVIEW_THRESHOLD and (best_s - second_s < fuzzy_ambiguous_margin):
+        ambiguous = True
+
+    if ambiguous:
+        return {
+            "return_id": None,
+            "client_id": None,
+            "ambiguous": True,
+            "needs_review": False,
+            "review_reason": None,
+        }
+
+    if best_s < REVIEW_THRESHOLD:
+        return _empty_manual_match_payload()
+
+    if ACCEPT_THRESHOLD <= best_s:
+        return {
+            "return_id": best_rid,
+            "client_id": best_cid,
+            "ambiguous": False,
+            "needs_review": False,
+            "review_reason": None,
+        }
+
+    return {
+        "return_id": None,
+        "client_id": None,
+        "ambiguous": False,
+        "needs_review": True,
+        "review_reason": "FUZZY_NAME_REVIEW",
+    }
+
+
+def _empty_manual_match_payload() -> Dict[str, Any]:
+    return {
+        "return_id": None,
+        "client_id": None,
+        "ambiguous": False,
+        "needs_review": False,
+        "review_reason": None,
+    }
+
+
+def _normalize_row(
+    row: Dict[str, str],
+    header_lookup: Dict[str, str],
+    file_fallback_log_key: str,
+    tax_year_canon_key: str,
+) -> tuple[Dict[str, Any], List[str]]:
+    warnings: List[str] = []
+    tk = header_lookup.get(tax_year_canon_key)
+    tax_year_val = normalize_string(row.get(tk)) if tk else None
+    tax_year = normalize_tax_year(tax_year_val)
+
+    log_ck = effective_log_canonical_key(header_lookup, tax_year, file_fallback_log_key, row)
+
+    intake_raw = get_value_any(row, header_lookup, ("INT'D", "DATE INT'D"))
+    intake_date, warn = normalize_date(intake_raw)
     if warn:
         warnings.append(warn)
     date_emailed, warn = normalize_date(get_value(row, header_lookup, "DATE EMAILED"))
@@ -103,17 +482,18 @@ def _normalize_row(row: Dict[str, str], header_lookup: Dict[str, str]) -> tuple[
     if warn:
         warnings.append(warn)
 
-    return (
-        {
+    payload: Dict[str, Any] = {
             "clients": {
-                "last_name": normalize_string(get_value(row, header_lookup, "LAST")),
+                "last_name": normalize_string(
+                    get_value_any(row, header_lookup, ("LAST", "TAX PAYER NAME (S) LAST"))
+                ),
                 "first_name": normalize_string(get_value(row, header_lookup, "FIRST")),
                 "display_name": normalize_string(get_value(row, header_lookup, "TAX PAYER NAME (S)")),
                 "referral_flag": normalize_bool_flag(get_value(row, header_lookup, "Referral")),
                 "referred_by": normalize_string(get_value(row, header_lookup, "Referred By")),
             },
             "returns": {
-                "log_number": normalize_string(get_value(row, header_lookup, "LOG 2025")),
+                "log_number": normalize_string(get_value(row, header_lookup, log_ck)),
                 "tax_year": tax_year,
                 "processor": normalize_preparer(
                     normalize_string(get_value(row, header_lookup, "PROCESSOR"))
@@ -154,59 +534,105 @@ def _normalize_row(row: Dict[str, str], header_lookup: Dict[str, str]) -> tuple[
                 "cash_or_qpay_ref": normalize_string(get_value(row, header_lookup, "Cash, Q Pay")),
             },
             "notes": {"note_text": normalize_string(get_value(row, header_lookup, "NOTES"))},
-        },
-        warnings,
-    )
+        }
+    _augment_clients_joint_spouse(payload["clients"])
+    return (payload, warnings)
 
 
-def _match_return(conn: sqlite3.Connection, normalized: Dict[str, Any]) -> Dict[str, Any]:
+def _match_return(
+    conn: sqlite3.Connection,
+    normalized: Dict[str, Any],
+    prefetch_returns_for_year: List[sqlite3.Row] | None = None,
+) -> Dict[str, Any]:
+    """
+    Manual office log: LOG + tax year pick a candidate row, then **verify** taxpayer names fuzzily —
+    reused log slots are routed through same-year fuzzy search rather than overwriting unrelated clients.
+    """
     ret = normalized["returns"]
     cli = normalized["clients"]
-    matches = conn.execute(
-        "SELECT id, client_id FROM returns WHERE log_number = ? AND tax_year = ?",
-        (ret["log_number"], ret["tax_year"]),
-    ).fetchall()
-    if len(matches) == 1:
-        return {"return_id": int(matches[0]["id"]), "client_id": int(matches[0]["client_id"]), "ambiguous": False}
-    if len(matches) > 1:
-        return {"return_id": None, "client_id": None, "ambiguous": True}
+    ty = ret["tax_year"]
+    csv_ln = (cli["last_name"] or "").strip()
+    csv_fn = (cli["first_name"] or "").strip()
 
-    fallback = conn.execute(
-        """
-        SELECT r.id, r.client_id
-        FROM returns r
-        JOIN clients c ON c.id = r.client_id
-        WHERE lower(c.last_name) = lower(?) AND lower(c.first_name) = lower(?) AND r.tax_year = ?
-        """,
-        (cli["last_name"], cli["first_name"], ret["tax_year"]),
-    ).fetchall()
-    if len(fallback) == 1:
-        return {"return_id": int(fallback[0]["id"]), "client_id": int(fallback[0]["client_id"]), "ambiguous": False}
-    if len(fallback) > 1:
-        return {"return_id": None, "client_id": None, "ambiguous": True}
-    return {"return_id": None, "client_id": None, "ambiguous": False}
+    if ty is None:
+        return _empty_manual_match_payload()
+
+    rows = prefetch_returns_for_year
+    if rows is None:
+        rows = fetch_returns_clients_for_tax_year(conn, ty)
+
+    log_needle = normalize_string(ret.get("log_number") or "")
+    same_log_rows = [
+        r
+        for r in rows
+        if normalize_string(str(r["return_log_number"] if r["return_log_number"] is not None else "")) == log_needle
+    ]
+
+    excluded: set[int] = set()
+
+    if len(same_log_rows) > 1:
+        return {
+            "return_id": None,
+            "client_id": None,
+            "ambiguous": True,
+            "needs_review": False,
+            "review_reason": None,
+        }
+
+    if len(same_log_rows) == 1:
+        lone = same_log_rows[0]
+        lone_rid = int(lone["return_id"])
+        lone_cid = int(lone["client_id"])
+        nm_score = score_client_names_pair(csv_ln, csv_fn, lone["last_name"], lone["first_name"])
+
+        if nm_score >= ACCEPT_THRESHOLD:
+            return {
+                "return_id": lone_rid,
+                "client_id": lone_cid,
+                "ambiguous": False,
+                "needs_review": False,
+                "review_reason": None,
+            }
+        if nm_score >= REVIEW_THRESHOLD:
+            return {
+                "return_id": None,
+                "client_id": None,
+                "ambiguous": False,
+                "needs_review": True,
+                "review_reason": "LOG_VS_NAME_MEDIUM",
+            }
+        excluded.add(lone_rid)
+
+    return _fuzzy_pick_for_manual(csv_ln, csv_fn, rows, excluded_return_ids=excluded)
 
 
 def _upsert_client(conn: sqlite3.Connection, data: Dict[str, Any], forced_client_id: int | None) -> tuple[int, bool, bool]:
     existing = None
     if forced_client_id is not None:
-        existing = conn.execute("SELECT * FROM clients WHERE id = ?", (forced_client_id,)).fetchone()
+        existing = dict(conn.execute("SELECT * FROM clients WHERE id = ?", (forced_client_id,)).fetchone() or {})
     if existing is None:
-        existing = conn.execute(
+        row = conn.execute(
             "SELECT * FROM clients WHERE lower(last_name)=lower(?) AND lower(first_name)=lower(?) LIMIT 1",
             (data["last_name"], data["first_name"]),
         ).fetchone()
+        existing = dict(row) if row else None
 
     if existing is None:
         cur = conn.execute(
             """
-            INSERT INTO clients (last_name, first_name, display_name, referral_flag, referred_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO clients (
+              last_name, first_name, display_name,
+              spouse_first_name, spouse_last_name,
+              referral_flag, referred_by, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["last_name"],
                 data["first_name"],
                 data["display_name"],
+                data.get("spouse_first_name"),
+                data.get("spouse_last_name"),
                 _bool_to_int(data["referral_flag"]),
                 data["referred_by"],
                 now(),
@@ -216,14 +642,20 @@ def _upsert_client(conn: sqlite3.Connection, data: Dict[str, Any], forced_client
         return int(cur.lastrowid), True, False
 
     changed = False
-    payload = {"display_name": None, "referral_flag": None, "referred_by": None}
-    for key in ("display_name", "referral_flag", "referred_by"):
+    payload: Dict[str, Any] = {
+        "display_name": None,
+        "referral_flag": None,
+        "referred_by": None,
+        "spouse_first_name": None,
+        "spouse_last_name": None,
+    }
+    for key in ("display_name", "referral_flag", "referred_by", "spouse_first_name", "spouse_last_name"):
         incoming = data.get(key)
         if incoming is None:
             continue
         if key == "referral_flag":
             incoming = _bool_to_int(incoming)
-        if existing[key] != incoming:
+        if existing.get(key) != incoming:
             payload[key] = incoming
             changed = True
     if changed:
@@ -233,10 +665,20 @@ def _upsert_client(conn: sqlite3.Connection, data: Dict[str, Any], forced_client
               display_name = COALESCE(?, display_name),
               referral_flag = COALESCE(?, referral_flag),
               referred_by = COALESCE(?, referred_by),
+              spouse_first_name = COALESCE(?, spouse_first_name),
+              spouse_last_name = COALESCE(?, spouse_last_name),
               updated_at = ?
             WHERE id = ?
             """,
-            (payload["display_name"], payload["referral_flag"], payload["referred_by"], now(), int(existing["id"])),
+            (
+                payload["display_name"],
+                payload["referral_flag"],
+                payload["referred_by"],
+                payload["spouse_first_name"],
+                payload["spouse_last_name"],
+                now(),
+                int(existing["id"]),
+            ),
         )
     return int(existing["id"]), False, changed
 
@@ -246,15 +688,18 @@ def _upsert_return(
     client_id: int,
     data: Dict[str, Any],
     forced_return_id: int | None,
+    *,
+    apply_manual_log_number: bool = False,
 ) -> tuple[int, bool, bool, Dict[str, Any], Dict[str, Any]]:
     existing = None
     if forced_return_id is not None:
-        existing = conn.execute("SELECT * FROM returns WHERE id = ?", (forced_return_id,)).fetchone()
+        existing = dict(conn.execute("SELECT * FROM returns WHERE id = ?", (forced_return_id,)).fetchone() or {})
     if existing is None:
-        existing = conn.execute(
+        row = conn.execute(
             "SELECT * FROM returns WHERE log_number = ? AND tax_year = ? LIMIT 1",
             (data["log_number"], data["tax_year"]),
         ).fetchone()
+        existing = dict(row) if row else None
 
     if existing is None:
         cur = conn.execute(
@@ -296,8 +741,15 @@ def _upsert_return(
     changed = False
     payload: Dict[str, Any] = {}
     bool_fields = {"verified", "transfer_2025_flag", "transfer_2026_flag", "is_amended", "has_w7", "is_extension", "transfer_flag"}
+    existing_status = existing.get("client_status")
+    status_is_locked = is_locked_status(existing_status)
     for key, incoming in data.items():
-        if key in {"log_number", "tax_year"} or incoming is None:
+        if key in {"log_number", "tax_year"}:
+            continue
+        if incoming is None:
+            continue
+        # CANCELLED is a terminal status — no import source may overwrite it.
+        if key == "client_status" and status_is_locked:
             continue
         db_value = _bool_to_int(incoming) if key in bool_fields else incoming
         if existing[key] != db_value:
@@ -306,10 +758,19 @@ def _upsert_return(
     if existing["client_id"] != client_id:
         payload["client_id"] = client_id
         changed = True
+
+    if apply_manual_log_number:
+        inc_ln = normalize_string(str(data.get("log_number") or ""))
+        ex_ln = normalize_string(str(existing["log_number"] or ""))
+        if inc_ln and inc_ln != ex_ln:
+            payload["log_number"] = inc_ln
+            changed = True
+
     if changed:
         conn.execute(
             """
             UPDATE returns SET
+              log_number = COALESCE(?, log_number),
               client_id = COALESCE(?, client_id),
               processor = COALESCE(?, processor),
               verified = COALESCE(?, verified),
@@ -330,6 +791,7 @@ def _upsert_return(
             WHERE id = ?
             """,
             (
+                payload.get("log_number"),
                 payload.get("client_id"),
                 payload.get("processor"),
                 payload.get("verified"),
@@ -494,28 +956,14 @@ def _bool_to_int(value: Any) -> int | None:
     return 1 if bool(value) else 0
 
 
-def iter_manual_csv_rows(csv_path: str):
+def iter_manual_csv_rows(csv_path: str, tax_year_hint: int | None = None):
     """
     Parse a manual log CSV without touching the database.
+
+    ``tax_year_hint`` informs which ``LOG yyyy`` column to prefer when the file lacks an exact ``LOG <year>``.
+
     Yields: (row_number, normalized | None, warnings, error | None)
     """
-    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        if not reader.fieldnames:
-            raise ValueError("CSV is missing header row.")
-        header_lookup = build_header_lookup(reader.fieldnames)
-        missing = [name for name in REQUIRED_COLUMNS if name.upper() not in header_lookup]
-        if missing:
-            raise ValueError(f"CSV missing required columns: {', '.join(missing)}")
+    prep = prepare_manual_csv(csv_path, tax_year_hint)
+    yield from iterate_manual_prep(prep)
 
-        for row_number, row in enumerate(reader, start=2):
-            try:
-                normalized, warnings = _normalize_row(row, header_lookup)
-                if not normalized["returns"]["log_number"] or normalized["returns"]["tax_year"] is None:
-                    yield row_number, None, [], "Missing required values: LOG 2025 and/or YR"
-                elif not normalized["clients"]["last_name"] or not normalized["clients"]["first_name"]:
-                    yield row_number, None, [], "Missing required values: LAST and/or FIRST"
-                else:
-                    yield row_number, normalized, warnings, None
-            except Exception as exc:  # noqa: BLE001 — surface row errors for the compare view
-                yield row_number, None, [], str(exc)

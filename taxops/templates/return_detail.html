@@ -48,6 +48,18 @@
       </div>
     </div>
 
+    <!-- Pickup workflow shortcut -->
+    {% if ret.client_status in ('PICKUP', 'EFILE READY') %}
+    <a href="/pickup/{{ ret.id }}"
+       class="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg px-3 py-2 transition-all">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+      </svg>
+      Pickup Workflow
+    </a>
+    {% endif %}
+
     <!-- Print sticker button -->
     <button onclick="printSticker()"
             class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
@@ -144,6 +156,83 @@
     </div>
   </div>
 
+  {% if ret.client_status == 'REJECTED' %}
+  {% set cc_cur = ret.contact_status or 'not_contacted' %}
+  <!-- ── Client contact (rejected returns) ─────────────────────────────── -->
+  <div id="client-contact-card" class="rounded-xl border overflow-hidden
+       {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}border-red-300 bg-red-50/40{% else %}border-slate-200 bg-white{% endif %}">
+    <div class="section-header flex flex-wrap items-center justify-between gap-2
+         {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}bg-red-50 border-b border-red-200{% endif %}">
+      <span class="flex items-center gap-2">
+        Client contact
+        {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}
+        <span class="text-xs font-bold uppercase tracking-wide text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-full">Needs client contact</span>
+        {% endif %}
+      </span>
+      <a href="#notes-card" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold">Notes &rarr;</a>
+    </div>
+    <div class="p-4 flex flex-wrap items-end gap-4">
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-slate-500 font-medium">Contact status</span>
+        <select id="contact-status-sel" onchange="saveContactStatus({{ ret.id }})"
+                class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 min-w-[13rem] focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          {% for k, lab in contact_labels.items() %}
+          <option value="{{ k }}" {% if cc_cur == k %}selected{% endif %}>{{ lab }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-slate-500 font-medium">Last contacted</span>
+        <input type="date" id="contact-date-input" value="{{ ret.last_contacted_date[:10] if ret.last_contacted_date else '' }}"
+               onchange="saveContactDate({{ ret.id }})"
+               class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-400">
+      </label>
+      <p class="text-xs text-slate-500 max-w-md">Use <strong>Notes</strong> below for call details. Marking <em>Contacted</em> or <em>Follow-up needed</em> stamps today&apos;s date unless you pick another.</p>
+    </div>
+  </div>
+
+  <!-- ── AI draft email (rejected returns only) ────────────────────────── -->
+  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="section-header">Draft follow-up email</div>
+    <div class="p-4 flex flex-col gap-3">
+      <div class="flex items-center gap-3">
+        <button id="draft-email-btn"
+                onclick="draftEmail({{ ret.id }})"
+                class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          </svg>
+          Draft follow-up email
+        </button>
+        <span id="draft-email-error" class="hidden text-xs text-red-600 font-medium"></span>
+      </div>
+      <div id="draft-email-warning"
+           class="hidden flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 font-medium">
+        <svg class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
+        This draft is for review only — nothing is sent automatically.
+        Edit it below, then copy and send it yourself through your email client.
+      </div>
+      <textarea id="draft-email-textarea"
+                rows="10"
+                class="hidden w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y"
+                placeholder="Draft will appear here…"></textarea>
+      <button id="draft-email-copy-btn"
+              onclick="copyDraft()"
+              class="hidden shrink-0 self-start flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+        Copy to clipboard
+      </button>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- ── Two-column layout ──────────────────────────────────────────────── -->
   <div class="grid grid-cols-3 gap-4">
 
@@ -194,6 +283,8 @@
             <span class="text-[11px] font-bold px-2.5 py-1 rounded-full border
                          {% if flag == 'LATE INTAKE' %}
                          bg-amber-50 text-amber-700 border-amber-200
+                         {% elif flag == 'CLIENT CONTACT' %}
+                         bg-orange-50 text-orange-800 border-orange-200
                          {% else %}
                          bg-rose-50 text-rose-700 border-rose-200
                          {% endif %}">
@@ -203,6 +294,69 @@
           </div>
         </div>
         {% endif %}
+      </div>
+
+      <!-- Missing Documents -->
+      {% set open_docs   = missing_docs | selectattr('is_resolved', 'equalto', 0) | list %}
+      {% set closed_docs = missing_docs | selectattr('is_resolved', 'equalto', 1) | list %}
+      <div id="missing-docs-card"
+           class="bg-white rounded-xl border overflow-hidden
+                  {% if open_docs %}border-orange-300{% else %}border-slate-200{% endif %}">
+        <div class="section-header flex items-center justify-between
+                    {% if open_docs %}bg-orange-50 border-b border-orange-200{% endif %}">
+          <span class="flex items-center gap-2">
+            Missing Documents
+            {% if open_docs %}
+            <span class="text-xs font-bold bg-orange-500 text-white px-2 py-0.5 rounded-full">
+              {{ open_docs | length }} open
+            </span>
+            {% elif missing_docs %}
+            <span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
+              All resolved &#10003;
+            </span>
+            {% endif %}
+          </span>
+          {% if ret.client_status == 'HOLD' and not open_docs and missing_docs %}
+          <span class="text-xs text-slate-400 font-normal">All docs in — clear HOLD when ready</span>
+          {% endif %}
+        </div>
+
+        <!-- Add new item -->
+        <div class="p-3 border-b border-slate-100 flex gap-2">
+          <input id="missing-doc-input" type="text" placeholder="e.g. W-2, Prior year return, SSN card…"
+                 class="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                 onkeydown="if(event.key==='Enter') addMissingDoc({{ ret.id }})">
+          <button onclick="addMissingDoc({{ ret.id }})"
+                  class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white transition-colors">
+            + Add
+          </button>
+        </div>
+
+        <!-- Items list -->
+        <div id="missing-docs-list" class="divide-y divide-slate-100 max-h-52 overflow-y-auto">
+          {% for doc in missing_docs %}
+          <div id="mdoc-{{ doc.id }}"
+               class="flex items-center gap-3 px-4 py-2.5 {% if doc.is_resolved %}opacity-50{% endif %}">
+            <button onclick="toggleMissingDoc({{ ret.id }}, {{ doc.id }}, this)"
+                    title="{% if doc.is_resolved %}Mark open{% else %}Mark resolved{% endif %}"
+                    class="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 transition-colors
+                           {% if doc.is_resolved %}bg-green-100 border-green-400 text-green-600{% else %}border-slate-300 hover:border-orange-400{% endif %}">
+              {% if doc.is_resolved %}<span class="text-xs font-bold">&#10003;</span>{% endif %}
+            </button>
+            <span class="flex-1 text-sm {% if doc.is_resolved %}line-through text-slate-400{% else %}text-slate-800{% endif %}">
+              {{ doc.item_text }}
+            </span>
+            <button onclick="deleteMissingDoc({{ ret.id }}, {{ doc.id }})"
+                    class="text-slate-300 hover:text-red-400 transition-colors text-xs" title="Remove">
+              &#10005;
+            </button>
+          </div>
+          {% else %}
+          <div id="missing-docs-empty" class="px-4 py-5 text-center text-sm text-slate-400">
+            No missing documents tracked
+          </div>
+          {% endfor %}
+        </div>
       </div>
 
       <!-- Forms -->
@@ -280,7 +434,7 @@
     <div class="space-y-4">
 
       <!-- Notes -->
-      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div id="notes-card" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
         <div class="section-header">Notes</div>
         <div class="p-3 border-b border-slate-100">
           <textarea id="note-input" rows="2" placeholder="Add a note… (Ctrl+Enter to save)"
@@ -399,12 +553,137 @@ async function setStatusDetail(returnId, status) {
   window.setStatus(returnId, status, null);
 }
 
+async function saveContactStatus(returnId) {
+  const sel = document.getElementById('contact-status-sel');
+  const dIn = document.getElementById('contact-date-input');
+  if (!sel) return;
+  const body = { contact_status: sel.value };
+  if (sel.value === 'not_contacted') body.last_contacted_date = null;
+  const resp = await fetch(`/api/return/${returnId}/contact`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  if (data.error) { alert(data.error); return; }
+  if (!data.success) return;
+  if (data.last_contacted_date && dIn) dIn.value = data.last_contacted_date.slice(0, 10);
+  if ((data.contact_status === 'not_contacted') && dIn) dIn.value = '';
+  window.location.reload();
+}
+
+async function saveContactDate(returnId) {
+  const sel = document.getElementById('contact-status-sel');
+  const dIn = document.getElementById('contact-date-input');
+  if (!dIn || !sel) return;
+  const resp = await fetch(`/api/return/${returnId}/contact`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contact_status: sel.value,
+      last_contacted_date: dIn.value || null,
+    }),
+  });
+  const data = await resp.json();
+  if (data.error) { alert(data.error); return; }
+  if (!data.success) return;
+  window.location.reload();
+}
+
 async function saveField(returnId, field, value) {
   await fetch(`/api/return/${returnId}/field`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ field, value }),
   });
+}
+
+// ── Missing documents tracker ─────────────────────────────────────────────
+async function addMissingDoc(returnId) {
+  const input = document.getElementById('missing-doc-input');
+  const text  = (input.value || '').trim();
+  if (!text) return;
+  input.disabled = true;
+  try {
+    const resp = await fetch(`/api/return/${returnId}/missing-doc`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ text }),
+    });
+    const data = await resp.json();
+    if (!data.success) { input.disabled = false; return; }
+    input.value    = '';
+    input.disabled = false;
+    // Remove empty placeholder
+    document.getElementById('missing-docs-empty')?.remove();
+    // Append new row
+    const list = document.getElementById('missing-docs-list');
+    const div  = document.createElement('div');
+    div.id = `mdoc-${data.id}`;
+    div.className = 'flex items-center gap-3 px-4 py-2.5';
+    div.innerHTML = `
+      <button onclick="toggleMissingDoc(${returnId}, ${data.id}, this)" title="Mark resolved"
+              class="w-5 h-5 rounded border border-slate-300 hover:border-orange-400 flex items-center justify-center flex-shrink-0 transition-colors">
+      </button>
+      <span class="flex-1 text-sm text-slate-800">${data.text}</span>
+      <button onclick="deleteMissingDoc(${returnId}, ${data.id})"
+              class="text-slate-300 hover:text-red-400 transition-colors text-xs" title="Remove">&#10005;</button>`;
+    list.appendChild(div);
+    refreshDocsBadge(returnId);
+  } catch(e) { input.disabled = false; }
+}
+
+async function toggleMissingDoc(returnId, docId, btn) {
+  const resp = await fetch(`/api/return/${returnId}/missing-doc/${docId}/toggle`, { method: 'POST' });
+  const data = await resp.json();
+  if (!data.success) return;
+  const row  = document.getElementById(`mdoc-${docId}`);
+  const span = row.querySelector('span.flex-1');
+  if (data.is_resolved) {
+    btn.classList.replace('border-slate-300','border-green-400');
+    btn.classList.add('bg-green-100','text-green-600');
+    btn.innerHTML = '<span class="text-xs font-bold">&#10003;</span>';
+    btn.title = 'Mark open';
+    span.classList.add('line-through','text-slate-400');
+    span.classList.remove('text-slate-800');
+    row.classList.add('opacity-50');
+  } else {
+    btn.classList.replace('border-green-400','border-slate-300');
+    btn.classList.remove('bg-green-100','text-green-600');
+    btn.innerHTML = '';
+    btn.title = 'Mark resolved';
+    span.classList.remove('line-through','text-slate-400');
+    span.classList.add('text-slate-800');
+    row.classList.remove('opacity-50');
+  }
+  refreshDocsBadge(returnId);
+}
+
+async function deleteMissingDoc(returnId, docId) {
+  await fetch(`/api/return/${returnId}/missing-doc/${docId}`, { method: 'DELETE' });
+  document.getElementById(`mdoc-${docId}`)?.remove();
+  if (!document.querySelector('#missing-docs-list [id^="mdoc-"]')) {
+    const list = document.getElementById('missing-docs-list');
+    list.innerHTML = '<div id="missing-docs-empty" class="px-4 py-5 text-center text-sm text-slate-400">No missing documents tracked</div>';
+  }
+  refreshDocsBadge(returnId);
+}
+
+function refreshDocsBadge(returnId) {
+  const rows   = document.querySelectorAll('#missing-docs-list [id^="mdoc-"]');
+  const open   = [...rows].filter(r => !r.classList.contains('opacity-50')).length;
+  const card   = document.getElementById('missing-docs-card');
+  const header = card?.querySelector('.section-header');
+  // Update border color
+  if (card) {
+    card.classList.toggle('border-orange-300', open > 0);
+    card.classList.toggle('border-slate-200',  open === 0);
+  }
+  if (header) {
+    header.classList.toggle('bg-orange-50',         open > 0);
+    header.classList.toggle('border-b',             open > 0);
+    header.classList.toggle('border-orange-200',    open > 0);
+  }
 }
 
 async function quickToggle(returnId, field, btn) {
@@ -452,6 +731,59 @@ function printSticker() {
   const win = window.open('', '_blank', 'width=320,height=200');
   win.document.write(`<html><body onload="window.print();window.close()">${content}</body></html>`);
   win.document.close();
+}
+
+async function draftEmail(returnId) {
+  const btn      = document.getElementById('draft-email-btn');
+  const textarea = document.getElementById('draft-email-textarea');
+  const errSpan  = document.getElementById('draft-email-error');
+  const warning  = document.getElementById('draft-email-warning');
+  const copyBtn  = document.getElementById('draft-email-copy-btn');
+
+  btn.disabled    = true;
+  btn.textContent = 'Drafting…';
+  errSpan.classList.add('hidden');
+  errSpan.textContent = '';
+
+  try {
+    const resp = await fetch(`/ai/return/${returnId}/draft-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await resp.json();
+
+    if (data.draft) {
+      textarea.value = data.draft;
+      textarea.classList.remove('hidden');
+      warning.classList.remove('hidden');
+      copyBtn.classList.remove('hidden');
+    } else {
+      errSpan.textContent = data.error || 'Failed to generate draft.';
+      errSpan.classList.remove('hidden');
+    }
+  } catch (e) {
+    errSpan.textContent = 'Could not reach server. Is Ollama running?';
+    errSpan.classList.remove('hidden');
+  } finally {
+    btn.disabled  = false;
+    btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg> Regenerate draft';
+  }
+}
+
+async function copyDraft() {
+  const textarea = document.getElementById('draft-email-textarea');
+  const copyBtn  = document.getElementById('draft-email-copy-btn');
+  if (!textarea || !textarea.value) return;
+  try {
+    await navigator.clipboard.writeText(textarea.value);
+    const orig = copyBtn.innerHTML;
+    copyBtn.textContent = '✓ Copied';
+    copyBtn.classList.add('text-green-700', 'border-green-300');
+    setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.classList.remove('text-green-700','border-green-300'); }, 2000);
+  } catch (e) {
+    textarea.select();
+    document.execCommand('copy');
+  }
 }
 </script>
 {% endblock %}

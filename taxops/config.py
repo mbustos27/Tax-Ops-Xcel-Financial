@@ -16,6 +16,10 @@ ERROR_DIR     = str(_HERE / "data" / "error")
 # "demo" shows a banner in the UI; anything else is production
 APP_ENV = os.environ.get("TAXOPS_ENV", "production").lower()
 
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+
+DOCUMENTS_BASE_PATH = os.environ.get("DOCUMENTS_BASE_PATH", str(_HERE / "documents"))
+
 MANUAL_LOG_SOURCE = "MANUAL_LOG_IMPORT"
 DRAKE_SOURCE = "DRAKE_IMPORT"
 CSMDATA_SOURCE = "CSMDATA_IMPORT"

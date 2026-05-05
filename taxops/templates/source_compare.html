@@ -7,9 +7,12 @@
   <div>
     <h1 class="text-xl font-bold text-slate-800">Database vs source files</h1>
     <p class="text-sm text-slate-500 mt-0.5 max-w-3xl">
-      Compares each return in the database for the selected tax year to the <strong>office log CSV</strong>
-      (manually re-parsed) and a <strong>Drake</strong> export (Tax Ops or CSM), using the same row-matching
-      rules as a normal import. Only rows for that year in the log are included. Amber highlights = value differs from the database.
+      The manual office log is usually <strong>one chronological workbook</strong> with <strong>YR</strong> marking
+      the tax season for each intake row — the same semantics as CSV import (log numbers may come from
+      <code class="bg-slate-100 px-1 rounded">LOG yyyy</code> matching each row&apos;s year when present).
+      This screen compares the <strong>selected tax year</strong> returns in TaxOps against log rows whose
+      YR equals that year; rows for other seasons are still matched separately (see counters below).
+      Amber highlights are value deltas vs the database.
     </p>
   </div>
 
@@ -64,28 +67,49 @@
   {% endif %}
 
   {% if not cmp.error and cmp.summary %}
-  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-sm">
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-sm">
     <div class="bg-white border border-slate-200 rounded-xl px-3 py-2">
       <div class="text-slate-400 text-xs uppercase">DB returns</div>
       <div class="font-mono font-bold text-slate-800">{{ cmp.summary.db_returns }}</div>
     </div>
     <div class="bg-white border border-slate-200 rounded-xl px-3 py-2">
-      <div class="text-slate-400 text-xs uppercase">Log matched</div>
+      <div class="text-slate-400 text-xs uppercase leading-tight">Log matched (YR = {{ cmp.year }})</div>
       <div class="font-mono font-bold text-slate-800">{{ cmp.summary.manual_matched }}</div>
+    </div>
+    <div class="bg-white border border-slate-200 rounded-xl px-3 py-2 {% if cmp.summary.manual_rows_matched_other_years is defined and cmp.summary.manual_rows_matched_other_years == 0 %}opacity-75{% endif %}">
+      <div class="text-slate-400 text-xs uppercase leading-tight">Log matched (other TY)</div>
+      <div class="font-mono font-bold text-slate-800">
+        {% if cmp.summary.manual_rows_matched_other_years is defined %}{{ cmp.summary.manual_rows_matched_other_years }}{% else %}0{% endif %}
+      </div>
     </div>
     <div class="bg-white border border-slate-200 rounded-xl px-3 py-2">
       <div class="text-slate-400 text-xs uppercase">Drake matched</div>
       <div class="font-mono font-bold text-slate-800">{{ cmp.summary.drake_matched }}</div>
     </div>
     <div class="bg-white border border-slate-200 rounded-xl px-3 py-2">
-      <div class="text-slate-400 text-xs uppercase">Log orphans</div>
+      <div class="text-slate-400 text-xs uppercase leading-tight">Log orphans (YR = {{ cmp.year }})</div>
       <div class="font-mono font-bold text-slate-800">{{ cmp.summary.manual_orphan_rows }}</div>
+      {% if cmp.summary.manual_orphan_parse is defined %}
+      <div class="text-[11px] text-slate-500 mt-1 leading-tight font-mono whitespace-nowrap overflow-x-auto">
+        parse {{ cmp.summary.manual_orphan_parse }} ·
+        amb {{ cmp.summary.manual_orphan_ambiguous }} ·
+        no DB {{ cmp.summary.manual_orphan_no_db }}
+        <span class="block mt-1 text-slate-400 font-sans normal-case">(parse = file-wide; amb/no DB = rows with YR = {{ cmp.year }} only)</span>
+      </div>
+      {% endif %}
     </div>
     <div class="bg-white border border-slate-200 rounded-xl px-3 py-2">
       <div class="text-slate-400 text-xs uppercase">Drake orphans</div>
       <div class="font-mono font-bold text-slate-800">{{ cmp.summary.drake_orphan_rows }}</div>
     </div>
   </div>
+
+  {% if cmp.summary.manual_rows_matched_other_years is defined and cmp.summary.manual_rows_matched_other_years > 0 %}
+  <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+    <span class="font-semibold font-mono text-slate-800">{{ cmp.summary.manual_rows_matched_other_years }}</span>
+    intake {% if cmp.summary.manual_rows_matched_other_years == 1 %}row{% else %}rows{% endif %} in this file matched the database under a tax year other than {{ cmp.year }} (expected for chronological logs).
+  </div>
+  {% endif %}
 
   <div class="text-xs text-slate-500 font-mono break-all">
     {% if cmp.manual_path_resolved %}<div><span class="text-slate-400">Manual:</span> {{ cmp.manual_path_resolved }}</div>{% endif %}
@@ -100,56 +124,267 @@
   {% endif %}
 
   {% for row in cmp.rows %}
-  <details class="bg-white rounded-xl border border-slate-200 overflow-hidden group" {% if row.n_diffs > 0 %}open{% endif %}>
-    <summary class="cursor-pointer px-4 py-3 flex flex-wrap items-center gap-2 bg-slate-50 border-b border-slate-200 hover:bg-slate-100 list-none
-                   [&::-webkit-details-marker]:hidden">
+  <details class="bg-white rounded-xl border {% if row.n_conflicts > 0 %}border-red-300{% elif row.logout_date_alert %}border-orange-300{% elif row.n_diffs > 0 %}border-amber-200{% else %}border-slate-200{% endif %} overflow-hidden group" {% if row.n_diffs > 0 or row.logout_date_alert %}open{% endif %}>
+    <summary class="cursor-pointer px-4 py-3 flex flex-wrap items-center gap-2 {% if row.n_conflicts > 0 %}bg-red-50{% elif row.logout_date_alert %}bg-orange-50{% elif row.n_diffs > 0 %}bg-amber-50{% else %}bg-slate-50{% endif %} border-b border-inherit hover:brightness-95 list-none [&::-webkit-details-marker]:hidden">
       <span class="font-mono text-slate-500 text-sm w-20">#{{ row.log }}</span>
       <span class="font-semibold text-slate-800 flex-1 min-w-0">{{ row.name }}</span>
+      {% if row.n_conflicts > 0 %}
+      <span class="text-xs font-bold bg-red-100 text-red-800 px-2 py-0.5 rounded-full" title="Manual log and Drake disagree — human decision required">⚠ {{ row.n_conflicts }} conflict{{ 's' if row.n_conflicts != 1 }}</span>
+      {% endif %}
+      {% if row.logout_date_alert %}
+      <span class="text-xs font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full" title="Drake shows a logout date but status is not LOG OUT">📤 logout date set</span>
+      {% endif %}
       {% if row.n_diffs > 0 %}
-      <span class="text-xs font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">{{ row.n_diffs }} diffs</span>
+      <span class="text-xs font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">{{ row.n_diffs }} diff{{ 's' if row.n_diffs != 1 }}</span>
       {% else %}
       <span class="text-xs text-slate-400">in sync</span>
       {% endif %}
       <a href="/return/{{ row.return_id }}?year={{ cmp.year }}"
          class="text-sm text-blue-600 hover:underline" onclick="event.stopPropagation()">Open return →</a>
     </summary>
+
+    {% set row_is_cancelled = row.fields | selectattr("sync_state","equalto","cancelled_lock") | list | length > 0 %}
+    {% if row_is_cancelled %}
+    <div class="px-4 py-2 text-xs bg-slate-100 border-b border-slate-300 text-slate-700 flex items-center gap-2 font-semibold">
+      🔒 This return is <span class="font-mono text-slate-900 mx-1">CANCELLED</span> — status is locked. Open the return record to manually reverse the cancellation.
+    </div>
+    {% endif %}
+
+    {% if row.logout_date_alert %}
+    <div class="px-4 py-2 text-xs bg-orange-50 border-b border-orange-200 text-orange-800 flex items-center gap-2">
+      <span class="font-bold">📤 Drake has a logout date for this return</span>
+      <span class="text-orange-600">— if the return was picked up / logged out, set status to <strong>LOG OUT</strong> in the manual log then re-import, or apply it below.</span>
+      <button onclick="applyField({{ row.return_id }}, 'client_status', 'LOG OUT', 'manual')"
+              class="ml-auto px-2 py-1 text-[11px] font-bold rounded bg-orange-200 hover:bg-orange-300 text-orange-900 whitespace-nowrap">
+        Set LOG OUT
+      </button>
+    </div>
+    {% endif %}
+
     <div class="overflow-x-auto">
-      <table class="w-full text-xs">
+      <table class="w-full text-xs" id="cmp-table-{{ row.return_id }}">
         <thead>
           <tr class="bg-slate-100 text-slate-500 text-left">
-            <th class="px-3 py-2 font-semibold w-1/4">Field</th>
-            <th class="px-3 py-2 font-semibold w-1/4">Database</th>
-            <th class="px-3 py-2 font-semibold w-1/4">Manual log</th>
-            <th class="px-3 py-2 font-semibold w-1/4">Drake / CSM</th>
+            <th class="px-3 py-2 font-semibold">Field</th>
+            <th class="px-3 py-2 font-semibold">Database</th>
+            <th class="px-3 py-2 font-semibold">Manual log</th>
+            <th class="px-3 py-2 font-semibold">Drake / CSM</th>
+            <th class="px-3 py-2 font-semibold text-right">Apply</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
           {% for f in row.fields %}
-          <tr>
-            <td class="px-3 py-1.5 text-slate-600 whitespace-nowrap">{{ f.label }}</td>
-            <td class="px-3 py-1.5 font-mono text-slate-800">{{ f.db }}</td>
-            <td class="px-3 py-1.5 font-mono {% if f.m_diff %}bg-amber-50 text-amber-900{% else %}text-slate-700{% endif %}">
-              {{ f.manual }}
+          {% set info_only = f.sync_state == "info_only" %}
+          {% set is_conflict = f.sync_state == "conflict" %}
+          {% set is_cancelled_lock = f.sync_state == "cancelled_lock" %}
+          {% set rec_is_manual = f.rec_source == "manual" %}
+          {% set rec_is_drake = f.rec_source == "drake" %}
+          {% set rec_is_conflict_hint = f.rec_source.endswith("_conflict") if f.rec_source else false %}
+          {% set row_bg = "bg-slate-100" if is_cancelled_lock else ("" if info_only else ("bg-red-50" if is_conflict else ("bg-sky-50" if f.sync_state == "both_agree_vs_db" else ""))) %}
+          <tr class="{{ row_bg }}{% if info_only or is_cancelled_lock %} opacity-70{% endif %}"
+              data-field="{{ f.key }}"
+              data-rid="{{ row.return_id }}"
+              data-mraw="{{ f.m_raw }}"
+              data-draw="{{ f.d_raw }}"
+              data-recval="{{ f.rec_val }}"
+              data-recsource="{{ f.rec_source }}">
+            <td class="px-3 py-1.5 text-slate-600 whitespace-nowrap">
+              {{ f.label }}
+              {% if is_cancelled_lock %}
+              <span class="ml-1 text-slate-500 text-[10px] font-bold bg-slate-200 px-1 rounded" title="CANCELLED is a terminal status — cannot be changed via source compare">🔒 locked</span>
+              {% elif info_only %}
+              <span class="ml-1 text-slate-400 text-[10px] italic">Drake only</span>
+              {% elif is_conflict %}
+              <span class="ml-1 text-red-500 font-bold" title="Manual and Drake disagree">⚠</span>
+              {% elif f.sync_state == "both_agree_vs_db" %}
+              <span class="ml-1 text-sky-500 font-bold" title="Both sources agree — DB may be stale">↑</span>
+              {% endif %}
             </td>
-            <td class="px-3 py-1.5 font-mono {% if f.d_diff %}bg-amber-50 text-amber-900{% else %}text-slate-700{% endif %}">
+            {# Database value — highlight if it will be overwritten by the recommendation #}
+            <td class="px-3 py-1.5 font-mono text-slate-800">{{ f.db }}</td>
+            {# Manual log value #}
+            <td class="px-3 py-1.5 font-mono
+              {%- if not info_only and is_conflict %} text-red-700 font-semibold
+              {%- elif f.m_diff %} text-amber-800
+              {%- else %} text-slate-600{% endif %}">
+              {{ f.manual }}
+              {%- if rec_is_manual and not info_only %}
+              <span class="ml-1 text-emerald-600 text-[10px] font-bold" title="Recommended: this value will be applied">✓</span>
+              {%- elif rec_is_conflict_hint and f.rec_source.startswith('manual') %}
+              <span class="ml-1 text-orange-500 text-[10px]" title="Suggested by priority rules, but conflict — review">?</span>
+              {%- endif %}
+            </td>
+            {# Drake / CSM value #}
+            <td class="px-3 py-1.5 font-mono text-slate-500
+              {%- if not info_only and is_conflict %} text-red-700 font-semibold
+              {%- elif not info_only and f.d_diff %} text-amber-800{% endif %}">
               {{ f.drake }}
+              {%- if info_only %}<span class="text-slate-300 ml-1 italic text-[10px]">ℹ</span>
+              {%- elif rec_is_drake and not info_only %}
+              <span class="ml-1 text-emerald-600 text-[10px] font-bold" title="Recommended: this value will be applied">✓</span>
+              {%- elif rec_is_conflict_hint and f.rec_source.startswith('drake') %}
+              <span class="ml-1 text-orange-500 text-[10px]" title="Suggested by priority rules, but conflict — review">?</span>
+              {%- endif %}
+            </td>
+            <td class="px-3 py-1.5 text-right whitespace-nowrap space-x-1">
+              {%- if not info_only and f.sync_state != 'in_sync' and f.key not in ('log_number','last_name','first_name') %}
+              {%- if f.m_raw and f.m_diff %}
+              <button onclick="applyField({{ row.return_id }}, '{{ f.key }}', '{{ f.m_raw|replace("'","\\'")|replace('"','\\"') }}', 'manual')"
+                      class="px-1.5 py-0.5 text-[10px] font-semibold rounded {% if rec_is_manual %}bg-emerald-100 hover:bg-emerald-200 text-emerald-900 ring-1 ring-emerald-400{% else %}bg-amber-100 hover:bg-amber-200 text-amber-900{% endif %}"
+                      title="Apply manual log value{% if rec_is_manual %} (recommended){% endif %}">Log{% if rec_is_manual %} ✓{% endif %}</button>
+              {%- endif %}
+              {%- if f.d_raw and f.d_diff and f.key not in ('client_status','drake_status_raw') %}
+              <button onclick="applyField({{ row.return_id }}, '{{ f.key }}', '{{ f.d_raw|replace("'","\\'")|replace('"','\\"') }}', 'drake')"
+                      class="px-1.5 py-0.5 text-[10px] font-semibold rounded {% if rec_is_drake %}bg-emerald-100 hover:bg-emerald-200 text-emerald-900 ring-1 ring-emerald-400{% else %}bg-slate-100 hover:bg-slate-200 text-slate-700{% endif %}"
+                      title="Apply Drake / CSM value{% if rec_is_drake %} (recommended){% endif %}">Drake{% if rec_is_drake %} ✓{% endif %}</button>
+              {%- endif %}
+              {%- endif %}
             </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+
+    {% if row.n_diffs > 0 %}
+    <div class="px-3 py-2 flex flex-wrap gap-2 border-t border-slate-100 bg-slate-50 items-center">
+      {% if row.n_auto > 0 %}
+      <span class="text-xs text-slate-500 flex-1">
+        <span class="font-semibold text-emerald-700">{{ row.n_auto }} field{{ 's' if row.n_auto != 1 }}</span> can be auto-resolved by priority rules
+        {%- if row.n_conflicts %}, <span class="text-red-600 font-semibold">{{ row.n_conflicts }} conflict{{ 's' if row.n_conflicts != 1 }} need review</span>{%- endif %}.
+      </span>
+      <button onclick="applyRecommended({{ row.return_id }})"
+              class="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm whitespace-nowrap">
+        ✓ Apply {{ row.n_auto }} recommended
+      </button>
+      {% else %}
+      <span class="text-xs text-red-600 font-semibold flex-1">⚠ {{ row.n_conflicts }} conflict{{ 's' if row.n_conflicts != 1 }} — resolve per-field above.</span>
+      {% endif %}
+      <details class="text-xs text-slate-400 mt-1 w-full">
+        <summary class="cursor-pointer hover:text-slate-600 select-none">Override: apply all from one source</summary>
+        <div class="flex gap-2 mt-1.5 pl-2">
+          <button onclick="applyAllFrom({{ row.return_id }}, 'manual')"
+                  class="font-semibold px-2 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-900">
+            All manual
+          </button>
+          <button onclick="applyAllFrom({{ row.return_id }}, 'drake')"
+                  class="font-semibold px-2 py-1 rounded bg-slate-200 hover:bg-slate-300 text-slate-800">
+            All Drake
+          </button>
+        </div>
+      </details>
+    </div>
+    {% endif %}
+
   </details>
   {% endfor %}
 
+  <script>
+  async function applyField(returnId, field, value, source) {
+    await _applyFields(returnId, {[field]: value}, source || 'manual');
+  }
+
+  // Apply all fields whose recommended source/value was set by the priority rules.
+  // Each <tr> carries data-recval and data-recsource from the backend.
+  async function applyRecommended(returnId) {
+    const table = document.getElementById('cmp-table-' + returnId);
+    if (!table) return;
+    // Group by source so the backend can enforce manual-only guards cleanly.
+    const manualFields = {}, drakeFields = {};
+    table.querySelectorAll('tr[data-field]').forEach(tr => {
+      const recSrc = tr.dataset.recsource;
+      const recVal = tr.dataset.recval;
+      if (!recVal || recSrc.includes('conflict')) return;  // skip conflicts
+      if (recSrc === 'manual') manualFields[tr.dataset.field] = recVal;
+      else if (recSrc === 'drake') drakeFields[tr.dataset.field] = recVal;
+    });
+    const btn = event && event.target;
+    if (btn) btn.disabled = true;
+    let ok = true;
+    if (Object.keys(manualFields).length)
+      ok = ok && (await _applyFields(returnId, manualFields, 'manual', /*quiet*/true)).ok;
+    if (Object.keys(drakeFields).length)
+      ok = ok && (await _applyFields(returnId, drakeFields, 'drake', /*quiet*/true)).ok;
+    if (ok) {
+      const card = table.closest('details');
+      if (card) card.style.opacity = '0.5';
+      if (btn) btn.textContent = '✓ Applied';
+    } else if (btn) {
+      btn.disabled = false;
+    }
+  }
+
+  async function applyAllFrom(returnId, source) {
+    const table = document.getElementById('cmp-table-' + returnId);
+    if (!table) return;
+    const fields = {};
+    // Status fields are always manual-only regardless of source button pressed
+    const manualOnlyFields = new Set(['client_status', 'drake_status_raw']);
+    table.querySelectorAll('tr[data-field]').forEach(tr => {
+      const f = tr.dataset.field;
+      const useManual = source === 'manual' || manualOnlyFields.has(f);
+      const val = useManual ? tr.dataset.mraw : tr.dataset.draw;
+      if (val && val !== '—') fields[f] = val;
+    });
+    await _applyFields(returnId, fields, source);
+  }
+  async function _applyFields(returnId, fields, source, quiet) {
+    const btn = (!quiet && event) ? event.target : null;
+    if (btn) btn.disabled = true;
+    try {
+      const r = await fetch('/api/source-compare/apply', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({return_id: returnId, source: source || 'manual', fields})
+      });
+      const data = await r.json();
+      if (data.ok) {
+        const applied = data.applied || [];
+        const tableEl = document.getElementById('cmp-table-' + returnId);
+        if (tableEl) {
+          applied.forEach(col => {
+            const tr = tableEl.querySelector(`tr[data-field="${col}"]`);
+            if (tr) tr.style.opacity = '0.4';
+          });
+        }
+        if (btn && !quiet) {
+          btn.textContent = '✓ Applied';
+          btn.className = btn.className.replace(/bg-\w+-\d+/g, 'bg-green-100');
+        }
+      } else if (!quiet) {
+        alert('Error: ' + (data.error || 'Unknown error'));
+        if (btn) btn.disabled = false;
+      }
+      return data;
+    } catch(e) {
+      if (!quiet) alert('Network error: ' + e.message);
+      if (btn) btn.disabled = false;
+      return {ok: false};
+    }
+  }
+  </script>
+
   {% if cmp.manual_orphans and cmp.manual_orphans | length > 0 %}
   <div class="bg-white rounded-xl border border-slate-200 p-4">
-    <h2 class="text-sm font-bold text-slate-700 mb-2">Rows in the manual file with no (unique) match in the DB</h2>
+    <h2 class="text-sm font-bold text-slate-700 mb-2">Manual log issues (YR = {{ cmp.year }}) — parse errors, ambiguous client, or no DB row</h2>
     <ul class="text-xs text-slate-600 space-y-1 max-h-48 overflow-y-auto">
       {% for o in cmp.manual_orphans %}
       <li class="font-mono">Row {{ o.row }}: {{ o.error }}{% if o.hint %} — {{ o.hint }}{% endif %}</li>
       {% endfor %}
     </ul>
+    <p class="text-[11px] text-slate-500 mt-2">Parse failures are counted for the entire file regardless of Year column.</p>
+  </div>
+  {% endif %}
+
+  {% if cmp.manual_orphans_other_ty and cmp.manual_orphans_other_ty | length > 0 %}
+  <div class="bg-white rounded-xl border border-slate-200 p-4">
+    <h2 class="text-sm font-bold text-slate-700 mb-2">Manual log issues (YR ≠ {{ cmp.year }}) — ambiguous or no DB row</h2>
+    <ul class="text-xs text-slate-600 space-y-1 max-h-48 overflow-y-auto font-mono">
+      {% for o in cmp.manual_orphans_other_ty %}
+      <li>Row {{ o.row }} (YR {{ o.row_ty }}): {{ o.error }}{% if o.hint %} — {{ o.hint }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+    <p class="text-[11px] text-slate-500 mt-2">Shown separately so chronological multi-year sheets do not pollute compare-year orphans.</p>
   </div>
   {% endif %}
 

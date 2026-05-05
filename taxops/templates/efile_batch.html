@@ -1,0 +1,593 @@
+{% extends "base.html" %}
+{% block title %}E-file Batch #{{ batch.id }} — TaxOps{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-6 space-y-5">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <div class="flex items-start justify-between gap-4 flex-wrap">
+    <div>
+      <div class="flex items-center gap-3">
+        <a href="/efile-batch" class="text-sm text-slate-400 hover:text-slate-600">&larr; All Batches</a>
+        <span class="text-slate-300">|</span>
+        <span class="text-xs font-mono text-slate-400">Batch #{{ batch.id }}</span>
+      </div>
+      <h1 class="text-xl font-bold text-slate-800 mt-1">
+        E-file Batch &mdash; {{ batch.transmission_date }}
+      </h1>
+      {% if batch.notes %}
+      <p class="text-sm text-slate-500 mt-0.5">{{ batch.notes }}</p>
+      {% endif %}
+    </div>
+    <div class="flex items-center gap-3 flex-wrap">
+      <!-- Sort -->
+      <div class="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+        <a href="/efile-batch/{{ batch.id }}?sort=name_desc"
+           class="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors
+                  {% if sort == 'name_desc' or sort not in ('name', 'log') %}bg-white text-slate-800 shadow-sm{% else %}text-slate-500 hover:text-slate-700{% endif %}">
+          Name Z&rarr;A
+        </a>
+        <a href="/efile-batch/{{ batch.id }}?sort=name"
+           class="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors
+                  {% if sort == 'name' %}bg-white text-slate-800 shadow-sm{% else %}text-slate-500 hover:text-slate-700{% endif %}">
+          Name A&rarr;Z
+        </a>
+        <a href="/efile-batch/{{ batch.id }}?sort=log"
+           class="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors
+                  {% if sort == 'log' %}bg-white text-slate-800 shadow-sm{% else %}text-slate-500 hover:text-slate-700{% endif %}">
+          Log #
+        </a>
+      </div>
+      <input id="batch-filter" type="text" placeholder="Quick filter…"
+             class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 w-36 focus:outline-none focus:ring-1 focus:ring-indigo-400">
+      <!-- Export dropdown -->
+      <div class="relative" id="export-menu-wrap">
+        <button onclick="toggleExportMenu()"
+                class="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          Export
+          <svg class="w-3 h-3 ml-0.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+        <div id="export-menu"
+             class="hidden absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden text-xs">
+          <a href="/efile-batch/{{ batch.id }}/export?filter=all"
+             class="flex items-center gap-2 px-4 py-2.5 text-slate-700 hover:bg-slate-50 font-medium">
+            <span class="w-2 h-2 rounded-full bg-slate-400 inline-block"></span>
+            Full Report
+          </a>
+          <a href="/efile-batch/{{ batch.id }}/export?filter=accepted"
+             class="flex items-center gap-2 px-4 py-2.5 text-green-700 hover:bg-green-50 font-medium">
+            <span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>
+            Accepted Only
+          </a>
+          <a href="/efile-batch/{{ batch.id }}/export?filter=rejected"
+             class="flex items-center gap-2 px-4 py-2.5 text-red-700 hover:bg-red-50 font-medium">
+            <span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
+            Rejected Only
+          </a>
+        </div>
+      </div>
+
+      <!-- Transmit button -->
+      {% if batch.transmitted_at %}
+      <span class="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-green-100 text-green-700 border border-green-200">
+        &#10003; Transmitted {{ batch.transmitted_at[:10] }}
+      </span>
+      {% else %}
+      <button id="transmit-btn" onclick="markTransmitted()"
+              class="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm">
+        &#9654; Mark as Transmitted
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Summary bar ────────────────────────────────────────────────────── -->
+  <div class="grid grid-cols-3 md:grid-cols-6 gap-3">
+    <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 text-center">
+      <div class="text-2xl font-bold text-slate-800">{{ items | length }}</div>
+      <div class="text-xs text-slate-500 mt-0.5">Total</div>
+    </div>
+    <div class="bg-slate-50 rounded-xl border border-slate-200 px-4 py-3 text-center">
+      <div class="text-2xl font-bold text-slate-600">{{ counts.pending }}</div>
+      <div class="text-xs text-slate-500 mt-0.5">Pending</div>
+    </div>
+    <div class="bg-indigo-50 rounded-xl border border-indigo-200 px-4 py-3 text-center">
+      <div class="text-2xl font-bold text-indigo-700">{{ counts.ready }}</div>
+      <div class="text-xs text-indigo-500 mt-0.5">Ready to Select</div>
+    </div>
+    <div class="bg-yellow-50 rounded-xl border border-yellow-200 px-4 py-3 text-center">
+      <div class="text-2xl font-bold text-yellow-700">{{ counts.needs_calculation }}</div>
+      <div class="text-xs text-yellow-600 mt-0.5">Needs Recalc</div>
+    </div>
+    <div class="bg-white rounded-xl border border-green-200 px-4 py-3 text-center">
+      <div class="text-2xl font-bold text-green-600">{{ counts.accepted }}</div>
+      <div class="text-xs text-slate-500 mt-0.5">Accepted</div>
+    </div>
+    <div class="bg-white rounded-xl border border-red-200 px-4 py-3 text-center">
+      <div class="text-2xl font-bold text-red-600">{{ counts.rejected }}</div>
+      <div class="text-xs text-slate-500 mt-0.5">Rejected</div>
+    </div>
+  </div>
+
+  {% if counts.needs_calculation > 0 %}
+  <div class="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 text-sm text-yellow-800 flex items-center gap-2">
+    <span class="text-lg">⚠</span>
+    <span>
+      <strong>{{ counts.needs_calculation }} return{{ 's' if counts.needs_calculation != 1 }} need recalculation</strong>
+      before e-file selection. Compare Drake selection count against
+      <strong>{{ counts.ready }} ready</strong> (not {{ items | length }} total).
+    </span>
+  </div>
+  {% endif %}
+
+  <!-- ── Items table ────────────────────────────────────────────────────── -->
+  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+        <tr>
+          <th class="px-3 py-2.5 text-left w-14">Log #</th>
+          <th class="px-3 py-2.5 text-left">Client</th>
+          <th class="px-3 py-2.5 text-center w-10">TY</th>
+          <th class="px-3 py-2.5 text-right w-24">Fee Paid</th>
+          <th class="px-3 py-2.5 text-right w-20">CC Fee</th>
+          <th class="px-3 py-2.5 w-24">Receipt #</th>
+          <th class="px-3 py-2.5 w-24">Pickup</th>
+          <th class="px-3 py-2.5 w-24">Transmission</th>
+          <th class="px-3 py-2.5 text-center w-28">ACK Status</th>
+          <th class="px-3 py-2.5 text-center w-20">Flag</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100" id="items-tbody">
+        {% for item in items %}
+        <tr class="hover:bg-slate-50/80 transition-colors {% if item.needs_calculation %}bg-yellow-50{% endif %}"
+            id="item-row-{{ item.id }}"
+            data-search="{{ item.log_number }} {{ item.client_name }}">
+
+          <!-- Log # -->
+          <td class="px-3 py-2.5">
+            <a href="/return/{{ item.return_id }}"
+               class="font-mono font-black text-indigo-600 hover:text-indigo-800 text-sm">
+              {{ item.log_number or '—' }}
+            </a>
+          </td>
+
+          <!-- Client -->
+          <td class="px-3 py-2.5 font-medium text-slate-800">
+            {{ item.client_name or '—' }}
+          </td>
+
+          <!-- Tax Year -->
+          <td class="px-3 py-2.5 text-center text-xs font-mono text-slate-500">
+            {{ item.tax_year or '—' }}
+          </td>
+
+          <!-- Fee paid -->
+          <td class="px-3 py-2.5 text-right tabular-nums">
+            {% if item.fee_paid %}
+            <span class="font-semibold text-slate-800">${{ "{:,.2f}".format(item.fee_paid) }}</span>
+            {% else %}
+            <span class="text-amber-500 text-xs font-semibold">Missing</span>
+            {% endif %}
+          </td>
+
+          <!-- CC Fee -->
+          <td class="px-3 py-2.5 text-right tabular-nums text-xs">
+            {% if item.cc_fee %}
+            <span class="text-slate-600">${{ "{:,.2f}".format(item.cc_fee) }}</span>
+            {% else %}
+            <span class="text-slate-300">—</span>
+            {% endif %}
+          </td>
+
+          <!-- Receipt # -->
+          <td class="px-3 py-2.5 font-mono text-xs text-slate-700">
+            {% if item.receipt_number %}{{ item.receipt_number }}
+            {% else %}<span class="text-amber-500 font-semibold text-xs">Missing</span>{% endif %}
+          </td>
+
+          <!-- Pickup date -->
+          <td class="px-3 py-2.5 text-xs text-slate-500 tabular-nums">
+            {{ item.pickup_date or '—' }}
+          </td>
+
+          <!-- Transmission date -->
+          <td class="px-3 py-2.5 text-xs text-slate-500 tabular-nums">
+            {{ item.transmission_date or '—' }}
+          </td>
+
+          <!-- ACK Status -->
+          <td class="px-3 py-2.5 text-center" id="ack-cell-{{ item.id }}">
+            {% if item.ack_status == 'accepted' %}
+              <div class="flex flex-col items-center gap-0.5">
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-700">
+                  &#10003; Accepted
+                </span>
+                {% if item.ack_date %}<span class="text-xs text-slate-400 tabular-nums">{{ item.ack_date }}</span>{% endif %}
+
+                {# Show return status — or a fallback LOG OUT button if not yet there #}
+                {% if item.client_status == 'LOG OUT' %}
+                  <span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-semibold rounded bg-slate-100 text-slate-500 mt-0.5">
+                    &#10003; LOG OUT
+                  </span>
+                {% elif item.client_status == 'CANCELLED' %}
+                  <span class="inline-flex items-center px-1.5 py-0.5 text-xs rounded bg-red-50 text-red-400 mt-0.5">CANCELLED</span>
+                {% else %}
+                  <button onclick="markLogOut({{ item.id }})"
+                          class="mt-0.5 px-2 py-0.5 text-xs font-semibold bg-slate-700 text-white rounded hover:bg-slate-900 transition-colors">
+                    Mark LOG OUT
+                  </button>
+                {% endif %}
+
+                {# Payment warnings #}
+                {% if not item.receipt_number or not item.fee_paid %}
+                  <span class="text-xs text-amber-600 mt-0.5" title="Receipt or fee missing from batch snapshot">&#9888; Incomplete payment</span>
+                {% endif %}
+
+                <button onclick="setAck({{ item.id }}, 'pending')"
+                        class="text-xs text-slate-400 hover:text-slate-600 underline leading-none mt-0.5">reset</button>
+              </div>
+            {% elif item.ack_status == 'rejected' %}
+              <div class="flex flex-col items-center gap-0.5">
+                <button onclick="showRejectDetail({{ item.id }}, '{{ (item.rejection_code or '') | e }}', '{{ (item.rejection_reason or '') | e }}')"
+                        class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-700 hover:bg-red-200">
+                  &#10007; Rejected
+                </button>
+                {% if item.ack_date %}<span class="text-xs text-slate-400 tabular-nums">{{ item.ack_date }}</span>{% endif %}
+                <button onclick="showAcceptModal({{ item.id }})"
+                        class="text-xs text-green-600 hover:text-green-800 underline leading-none mt-0.5">accept instead</button>
+                <button onclick="setAck({{ item.id }}, 'pending')"
+                        class="text-xs text-slate-400 hover:text-slate-600 underline leading-none">reset</button>
+              </div>
+            {% else %}
+              <div class="flex items-center justify-center gap-1">
+                <button onclick="showAcceptModal({{ item.id }})"
+                        class="px-2 py-1 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                  Accept
+                </button>
+                <button onclick="showRejectDetail({{ item.id }}, '', '')"
+                        class="px-2 py-1 text-xs font-semibold bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                  Reject
+                </button>
+              </div>
+            {% endif %}
+          </td>
+
+          <!-- Needs calc flag -->
+          <td class="px-3 py-2.5 text-center">
+            <button onclick="toggleFlag({{ item.id }}, {{ 'true' if item.needs_calculation else 'false' }})"
+                    id="flag-btn-{{ item.id }}"
+                    title="Mark as needs calculation / stale"
+                    class="text-xs px-2 py-0.5 rounded-full border transition-colors
+                           {% if item.needs_calculation %}bg-yellow-100 border-yellow-300 text-yellow-800 font-semibold{% else %}border-slate-200 text-slate-400 hover:border-yellow-300 hover:text-yellow-700{% endif %}">
+              {% if item.needs_calculation %}⚠ Stale{% else %}OK{% endif %}
+            </button>
+          </td>
+
+        </tr>
+        {% if item.ack_status == 'rejected' %}
+        <tr class="bg-red-50 text-xs text-red-700" id="reject-detail-{{ item.id }}">
+          <td colspan="10" class="px-6 py-2">
+            <span class="font-semibold">Rejection</span>
+            {% if item.rejection_code %}
+              — Code: <span class="font-mono font-bold">{{ item.rejection_code }}</span>
+            {% endif %}
+            {% if item.rejection_reason %}
+              — {{ item.rejection_reason }}
+            {% endif %}
+            {% if not item.rejection_code and not item.rejection_reason %}
+              — <span class="italic text-red-400">No code or reason recorded yet.</span>
+            {% endif %}
+            {% if item.ack_date %}<span class="text-red-400 ml-2">({{ item.ack_date }})</span>{% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% else %}
+        <tr>
+          <td colspan="10" class="px-6 py-12 text-center text-slate-400">No items in this batch.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Batch status -->
+  <div class="text-xs text-slate-400 text-right space-x-3">
+    <span>Batch status: <span class="font-semibold text-slate-600">{{ batch.status | upper }}</span></span>
+    <span>Created: {{ batch.created_at[:16] if batch.created_at else '—' }}</span>
+    {% if batch.transmitted_at %}
+    <span class="text-green-600 font-semibold">Transmitted: {{ batch.transmitted_at[:16] }}</span>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- ── Accept modal ────────────────────────────────────────────────────── -->
+<div id="accept-modal" class="fixed inset-0 bg-black/40 hidden z-50 flex items-center justify-center">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+    <h2 class="text-lg font-bold text-slate-800 mb-1">Record IRS Acceptance</h2>
+    <p class="text-sm text-slate-500 mb-4">Enter the ACK date from Drake.</p>
+    <input type="hidden" id="accept-item-id">
+    <label class="block text-sm font-medium text-slate-700">
+      ACK Date
+      <input id="accept-date" type="date"
+             class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+    </label>
+    <div class="flex gap-3 mt-5 justify-end">
+      <button onclick="closeAcceptModal()"
+              class="px-4 py-1.5 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">
+        Cancel
+      </button>
+      <button onclick="submitAccept()"
+              class="px-4 py-1.5 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700">
+        Save Acceptance
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Reject modal ────────────────────────────────────────────────────── -->
+<div id="reject-modal" class="fixed inset-0 bg-black/40 hidden z-50 flex items-center justify-center">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+    <h2 class="text-lg font-bold text-slate-800 mb-1">Record IRS Rejection</h2>
+    <p class="text-sm text-slate-500 mb-4">Both fields are required before saving.</p>
+    <input type="hidden" id="reject-item-id">
+    <div class="space-y-3">
+      <div>
+        <label class="block text-sm font-semibold text-slate-700 mb-1">
+          Rejection Code <span class="text-red-500">*</span>
+        </label>
+        <input id="reject-code" type="text" placeholder="e.g. R0000-506"
+               class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400">
+        <p id="reject-code-err" class="hidden text-xs text-red-600 mt-1">Rejection code is required.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-semibold text-slate-700 mb-1">
+          Reason / Details <span class="text-red-500">*</span>
+        </label>
+        <textarea id="reject-reason" rows="3" placeholder="Describe the rejection reason…"
+                  class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"></textarea>
+        <p id="reject-reason-err" class="hidden text-xs text-red-600 mt-1">Rejection reason is required.</p>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-5 justify-end">
+      <button onclick="closeRejectModal()"
+              class="px-4 py-1.5 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">
+        Cancel
+      </button>
+      <button onclick="submitReject()"
+              class="px-4 py-1.5 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700">
+        Save Rejection
+      </button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BATCH_ID = {{ batch.id }};
+
+// Export dropdown
+function toggleExportMenu() {
+  document.getElementById('export-menu').classList.toggle('hidden');
+}
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('export-menu-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('export-menu').classList.add('hidden');
+  }
+});
+
+// Quick filter
+const filterInput = document.getElementById('batch-filter');
+if (filterInput) {
+  filterInput.addEventListener('input', () => {
+    const q = filterInput.value.toLowerCase();
+    document.querySelectorAll('#items-tbody tr[data-search]').forEach(row => {
+      row.style.display = row.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+}
+
+async function setAck(itemId, status, extraData = {}) {
+  const body = { ack_status: status, ...extraData };
+  const res  = await fetch(`/api/efile-batch/${BATCH_ID}/item/${itemId}/ack`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  if (res.ok) {
+    location.reload();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    alert(data.error || 'Failed to update ACK status.');
+  }
+}
+
+// ── Accept modal ──────────────────────────────────────────────────────────
+function showAcceptModal(itemId) {
+  document.getElementById('accept-item-id').value = itemId;
+  // Default to today
+  document.getElementById('accept-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('accept-modal').classList.remove('hidden');
+  document.getElementById('accept-date').focus();
+}
+function closeAcceptModal() {
+  document.getElementById('accept-modal').classList.add('hidden');
+}
+function submitAccept() {
+  const itemId  = document.getElementById('accept-item-id').value;
+  const ackDate = document.getElementById('accept-date').value;
+  closeAcceptModal();
+  setAck(itemId, 'accepted', { ack_date: ackDate });
+}
+
+// ── Reject modal ──────────────────────────────────────────────────────────
+function showRejectDetail(itemId, existingCode = '', existingReason = '') {
+  document.getElementById('reject-item-id').value = itemId;
+  document.getElementById('reject-code').value    = existingCode;
+  document.getElementById('reject-reason').value  = existingReason;
+  document.getElementById('reject-code-err').classList.add('hidden');
+  document.getElementById('reject-reason-err').classList.add('hidden');
+  const _sh = document.getElementById('rejection-source-hint');
+  const _ah = document.getElementById('rejection-action-hint');
+  const _rh = document.getElementById('rejection-ref-hint');
+  if (_sh) { _sh.style.display = 'none'; _sh.textContent = ''; }
+  if (_ah) { _ah.style.display = 'none'; _ah.textContent = ''; }
+  if (_rh) { _rh.style.display = 'none'; _rh.innerHTML = ''; }
+  document.getElementById('reject-modal').classList.remove('hidden');
+  document.getElementById('reject-code').focus();
+}
+function closeRejectModal() {
+  document.getElementById('reject-modal').classList.add('hidden');
+}
+async function submitReject() {
+  const itemId = document.getElementById('reject-item-id').value;
+  const code   = document.getElementById('reject-code').value.trim();
+  const reason = document.getElementById('reject-reason').value.trim();
+
+  // Client-side guard
+  let valid = true;
+  if (!code)   { document.getElementById('reject-code-err').classList.remove('hidden');   valid = false; }
+  else           document.getElementById('reject-code-err').classList.add('hidden');
+  if (!reason) { document.getElementById('reject-reason-err').classList.remove('hidden'); valid = false; }
+  else           document.getElementById('reject-reason-err').classList.add('hidden');
+  if (!valid) return;
+
+  closeRejectModal();
+  const body = { ack_status: 'rejected', rejection_code: code, rejection_reason: reason };
+  const res  = await fetch(`/api/efile-batch/${BATCH_ID}/item/${itemId}/ack`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  if (res.ok) {
+    location.reload();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    alert(data.error || 'Failed to save rejection.');
+  }
+}
+
+async function markLogOut(itemId) {
+  if (!confirm('Move this return to LOG OUT status?')) return;
+  const res = await fetch(`/api/efile-batch/${BATCH_ID}/item/${itemId}/logout`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}
+  });
+  if (res.ok) {
+    location.reload();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    alert(data.error || 'Failed to move to LOG OUT.');
+  }
+}
+
+async function markTransmitted() {
+  if (!confirm('Mark this batch as transmitted to IRS via Drake?')) return;
+  const btn = document.getElementById('transmit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  const res = await fetch(`/api/efile-batch/${BATCH_ID}/transmit`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}
+  });
+  if (res.ok) location.reload();
+  else { btn.disabled = false; btn.textContent = '▶ Mark as Transmitted'; alert('Failed to mark transmitted.'); }
+}
+
+async function toggleFlag(itemId, currentlyFlagged) {
+  const res = await fetch(`/api/efile-batch/${BATCH_ID}/item/${itemId}/flag`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ needs_calculation: !currentlyFlagged })
+  });
+  if (res.ok) location.reload();
+}
+
+// ── Rejection code lookup (static reference table → LLM fallback) ─────────
+document.addEventListener('DOMContentLoaded', () => {
+  const codeInput   = document.getElementById('reject-code');
+  const reasonInput = document.getElementById('reject-reason');
+  if (!codeInput || !reasonInput) return;
+
+  // 3b — clear all dynamic hints when code field is emptied
+  codeInput.addEventListener('input', function() {
+    if (!this.value.trim()) {
+      const sourceHint = document.getElementById('rejection-source-hint');
+      const actionHint = document.getElementById('rejection-action-hint');
+      const refHint    = document.getElementById('rejection-ref-hint');
+      if (sourceHint) { sourceHint.style.display = 'none'; sourceHint.textContent = ''; }
+      if (actionHint) { actionHint.style.display = 'none'; actionHint.textContent = ''; }
+      if (refHint)    { refHint.style.display = 'none'; refHint.innerHTML = ''; }
+    }
+  });
+
+  codeInput.addEventListener('blur', async () => {
+    const val = codeInput.value.trim();
+    if (!val) return;
+
+    try {
+      const resp = await fetch('/ai/rejection-code/lookup', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ code: val }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) return;
+
+      // Normalize the code field silently
+      if (data.normalized_code) codeInput.value = data.normalized_code;
+
+      // 3a — source indicator appended to code input's parent div
+      let sourceHint = document.getElementById('rejection-source-hint');
+      if (!sourceHint) {
+        sourceHint = document.createElement('span');
+        sourceHint.id = 'rejection-source-hint';
+        sourceHint.style.fontSize = '11px';
+        sourceHint.style.marginLeft = '8px';
+        codeInput.parentNode.appendChild(sourceHint);
+      }
+      if (data.source === 'reference') {
+        sourceHint.textContent = 'matched reference table';
+        sourceHint.style.color = '#16a34a';
+      } else {
+        sourceHint.textContent = 'LLM lookup';
+        sourceHint.style.color = '#94a3b8';
+      }
+      sourceHint.style.display = 'inline';
+
+      // Action hint appended to reason field's parent div
+      if (data.action) {
+        let actionHint = document.getElementById('rejection-action-hint');
+        if (!actionHint) {
+          actionHint = document.createElement('p');
+          actionHint.id = 'rejection-action-hint';
+          actionHint.style.fontSize = '12px';
+          actionHint.style.color = '#64748b';
+          reasonInput.parentNode.appendChild(actionHint);
+        }
+        actionHint.textContent = 'Next step: ' + data.action;
+        actionHint.style.display = 'block';
+      }
+
+      // IRS reference link appended below action hint
+      if (data.irs_reference) {
+        let refHint = document.getElementById('rejection-ref-hint');
+        if (!refHint) {
+          refHint = document.createElement('p');
+          refHint.id = 'rejection-ref-hint';
+          refHint.style.fontSize = '12px';
+          refHint.style.color = '#64748b';
+          reasonInput.parentNode.appendChild(refHint);
+        }
+        const searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent('IRS ' + data.normalized_code + ' ' + data.irs_reference);
+        refHint.innerHTML = 'IRS reference: <a href="' + searchUrl + '" target="_blank" rel="noopener noreferrer" style="color:#4f46e5;text-decoration:underline">' + data.irs_reference + ' ↗</a>';
+        refHint.style.display = 'block';
+      }
+    } catch (e) {
+      // Silent fail — do not block form submission
+    }
+  });
+});
+</script>
+{% endblock %}

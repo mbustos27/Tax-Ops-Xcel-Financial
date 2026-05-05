@@ -200,17 +200,22 @@ function renderPreview(data) {
     if (c.skip && !c.raw_header) return ''; // completely blank
     const confClass = c.skip ? 'conf-skip' : c.confidence >= 80 ? 'conf-high' : c.confidence >= 50 ? 'conf-med' : 'conf-low';
     const confLabel = c.skip ? 'skipped' : `${c.confidence}%`;
-    const mapped    = c.skip ? '—' : `${c.table}.${c.field}`;
-    return `<tr class="hover:bg-slate-50">
+    const mappedKey = c.skip ? '' : `${c.table}.${c.field}`;
+    const mappedLabel = c.skip
+      ? (c.skip_reason
+          ? `<span class="text-slate-400 italic text-[11px]">— ${c.skip_reason}</span>`
+          : '—')
+      : `<span class="font-mono">${c.table}.${c.field}</span>`;
+    return `<tr class="hover:bg-slate-50${c.skip ? ' opacity-60' : ''}">
       <td class="px-3 py-2 text-slate-400 font-mono text-xs">${c.index}</td>
       <td class="px-3 py-2 font-medium text-slate-700">${c.raw_header || '<span class="text-slate-300 italic">blank</span>'}</td>
-      <td class="px-3 py-2 font-mono text-xs text-slate-600">${mapped}</td>
-      <td class="px-3 py-2 text-center text-xs <span class="${confClass}">${confLabel}</span>"></td>
+      <td class="px-3 py-2 text-xs text-slate-600">${mappedLabel}</td>
+      <td class="px-3 py-2 text-center text-xs"><span class="${confClass}">${confLabel}</span></td>
       <td class="px-3 py-2">
         <select data-col="${c.index}"
                 class="override-select text-xs border border-slate-200 rounded-lg px-2 py-1 w-full focus:outline-none focus:ring-1 focus:ring-blue-400">
           <option value="skip">— skip —</option>
-          ${allFieldOptions(c.table && c.field ? c.table+'.'+c.field : '')}
+          ${allFieldOptions(mappedKey)}
         </select>
       </td>
     </tr>`;
@@ -233,28 +238,62 @@ function renderPreview(data) {
 
 function allFieldOptions(selected) {
   const fields = [
-    ['returns.log_number','Log #'],['clients.prior_year_log','Prior Log #'],
-    ['clients.last_name','Last Name'],['clients.first_name','First Name'],
-    ['clients.display_name','Display Name'],['returns.tax_year','Tax Year'],
-    ['returns.processor','Processor'],['returns.verified','Verified'],
-    ['returns.client_status','Status'],['returns.intake_date','Intake Date'],
-    ['returns.pickup_date','Pickup Date'],['returns.logout_date','Logout Date'],
-    ['returns.date_emailed','Date Emailed'],['returns.updated_date','Updated Date'],
-    ['returns.transfer_2025_flag','Transfer 2025'],['returns.transfer_2026_flag','Transfer 2026'],
-    ['returns.is_amended','Amended'],['returns.has_w7','W-7'],['returns.is_extension','Extension'],
-    ['returns.transfer_flag','Transfer'],['returns.email_marker','Email Marker'],
-    ['payments.total_fee','Total Fee'],['payments.receipt_number','Receipt #'],
-    ['payments.fee_paid','Fee Paid'],['payments.cc_fee','CC Fee'],
-    ['payments.zelle_or_check_ref','Zelle/CK'],['payments.cash_or_qpay_ref','Cash/QPay'],
-    ['return_forms.form_1040','1040'],['return_forms.sched_a_d','Sch A&D'],
-    ['return_forms.sched_c','Sch C'],['return_forms.sched_e','Sch E'],
-    ['return_forms.form_1120','1120'],['return_forms.form_1120s','1120S'],
-    ['return_forms.form_1065_llc','1065'],['return_forms.form_990_1041','990/1041'],
-    ['clients.referral_flag','Referral'],['clients.referred_by','Referred By'],
-    ['notes.note_text','Notes'],
+    // ── Client identity ────────────────────────────────────────
+    ['clients.last_name',           'Last Name'],
+    ['clients.first_name',          'First Name'],
+    ['clients.display_name',        'Display Name'],
+    ['clients.referral_flag',       'Referral Flag'],
+    ['clients.referred_by',         'Referred By'],
+    // ── Log numbers ────────────────────────────────────────────
+    ['returns.log_number',          'Log #'],
+    ['clients.prior_year_log',      'Prior Log #'],
+    // ── Return metadata ────────────────────────────────────────
+    ['returns.tax_year',            'Tax Year'],
+    ['returns.is_extension',        'Extension / Return Type'],
+    ['returns.is_amended',          'Amended'],
+    ['returns.has_w7',              'W-7'],
+    // ── Workflow ───────────────────────────────────────────────
+    ['returns.processor',           'Processor'],
+    ['returns.verified',            'Verified / E-Filed'],
+    ['returns.client_status',       'Status'],
+    // ── Dates ──────────────────────────────────────────────────
+    ['returns.intake_date',         'Intake Date'],
+    ['returns.logout_date',         'Logout Date'],
+    ['returns.updated_date',        'Updated Date'],
+    ['returns.date_emailed',        'Date Emailed'],
+    ['returns.pickup_date',         'Pickup Date'],
+    ['returns.efile_date',          'E-File Date'],
+    ['returns.ack_date',            'Ack Date (Fed Ack)'],
+    // ── Flags ──────────────────────────────────────────────────
+    ['returns.transfer_2025_flag',  'Transfer 2025'],
+    ['returns.transfer_2026_flag',  'Transfer 2026'],
+    ['returns.transfer_flag',       'Transfer'],
+    ['returns.email_marker',        'Email Marker'],
+    // ── Payments ───────────────────────────────────────────────
+    ['payments.total_fee',          'Total Fee (Bal Due - BILL)'],
+    ['payments.fee_paid',           'Fee Paid'],
+    ['payments.refund_amount',      'Refund Amount'],
+    ['payments.balance_due',        'Balance Due (IRS)'],
+    ['payments.receipt_number',     'Receipt #'],
+    ['payments.cc_fee',             'CC Fee'],
+    ['payments.zelle_or_check_ref', 'Zelle / CK #'],
+    ['payments.cash_or_qpay_ref',   'Cash / QPay'],
+    // ── Forms ──────────────────────────────────────────────────
+    ['return_forms.form_1040',      '1040'],
+    ['return_forms.sched_a_d',      'Sch A&D'],
+    ['return_forms.sched_c',        'Sch C'],
+    ['return_forms.sched_e',        'Sch E'],
+    ['return_forms.form_1120',      '1120'],
+    ['return_forms.form_1120s',     '1120S'],
+    ['return_forms.form_1065_llc',  '1065 / LLC'],
+    ['return_forms.corp_officer',   'Corp Officer'],
+    ['return_forms.business_owner', 'Business Owner'],
+    ['return_forms.form_990_1041',  '990 / 1041'],
+    // ── Notes ──────────────────────────────────────────────────
+    ['notes.note_text',             'Notes'],
   ];
   return fields.map(([val, label]) =>
-    `<option value="${val}" ${selected===val?'selected':''}>${label}</option>`
+    `<option value="${val}"${selected === val ? ' selected' : ''}>${label}</option>`
   ).join('');
 }
 
