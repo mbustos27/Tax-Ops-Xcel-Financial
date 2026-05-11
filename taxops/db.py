@@ -4,6 +4,7 @@ import sqlite3
 from typing import Dict, List, Optional
 
 from config import DB_PATH
+from form_schema import CREATE_TABLE_FRAGMENTS_DOC7, get_form_alter_columns_by_table
 
 
 def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
@@ -227,8 +228,85 @@ def init_db(conn: sqlite3.Connection) -> None:
           notes             TEXT,
           is_deleted        INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS email_classifications (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          sender_email    TEXT,
+          sender_domain   TEXT,
+          subject_snippet TEXT,
+          classification  TEXT NOT NULL,
+          confirmed_by    TEXT,
+          confirmed_at    TEXT,
+          created_at      TEXT NOT NULL,
+          source          TEXT NOT NULL DEFAULT 'auto'
+        );
+
+        CREATE TABLE IF NOT EXISTS email_sender_rules (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          domain      TEXT NOT NULL UNIQUE,
+          rule_type   TEXT NOT NULL DEFAULT 'always_promotional',
+          note        TEXT,
+          created_by  TEXT,
+          created_at  TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS rule_suggestions (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          domain           TEXT NOT NULL,
+          suggested_rule   TEXT NOT NULL,
+          confidence       TEXT NOT NULL,
+          occurrence_count INTEGER NOT NULL DEFAULT 0,
+          example_subjects TEXT,
+          suggested_at     TEXT NOT NULL,
+          suggested_by     TEXT NOT NULL DEFAULT 'llm',
+          status           TEXT NOT NULL DEFAULT 'pending',
+          reviewed_by      TEXT,
+          reviewed_at      TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS domain_classifications (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          domain              TEXT NOT NULL UNIQUE,
+          classification      TEXT NOT NULL,
+          confidence_count    INTEGER NOT NULL DEFAULT 1,
+          last_seen           TEXT NOT NULL,
+          last_confirmed_by   TEXT,
+          last_confirmed_at   TEXT,
+          graduated           INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS extraction_queue (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          doc_id INTEGER NOT NULL REFERENCES return_documents(id),
+          return_id INTEGER NOT NULL REFERENCES returns(id),
+          status TEXT NOT NULL DEFAULT 'pending',
+          confidence REAL,
+          detected_form_type TEXT,
+          extracted_fields TEXT,
+          extraction_method TEXT,
+          error_message TEXT,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          processed_at TEXT,
+          reviewed_by TEXT,
+          reviewed_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS ai_chat_common_answers (
+          cache_key             TEXT PRIMARY KEY,
+          normalized_question   TEXT NOT NULL,
+          season_year           INTEGER NOT NULL,
+          answer                TEXT NOT NULL,
+          tool_used             TEXT,
+          payload_json          TEXT NOT NULL,
+          created_at            TEXT NOT NULL,
+          expires_at            TEXT NOT NULL,
+          hit_count             INTEGER NOT NULL DEFAULT 0
+        );
         """
     )
+    for _form_sql in CREATE_TABLE_FRAGMENTS_DOC7.values():
+        conn.execute(_form_sql.strip())
     _migrate_existing_tables(conn)
     conn.executescript(
         """
@@ -240,6 +318,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_dependents_return   ON dependents(return_id);
         CREATE INDEX IF NOT EXISTS idx_efile_items_batch   ON efile_batch_items(batch_id);
         CREATE INDEX IF NOT EXISTS idx_efile_items_return  ON efile_batch_items(return_id);
+        CREATE INDEX IF NOT EXISTS idx_ai_chat_common_exp ON ai_chat_common_answers(expires_at);
         """
     )
     conn.commit()
@@ -358,6 +437,10 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "needs_calculation INTEGER NOT NULL DEFAULT 0",
             "cc_fee REAL",
         ],
+        "email_classifications": [
+            "reviewed_missed INTEGER NOT NULL DEFAULT 0",
+            "email_routed_ok INTEGER NOT NULL DEFAULT 0",
+        ],
         "import_batches": [
             "row_count INTEGER DEFAULT 0",
             "success_count INTEGER DEFAULT 0",
@@ -399,6 +482,100 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
           uploaded_at       TEXT,
           notes             TEXT,
           is_deleted        INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS email_classifications (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          sender_email    TEXT,
+          sender_domain   TEXT,
+          subject_snippet TEXT,
+          classification  TEXT NOT NULL,
+          confirmed_by    TEXT,
+          confirmed_at    TEXT,
+          created_at      TEXT NOT NULL,
+          source          TEXT NOT NULL DEFAULT 'auto'
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS email_sender_rules (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          domain      TEXT NOT NULL UNIQUE,
+          rule_type   TEXT NOT NULL DEFAULT 'always_promotional',
+          note        TEXT,
+          created_by  TEXT,
+          created_at  TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS rule_suggestions (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          domain           TEXT NOT NULL,
+          suggested_rule   TEXT NOT NULL,
+          confidence       TEXT NOT NULL,
+          occurrence_count INTEGER NOT NULL DEFAULT 0,
+          example_subjects TEXT,
+          suggested_at     TEXT NOT NULL,
+          suggested_by     TEXT NOT NULL DEFAULT 'llm',
+          status           TEXT NOT NULL DEFAULT 'pending',
+          reviewed_by      TEXT,
+          reviewed_at      TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS domain_classifications (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          domain              TEXT NOT NULL UNIQUE,
+          classification      TEXT NOT NULL,
+          confidence_count    INTEGER NOT NULL DEFAULT 1,
+          last_seen           TEXT NOT NULL,
+          last_confirmed_by   TEXT,
+          last_confirmed_at   TEXT,
+          graduated           INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    for _form_sql in CREATE_TABLE_FRAGMENTS_DOC7.values():
+        conn.execute(_form_sql.strip())
+    alter_map = get_form_alter_columns_by_table()
+    for tbl, col_defs in alter_map.items():
+        existing_cols = _table_columns(conn, tbl)
+        if not existing_cols:
+            continue
+        for col_def in col_defs:
+            col_name = col_def.split(None, 1)[0]
+            if col_name not in existing_cols:
+                try:
+                    conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col_def}")
+                except sqlite3.OperationalError as exc:
+                    if "duplicate column" not in str(exc).lower():
+                        raise
+                existing_cols.add(col_name)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS extraction_queue (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          doc_id INTEGER NOT NULL REFERENCES return_documents(id),
+          return_id INTEGER NOT NULL REFERENCES returns(id),
+          status TEXT NOT NULL DEFAULT 'pending',
+          confidence REAL,
+          detected_form_type TEXT,
+          extracted_fields TEXT,
+          extraction_method TEXT,
+          error_message TEXT,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          processed_at TEXT,
+          reviewed_by TEXT,
+          reviewed_at TEXT
         )
         """
     )

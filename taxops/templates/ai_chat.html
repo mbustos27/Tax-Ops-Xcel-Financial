@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}AI Assistant — TaxOps {{ current_year }}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl space-y-4">
+  <div>
+    <h1 class="text-xl font-bold text-slate-800">AI Assistant</h1>
+    <p class="text-sm text-slate-500 mt-0.5">
+      Ask about returns, clients, balances, and missing documents. The season year from the header
+      (<span class="font-mono font-semibold text-slate-600">{{ current_year }}</span>) is sent with each request.
+    </p>
+    <p id="ai-chat-llm-status" class="text-xs mt-2 font-medium" aria-live="polite"></p>
+  </div>
+
+  <div id="ai-chat-error" class="hidden rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"></div>
+
+  <form id="ai-chat-form" class="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-sm">
+    <label for="ai-chat-question" class="block text-sm font-medium text-slate-700">Your question</label>
+    <textarea id="ai-chat-question"
+              name="question"
+              required
+              rows="3"
+              autocomplete="off"
+              class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              placeholder="e.g. How many returns are in PROCESSING?"></textarea>
+    <div class="flex items-center gap-3">
+      <button type="submit"
+              id="ai-chat-submit"
+              class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50 disabled:pointer-events-none">
+        Ask
+      </button>
+      <span id="ai-chat-busy" class="hidden text-xs text-slate-400">Thinking…</span>
+    </div>
+  </form>
+
+  <div>
+    <h2 class="text-sm font-semibold text-slate-600 mb-2">This page</h2>
+    <div id="ai-chat-log" class="space-y-3"></div>
+    <p id="ai-chat-empty" class="text-sm text-slate-400">No questions yet — submit one above.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  const form = document.getElementById('ai-chat-form');
+  const input = document.getElementById('ai-chat-question');
+  const log = document.getElementById('ai-chat-log');
+  const empty = document.getElementById('ai-chat-empty');
+  const err = document.getElementById('ai-chat-error');
+  const busy = document.getElementById('ai-chat-busy');
+  const submitBtn = document.getElementById('ai-chat-submit');
+  const statusEl = document.getElementById('ai-chat-llm-status');
+  if (!form || !input || !log) return;
+
+  /** This script sits above base.html helpers — wait for DOM ready so `_fetchWithTimeout` / `_authJson` exist. */
+  function whenReady(cb) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', cb, { once: true });
+    } else {
+      cb();
+    }
+  }
+
+  function currentYear() {
+    const p = document.getElementById('year-picker');
+    if (p && p.value) {
+      const y = parseInt(p.value, 10);
+      if (!isNaN(y)) return y;
+    }
+    const d = document.body.dataset.year;
+    if (d) {
+      const y = parseInt(d, 10);
+      if (!isNaN(y)) return y;
+    }
+    return new Date().getFullYear();
+  }
+
+  function showError(msg) {
+    if (!err) return;
+    err.textContent = msg;
+    err.classList.remove('hidden');
+  }
+  function clearError() {
+    if (!err) return;
+    err.textContent = '';
+    err.classList.add('hidden');
+  }
+
+  function appendExchange(question, answer, toolUsed) {
+    if (empty) empty.classList.add('hidden');
+    const card = document.createElement('div');
+    card.className = 'rounded-xl border border-slate-200 bg-white px-4 py-3 space-y-3 shadow-sm';
+
+    const qHead = document.createElement('div');
+    qHead.className = 'text-xs font-semibold text-slate-500 uppercase tracking-wide';
+    qHead.textContent = 'Question';
+    const qBody = document.createElement('p');
+    qBody.className = 'text-slate-800 text-sm whitespace-pre-wrap';
+    qBody.textContent = question;
+
+    const div = document.createElement('div');
+    div.className = 'border-t border-slate-100 pt-3 space-y-1';
+    const aHead = document.createElement('div');
+    aHead.className = 'text-xs font-semibold text-slate-500 uppercase tracking-wide';
+    aHead.textContent = 'Answer';
+    const aBody = document.createElement('div');
+    aBody.className = 'text-slate-700 text-sm whitespace-pre-wrap';
+    aBody.textContent = answer || '';
+    const toolLine = document.createElement('p');
+    toolLine.className = 'text-[11px] text-slate-400 mt-1.5';
+    toolLine.textContent =
+      toolUsed == null || toolUsed === '' ? 'Tool: (none)' : 'Tool: ' + toolUsed;
+
+    div.appendChild(aHead);
+    div.appendChild(aBody);
+    div.appendChild(toolLine);
+
+    card.appendChild(qHead);
+    card.appendChild(qBody);
+    card.appendChild(div);
+    log.appendChild(card);
+  }
+
+  async function checkLlmStatus() {
+    if (!statusEl) return;
+    statusEl.textContent = 'Checking LLM status…';
+    statusEl.className = 'text-xs mt-2 font-medium text-slate-500';
+    try {
+      const r = await _fetchWithTimeout('/ai/status', {}, 8000);
+      if (r.status === 401) {
+        window.location.href =
+          '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+        return;
+      }
+      const j = await r.json().catch(function () { return {}; });
+      if (j.chat_ready && j.ok) {
+        statusEl.textContent = 'LLM reachable — Ollama is running.';
+        statusEl.className = 'text-xs mt-2 font-medium text-emerald-700';
+      } else {
+        const hint = j.error ? String(j.error) : 'Ollama not responding.';
+        statusEl.textContent = 'LLM unavailable — ' + hint;
+        statusEl.className = 'text-xs mt-2 font-medium text-red-700';
+      }
+    } catch (e) {
+      statusEl.textContent =
+        'Could not reach the status endpoint. Check your connection and try again.';
+      statusEl.className = 'text-xs mt-2 font-medium text-amber-700';
+    }
+  }
+
+  whenReady(function initAiChat() {
+    form.addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      clearError();
+      const question = input.value.trim();
+      if (!question) return;
+
+      submitBtn.disabled = true;
+      if (busy) busy.classList.remove('hidden');
+
+      try {
+        const resp = await _fetchWithTimeout(
+          {{ url_for('ai.ai_chat') | tojson }},
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ question: question, year: currentYear() }),
+          },
+          180000
+        );
+        const data = await _authJson(resp);
+        appendExchange(question, data.answer || '', data.tool_used);
+        input.value = '';
+        input.focus();
+      } catch (e) {
+        var raw = e && e.message ? String(e.message) : '';
+        var genericAbort =
+          raw === 'signal is aborted without reason' ||
+          raw.toLowerCase().indexOf('aborted') !== -1 ||
+          (e && e.name === 'AbortError');
+        var msg =
+          raw ||
+          'Request failed. If Ollama is stopped, start it and try again.';
+        if (genericAbort && !(e instanceof Error && /timed out/i.test(raw))) {
+          msg =
+            'Request was interrupted or timed out. For AI chat, try again — very slow models may need a longer wait.';
+        }
+        showError(msg);
+      } finally {
+        submitBtn.disabled = false;
+        if (busy) busy.classList.add('hidden');
+      }
+    });
+
+    checkLlmStatus();
+  });
+})();
+</script>
+{% endblock %}
