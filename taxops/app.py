@@ -2,22 +2,26 @@ from __future__ import annotations
 
 import functools
 import os
+import threading
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flask import (
-    Flask, abort, flash, jsonify, redirect, render_template,
-    request, session, url_for,
+    Flask, abort, current_app, flash, jsonify, redirect, render_template,
+    request, send_file, session, url_for,
 )
 
 import json
+import logging
+import sqlite3
 import tempfile
 
-from config import APP_ENV
+from config import APP_ENV, DB_PATH
 from csv_analyzer import analyze, iter_data_rows, normalize_status
 from db import get_connection, init_db
+from form_schema import FORM_INTEGER_COLUMNS, FORM_TABLE_INSERT_COLUMNS
 from merge_ops import merge_client_into
 from name_matcher import find_client as fuzzy_find_client, is_business, parse_name, _all_clients_cache
 from normalizer import normalize_date, normalize_currency, normalize_string, canonical_status, is_locked_status
@@ -33,7 +37,18 @@ from source_compare import (
     run_compare,
     safe_resolve_csv,
 )
-from utils import now
+from utils import (
+    get_return_documents_path,
+    now,
+    parse_iso_datetime,
+    sanitize_filename,
+    scrub_ssn_from_dict,
+    _enqueue_extraction,
+)
+from mail_watcher import start_mail_watcher
+from extractor import start_extraction_worker
+from drake_documents_sync import sync_to_drake
+from config import KNOWN_PROMOTIONAL_DOMAINS, MASS_MAILING_PREFIXES
 
 app = Flask(__name__)
 
@@ -94,6 +109,11 @@ def login_required(f):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         if not session.get("logged_in"):
+            # Fetch/XHR callers follow redirects into the HTML login page; that hides
+            # session expiry and spams logs with 302 + /login. Return JSON instead.
+            p = request.path or ""
+            if p.startswith("/api/") or p.startswith("/ai/"):
+                return jsonify({"error": "login_required"}), 401
             return redirect(url_for("login", next=request.path))
         return f(*args, **kwargs)
     return wrapper
@@ -155,7 +175,7 @@ SLOW_CYCLE_DAYS = 21
 
 # Fields that live in the returns table and may be edited via /api/return/<id>/field
 RETURN_EDITABLE = {
-    "processor", "verified", "email_marker",
+    "processor", "verified", "email_marker", "tax_year",
     "intake_date", "date_emailed", "pickup_date", "logout_date", "updated_date",
     "efile_date", "ack_date",
     "is_amended", "has_w7", "is_extension",
@@ -164,7 +184,7 @@ RETURN_EDITABLE = {
 }
 
 # Fields that live in the clients table
-CLIENT_EDITABLE = {"display_name", "referred_by", "referral_flag"}
+CLIENT_EDITABLE = {"display_name", "referred_by", "referral_flag", "last_name", "first_name"}
 
 # Fields that live in the payments table
 PAYMENT_EDITABLE = {
@@ -174,6 +194,12 @@ PAYMENT_EDITABLE = {
 }
 
 CARD_FEE_RATE = 0.03   # 3 % card processing surcharge
+
+# Return document uploads (DOC-2)
+_ALLOWED_RETURN_DOC_TYPES = frozenset(
+    {"W-2", "1099", "prior_return", "government_id", "misc", "unknown"}
+)
+_ALLOWED_RETURN_DOC_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".pdf"})
 
 # ── SQL fragment shared by all queries ───────────────────────────────────────
 
@@ -665,6 +691,1222 @@ def return_detail(return_id: int):
         "contact_labels": CONTACT_LABELS,
     })
     return render_template("return_detail.html", **ctx)
+
+
+@app.route("/return/<int:return_id>/documents/upload", methods=["POST"])
+@login_required
+def return_documents_upload(return_id: int):
+    conn = get_connection()
+    full_path: str | None = None
+    try:
+        exists = conn.execute("SELECT id FROM returns WHERE id = ?", (return_id,)).fetchone()
+        if not exists:
+            return jsonify({"error": "Return not found"}), 404
+
+        if "document" not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
+
+        upload = request.files["document"]
+        if not upload or not upload.filename:
+            return jsonify({"error": "No file uploaded"}), 400
+
+        original_filename = upload.filename
+        ext = os.path.splitext(original_filename)[1].lower()
+        if ext not in _ALLOWED_RETURN_DOC_EXTENSIONS:
+            return jsonify({"error": "Unsupported file type. Use jpg, png, or pdf"}), 400
+
+        folder = get_return_documents_path(return_id)
+        sanitized = sanitize_filename(original_filename)
+        stem, ext_part = os.path.splitext(sanitized)
+        candidate = sanitized
+        counter = 1
+        while os.path.exists(os.path.join(folder, candidate)):
+            candidate = f"{stem}_{counter}{ext_part}"
+            counter += 1
+
+        full_path = os.path.abspath(os.path.join(folder, candidate))
+
+        raw_doc_type = (request.form.get("doc_type") or "unknown").strip()
+        doc_type = raw_doc_type if raw_doc_type in _ALLOWED_RETURN_DOC_TYPES else "unknown"
+
+        uploaded_at = now()
+        uploaded_by = session.get("username")
+
+        try:
+            upload.save(full_path)
+        except OSError:
+            return jsonify({"error": "Failed to save file"}), 500
+
+        file_size_bytes = os.path.getsize(full_path)
+
+        try:
+            cur = conn.execute(
+                """
+                INSERT INTO return_documents (
+                  return_id, filename, original_filename, doc_type, source,
+                  file_path, file_size_bytes, uploaded_by, uploaded_at, notes, is_deleted
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """,
+                (
+                    return_id,
+                    candidate,
+                    original_filename,
+                    doc_type,
+                    "walk_in",
+                    full_path,
+                    file_size_bytes,
+                    uploaded_by,
+                    uploaded_at,
+                    None,
+                ),
+            )
+            doc_id = cur.lastrowid
+            conn.commit()
+            _enqueue_extraction(doc_id, return_id)
+
+            app_obj = current_app._get_current_object()
+
+            def _bg_classify():
+                try:
+                    with app_obj.app_context():
+                        from ai_routes import _classify_document
+
+                        _classify_document(doc_id, only_if_still_unknown=True)
+                except Exception as e:
+                    logging.getLogger(__name__).error(
+                        "Background classify failed for doc %s: %s", doc_id, e
+                    )
+
+            threading.Thread(target=_bg_classify, daemon=True).start()
+        except Exception:
+            conn.rollback()
+            if full_path and os.path.isfile(full_path):
+                try:
+                    os.remove(full_path)
+                except OSError:
+                    pass
+            return jsonify({"error": "Could not record document"}), 500
+
+        return jsonify(
+            scrub_ssn_from_dict(
+                {
+                    "success": True,
+                    "doc_id": doc_id,
+                    "filename": candidate,
+                    "doc_type": doc_type,
+                    "uploaded_at": uploaded_at,
+                }
+            )
+        )
+    finally:
+        conn.close()
+
+
+@app.route("/return/<int:return_id>/documents")
+@login_required
+def return_documents_list(return_id: int):
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                rd.id,
+                rd.filename,
+                rd.original_filename,
+                rd.doc_type,
+                rd.source,
+                rd.uploaded_by,
+                rd.uploaded_at,
+                rd.file_size_bytes,
+                eq.status AS extraction_status,
+                eq.confidence AS extraction_confidence,
+                eq.detected_form_type AS extraction_detected_table,
+                eq.extracted_fields AS extraction_fields_raw
+            FROM return_documents rd
+            LEFT JOIN (
+                SELECT e.id, e.doc_id, e.status, e.confidence,
+                       e.detected_form_type, e.extracted_fields
+                FROM extraction_queue e
+                INNER JOIN (
+                    SELECT doc_id AS d2, MAX(id) AS mid
+                    FROM extraction_queue
+                    GROUP BY doc_id
+                ) latest ON e.doc_id = latest.d2 AND e.id = latest.mid
+            ) eq ON eq.doc_id = rd.id
+            WHERE rd.return_id = ? AND rd.is_deleted = 0
+            ORDER BY rd.uploaded_at DESC
+            """,
+            (return_id,),
+        ).fetchall()
+        documents = []
+        for r in rows:
+            ext_stat = r["extraction_status"]
+            ext_conf_raw = r["extraction_confidence"]
+            try:
+                if ext_conf_raw is None:
+                    extraction_confidence = None
+                else:
+                    extraction_confidence = float(ext_conf_raw)
+            except (TypeError, ValueError):
+                extraction_confidence = None
+            extracted_fields_view = None
+            if ext_stat == "needs_review":
+                raw_j = r["extraction_fields_raw"]
+                if raw_j:
+                    try:
+                        parsed = json.loads(raw_j)
+                        if isinstance(parsed, dict):
+                            extracted_fields_view = scrub_ssn_from_dict(parsed)
+                        else:
+                            extracted_fields_view = {}
+                    except json.JSONDecodeError:
+                        extracted_fields_view = {}
+
+            documents.append(
+                scrub_ssn_from_dict(
+                    {
+                        "id": r["id"],
+                        "filename": r["filename"],
+                        "original_filename": r["original_filename"],
+                        "doc_type": r["doc_type"],
+                        "source": r["source"],
+                        "uploaded_by": r["uploaded_by"],
+                        "uploaded_at": r["uploaded_at"],
+                        "file_size_bytes": r["file_size_bytes"],
+                        "extraction_status": ext_stat,
+                        "extraction_confidence": extraction_confidence,
+                        "extracted_fields": extracted_fields_view,
+                    }
+                )
+            )
+        return jsonify({"documents": documents})
+    finally:
+        conn.close()
+
+
+@app.route("/return/<int:return_id>/documents/<int:doc_id>/view")
+@login_required
+def return_document_view(return_id: int, doc_id: int):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT file_path, filename FROM return_documents
+            WHERE id = ? AND return_id = ? AND is_deleted = 0
+            """,
+            (doc_id, return_id),
+        ).fetchone()
+        if not row:
+            abort(404)
+        disk_path = row["file_path"]
+        if not disk_path or not os.path.isfile(disk_path):
+            return jsonify({"error": "File not found on disk"}), 404
+
+        fname = row["filename"] or ""
+        view_ext = os.path.splitext(fname)[1].lower()
+        mimetype = None
+        if view_ext == ".pdf":
+            mimetype = "application/pdf"
+        elif view_ext in (".jpg", ".jpeg"):
+            mimetype = "image/jpeg"
+        elif view_ext == ".png":
+            mimetype = "image/png"
+
+        return send_file(disk_path, as_attachment=False, mimetype=mimetype)
+    finally:
+        conn.close()
+
+
+@app.route("/return/<int:return_id>/documents/<int:doc_id>/delete", methods=["POST"])
+@login_required
+def return_document_delete(return_id: int, doc_id: int):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT id FROM return_documents
+            WHERE id = ? AND return_id = ? AND is_deleted = 0
+            """,
+            (doc_id, return_id),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        conn.execute(
+            "UPDATE return_documents SET is_deleted = 1 WHERE id = ?",
+            (doc_id,),
+        )
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+@app.route("/return/<int:return_id>/documents/<int:doc_id>/tag", methods=["POST"])
+@login_required
+def return_document_tag(return_id: int, doc_id: int):
+    payload = request.get_json(silent=True) or {}
+    raw = payload.get("doc_type")
+    if raw is None or not isinstance(raw, str):
+        return jsonify({"error": "Missing or invalid doc_type"}), 400
+    doc_type = raw.strip()
+    if doc_type not in _ALLOWED_RETURN_DOC_TYPES:
+        return jsonify({"error": "Invalid doc_type"}), 400
+
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            """
+            UPDATE return_documents SET doc_type = ?
+            WHERE id = ? AND return_id = ? AND is_deleted = 0
+            """,
+            (doc_type, doc_id, return_id),
+        )
+        if cur.rowcount == 0:
+            return jsonify({"error": "Not found"}), 404
+        conn.commit()
+        return jsonify({"success": True, "doc_type": doc_type})
+    finally:
+        conn.close()
+
+
+_FORM_DATA_SQL_TABLES = frozenset(
+    {
+        "w2_records",
+        "f1099_nec_records",
+        "f1099_misc_records",
+        "f1099_int_records",
+        "f1099_div_records",
+    }
+)
+
+
+_FORM_DATA_UPDATE_FIELDS: dict[str, frozenset[str]] = {
+    tbl: frozenset(cols) for tbl, cols in FORM_TABLE_INSERT_COLUMNS.items()
+}
+
+
+def _parse_form_update_value(field: str, raw_val) -> object:
+    if field in FORM_INTEGER_COLUMNS:
+        if isinstance(raw_val, bool):
+            return 1 if raw_val else 0
+        s = str(raw_val or "").strip().lower()
+        return 1 if s in ("1", "true", "yes", "y", "on") else 0
+    if raw_val is None:
+        return ""
+    return str(raw_val).strip()
+
+
+@app.route("/return/<int:return_id>/documents/<int:doc_id>/confirm-extraction", methods=["POST"])
+@login_required
+def return_document_confirm_extraction(return_id: int, doc_id: int):
+    """Staff confirms queued extraction marked needs_review."""
+    from ai_routes import _form_table_to_doc_type, _save_form_data
+    from extractor import _resolve_detected_table
+
+    reviewer = session.get("username") or "staff"
+
+    conn = get_connection()
+    try:
+        doc = conn.execute(
+            """
+            SELECT id, doc_type FROM return_documents
+            WHERE id = ? AND return_id = ? AND is_deleted = 0
+            """,
+            (doc_id, return_id),
+        ).fetchone()
+        if not doc:
+            return jsonify({"error": "Not found"}), 404
+
+        eq = conn.execute(
+            """
+            SELECT id, extracted_fields, detected_form_type
+            FROM extraction_queue
+            WHERE doc_id = ? AND return_id = ? AND status = 'needs_review'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (doc_id, return_id),
+        ).fetchone()
+        if not eq:
+            return jsonify({"error": "No extraction pending review"}), 400
+
+        raw_fields = eq["extracted_fields"] or "{}"
+        try:
+            fields = json.loads(raw_fields)
+            if not isinstance(fields, dict):
+                return jsonify({"error": "Invalid stored extraction"}), 400
+        except json.JSONDecodeError:
+            return jsonify({"error": "Invalid stored extraction"}), 400
+
+        fields = scrub_ssn_from_dict(fields)
+
+        table_name = eq["detected_form_type"]
+        if not table_name or table_name not in _FORM_DATA_SQL_TABLES:
+            table_name = _resolve_detected_table(doc["doc_type"], fields)
+
+        if not table_name or table_name not in _FORM_DATA_SQL_TABLES:
+            return jsonify({"error": "Could not resolve form type"}), 400
+
+        if not _save_form_data(conn, table_name, return_id, doc_id, fields):
+            return jsonify({"error": "Could not save form data"}), 500
+
+        doc_type_ui = _form_table_to_doc_type(table_name)
+        if doc_type_ui == "unknown":
+            return jsonify({"error": "Could not resolve document type"}), 400
+
+        conn.execute(
+            """
+            UPDATE return_documents SET doc_type = ?
+            WHERE id = ? AND return_id = ? AND is_deleted = 0
+            """,
+            (doc_type_ui, doc_id, return_id),
+        )
+        ts = now()
+        conn.execute(
+            """
+            UPDATE extraction_queue SET
+                status = 'completed',
+                reviewed_by = ?,
+                reviewed_at = ?,
+                processed_at = COALESCE(processed_at, ?),
+                extracted_fields = ?,
+                detected_form_type = ?,
+                confidence = COALESCE(confidence, 1.0)
+            WHERE id = ?
+            """,
+            (
+                reviewer,
+                ts,
+                ts,
+                json.dumps(fields),
+                table_name,
+                eq["id"],
+            ),
+        )
+        conn.commit()
+        return jsonify({"success": True, "doc_type": doc_type_ui})
+    finally:
+        conn.close()
+
+
+def _serialize_form_row(row: sqlite3.Row) -> dict:
+    d = dict(row)
+    d.pop("is_deleted", None)
+    return d
+
+
+@app.route("/return/<int:return_id>/form-data")
+@login_required
+def return_form_data_get(return_id: int):
+    conn = get_connection()
+    try:
+        exists = conn.execute("SELECT 1 FROM returns WHERE id = ?", (return_id,)).fetchone()
+        if not exists:
+            return jsonify({"error": "Not found"}), 404
+
+        out: dict[str, list] = {
+            "w2": [],
+            "f1099_nec": [],
+            "f1099_misc": [],
+            "f1099_int": [],
+            "f1099_div": [],
+        }
+
+        tbl_map = (
+            ("w2_records", "w2"),
+            ("f1099_nec_records", "f1099_nec"),
+            ("f1099_misc_records", "f1099_misc"),
+            ("f1099_int_records", "f1099_int"),
+            ("f1099_div_records", "f1099_div"),
+        )
+        for sql_table, resp_key in tbl_map:
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM {sql_table}
+                WHERE return_id = ? AND is_deleted = 0
+                ORDER BY id ASC
+                """,
+                (return_id,),
+            ).fetchall()
+            out[resp_key] = [_serialize_form_row(r) for r in rows]
+
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+@app.route(
+    "/return/<int:return_id>/form-data/<string:table>/<int:record_id>/update",
+    methods=["POST"],
+)
+@login_required
+def return_form_data_update(return_id: int, table: str, record_id: int):
+    if table not in _FORM_DATA_SQL_TABLES:
+        return jsonify({"error": "Invalid table"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    field = payload.get("field")
+    if not isinstance(field, str) or not field.strip():
+        return jsonify({"error": "Missing or invalid field"}), 400
+    field = field.strip()
+
+    allowed = _FORM_DATA_UPDATE_FIELDS.get(table)
+    if not allowed or field not in allowed:
+        return jsonify({"error": "Invalid field"}), 400
+
+    val = _parse_form_update_value(field, raw_val)
+
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            f"""
+            UPDATE {table}
+            SET {field} = ?, source = ?, updated_at = ?
+            WHERE id = ? AND return_id = ? AND is_deleted = 0
+            """,
+            (val, "manual", now(), record_id, return_id),
+        )
+        if cur.rowcount == 0:
+            return jsonify({"error": "Not found"}), 404
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+@app.route(
+    "/return/<int:return_id>/form-data/<string:table>/<int:record_id>",
+    methods=["DELETE"],
+)
+@login_required
+def return_form_data_soft_delete(return_id: int, table: str, record_id: int):
+    if table not in _FORM_DATA_SQL_TABLES:
+        return jsonify({"error": "Invalid table"}), 400
+
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            f"""
+            UPDATE {table}
+            SET is_deleted = 1, updated_at = ?
+            WHERE id = ? AND return_id = ? AND is_deleted = 0
+            """,
+            (now(), record_id, return_id),
+        )
+        if cur.rowcount == 0:
+            return jsonify({"error": "Not found"}), 404
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+# ── Email classification review ───────────────────────────────────────────────
+
+_EC_ALLOWED = frozenset({"client_document", "client_inquiry", "promotional", "unknown"})
+
+
+@app.route("/email-review")
+@login_required
+def email_review():
+    ctx = base_ctx()
+    ctx["active_page"] = "email_review"
+    return render_template("email_review.html", **ctx)
+
+
+@app.route("/api/email-classifications")
+@login_required
+def api_email_classifications_list():
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT ec.id, ec.sender_domain, ec.subject_snippet, ec.classification,
+                   ec.source, ec.created_at,
+                   (SELECT rd.return_id FROM return_documents rd
+                    WHERE rd.source = 'email' AND rd.is_deleted = 0
+                      AND rd.uploaded_at BETWEEN
+                          datetime(ec.created_at, '-10 minutes') AND
+                          datetime(ec.created_at, '+10 minutes')
+                    LIMIT 1) AS linked_return_id
+            FROM email_classifications ec
+            WHERE ec.confirmed_by IS NULL
+              AND ec.source != 'rule'
+              AND (ec.sender_domain IS NULL OR ec.sender_domain NOT IN (
+                  SELECT domain FROM email_sender_rules
+              ))
+            ORDER BY ec.created_at DESC
+            LIMIT 200
+            """
+        ).fetchall()
+        return jsonify({
+            "classifications": [
+                {
+                    "id": r["id"],
+                    "sender_domain": r["sender_domain"] or "",
+                    "subject_snippet": r["subject_snippet"] or "",
+                    "classification": r["classification"],
+                    "source": r["source"] or "auto",
+                    "created_at": r["created_at"],
+                    "linked_return_id": r["linked_return_id"],
+                }
+                for r in rows
+            ]
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/email-classifications/<int:classification_id>/confirm", methods=["POST"])
+@login_required
+def api_email_classification_confirm(classification_id: int):
+    data = request.get_json(silent=True) or {}
+    confirm_current = (
+        bool(data.get("confirm_current"))
+        or str(data.get("confirm_current") or "").lower() in {"1", "true", "yes"}
+    )
+
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id, sender_domain, classification FROM email_classifications WHERE id = ?",
+            (classification_id,),
+        ).fetchone()
+        if row is None:
+            return jsonify({"error": "Not found"}), 404
+
+        if confirm_current:
+            classification = row["classification"] if row["classification"] in _EC_ALLOWED else "unknown"
+        else:
+            classification = data.get("classification", "")
+            if classification not in _EC_ALLOWED:
+                return (
+                    jsonify(
+                        {
+                            "error": "Invalid classification.",
+                            "allowed": sorted(_EC_ALLOWED),
+                        }
+                    ),
+                    400,
+                )
+
+        conn.execute(
+            """
+            UPDATE email_classifications
+            SET classification = ?, confirmed_by = ?, confirmed_at = ?, source = 'staff'
+            WHERE id = ?
+            """,
+            (classification, session.get("username"), now(), classification_id),
+        )
+
+        # Staff confirmation: upsert domain_classifications with boosted confidence.
+        # confidence_count = MAX(existing + 2, 3) so graduation threshold is met
+        # on first staff confirm for any non-personal domain.
+        domain = row["sender_domain"]
+        if domain:
+            conn.execute(
+                """
+                INSERT INTO domain_classifications
+                    (domain, classification, confidence_count, last_seen,
+                     last_confirmed_by, last_confirmed_at)
+                VALUES (?, ?, 3, ?, ?, ?)
+                ON CONFLICT(domain) DO UPDATE SET
+                    classification      = excluded.classification,
+                    confidence_count    = MAX(confidence_count + 2, 3),
+                    last_seen           = excluded.last_seen,
+                    last_confirmed_by   = excluded.last_confirmed_by,
+                    last_confirmed_at   = excluded.last_confirmed_at
+                """,
+                (domain, classification, now(), session.get("username"), now()),
+            )
+
+        conn.commit()
+
+        # Trigger graduation check in a background thread — never blocks the response
+        if domain:
+            import threading as _t
+            from mail_watcher import _check_graduation_trigger as _cgt
+            _t.Thread(
+                target=_cgt,
+                args=(current_app._get_current_object(), domain),
+                daemon=True,
+            ).start()
+
+        # Trigger fastText retrain — uses confirmed data, runs in background
+        from classifier import trigger_retrain_async
+        trigger_retrain_async(DB_PATH)
+
+        return jsonify({"success": True, "classification": classification})
+    finally:
+        conn.close()
+
+
+@app.route("/api/email-classifications/train", methods=["POST"])
+@login_required
+def api_email_classifications_train():
+    data = request.get_json(silent=True) or {}
+    confirmations = data.get("confirmations", [])
+    if not isinstance(confirmations, list):
+        return jsonify({"error": "confirmations must be a list"}), 400
+    updated = 0
+    conn = get_connection()
+    try:
+        for item in confirmations:
+            if not isinstance(item, dict):
+                continue
+            cid = item.get("id")
+            cls = item.get("classification", "")
+            if not isinstance(cid, int) or cls not in _EC_ALLOWED:
+                continue
+            conn.execute(
+                """
+                UPDATE email_classifications
+                SET classification = ?, confirmed_by = ?, confirmed_at = ?, source = 'staff'
+                WHERE id = ?
+                """,
+                (cls, session.get("username"), now(), cid),
+            )
+            updated += 1
+        conn.commit()
+        return jsonify({"success": True, "updated": updated})
+    finally:
+        conn.close()
+
+
+@app.route("/api/email-classifications/stats")
+@login_required
+def api_email_classifications_stats():
+    today = date.today().isoformat()
+    conn = get_connection()
+    try:
+        total_today = conn.execute(
+            "SELECT COUNT(*) FROM email_classifications WHERE created_at >= ?", (today,)
+        ).fetchone()[0]
+        total_confirmed = conn.execute(
+            "SELECT COUNT(*) FROM email_classifications WHERE confirmed_by IS NOT NULL"
+        ).fetchone()[0]
+        total_promotional = conn.execute(
+            "SELECT COUNT(*) FROM email_classifications WHERE classification = 'promotional'"
+        ).fetchone()[0]
+        total_pending = conn.execute(
+            "SELECT COUNT(*) FROM email_classifications WHERE confirmed_by IS NULL"
+        ).fetchone()[0]
+
+        # Domain classification learning progress
+        domains_cached = conn.execute(
+            "SELECT COUNT(*) FROM domain_classifications"
+        ).fetchone()[0]
+        domains_near_graduation = conn.execute(
+            "SELECT COUNT(*) FROM domain_classifications "
+            "WHERE confidence_count >= 2 AND graduated = 0"
+        ).fetchone()[0]
+        domains_graduated = conn.execute(
+            "SELECT COUNT(*) FROM domain_classifications WHERE graduated = 1"
+        ).fetchone()[0]
+        pending_suggestions = conn.execute(
+            "SELECT COUNT(*) FROM rule_suggestions WHERE status = 'pending'"
+        ).fetchone()[0]
+
+        return jsonify({
+            "total_today":           total_today,
+            "total_confirmed":       total_confirmed,
+            "total_promotional":     total_promotional,
+            "total_pending_review":  total_pending,
+            "domains_cached":        domains_cached,
+            "domains_near_graduation": domains_near_graduation,
+            "domains_graduated":     domains_graduated,
+            "pending_suggestions":   pending_suggestions,
+        })
+    finally:
+        conn.close()
+
+
+# ── Email classification helpers ─────────────────────────────────────────────
+
+def _is_promotional_domain(domain: str) -> bool:
+    """
+    Return True when a sender domain is known-promotional or a mass-mailing subdomain.
+    Used to suppress false-positive missed-attachment alerts.
+    """
+    if not domain:
+        return False
+    if any(domain.startswith(prefix) for prefix in MASS_MAILING_PREFIXES):
+        return True
+    parts = domain.split(".")
+    base = ".".join(parts[-2:]) if len(parts) >= 2 else domain
+    return base in KNOWN_PROMOTIONAL_DOMAINS
+
+
+# ── Email classification digest ───────────────────────────────────────────────
+
+@app.route("/api/email-classifications/digest")
+@login_required
+def api_email_classifications_digest():
+    today = date.today().isoformat()
+    conn = get_connection()
+    try:
+        client_docs_today = conn.execute(
+            "SELECT COUNT(*) FROM email_classifications "
+            "WHERE classification = 'client_document' AND created_at >= ?",
+            (today,),
+        ).fetchone()[0]
+
+        need_tagging = conn.execute(
+            "SELECT COUNT(*) FROM return_documents "
+            "WHERE source = 'email' AND is_deleted = 0 "
+            "AND (doc_type IS NULL OR doc_type = 'unknown')"
+        ).fetchone()[0]
+
+        already_tagged = conn.execute(
+            "SELECT COUNT(*) FROM return_documents "
+            "WHERE source = 'email' AND is_deleted = 0 "
+            "AND doc_type IS NOT NULL AND doc_type != 'unknown'"
+        ).fetchone()[0]
+
+        # Missed-attachment hint: client_document today, not staff-dismissed, and
+        # mail_watcher did not mark email_routed_ok after saving files / drive note.
+        # Legacy rows pre-email_routed_ok still use a time proximity check in Python
+        # because SQLite datetime(..., modifier) may not parse ISO offsets from now().
+        raw_missed_rows = conn.execute(
+            """
+            SELECT ec.id, ec.sender_domain, ec.subject_snippet, ec.created_at
+            FROM email_classifications ec
+            WHERE ec.classification = 'client_document'
+              AND ec.created_at >= ?
+              AND COALESCE(ec.reviewed_missed, 0) = 0
+              AND COALESCE(ec.email_routed_ok, 0) = 0
+            ORDER BY ec.created_at DESC
+            """,
+            (today,),
+        ).fetchall()
+
+        window_start = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
+        doc_rows = conn.execute(
+            """
+            SELECT uploaded_at FROM return_documents
+            WHERE source = 'email' AND is_deleted = 0
+              AND substr(COALESCE(uploaded_at, ''), 1, 10) >= ?
+            """,
+            (window_start,),
+        ).fetchall()
+        doc_times = [
+            t for r in doc_rows
+            if (t := parse_iso_datetime(r["uploaded_at"])) is not None
+        ]
+        _miss_window_sec = 30 * 60
+
+        def _no_email_upload_near(ec_row) -> bool:
+            ec_t = parse_iso_datetime(ec_row["created_at"])
+            if ec_t is None:
+                return True
+            return not any(
+                abs((ec_t - d).total_seconds()) <= _miss_window_sec
+                for d in doc_times
+            )
+
+        # Exclude known promotional domains — their classification as client_document
+        # is a residual data artifact that does not represent a real missed attachment.
+        missed_rows = [
+            r for r in raw_missed_rows
+            if _no_email_upload_near(r)
+            and not _is_promotional_domain(r["sender_domain"] or "")
+        ]
+
+        client_inquiries_today = conn.execute(
+            "SELECT COUNT(*) FROM email_classifications "
+            "WHERE classification = 'client_inquiry' AND created_at >= ?",
+            (today,),
+        ).fetchone()[0]
+
+        promotional_unconfirmed = conn.execute(
+            "SELECT COUNT(*) FROM email_classifications "
+            "WHERE classification = 'promotional' AND confirmed_by IS NULL"
+        ).fetchone()[0]
+
+        need_attention = conn.execute(
+            """
+            SELECT COUNT(*) FROM email_classifications
+            WHERE confirmed_by IS NULL
+              AND source != 'rule'
+              AND classification IN ('client_document', 'client_inquiry')
+              AND (sender_domain IS NULL OR sender_domain NOT IN (
+                  SELECT domain FROM email_sender_rules
+              ))
+            """
+        ).fetchone()[0]
+
+        untagged = conn.execute(
+            """
+            SELECT
+                rd.id AS doc_id,
+                rd.filename,
+                rd.return_id,
+                rd.uploaded_at,
+                c.display_name AS client_name,
+                r.tax_year,
+                r.log_number
+            FROM return_documents rd
+            JOIN returns r ON rd.return_id = r.id
+            JOIN clients c ON r.client_id = c.id
+            WHERE rd.source = 'email'
+              AND rd.doc_type = 'unknown'
+              AND rd.is_deleted = 0
+            ORDER BY rd.uploaded_at DESC
+            """
+        ).fetchall()
+
+        untagged_docs = []
+        for r in untagged:
+            untagged_docs.append(
+                scrub_ssn_from_dict(
+                    {
+                        "doc_id": r["doc_id"],
+                        "filename": r["filename"],
+                        "return_id": r["return_id"],
+                        "uploaded_at": r["uploaded_at"],
+                        "client_name": r["client_name"] or "",
+                        "tax_year": r["tax_year"],
+                        "log_number": r["log_number"] or "",
+                    }
+                )
+            )
+
+        return jsonify({
+            "client_docs_today": client_docs_today,
+            "need_tagging": need_tagging,
+            "already_tagged": already_tagged,
+            "possible_missed": len(missed_rows),
+            "client_inquiries_today": client_inquiries_today,
+            "promotional_unconfirmed": promotional_unconfirmed,
+            "need_attention": need_attention,
+            "missed_items": [
+                {
+                    "id": r["id"],
+                    "sender_domain": r["sender_domain"] or "",
+                    "subject_snippet": r["subject_snippet"] or "",
+                    "created_at": r["created_at"],
+                }
+                for r in missed_rows
+            ],
+            "untagged_docs": untagged_docs,
+            "untagged_count": len(untagged_docs),
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/email-classifications/bulk-confirm", methods=["POST"])
+@login_required
+def api_email_classifications_bulk_confirm():
+    data = request.get_json(silent=True) or {}
+    classification = data.get("classification", "")
+    if classification not in _EC_ALLOWED:
+        return jsonify({"error": f"Invalid classification. Allowed: {', '.join(sorted(_EC_ALLOWED))}"}), 400
+    conn = get_connection()
+    try:
+        # Collect unique domains BEFORE the bulk update so we can run graduation checks
+        affected_domains = [
+            r["sender_domain"]
+            for r in conn.execute(
+                "SELECT DISTINCT sender_domain FROM email_classifications "
+                "WHERE classification = ? AND confirmed_by IS NULL",
+                (classification,),
+            ).fetchall()
+            if r["sender_domain"]
+        ]
+
+        result = conn.execute(
+            """
+            UPDATE email_classifications
+            SET confirmed_by = ?, confirmed_at = ?, source = 'staff'
+            WHERE classification = ? AND confirmed_by IS NULL
+            """,
+            (session.get("username") or "staff", now(), classification),
+        )
+
+        # Upsert domain_classifications for every affected domain
+        for domain in affected_domains:
+            conn.execute(
+                """
+                INSERT INTO domain_classifications
+                    (domain, classification, confidence_count, last_seen,
+                     last_confirmed_by, last_confirmed_at)
+                VALUES (?, ?, 3, ?, ?, ?)
+                ON CONFLICT(domain) DO UPDATE SET
+                    classification      = excluded.classification,
+                    confidence_count    = MAX(confidence_count + 2, 3),
+                    last_seen           = excluded.last_seen,
+                    last_confirmed_by   = excluded.last_confirmed_by,
+                    last_confirmed_at   = excluded.last_confirmed_at
+                """,
+                (domain, classification, now(), session.get("username") or "staff", now()),
+            )
+
+        conn.commit()
+
+        # Trigger graduation check for each unique domain in background threads
+        if affected_domains:
+            import threading as _t
+            from mail_watcher import _check_graduation_trigger as _cgt
+            _app = current_app._get_current_object()
+            for domain in affected_domains:
+                _t.Thread(
+                    target=_cgt, args=(_app, domain), daemon=True
+                ).start()
+
+        # Trigger fastText retrain once after all bulk confirms — background only
+        from classifier import trigger_retrain_async
+        trigger_retrain_async(DB_PATH)
+
+        return jsonify({"success": True, "confirmed_count": result.rowcount})
+    except Exception:
+        conn.rollback()
+        return jsonify({"error": "Could not bulk confirm"}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/email-classifications/today-confirmed")
+@login_required
+def api_email_classifications_today_confirmed():
+    today = date.today().isoformat()
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, sender_domain, subject_snippet, classification,
+                   confirmed_by, confirmed_at, created_at
+            FROM email_classifications
+            WHERE confirmed_by IS NOT NULL AND created_at >= ?
+            ORDER BY confirmed_at DESC
+            LIMIT 200
+            """,
+            (today,),
+        ).fetchall()
+        return jsonify({
+            "confirmed": [
+                {
+                    "id": r["id"],
+                    "sender_domain": r["sender_domain"] or "",
+                    "subject_snippet": r["subject_snippet"] or "",
+                    "classification": r["classification"],
+                    "confirmed_by": r["confirmed_by"] or "",
+                    "confirmed_at": (r["confirmed_at"] or "").replace("T", " ")[:16],
+                    "created_at": r["created_at"],
+                }
+                for r in rows
+            ]
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/email-classifications/<int:classification_id>/mark-missed-reviewed", methods=["POST"])
+@login_required
+def api_email_classification_mark_missed_reviewed(classification_id: int):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id FROM email_classifications WHERE id = ?", (classification_id,)
+        ).fetchone()
+        if row is None:
+            return jsonify({"error": "Not found"}), 404
+        conn.execute(
+            "UPDATE email_classifications SET reviewed_missed = 1 WHERE id = ?",
+            (classification_id,),
+        )
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+# ── Email sender rules ────────────────────────────────────────────────────────
+
+_ESR_ALLOWED_RULE_TYPES = frozenset({"always_promotional", "always_client"})
+
+
+@app.route("/api/email-sender-rules")
+@login_required
+def api_email_sender_rules_list():
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, domain, rule_type, note, created_by, created_at "
+            "FROM email_sender_rules ORDER BY created_at DESC"
+        ).fetchall()
+        return jsonify({
+            "rules": [
+                {
+                    "id":         r["id"],
+                    "domain":     r["domain"],
+                    "rule_type":  r["rule_type"],
+                    "note":       r["note"] or "",
+                    "created_by": r["created_by"] or "",
+                    "created_at": r["created_at"],
+                }
+                for r in rows
+            ]
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/email-sender-rules/add", methods=["POST"])
+@login_required
+def api_email_sender_rules_add():
+    data      = request.get_json(silent=True) or {}
+    domain    = (data.get("domain") or "").strip().lower()
+    rule_type = data.get("rule_type", "always_promotional")
+    note      = (data.get("note") or "").strip()
+
+    if not domain or "." not in domain:
+        return jsonify({"error": "A valid domain is required (e.g. mailchimp.com)"}), 400
+    if rule_type not in _ESR_ALLOWED_RULE_TYPES:
+        return jsonify({"error": f"rule_type must be one of: {', '.join(sorted(_ESR_ALLOWED_RULE_TYPES))}"}), 400
+
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO email_sender_rules (domain, rule_type, note, created_by, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (domain, rule_type, note or None, session.get("username"), now()),
+        )
+        conn.commit()
+        return jsonify({"success": True, "domain": domain, "rule_type": rule_type})
+    except Exception as exc:
+        conn.rollback()
+        if "UNIQUE constraint" in str(exc):
+            return jsonify({"error": f"A rule for {domain} already exists."}), 409
+        return jsonify({"error": "Could not save rule"}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/email-sender-rules/<int:rule_id>/delete", methods=["POST"])
+@login_required
+def api_email_sender_rule_delete(rule_id: int):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id FROM email_sender_rules WHERE id = ?", (rule_id,)
+        ).fetchone()
+        if row is None:
+            return jsonify({"error": "Not found"}), 404
+        conn.execute("DELETE FROM email_sender_rules WHERE id = ?", (rule_id,))
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+# ── Rule suggestions (LLM-generated, staff-reviewed) ─────────────────────────
+
+@app.route("/api/rule-suggestions")
+@login_required
+def api_rule_suggestions_list():
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM rule_suggestions WHERE status = 'pending' ORDER BY occurrence_count DESC"
+        ).fetchall()
+        return jsonify({
+            "suggestions": [
+                {
+                    "id": r["id"],
+                    "domain": r["domain"],
+                    "suggested_rule": r["suggested_rule"],
+                    "confidence": r["confidence"],
+                    "occurrence_count": r["occurrence_count"],
+                    "example_subjects": json.loads(r["example_subjects"] or "[]"),
+                    "suggested_at": r["suggested_at"],
+                }
+                for r in rows
+            ]
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/rule-suggestions/<int:suggestion_id>/accept", methods=["POST"])
+@login_required
+def api_rule_suggestion_accept(suggestion_id: int):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM rule_suggestions WHERE id = ? AND status = 'pending'",
+            (suggestion_id,),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Suggestion not found or already reviewed"}), 404
+
+        domain = row["domain"]
+        rule_type = row["suggested_rule"]
+
+        if rule_type not in _ESR_ALLOWED_RULE_TYPES:
+            return jsonify({"error": f"Invalid rule type: {rule_type}"}), 400
+
+        try:
+            conn.execute(
+                "INSERT INTO email_sender_rules (domain, rule_type, note, created_by, created_at) "
+                "VALUES (?, ?, 'from-llm-suggestion', ?, ?)",
+                (domain, rule_type, session.get("username"), now()),
+            )
+        except Exception as exc:
+            if "UNIQUE constraint" not in str(exc):
+                raise
+            # Rule already exists — still mark suggestion accepted
+
+        conn.execute(
+            "UPDATE rule_suggestions SET status = 'accepted', reviewed_by = ?, reviewed_at = ? "
+            "WHERE id = ?",
+            (session.get("username"), now(), suggestion_id),
+        )
+        conn.commit()
+        return jsonify({"success": True, "domain": domain, "rule": rule_type})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/rule-suggestions/<int:suggestion_id>/reject", methods=["POST"])
+@login_required
+def api_rule_suggestion_reject(suggestion_id: int):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id FROM rule_suggestions WHERE id = ? AND status = 'pending'",
+            (suggestion_id,),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Suggestion not found or already reviewed"}), 404
+        conn.execute(
+            "UPDATE rule_suggestions SET status = 'rejected', reviewed_by = ?, reviewed_at = ? "
+            "WHERE id = ?",
+            (session.get("username"), now(), suggestion_id),
+        )
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+@app.route("/api/rule-suggestions/analyze", methods=["POST"])
+@login_required
+def api_rule_suggestions_analyze():
+    import threading
+    from mail_watcher import _analyze_patterns
+    threading.Thread(
+        target=_analyze_patterns,
+        args=(app,),
+        daemon=True,
+        name="pattern-analyzer-manual",
+    ).start()
+    return jsonify({"success": True, "message": "Pattern analysis started"})
 
 
 @app.route("/logout-queue")
@@ -2109,6 +3351,30 @@ def api_privacy_mode():
     return jsonify({"success": True, "privacy_mode": bool(session.get("privacy_mode"))})
 
 
+@app.post("/api/return/<int:return_id>/sync-to-drake")
+@login_required
+def api_return_sync_to_drake(return_id: int):
+    """
+    DOC-6 — Push one return's documents into DRAKE_DOCUMENTS_PATH staging (copy only).
+
+    Existing TaxOps ``return_documents.file_path`` files are unchanged; no Drake API calls.
+    """
+    import config as _cfg
+
+    if not (_cfg.DRAKE_DOCUMENTS_PATH or "").strip():
+        return jsonify(
+            {
+                "error": "DRAKE_DOCUMENTS_PATH is not configured.",
+                "hint": "Set the DRAKE_DOCUMENTS_PATH env var to your Drake Documents data root.",
+            }
+        ), 400
+    outcome = sync_to_drake(return_id)
+    status = 200 if outcome.get("success") else 400
+    if outcome.get("error") == "return_not_found":
+        status = 404
+    return jsonify(outcome), status
+
+
 @app.post("/api/return/<int:return_id>/status")
 @login_required
 def api_status(return_id: int):
@@ -3219,5 +4485,32 @@ if __name__ == "__main__":
     conn = get_connection()
     init_db(conn)
     conn.close()
+    start_mail_watcher(app)
+    start_extraction_worker(app)
+
+    # Load or train fastText model at startup — runs in background, never blocks
+    import threading as _startup_threading
+    def _startup_classifier():
+        from classifier import _load_model, retrain
+        _load_model()         # hot-load existing model if available
+        retrain(DB_PATH)      # retrain on any newly confirmed data since last run
+    _startup_threading.Thread(
+        target=_startup_classifier, daemon=True, name="fasttext-startup"
+    ).start()
+
+    def _warm_chat_cache():
+        try:
+            from datetime import date as _d
+            from chat_cache import refresh_chat_cache as _warm_cc
+
+            _warm_cc(year=_d.today().year)
+        except Exception as ex:
+            logging.getLogger(__name__).warning("Chat cache warmup skipped: %s", ex)
+
+    threading.Thread(
+        target=_warm_chat_cache, daemon=True, name="chat-cache-warm"
+    ).start()
+
     print("TaxOps running at http://localhost:5000")
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
+    app.run(host="0.0.0.0", port=5000, debug=debug_mode, use_reloader=debug_mode)

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}TaxOps {{ current_year }}{% endblock %}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='tw.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body class="bg-slate-50 text-slate-800 h-screen overflow-hidden flex flex-col" data-year="{{ current_year }}">
@@ -71,8 +71,12 @@
           {% endif %}
         </a>
 
-        <a href="/ai/chat" class="nav-link {% if request.path.startswith('/ai/') %}active{% endif %}">
+        <a href="/ai/chat?year={{ current_year }}" class="nav-link {% if active_page == 'ai_chat' %}active{% endif %}">
           AI Assistant
+        </a>
+
+        <a href="/email-review" class="nav-link {% if request.path.startswith('/email-review') %}active{% endif %}">
+          Email Review
         </a>
 
         <!-- Tools dropdown -->
@@ -326,6 +330,93 @@
 
   <script src="{{ url_for('static', filename='app.js') }}"></script>
   <script>
+    /** Fetch with timeout — avoids perpetual “Loading…” if the server hangs.
+     *  When the timer fires, `fetch` rejects with AbortError whose message is often
+     *  “signal is aborted without reason” (no AbortSignal reason). Flag timeouts so callers get a clear error. */
+    function _fetchWithTimeout(url, options, timeoutMs) {
+      var ms = timeoutMs || 45000;
+      var ctrl = new AbortController();
+      var timedOut = false;
+      var tid = setTimeout(function () {
+        timedOut = true;
+        try {
+          ctrl.abort(new DOMException('Request exceeded ' + Math.round(ms / 1000) + 's.', 'TimeoutError'));
+        } catch (ignored) {
+          ctrl.abort();
+        }
+      }, ms);
+      var opts = Object.assign({}, options || {}, { signal: ctrl.signal });
+      return fetch(url, opts)
+        .finally(function () { clearTimeout(tid); })
+        .catch(function (err) {
+          if (timedOut) {
+            throw new Error(
+              'Request timed out after ' +
+                Math.round(ms / 1000) +
+                's. Slow LLM calls may need longer — try again or bump the AI chat fetch timeout.'
+            );
+          }
+          throw err;
+        });
+    }
+
+    /** API calls return 401 JSON when the session expired (not an HTML redirect). */
+    function _authJson(r) {
+      if (r.status === 401) {
+        window.location.href =
+          '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+        return Promise.reject(new Error('Unauthorized'));
+      }
+      var ct = (r.headers.get('Content-Type') || '').toLowerCase();
+      return r.text().then(function (raw) {
+        var s = typeof raw === 'string' ? raw.trim() : '';
+        if (!s) {
+          if (!r.ok) throw new Error('HTTP ' + r.status + ' — empty response');
+          return {};
+        }
+        var first = s.charAt(0);
+        if (first === '<' || (ct.indexOf('text/html') !== -1)) {
+          throw new Error(
+            'Server returned a web page instead of JSON (HTTP ' + r.status + '). ' +
+            'Open DevTools → Network, click the failing request; if HTML is from TaxOps login, refresh and sign in again. ' +
+            'If it persists, check the server/process log — the POST /ai/chat handler may have errored.'
+          );
+        }
+        var body;
+        try {
+          body = JSON.parse(s);
+        } catch (ignored) {
+          throw new Error(
+            'Unexpected token in response — not valid JSON (HTTP ' +
+              r.status +
+              '): ' +
+              s.slice(0, 160)
+          );
+        }
+        if (!r.ok) {
+          var msg =
+            body && (body.error || body.message)
+              ? String(body.error || body.message)
+              : ('HTTP ' + r.status);
+          if (body && body.hint && String(body.hint).trim()) {
+            msg += ' — ' + String(body.hint).trim();
+          }
+          if (body && body.detail && String(body.detail).trim()) {
+            var det = String(body.detail).trim();
+            if (det && det !== msg && msg.indexOf(det) === -1) {
+              msg += ' (' + det.slice(0, 240) + (det.length > 240 ? '…' : '') + ')';
+            }
+          }
+          if (r.status === 503 && body && body.ollama_base_url) {
+            msg += ' [Ollama: ' + String(body.ollama_base_url).trim() + ']';
+          }
+          throw new Error(msg);
+        }
+        return body;
+      });
+    }
+  </script>
+  <script>
     (function () {
       const btn = document.getElementById('back-to-top');
       if (!btn) return;
@@ -355,13 +446,15 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled: !current }),
           });
-          const data = await resp.json();
+          const data = await _authJson(resp);
           if (data.success) {
             renderState(!!data.privacy_mode);
             window.location.reload();
           }
         } catch (e) {
-          console.error('Privacy mode toggle failed', e);
+          if (!e || e.message !== 'Unauthorized') {
+            console.error('Privacy mode toggle failed', e);
+          }
         }
       });
     })();
