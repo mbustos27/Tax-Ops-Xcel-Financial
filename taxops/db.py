@@ -223,6 +223,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           source            TEXT,
           file_path         TEXT NOT NULL,
           file_size_bytes   INTEGER,
+          file_hash         TEXT,
           uploaded_by       TEXT,
           uploaded_at       TEXT,
           notes             TEXT,
@@ -241,7 +242,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           source          TEXT NOT NULL DEFAULT 'auto'
         );
 
-        CREATE TABLE IF NOT EXISTS email_sender_rules (
+        CREATE TABLE IF NOT EXISTS known_sender_rules (
           id          INTEGER PRIMARY KEY AUTOINCREMENT,
           domain      TEXT NOT NULL UNIQUE,
           rule_type   TEXT NOT NULL DEFAULT 'always_promotional',
@@ -453,6 +454,9 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "events_created INTEGER DEFAULT 0",
             "notes_created INTEGER DEFAULT 0",
         ],
+        "return_documents": [
+            "file_hash TEXT",
+        ],
     }
 
     for table_name, columns in table_columns.items():
@@ -466,6 +470,17 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
                     if "duplicate column" not in str(exc).lower():
                         raise
 
+    # Rename legacy email_sender_rules → known_sender_rules (DOC-3 epic name; one-time).
+    _rule_tables = [
+        r["name"]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name IN ('email_sender_rules', 'known_sender_rules')"
+        ).fetchall()
+    ]
+    if "email_sender_rules" in _rule_tables and "known_sender_rules" not in _rule_tables:
+        conn.execute("ALTER TABLE email_sender_rules RENAME TO known_sender_rules")
+
     # New-table migrations — safe to run on existing databases
     conn.execute(
         """
@@ -478,6 +493,7 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
           source            TEXT,
           file_path         TEXT NOT NULL,
           file_size_bytes   INTEGER,
+          file_hash         TEXT,
           uploaded_by       TEXT,
           uploaded_at       TEXT,
           notes             TEXT,
@@ -502,7 +518,7 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
     )
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS email_sender_rules (
+        CREATE TABLE IF NOT EXISTS known_sender_rules (
           id          INTEGER PRIMARY KEY AUTOINCREMENT,
           domain      TEXT NOT NULL UNIQUE,
           rule_type   TEXT NOT NULL DEFAULT 'always_promotional',

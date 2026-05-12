@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import email
 import email.header
+import hashlib
 import imaplib
 import logging
 import os
@@ -33,11 +34,14 @@ _poll_lock = threading.Lock()
 # dev-server reloads (which re-execute module-level code in the child process).
 _watcher_started = False
 
-# UIDs processed this session — keyed by (folder, uid_str).
-# Prevents the same IMAP message from being processed twice within a session
-# without touching Gmail's read/unread state.  Lost on restart, but the
-# _record_classification 24-hour dedup guard prevents duplicate DB rows.
-_processed_uids: set = set()
+# UIDs claimed for this process lifetime — keyed by (folder, uid_str).
+# Prevents the same IMAP message from being handled twice across poll cycles while
+# the message may still appear UNSEEN until STORE \\Seen succeeds. Cleared only
+# on interpreter restart (_processed_uids is never reset between polls).
+_processed_uids: set[tuple[str, str]] = set()
+
+# Serializes memo checks / claims so concurrent callers cannot duplicate-claim one UID.
+_processed_uids_lock = threading.Lock()
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -96,7 +100,7 @@ def _poll_once(app) -> None:
     Skips entirely if a previous cycle is still running (LLM calls can be slow).
     """
     if not _poll_lock.acquire(blocking=False):
-        logger.info("Previous poll cycle still running — skipping this cycle")
+        logger.info("Previous poll cycle still running — skipping")
         return
     try:
         _poll_once_inner(app)
@@ -234,8 +238,8 @@ def _dispatch_classified_message(app, msg: dict) -> None:
     source_layer controls whether the result is recorded in email_classifications.
 
     Does NOT touch IMAP state — Gmail read/unread is left unchanged.
-    Re-processing within a session is prevented by _processed_uids in the
-    poll loop, and across restarts by the 24-hour dedup guard in
+    Re-processing within a process lifetime is prevented by claiming UIDs into
+    _processed_uids in the poll loop before fetch/dispatch, and across restarts by the 24-hour dedup guard in
     _record_classification.
     """
     classification = msg["classification"]
@@ -383,45 +387,46 @@ def _poll_once_inner(app) -> None:
 
             raw_uids = data[0].split()
             if not raw_uids:
+                logger.info(f"No unseen messages in {folder!r}")
                 continue
 
-            # Filter UIDs already handled this session
-            new_uids = [
-                uid for uid in raw_uids
-                if (folder, uid.decode("ascii", errors="replace"))
-                not in _processed_uids
-            ]
+            claimed_uids: list[bytes] = []
+            with _processed_uids_lock:
+                for uid in raw_uids:
+                    uid_str = uid.decode("ascii", errors="replace")
+                    uid_key = (folder, uid_str)
+                    if uid_key in _processed_uids:
+                        logger.debug(
+                            f"UID {uid_str} in {folder} already processed — skipping"
+                        )
+                        continue
+                    _processed_uids.add(uid_key)
+                    claimed_uids.append(uid)
 
-            logger.info(
-                f"Folder {folder!r}: {len(new_uids)} new unseen "
-                f"(handling={handling}, {len(raw_uids)-len(new_uids)} already seen this session)"
-            )
+            logger.info(f"Folder {folder}: {len(claimed_uids)} new unseen")
 
-            if not new_uids:
+            if not claimed_uids:
                 continue
 
             if handling == "skip":
-                for uid in new_uids:
-                    _processed_uids.add((folder, uid.decode("ascii", errors="replace")))
+                for uid in claimed_uids:
                     _mark_read(imap, uid, f"folder={folder} auto-skip")
-                logger.info(f"Auto-skipped {len(new_uids)} message(s) from {folder!r}")
+                logger.info(f"Auto-skipped {len(claimed_uids)} message(s) from {folder!r}")
             else:
                 # full_processing — fetch and collect for classification
-                for uid in new_uids:
-                    uid_str = uid.decode("ascii", errors="replace")
+                for uid in claimed_uids:
                     try:
                         md = _fetch_message_data(imap, uid)
                         if md:
-                            messages.append({
-                                **md,
-                                "uid":            uid,
-                                "folder":         folder,
-                                "classification": None,
-                                "source_layer":   None,
-                            })
-                            _processed_uids.add((folder, uid_str))
-                        else:
-                            _processed_uids.add((folder, uid_str))
+                            messages.append(
+                                {
+                                    **md,
+                                    "uid": uid,
+                                    "folder": folder,
+                                    "classification": None,
+                                    "source_layer": None,
+                                }
+                            )
                     except Exception as e:
                         logger.error(f"Fetch failed uid={uid!r} in {folder!r}: {e}")
                         _mark_read(imap, uid, "fetch-error")
@@ -443,6 +448,11 @@ def _poll_once_inner(app) -> None:
         for msg in messages:
             try:
                 _dispatch_classified_message(app, msg)
+                # Known-rule path skips DB/IMAP-heavy work inside dispatch — still clear UNSEEN.
+                if msg.get("source_layer") == "known_rule":
+                    uid = msg.get("uid")
+                    if uid is not None:
+                        _mark_read(imap, uid, "known-sender-rule")
             except Exception as e:
                 logger.error(
                     f"Dispatch failed for {msg.get('sender_domain')}: {e}"
@@ -528,7 +538,7 @@ def _is_drive_share(subject: str, body_text: str) -> bool:
 
 _ALLOWED_CLASSES = frozenset({"client_document", "client_inquiry", "promotional", "unknown"})
 
-# rule_type values in email_sender_rules → classification
+# rule_type values in known_sender_rules → classification
 _RULE_TYPE_MAP = {
     "always_promotional": "promotional",
     "always_client":      "client_document",
@@ -537,11 +547,11 @@ _RULE_TYPE_MAP = {
 
 def _check_known_sender_rule(sender_domain: str) -> str | None:
     """
-    Check whether sender_domain has a row in email_sender_rules.
+    Check whether sender_domain has a row in known_sender_rules.
     Returns the mapped classification string if a rule exists, None otherwise.
     Never raises.
 
-    Exact column name: rule_type  (see db.py email_sender_rules table)
+    Exact column name: rule_type  (see db.py known_sender_rules table)
     Exact rule_type values: 'always_promotional', 'always_client'
     """
     from db import get_connection
@@ -549,7 +559,7 @@ def _check_known_sender_rule(sender_domain: str) -> str | None:
         conn = get_connection()
         try:
             row = conn.execute(
-                "SELECT rule_type FROM email_sender_rules WHERE domain = ? COLLATE NOCASE",
+                "SELECT rule_type FROM known_sender_rules WHERE domain = ? COLLATE NOCASE",
                 (sender_domain,),
             ).fetchone()
             if row:
@@ -919,7 +929,7 @@ def _check_graduation_trigger(app, domain: str) -> None:
 
             # No existing rule for this domain
             if conn.execute(
-                "SELECT id FROM email_sender_rules WHERE domain = ? COLLATE NOCASE",
+                "SELECT id FROM known_sender_rules WHERE domain = ? COLLATE NOCASE",
                 (domain,),
             ).fetchone():
                 return
@@ -998,7 +1008,7 @@ def _analyze_patterns(app) -> int:
     from llm import extract_json
     from utils import now
 
-    # Map from classification value to rule_type value in email_sender_rules
+    # Map from classification value to rule_type value in known_sender_rules
     _CLASS_TO_RULE = {
         "promotional":    "always_promotional",
         "client_document": "always_client",
@@ -1029,7 +1039,7 @@ def _analyze_patterns(app) -> int:
                 # Domains already covered by a known sender rule
                 known_domains = {
                     r["domain"]
-                    for r in conn.execute("SELECT domain FROM email_sender_rules").fetchall()
+                    for r in conn.execute("SELECT domain FROM known_sender_rules").fetchall()
                 }
                 # Domains that already have a pending suggestion
                 pending_domains = {
@@ -1435,6 +1445,10 @@ def _save_attachments(app, message, return_id: int) -> int:
     ingest (native PDFs remain PDFs; scanned images remain images).  Staff use
     the UI / separate tooling if extraction is needed.
 
+    Dedupes before writing disk: same return_id + is_deleted=0 and either
+    matching SHA-256 of payload (file_hash) or same sanitized MIME filename +
+    byte size as an existing row (cheap path for legacy rows without hash).
+
     - source is always 'email'
     - doc_type is always 'unknown' — staff tags later
     - uploaded_by is always 'mail_watcher'
@@ -1494,8 +1508,38 @@ def _save_attachments(app, message, return_id: int) -> int:
                 continue
 
             try:
-                folder = get_return_documents_path(return_id)
+                payload = part.get_payload(decode=True)
+                if not payload:
+                    logger.warning(f"Empty payload for attachment: {raw_filename!r}")
+                    continue
+
                 sanitized = sanitize_filename(raw_filename)
+                file_size_bytes = len(payload)
+                file_hash_hex = hashlib.sha256(payload).hexdigest()
+
+                dup = conn.execute(
+                    """
+                    SELECT 1 FROM return_documents
+                    WHERE return_id = ? AND is_deleted = 0
+                      AND (
+                        (file_hash IS NOT NULL AND file_hash = ?)
+                        OR (filename = ? AND file_size_bytes = ?)
+                      )
+                    LIMIT 1
+                    """,
+                    (return_id, file_hash_hex, sanitized, file_size_bytes),
+                ).fetchone()
+                if dup:
+                    hp = file_hash_hex[:16]
+                    logger.info(
+                        "Skipping duplicate attachment return_id=%s filename=%s hash_prefix=%s",
+                        return_id,
+                        sanitized,
+                        hp,
+                    )
+                    continue
+
+                folder = get_return_documents_path(return_id)
                 stem, ext_part = os.path.splitext(sanitized)
                 candidate = sanitized
                 counter = 1
@@ -1505,15 +1549,9 @@ def _save_attachments(app, message, return_id: int) -> int:
 
                 full_path = os.path.abspath(os.path.join(folder, candidate))
 
-                payload = part.get_payload(decode=True)
-                if not payload:
-                    logger.warning(f"Empty payload for attachment: {raw_filename!r}")
-                    continue
-
                 with open(full_path, "wb") as fh:
                     fh.write(payload)
 
-                file_size_bytes = os.path.getsize(full_path)
                 uploaded_at = now()
 
                 # Scrub any SSN patterns that may be embedded in user-supplied strings
@@ -1526,8 +1564,8 @@ def _save_attachments(app, message, return_id: int) -> int:
                     """
                     INSERT INTO return_documents (
                         return_id, filename, original_filename, doc_type, source,
-                        file_path, file_size_bytes, uploaded_by, uploaded_at, notes, is_deleted
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                        file_path, file_size_bytes, file_hash, uploaded_by, uploaded_at, notes, is_deleted
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
                     """,
                     (
                         return_id,
@@ -1537,6 +1575,7 @@ def _save_attachments(app, message, return_id: int) -> int:
                         "email",
                         full_path,          # stored server-side only
                         file_size_bytes,
+                        file_hash_hex,
                         "mail_watcher",
                         uploaded_at,
                         None,
