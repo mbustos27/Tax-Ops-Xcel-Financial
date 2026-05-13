@@ -4,14 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}TaxOps {{ current_year }}{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='tw.min.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='tw.min.css') }}?v={{ config.APP_VERSION }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ config.APP_VERSION }}">
 </head>
 <body class="bg-slate-50 text-slate-800 h-screen overflow-hidden flex flex-col" data-year="{{ current_year }}">
 
   <!-- ── Header ─────────────────────────────────────────────────────────── -->
   <header id="site-header" class="bg-slate-800 shadow-lg sticky top-0 z-30">
-    <div class="max-w-screen-2xl mx-auto px-4 py-3 flex items-center gap-4">
+    <div class="max-w-screen-2xl mx-auto px-4 py-3 flex flex-nowrap items-center gap-4 min-w-0">
 
       <!-- Brand -->
       <a href="/" class="flex items-center gap-2 shrink-0">
@@ -21,9 +21,9 @@
       </a>
 
       <!-- Global Search -->
-      <div class="relative flex-1 max-w-sm transition-all duration-200" id="search-wrap">
-        <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div class="relative flex-1 min-w-0" id="search-wrap">
+        <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none z-10">
+          <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
         </div>
@@ -33,54 +33,26 @@
           placeholder="Log # or name… (press /)"
           autocomplete="off"
           spellcheck="false"
-          class="w-full bg-slate-700 text-white placeholder-slate-400 rounded-lg pl-9 pr-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all duration-200"
-          onfocus="document.getElementById('search-wrap').style.maxWidth='36rem'"
-          onblur="if(!this.value)document.getElementById('search-wrap').style.maxWidth=''"
+          class="block w-full"
         >
         <div id="search-results"
-             class="hidden absolute top-full left-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50 max-h-80 overflow-y-auto min-w-[26rem]">
+             class="hidden absolute top-full left-0 right-0 mt-1 w-full bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50 max-h-80 overflow-y-auto min-w-[min(100%,28rem)]">
         </div>
       </div>
 
-      <!-- Nav links -->
-      <nav class="flex items-center gap-1">
+      <!-- Nav + bell + session -->
+      <div class="flex items-center gap-3 shrink-0 flex-nowrap">
+      <nav class="flex items-center gap-1 shrink-0 flex-nowrap">
         <a href="/?year={{ current_year }}" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">
           Dashboard
         </a>
-        <a href="/logout-queue?year={{ current_year }}" class="nav-link {% if active_page == 'logout' %}active{% endif %}">
-          Pickup Queue
-          {% set pc = status_counts.get('PICKUP', 0) %}
-          {% if pc > 0 %}
-          <span class="ml-1 bg-teal-500 text-white text-sm font-bold rounded-full px-2 py-0.5">{{ pc }}</span>
-          {% endif %}
-        </a>
-        <a href="/efile-queue?year={{ current_year }}" class="nav-link {% if active_page == 'efile' %}active{% endif %}">
-          E-File Queue
-          {% set ec = status_counts.get('EFILE READY', 0) %}
-          {% if ec > 0 %}
-          <span class="ml-1 bg-indigo-500 text-white text-sm font-bold rounded-full px-2 py-0.5">{{ ec }}</span>
-          {% endif %}
-        </a>
-        <a href="/payments?year={{ current_year }}" class="nav-link {% if active_page == 'payments' %}active{% endif %}">
-          Payments
-        </a>
-        <a href="/review" class="nav-link {% if active_page == 'review' %}active{% endif %}">
-          Review
-          {% if pending_review_count and pending_review_count > 0 %}
-          <span class="ml-1 bg-amber-500 text-white text-sm font-bold rounded-full px-2 py-0.5">{{ pending_review_count }}</span>
-          {% endif %}
-        </a>
 
-        <a href="/ai/chat?year={{ current_year }}" class="nav-link {% if active_page == 'ai_chat' %}active{% endif %}">
-          AI Assistant
-        </a>
-
-        <a href="/email-review" class="nav-link {% if request.path.startswith('/email-review') %}active{% endif %}">
-          Email Review
-        </a>
-
-        <!-- Tools dropdown -->
-        {% set tools_active = active_page in ('upload','source_compare','import_audit','merge','efile_batch') %}
+        <!-- Tools dropdown (queues & utility pages consolidated to free header space for search) -->
+        {% set tools_active =
+            active_page in ('upload','source_compare','import_audit','merge','efile_batch','audit_log',
+                            'logout','efile','payments','review','ai_chat')
+            or request.path.startswith('/email-review')
+        %}
         <div class="relative" id="tools-menu-wrap">
           <button id="tools-btn"
                   onclick="toggleToolsMenu()"
@@ -92,12 +64,49 @@
             </svg>
           </button>
           <div id="tools-dropdown"
-               class="hidden absolute left-0 top-full mt-1 w-52 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+               class="hidden absolute left-0 top-full mt-1 min-w-[16rem] w-max max-w-[min(calc(100vw-2rem),22rem)] bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+            <a href="/logout-queue?year={{ current_year }}"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'logout' %}tools-item-active{% endif %}">
+              <span>Pickup Queue</span>
+              {% set pc = status_counts.get('PICKUP', 0) %}
+              {% if pc > 0 %}
+              <span class="shrink-0 bg-teal-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ pc }}</span>
+              {% endif %}
+            </a>
+            <a href="/efile-queue?year={{ current_year }}"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'efile' %}tools-item-active{% endif %}">
+              <span>E-File Queue</span>
+              {% set ec = status_counts.get('EFILE READY', 0) %}
+              {% if ec > 0 %}
+              <span class="shrink-0 bg-indigo-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ ec }}</span>
+              {% endif %}
+            </a>
+            <a href="/payments?year={{ current_year }}"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'payments' %}tools-item-active{% endif %}">
+              <span>Payments</span>
+            </a>
+            <a href="/review"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'review' %}tools-item-active{% endif %}">
+              <span>Review</span>
+              {% if pending_review_count and pending_review_count > 0 %}
+              <span class="shrink-0 bg-amber-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ pending_review_count }}</span>
+              {% endif %}
+            </a>
+            <a href="/ai/chat?year={{ current_year }}"
+               class="tools-item {% if active_page == 'ai_chat' %}tools-item-active{% endif %}">
+              AI Assistant
+            </a>
+            <a href="/email-review"
+               class="tools-item {% if request.path.startswith('/email-review') %}tools-item-active{% endif %}">
+              Email Review
+            </a>
+
+            <div class="my-1 border-t border-slate-100"></div>
+
             <a href="/efile-batch"
                class="tools-item {% if active_page == 'efile_batch' %}tools-item-active{% endif %}">
               E-file Batches
             </a>
-            <div class="my-1 border-t border-slate-100"></div>
             <a href="/upload"
                class="tools-item {% if active_page == 'upload' %}tools-item-active{% endif %}">
               Import CSV
@@ -109,6 +118,10 @@
             <a href="/import-audit"
                class="tools-item {% if active_page == 'import_audit' %}tools-item-active{% endif %}">
               Import Audit
+            </a>
+            <a href="{{ url_for('audit_log_admin') }}"
+               class="tools-item {% if active_page == 'audit_log' %}tools-item-active{% endif %}">
+              Audit log
             </a>
             <a href="/merge-clients"
                class="tools-item {% if active_page == 'merge' %}tools-item-active{% endif %}">
@@ -123,7 +136,7 @@
       </nav>
 
       <!-- ── Reject alert bell ────────────────────────────────────────────── -->
-      <div class="relative ml-auto" id="reject-bell-wrap">
+      <div class="relative shrink-0" id="reject-bell-wrap">
         <button id="reject-bell"
                 aria-label="Rejected returns"
                 title="Rejected returns"
@@ -205,7 +218,7 @@
       </div>
 
       <!-- Year picker + logout -->
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 shrink-0 flex-nowrap border-l border-slate-700/60 pl-3 ml-1">
         <button id="privacy-toggle"
                 type="button"
                 data-enabled="{{ '1' if privacy_mode else '0' }}"
@@ -239,6 +252,7 @@
             <span class="hidden sm:inline">Sign out</span>
           </a>
         </div>
+      </div>
       </div>
     </div>
 
@@ -277,6 +291,32 @@
       </div>
     </div>
   </header>
+
+  <!-- ── PROD-6 client error boundary ─────────────────────────────────── -->
+  <div id="client-error-boundary"
+       class="hidden fixed bottom-6 right-6 left-6 sm:left-auto z-[60] max-w-lg"
+       role="alert"
+       aria-live="assertive">
+    <div class="rounded-xl border border-amber-300 bg-amber-50 shadow-2xl px-4 py-3 flex flex-col gap-3 pointer-events-auto">
+      <div class="flex gap-3">
+        <div class="mt-0.5 shrink-0 w-9 h-9 rounded-lg bg-amber-200 flex items-center justify-center text-amber-900 font-bold select-none">!</div>
+        <div class="min-w-0 flex-1">
+          <p class="font-bold text-amber-950 text-sm">Something went wrong in the browser</p>
+          <p id="client-error-boundary-detail" class="text-xs text-amber-900 mt-1 leading-snug"></p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 justify-end">
+        <button type="button" id="client-error-boundary-dismiss"
+                class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-amber-400 text-amber-900 hover:bg-amber-100">
+          Dismiss
+        </button>
+        <button type="button" id="client-error-boundary-reload"
+                class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 border border-amber-700">
+          Reload page
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- ── Demo banner ────────────────────────────────────────────────────── -->
   {% if app_env == 'demo' %}
@@ -328,7 +368,7 @@
     </svg>
   </button>
 
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}?v={{ config.APP_VERSION }}"></script>
   <script>
     /** Fetch with timeout — avoids perpetual “Loading…” if the server hangs.
      *  When the timer fires, `fetch` rejects with AbortError whose message is often
