@@ -1,9 +1,7 @@
 """
 Append-only log of staff questions on POST /ai/chat for deriving scope-training examples.
 
-Each row includes `classified_intent` from the deterministic chat router (regex + heuristics), and
-merged optional planner telemetry from the `/ai/chat` JSON router (`router_mode`, `router_confidence`,
-`confidence_abstain`, `row_tool_guard_dropped`, …)—use alongside `classified_intent` to mine ambiguity.
+Each row includes staff question text plus `classified_intent` (routing tag logged by `/ai/chat`) and merged optional telemetry (`needs_lookup_followup`, `llm_primary_error`, …).
 
 Questions that land in `fallback` are easy to prioritize for new intents / dataplane slices.
 

@@ -2,81 +2,95 @@
 {% block title %}{% if ret.log_number %}#{{ ret.log_number }} {% endif %}{{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %} — TaxOps{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto space-y-4">
+<div class="max-w-5xl mx-auto space-y-5 pb-8">
 
-  <!-- ── Return header ──────────────────────────────────────────────────── -->
-  <div class="flex items-start justify-between gap-4">
-    <div class="flex items-center gap-3">
-      <a href="javascript:history.back()"
-         class="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded-lg hover:bg-slate-100">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-        </svg>
-      </a>
-      <div>
-        <div class="flex items-center gap-3 flex-wrap">
-          <span class="font-mono font-black text-3xl text-slate-800 tracking-tight">{{ ret.log_number or '—' }}</span>
-          <span class="text-slate-300 text-2xl select-none">·</span>
-          <span class="text-xl font-semibold text-slate-700">{{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %}</span>
-          <span class="text-xs bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-mono font-semibold">
-            TY{{ ret.tax_year }}
-          </span>
-
-          <!-- Clickable status dropdown (same as dashboard) -->
-          <div class="status-dropdown relative">
-            <button onclick="toggleStatusMenu(this)"
-                    class="status-badge flex items-center gap-1.5 {{ ret.badge_class }} cursor-pointer hover:opacity-90 transition-opacity">
-              {{ ret.client_status or 'NO STATUS' }}
-              <svg class="w-3 h-3 opacity-50 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
-              </svg>
-            </button>
-            <div class="status-menu hidden absolute left-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 min-w-[160px]">
-              {% for s in status_flow %}
-              <button onclick="setStatus({{ ret.id }}, '{{ s }}', this)"
-                      class="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors
-                             {% if s == ret.client_status %}font-bold text-slate-900 bg-slate-50{% else %}text-slate-700{% endif %}">
-                {{ s }}
-              </button>
-              {% endfor %}
+  {# ── Return header (closed container — was missing </div> so body bled into flex row) ── #}
+  <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" aria-labelledby="return-detail-title">
+    <div class="p-4 lg:p-5">
+      <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div class="flex gap-3 min-w-0 flex-1">
+          <a href="javascript:history.back()"
+             class="shrink-0 text-slate-400 hover:text-slate-700 transition-colors p-1 rounded-lg hover:bg-slate-100 h-9 w-9 flex items-center justify-center"
+             title="Back">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+          </a>
+          <div class="min-w-0 space-y-3">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span class="font-mono font-black text-2xl sm:text-3xl text-slate-800 tracking-tight tabular-nums">
+                {{ ret.log_number or '—' }}
+              </span>
+              <span class="text-slate-300 hidden sm:inline" aria-hidden="true">·</span>
+              <h1 id="return-detail-title" class="text-lg sm:text-xl font-semibold text-slate-800 truncate max-w-full">
+                {{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %}
+              </h1>
+              <span class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-mono font-semibold shrink-0">
+                TY{{ ret.tax_year }}
+              </span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="status-dropdown relative inline-block">
+                <button type="button" onclick="toggleStatusMenu(this)"
+                        class="status-badge flex items-center gap-1.5 {{ ret.badge_class }} cursor-pointer hover:opacity-90 transition-opacity">
+                  {{ ret.client_status or 'NO STATUS' }}
+                  <svg class="w-3 h-3 opacity-50 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </button>
+                <div class="status-menu hidden absolute left-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 min-w-[160px]">
+                  {% for s in status_flow %}
+                  <button type="button" onclick="setStatus({{ ret.id }}, '{{ s }}', this)"
+                          class="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors
+                                 {% if s == ret.client_status %}font-bold text-slate-900 bg-slate-50{% else %}text-slate-700{% endif %}">
+                    {{ s }}
+                  </button>
+                  {% endfor %}
+                </div>
+              </div>
+              {% if ret.display_name %}
+              <span class="text-sm text-slate-500 truncate max-w-full sm:max-w-md">{{ ret.display_name }}</span>
+              {% endif %}
+              {% if ret.client_id %}
+              <a href="{{ url_for('client_profile', client_id=ret.client_id) }}"
+                 class="text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
+                Client profile →
+              </a>
+              {% endif %}
             </div>
           </div>
         </div>
-        {% if ret.display_name %}
-        <div class="text-sm text-slate-400 mt-0.5 ml-0.5">{{ ret.display_name }}</div>
-        {% endif %}
+        <nav class="flex flex-row flex-wrap lg:flex-col gap-2 lg:items-stretch lg:min-w-[10.5rem] shrink-0 border-t border-slate-100 lg:border-t-0 pt-4 lg:pt-0 lg:pl-6 lg:border-l" aria-label="Return actions">
+          {% if ret.client_status in ('PICKUP', 'EFILE READY') %}
+          <a href="/pickup/{{ ret.id }}"
+             class="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg px-3 py-2 transition-all">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+            </svg>
+            Pickup workflow
+          </a>
+          {% endif %}
+          <button type="button" onclick="printSticker()"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 transition-all">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+            </svg>
+            Print sticker
+          </button>
+        </nav>
       </div>
     </div>
+  </section>
 
-    <!-- Pickup workflow shortcut -->
-    {% if ret.client_status in ('PICKUP', 'EFILE READY') %}
-    <a href="/pickup/{{ ret.id }}"
-       class="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg px-3 py-2 transition-all">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
-      </svg>
-      Pickup Workflow
-    </a>
-    {% endif %}
-
-    <!-- Print sticker button -->
-    <button onclick="printSticker()"
-            class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
-      </svg>
-      Print Sticker
-    </button>
-  </div>
-
-  <!-- ── Quick flags bar ──────────────────────────────────────────────────── -->
-  <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 flex flex-wrap items-center gap-2">
-    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide mr-1">Quick Flags</span>
-
+  <!-- ── Quick flags ────────────────────────────────────────────────────── -->
+  <div class="bg-white rounded-xl border border-slate-200 px-4 py-4 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+    <div class="flex flex-col gap-3 min-w-0 flex-1">
+      <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Quick flags</span>
+      <div class="flex flex-wrap items-center gap-2">
     {% macro qflag(label, field, val, color='blue') %}
-    <button onclick="quickToggle({{ ret.id }}, '{{ field }}', this)"
+    <button type="button" onclick="quickToggle({{ ret.id }}, '{{ field }}', this)"
             data-field="{{ field }}"
             data-value="{{ '1' if val else '0' }}"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all select-none
@@ -97,20 +111,20 @@
     {{ qflag('W-7',           'has_w7',             ret.has_w7,             'blue') }}
     {{ qflag('TY25 Transfer', 'transfer_2025_flag', ret.transfer_2025_flag, 'blue') }}
     {{ qflag('TY26 Transfer', 'transfer_2026_flag', ret.transfer_2026_flag, 'blue') }}
-
-    <!-- E-file dates inline -->
-    <div class="ml-auto flex items-center gap-4 text-sm">
-      <div class="flex items-center gap-1.5">
-        <span class="text-slate-400 text-xs font-medium">E-Filed</span>
-        <span class="editable font-mono text-slate-700 font-semibold"
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm border-t border-slate-100 pt-3 xl:border-t-0 xl:border-l xl:pl-6 xl:pt-0 shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500 text-xs font-semibold uppercase tracking-wide">E-filed</span>
+        <span class="editable font-mono text-slate-800 font-semibold"
               data-return-id="{{ ret.id }}" data-field="efile_date"
               data-value="{{ ret.efile_date or '' }}" data-placeholder="YYYY-MM-DD">
           {{ ret.efile_date or '—' }}
         </span>
       </div>
-      <div class="flex items-center gap-1.5">
-        <span class="text-slate-400 text-xs font-medium">ACK</span>
-        <span class="editable font-mono text-slate-700 font-semibold"
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500 text-xs font-semibold uppercase tracking-wide">ACK</span>
+        <span class="editable font-mono text-slate-800 font-semibold"
               data-return-id="{{ ret.id }}" data-field="ack_date"
               data-value="{{ ret.ack_date or '' }}" data-placeholder="YYYY-MM-DD">
           {{ ret.ack_date or '—' }}
@@ -119,15 +133,16 @@
     </div>
   </div>
 
-  <!-- ── Status workflow bar ────────────────────────────────────────────── -->
-  <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
+  <!-- ── Status workflow ─────────────────────────────────────────────────── -->
+  <section class="bg-white rounded-xl border border-slate-200 px-4 py-3 sm:px-5 sm:py-4" aria-label="Workflow">
+    <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Workflow</p>
     <div class="flex items-center gap-1.5 overflow-x-auto">
       {% set current_idx = status_flow.index(ret.client_status) if ret.client_status in status_flow else -1 %}
       {% for s in status_flow %}
       {% set idx = loop.index0 %}
       {% set is_current = idx == current_idx %}
       {% set is_done    = idx < current_idx %}
-      <button onclick="setStatusDetail({{ ret.id }}, '{{ s }}')"
+      <button type="button" onclick="setStatusDetail({{ ret.id }}, '{{ s }}')"
               class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all
                      {% if is_current %}
                        {{ status_badge.get(s,'') }} border shadow-sm
@@ -154,7 +169,7 @@
       {% endif %}
       {% endfor %}
     </div>
-  </div>
+  </section>
 
   {% if ret.client_status == 'REJECTED' %}
   {% set cc_cur = ret.contact_status or 'not_contacted' %}
@@ -233,16 +248,16 @@
   </div>
   {% endif %}
 
-  <!-- ── Two-column layout ──────────────────────────────────────────────── -->
-  <div class="grid grid-cols-3 gap-4">
+  <!-- ── Two-column layout (stacks on small screens for readability) ─────── -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5">
 
-    <!-- Left (2/3): Fields ──────────────────────────────────────────────── -->
-    <div class="col-span-2 space-y-4">
+    <!-- Left (≈2/3): Fields -->
+    <div class="lg:col-span-2 space-y-4 min-w-0">
 
       <!-- Return info -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div class="section-header">Return Info</div>
-        <div class="p-4 grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+        <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
 
           {% macro ef(label, field, val, typ='text', ph='') %}
           <div>
@@ -363,7 +378,7 @@
       <!-- Forms -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div class="section-header">Return Forms</div>
-        <div class="p-4 grid grid-cols-3 gap-2">
+        <div class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
           {% set form_list = [
             ('form_1040',    'Form 1040'),
             ('sched_a_d',    'Sch A & D'),
@@ -407,7 +422,7 @@
             {% endif %}
           {% endif %}
         </div>
-        <div class="p-4 grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+        <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
 
           {% macro pf(label, field, val, currency=False) %}
           <div>
@@ -477,8 +492,8 @@
 
     </div><!-- /left col -->
 
-    <!-- Right (1/3): Notes + History + Client ──────────────────────────── -->
-    <div class="space-y-4">
+    <!-- Right (≈1/3): Notes + History + Client -->
+    <div class="space-y-4 min-w-0 lg:max-h-none">
 
       <!-- Notes -->
       <div id="notes-card" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
@@ -851,6 +866,7 @@ async function copyDraft() {
 
 // ── Return documents (upload / list / view / soft-delete) ───────────────────
 const RETURN_ID = {{ ret.id }};
+const DRAKE_SYNC_ENABLED = {% if drake_enabled %}true{% else %}false{% endif %};
 
 const FORM_FIELD_ORDER = {
   "w2_records": [
@@ -890,11 +906,7 @@ const FORM_FIELD_ORDER = {
     "box18b_local_wages",
     "box19b_local_income_tax",
     "box20b_locality_name",
-    "tax_year",
-    "wages_tips_other",
-    "federal_income_tax_withheld",
-    "state_wages",
-    "state_income_tax"
+    "tax_year"
   ],
   "f1099_nec_records": [
     "payer_name",
@@ -905,9 +917,7 @@ const FORM_FIELD_ORDER = {
     "box5_state_tax_withheld",
     "box6_state",
     "box7_state_income",
-    "tax_year",
-    "nonemployee_compensation",
-    "federal_income_tax_withheld"
+    "tax_year"
   ],
   "f1099_misc_records": [
     "payer_name",
@@ -929,11 +939,7 @@ const FORM_FIELD_ORDER = {
     "box16_state_tax_withheld",
     "box17_state",
     "box18_state_income",
-    "tax_year",
-    "rents",
-    "royalties",
-    "other_income",
-    "federal_income_tax_withheld"
+    "tax_year"
   ],
   "f1099_int_records": [
     "payer_name",
@@ -955,11 +961,7 @@ const FORM_FIELD_ORDER = {
     "box15_state",
     "box16_state_identification",
     "box17_state_tax_withheld",
-    "tax_year",
-    "interest_income",
-    "early_withdrawal_penalty",
-    "us_savings_bond_interest",
-    "federal_income_tax_withheld"
+    "tax_year"
   ],
   "f1099_div_records": [
     "payer_name",
@@ -986,11 +988,7 @@ const FORM_FIELD_ORDER = {
     "box14_state",
     "box15_state_identification",
     "box16_state_tax_withheld",
-    "tax_year",
-    "total_ordinary_dividends",
-    "qualified_dividends",
-    "total_capital_gain",
-    "federal_income_tax_withheld"
+    "tax_year"
   ]
 };
 
@@ -1001,6 +999,300 @@ const FORM_GROUP_DEFS = [
   { key: 'f1099_int', sqlTable: 'f1099_int_records', title: '1099-INT' },
   { key: 'f1099_div', sqlTable: 'f1099_div_records', title: '1099-DIV' },
 ];
+
+const FD_SQL_LABEL_GROUP = {
+  w2_records: 'w2',
+  f1099_nec_records: 'f1099_nec',
+  f1099_misc_records: 'f1099_misc',
+  f1099_int_records: 'f1099_int',
+  f1099_div_records: 'f1099_div',
+};
+
+const FORM_LABELS = {
+  w2: {
+    employer_name: 'Employer name',
+    employer_address: 'Employer address',
+    box1_wages_tips_other: 'Box 1 — Wages, tips, other compensation',
+    box2_federal_income_tax_withheld: 'Box 2 — Federal income tax withheld',
+    box3_social_security_wages: 'Box 3 — Social Security wages',
+    box4_social_security_tax_withheld: 'Box 4 — Social Security tax withheld',
+    box5_medicare_wages_tips: 'Box 5 — Medicare wages and tips',
+    box6_medicare_tax_withheld: 'Box 6 — Medicare tax withheld',
+    box7_social_security_tips: 'Box 7 — Social security tips',
+    box8_allocated_tips: 'Box 8 — Allocated tips',
+    box10_dependent_care_benefits: 'Box 10 — Dependent care benefits',
+    box11_nonqualified_plans: 'Box 11 — Nonqualified plans',
+    box12a_code: 'Box 12a — Code',
+    box12a_amount: 'Box 12a — Amount',
+    box12b_code: 'Box 12b — Code',
+    box12b_amount: 'Box 12b — Amount',
+    box12c_code: 'Box 12c — Code',
+    box12c_amount: 'Box 12c — Amount',
+    box12d_code: 'Box 12d — Code',
+    box12d_amount: 'Box 12d — Amount',
+    box13_statutory_employee: 'Box 13 — Statutory employee',
+    box13_retirement_plan: 'Box 13 — Retirement plan',
+    box13_third_party_sick_pay: 'Box 13 — Third-party sick pay',
+    box14_other: 'Box 14 — Other',
+    box15_state: 'Box 15 — State (Employer\'s state ID no.)',
+    box16_state_wages: 'Box 16 — State wages, tips, etc.',
+    box17_state_income_tax: 'Box 17 — State income tax',
+    box18_local_wages: 'Box 18 — Local wages, tips, etc.',
+    box19_local_income_tax: 'Box 19 — Local income tax',
+    box20_locality_name: 'Box 20 — Locality name',
+    box15b_state: 'Box 15 (second state) — State ID',
+    box16b_state_wages: 'Box 16 (second state) — State wages',
+    box17b_state_income_tax: 'Box 17 (second state) — State income tax',
+    box18b_local_wages: 'Box 18 (second locality) — Local wages',
+    box19b_local_income_tax: 'Box 19 (second locality) — Local income tax',
+    box20b_locality_name: 'Box 20 (second locality) — Locality name',
+    tax_year: 'Tax year',
+    source: 'Source',
+  },
+  f1099_nec: {
+    payer_name: 'Payer\'s name',
+    payer_address: 'Payer\'s address',
+    box1_nonemployee_compensation: 'Box 1 — Nonemployee compensation',
+    box2_direct_sales_indicator: 'Box 2 — Direct sales ($5,000+) indicator',
+    box4_federal_income_tax_withheld: 'Box 4 — Federal income tax withheld',
+    box5_state_tax_withheld: 'Box 5 — State/Payer\'s state no. tax withheld',
+    box6_state: 'Box 6 — State income',
+    box7_state_income: 'Box 7 — State income tax',
+    tax_year: 'Tax year',
+  },
+  f1099_misc: {
+    payer_name: 'Payer\'s name',
+    payer_address: 'Payer\'s address',
+    box1_rents: 'Box 1 — Rents',
+    box2_royalties: 'Box 2 — Royalties',
+    box3_other_income: 'Box 3 — Other income',
+    box4_federal_income_tax_withheld: 'Box 4 — Federal income tax withheld',
+    box5_fishing_boat_proceeds: 'Box 5 — Fishing boat proceeds',
+    box6_medical_health_care_payments: 'Box 6 — Medical and health care payments',
+    box7_direct_sales_indicator: 'Box 7 — Direct sales indicator',
+    box8_substitute_payments: 'Box 8 — Substitute payments',
+    box9_crop_insurance_proceeds: 'Box 9 — Crop insurance proceeds',
+    box10_gross_proceeds_attorney: 'Box 10 — Gross proceeds paid to attorney',
+    box11_fish_purchased_resale: 'Box 11 — Fish purchased for resale',
+    box12_section_409a_deferrals: 'Box 12 — Section 409A deferrals',
+    box14_gross_proceeds_attorney: 'Box 14 — Gross proceeds to attorney',
+    box15_section_409a_income: 'Box 15 — Section 409A income',
+    box16_state_tax_withheld: 'Box 16 — State tax withheld',
+    box17_state: 'Box 17 — State/Payer\'s state no.',
+    box18_state_income: 'Box 18 — State income',
+    tax_year: 'Tax year',
+  },
+  f1099_int: {
+    payer_name: 'Payer\'s name',
+    payer_address: 'Payer\'s address',
+    box1_interest_income: 'Box 1 — Interest income',
+    box2_early_withdrawal_penalty: 'Box 2 — Early withdrawal penalty',
+    box3_us_savings_bond_treasury_interest: 'Box 3 — Interest on U.S. Savings Bonds/Treasury',
+    box4_federal_income_tax_withheld: 'Box 4 — Federal income tax withheld',
+    box5_investment_expenses: 'Box 5 — Investment expenses',
+    box6_foreign_tax_paid: 'Box 6 — Foreign tax paid',
+    box7_foreign_country: 'Box 7 — Foreign country/US possession',
+    box8_tax_exempt_interest: 'Box 8 — Tax-exempt interest',
+    box9_specified_private_activity_bond_interest: 'Box 9 — Specified private activity bond interest',
+    box10_market_discount: 'Box 10 — Market discount',
+    box11_bond_premium: 'Box 11 — Bond premium',
+    box12_bond_premium_treasury_obligations: 'Box 12 — Bond premium on Treasury obligations',
+    box13_bond_premium_tax_exempt_bond: 'Box 13 — Bond premium on tax-exempt bond',
+    box14_tax_exempt_bond_cusip: 'Box 14 — Tax-exempt bond CUSIP no.',
+    box15_state: 'Box 15 — State',
+    box16_state_identification: 'Box 16 — State identification no.',
+    box17_state_tax_withheld: 'Box 17 — State tax withheld',
+    tax_year: 'Tax year',
+  },
+  f1099_div: {
+    payer_name: 'Payer\'s name',
+    payer_address: 'Payer\'s address',
+    box1a_total_ordinary_dividends: 'Box 1a — Total ordinary dividends',
+    box1b_qualified_dividends: 'Box 1b — Qualified dividends',
+    box2a_total_capital_gain: 'Box 2a — Total capital gain distributions',
+    box2b_unrecap_sec1250_gain: 'Box 2b — Unrecaptured Section 1250 gain',
+    box2c_section_1202_gain: 'Box 2c — Section 1202 gain',
+    box2d_collectibles_gain: 'Box 2d — Collectibles (28%) gain',
+    box2e_section_897_ordinary_dividends: 'Box 2e — Section 897 ordinary dividends',
+    box2f_section_897_capital_gain: 'Box 2f — Section 897 capital gain',
+    box3_nondividend_distributions: 'Box 3 — Nondividend distributions',
+    box4_federal_income_tax_withheld: 'Box 4 — Federal income tax withheld',
+    box5_section_199a_dividends: 'Box 5 — Section 199A dividends',
+    box6_investment_expenses: 'Box 6 — Investment expenses',
+    box7_foreign_tax_paid: 'Box 7 — Foreign tax paid',
+    box8_foreign_country: 'Box 8 — Foreign country/US possession',
+    box9_cash_liquidation_distributions: 'Box 9 — Cash liquidation distributions',
+    box10_noncash_liquidation_distributions: 'Box 10 — Noncash liquidation distributions',
+    box11_fatca_filing_requirement: 'Box 11 — FATCA filing requirement',
+    box12_exempt_interest_dividends: 'Box 12 — Exempt-interest dividends',
+    box13_specified_private_activity_bond: 'Box 13 — Specified private activity bond interest dividends',
+    box14_state: 'Box 14 — State',
+    box15_state_identification: 'Box 15 — State identification no.',
+    box16_state_tax_withheld: 'Box 16 — State distribution',
+    tax_year: 'Tax year',
+  },
+};
+
+/** Subsections within each extracted form card (Fed / FICA / State / Local patterns). */
+const FD_SECTION_DEFS = {
+  w2_records: [
+    {
+      title: 'Employer & tax year',
+      keys: ['employer_name', 'employer_address', 'tax_year'],
+    },
+    {
+      title: 'Federal — wages & withholding',
+      keys: ['box1_wages_tips_other', 'box2_federal_income_tax_withheld'],
+    },
+    {
+      title: 'FICA — Social Security & Medicare',
+      keys: [
+        'box3_social_security_wages',
+        'box4_social_security_tax_withheld',
+        'box5_medicare_wages_tips',
+        'box6_medicare_tax_withheld',
+        'box7_social_security_tips',
+        'box8_allocated_tips',
+      ],
+    },
+    {
+      title: 'Other compensation & codes',
+      keys: [
+        'box10_dependent_care_benefits',
+        'box11_nonqualified_plans',
+        'box12a_code',
+        'box12a_amount',
+        'box12b_code',
+        'box12b_amount',
+        'box12c_code',
+        'box12c_amount',
+        'box12d_code',
+        'box12d_amount',
+        'box13_statutory_employee',
+        'box13_retirement_plan',
+        'box13_third_party_sick_pay',
+        'box14_other',
+      ],
+    },
+    {
+      title: 'State',
+      keys: ['box15_state', 'box16_state_wages', 'box17_state_income_tax'],
+    },
+    {
+      title: 'Local',
+      keys: ['box18_local_wages', 'box19_local_income_tax', 'box20_locality_name'],
+    },
+    {
+      title: 'Second state/locality',
+      keys: [
+        'box15b_state',
+        'box16b_state_wages',
+        'box17b_state_income_tax',
+        'box18b_local_wages',
+        'box19b_local_income_tax',
+        'box20b_locality_name',
+      ],
+    },
+  ],
+  f1099_nec_records: [
+    { title: 'Payer', keys: ['payer_name', 'payer_address', 'tax_year'] },
+    { title: 'Federal', keys: ['box1_nonemployee_compensation', 'box2_direct_sales_indicator', 'box4_federal_income_tax_withheld'] },
+    { title: 'State', keys: ['box5_state_tax_withheld', 'box6_state', 'box7_state_income'] },
+  ],
+  f1099_misc_records: [
+    { title: 'Payer', keys: ['payer_name', 'payer_address', 'tax_year'] },
+    {
+      title: 'Federal — gross income',
+      keys: [
+        'box1_rents',
+        'box2_royalties',
+        'box3_other_income',
+        'box4_federal_income_tax_withheld',
+        'box5_fishing_boat_proceeds',
+        'box6_medical_health_care_payments',
+        'box7_direct_sales_indicator',
+        'box8_substitute_payments',
+        'box9_crop_insurance_proceeds',
+        'box10_gross_proceeds_attorney',
+        'box11_fish_purchased_resale',
+        'box12_section_409a_deferrals',
+        'box14_gross_proceeds_attorney',
+        'box15_section_409a_income',
+      ],
+    },
+    { title: 'State', keys: ['box16_state_tax_withheld', 'box17_state', 'box18_state_income'] },
+  ],
+  f1099_int_records: [
+    { title: 'Payer', keys: ['payer_name', 'payer_address', 'tax_year'] },
+    {
+      title: 'Federal — interest & withholding',
+      keys: [
+        'box1_interest_income',
+        'box2_early_withdrawal_penalty',
+        'box3_us_savings_bond_treasury_interest',
+        'box4_federal_income_tax_withheld',
+      ],
+    },
+    {
+      title: 'Federal — other amounts',
+      keys: [
+        'box5_investment_expenses',
+        'box6_foreign_tax_paid',
+        'box7_foreign_country',
+        'box8_tax_exempt_interest',
+        'box9_specified_private_activity_bond_interest',
+        'box10_market_discount',
+        'box11_bond_premium',
+      ],
+    },
+    {
+      title: 'Bond identification',
+      keys: [
+        'box12_bond_premium_treasury_obligations',
+        'box13_bond_premium_tax_exempt_bond',
+        'box14_tax_exempt_bond_cusip',
+      ],
+    },
+    {
+      title: 'State',
+      keys: ['box15_state', 'box16_state_identification', 'box17_state_tax_withheld'],
+    },
+  ],
+  f1099_div_records: [
+    { title: 'Payer', keys: ['payer_name', 'payer_address', 'tax_year'] },
+    {
+      title: 'Federal — dividends & distributions',
+      keys: [
+        'box1a_total_ordinary_dividends',
+        'box1b_qualified_dividends',
+        'box2a_total_capital_gain',
+        'box2b_unrecap_sec1250_gain',
+        'box2c_section_1202_gain',
+        'box2d_collectibles_gain',
+        'box2e_section_897_ordinary_dividends',
+        'box2f_section_897_capital_gain',
+        'box3_nondividend_distributions',
+        'box4_federal_income_tax_withheld',
+      ],
+    },
+    {
+      title: 'Federal — other',
+      keys: [
+        'box5_section_199a_dividends',
+        'box6_investment_expenses',
+        'box7_foreign_tax_paid',
+        'box8_foreign_country',
+        'box9_cash_liquidation_distributions',
+        'box10_noncash_liquidation_distributions',
+        'box11_fatca_filing_requirement',
+        'box12_exempt_interest_dividends',
+        'box13_specified_private_activity_bond',
+      ],
+    },
+    { title: 'State', keys: ['box14_state', 'box15_state_identification', 'box16_state_tax_withheld'] },
+  ],
+};
+
 
 function _formSavedToLabel(savedTo) {
   const m = {
@@ -1044,26 +1336,7 @@ const FD_INTEGER_FIELDS = new Set([
   'box11_fatca_filing_requirement',
 ]);
 
-const FD_LABEL_OVERRIDES = {
-  employer_name: 'Employer',
-  employer_address: 'Employer address',
-  payer_name: 'Payer',
-  payer_address: 'Payer address',
-  wages_tips_other: 'Wages / tips / other comp. (alternate column)',
-  nonemployee_compensation: 'Nonemployee compensation (alternate column)',
-  rents: 'Rents (alternate column)',
-  royalties: 'Royalties (alternate column)',
-  other_income: 'Other income (alternate column)',
-  interest_income: 'Interest income (alternate column)',
-  early_withdrawal_penalty: 'Early withdrawal penalty (alternate column)',
-  us_savings_bond_interest: 'U.S. savings bond interest (alternate column)',
-  total_ordinary_dividends: 'Total ordinary dividends (alternate column)',
-  qualified_dividends: 'Qualified dividends (alternate column)',
-  total_capital_gain: 'Total capital gain (alternate column)',
-  federal_income_tax_withheld: 'Federal income tax withheld',
-  state_wages: 'State wages (alternate column)',
-  state_income_tax: 'State income tax (alternate column)',
-};
+const FD_LABEL_OVERRIDES = {};
 
 function fdTitleTail(restUnderscores) {
   if (!restUnderscores) return '';
@@ -1076,10 +1349,10 @@ function fdTitleTail(restUnderscores) {
       var lw = w.toLowerCase();
       if (lw === 'ss') return 'SS';
       if (lw === 'sec1250') return 'Section 1250';
-      if (lw === '1202') return '§1202';
-      if (lw === '897') return '§897';
-      if (lw === '199a') return '§199A';
-      if (lw === '409a') return '§409A';
+      if (lw === '1202') return 'Section 1202';
+      if (lw === '897') return 'Section 897';
+      if (lw === '199a') return 'Section 199A';
+      if (lw === '409a') return 'Section 409A';
       if (lw === 'ssn') return 'SSN';
       if (lw === 'irs') return 'Federal';
       if (i > 0 && small.has(lw)) return lw;
@@ -1088,13 +1361,17 @@ function fdTitleTail(restUnderscores) {
     .join(' ');
 }
 
-function fdFieldLabel(field) {
+function fdFieldLabel(field, sqlTable) {
   if (!field) return '';
+  var grp = sqlTable ? FD_SQL_LABEL_GROUP[sqlTable] : null;
+  if (grp && FORM_LABELS[grp] && FORM_LABELS[grp][field]) {
+    return FORM_LABELS[grp][field];
+  }
   var ovr = FD_LABEL_OVERRIDES[field];
   if (ovr) return ovr;
   if (field === 'tax_year') return 'Tax year';
   var parts = field.split('_');
-  if (!parts.length) return field;
+  if (!parts.length) return '';
   if (parts[0].startsWith('box')) {
     var bx = parts[0].slice(3);
     var tail = parts.slice(1).join('_');
@@ -1103,11 +1380,19 @@ function fdFieldLabel(field) {
   return fdTitleTail(field);
 }
 
-function fdRowHasValue(raw) {
+function fdRowHasValue(raw, fieldKey) {
   if (raw === null || raw === undefined) return false;
   if (typeof raw === 'boolean') return raw;
-  if (typeof raw === 'number') return !Number.isNaN(raw);
-  return String(raw).trim() !== '';
+  if (typeof raw === 'number') {
+    if (Number.isNaN(raw)) return false;
+    if (raw === 0 && fieldKey && !FD_INTEGER_FIELDS.has(fieldKey)) return false;
+    return true;
+  }
+  var s = String(raw).trim();
+  if (s === '') return false;
+  var sl = s.toLowerCase();
+  if (s === '0' || sl === 'false') return false;
+  return true;
 }
 
 function fdNormalizeStored(field, raw) {
@@ -1127,7 +1412,7 @@ function nonzeroOrderedKeys(sqlTable, row) {
     var k = order[i];
     if (FD_SKIP_KEYS.has(k) || seen.has(k)) continue;
     if (!Object.prototype.hasOwnProperty.call(row, k)) continue;
-    if (!fdRowHasValue(row[k])) continue;
+    if (!fdRowHasValue(row[k], k)) continue;
     out.push(k);
     seen.add(k);
   }
@@ -1137,14 +1422,51 @@ function nonzeroOrderedKeys(sqlTable, row) {
   extra.sort();
   for (i = 0; i < extra.length; i++) {
     var ek = extra[i];
-    if (!fdRowHasValue(row[ek])) continue;
+    if (!fdRowHasValue(row[ek], ek)) continue;
     out.push(ek);
   }
   return out;
 }
 
+/** Split ordered keys into Fed / FICA / State / Local-style subsections for display. */
+function fdPartitionKeys(sqlTable, orderedKeys) {
+  var defs = FD_SECTION_DEFS[sqlTable];
+  if (!defs || !defs.length) {
+    return [{ title: '', keys: orderedKeys }];
+  }
+  var used = {};
+  var out = [];
+  var ki, k, si, sj, chunk;
+  for (si = 0; si < defs.length; si++) {
+    chunk = [];
+    for (ki = 0; ki < orderedKeys.length; ki++) {
+      k = orderedKeys[ki];
+      if (used[k]) continue;
+      for (sj = 0; sj < defs[si].keys.length; sj++) {
+        if (defs[si].keys[sj] === k) {
+          chunk.push(k);
+          used[k] = true;
+          break;
+        }
+      }
+    }
+    if (chunk.length) {
+      out.push({ title: defs[si].title, keys: chunk });
+    }
+  }
+  var rest = [];
+  for (ki = 0; ki < orderedKeys.length; ki++) {
+    k = orderedKeys[ki];
+    if (!used[k]) rest.push(k);
+  }
+  if (rest.length) {
+    out.push({ title: 'Additional fields', keys: rest });
+  }
+  return out;
+}
+
 function fdCellDisplay(field, raw) {
-  if (!fdRowHasValue(raw)) return '—';
+  if (!fdRowHasValue(raw, field)) return '—';
   if (FD_INTEGER_FIELDS.has(field)) {
     var n = typeof raw === 'number' ? raw : parseInt(String(raw).trim(), 10);
     if (n === 1) return 'Yes';
@@ -1325,25 +1647,44 @@ function renderFormDataSection(data) {
       const tbody = document.createElement('tbody');
       tbody.className = 'divide-y divide-slate-100';
 
-      keys.forEach((fieldKey) => {
-        const raw = row[fieldKey];
-        const tr = document.createElement('tr');
-        tr.className = 'align-top';
+      const sections = fdPartitionKeys(def.sqlTable, keys);
 
-        const tdLab = document.createElement('td');
-        tdLab.className =
-          'px-3 py-2 whitespace-nowrap text-[11px] font-semibold text-slate-500 bg-slate-50 w-[40%] max-w-xs';
-        tdLab.textContent = fdFieldLabel(fieldKey);
-        tr.appendChild(tdLab);
+      sections.forEach((sec, secIdx) => {
+        if (sec.title) {
+          const htr = document.createElement('tr');
+          const htd = document.createElement('td');
+          htd.colSpan = 2;
+          let hCls =
+            'px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-slate-100';
+          if (secIdx > 0) {
+            hCls += ' border-t border-slate-200';
+          }
+          htd.className = hCls;
+          htd.textContent = sec.title;
+          htr.appendChild(htd);
+          tbody.appendChild(htr);
+        }
 
-        const tdVal = document.createElement('td');
-        tdVal.className = 'px-3 py-2 text-slate-800 font-medium';
-        tdVal.dataset.fdOrig = fdNormalizeStored(fieldKey, raw);
-        tdVal.textContent = fdCellDisplay(fieldKey, raw);
-        bindFdEditableCell(tdVal, def.sqlTable, row.id, fieldKey);
-        tr.appendChild(tdVal);
+        sec.keys.forEach((fieldKey) => {
+          const raw = row[fieldKey];
+          const tr = document.createElement('tr');
+          tr.className = 'align-top';
 
-        tbody.appendChild(tr);
+          const tdLab = document.createElement('td');
+          tdLab.className =
+            'px-3 py-2 whitespace-nowrap text-[11px] font-semibold text-slate-500 bg-slate-50 w-[40%] max-w-xs';
+          tdLab.textContent = fdFieldLabel(fieldKey, def.sqlTable);
+          tr.appendChild(tdLab);
+
+          const tdVal = document.createElement('td');
+          tdVal.className = 'px-3 py-2 text-slate-800 font-medium';
+          tdVal.dataset.fdOrig = fdNormalizeStored(fieldKey, raw);
+          tdVal.textContent = fdCellDisplay(fieldKey, raw);
+          bindFdEditableCell(tdVal, def.sqlTable, row.id, fieldKey);
+          tr.appendChild(tdVal);
+
+          tbody.appendChild(tr);
+        });
       });
 
       const footTr = document.createElement('tr');
@@ -1790,6 +2131,11 @@ function _renderDocList(docs) {
         <span class="text-slate-500 text-xs whitespace-nowrap">${kb} KB</span>
         <a href="${viewHref}" target="_blank" rel="noopener"
            class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs whitespace-nowrap">View</a>
+        ${DRAKE_SYNC_ENABLED
+          ? `<button type="button" onclick="syncDocToDrake(${doc.id}, this)"
+             class="text-emerald-700 hover:text-emerald-900 font-semibold text-xs whitespace-nowrap border border-emerald-200 rounded-lg px-2 py-1">
+             Sync to Drake</button>`
+          : ''}
         <button type="button" onclick="extractFields(${doc.id}, this)"
                 class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs whitespace-nowrap">Extract fields</button>
         <button type="button" onclick="deleteDocument(${doc.id})"
@@ -1812,8 +2158,12 @@ function _updateDocIndicator(docs) {
     const parts = [];
     if (untagged.length > 0) {
       const n = untagged.length;
+      const noun = n === 1 ? 'document' : 'documents';
+      const verb = n === 1 ? 'needs' : 'need';
       parts.push(
-        `${n} email document${n === 1 ? '' : 's'} need${n === 1 ? 's' : ''} tagging`
+        '<a href="#documents" class="text-amber-900 underline font-semibold">' +
+          `${n} email ${noun} ${verb} tagging` +
+          '</a>'
       );
     }
     if (extRev.length > 0) {
@@ -1822,7 +2172,7 @@ function _updateDocIndicator(docs) {
         `${e} extraction${e === 1 ? '' : 's'} need${e === 1 ? 's' : ''} review`
       );
     }
-    countEl.textContent = parts.join(' · ') + ' — see list below';
+    countEl.innerHTML = parts.join(' · ') + ' — see list below';
     indicator.classList.remove('hidden');
     indicator.classList.add('flex');
   } else {
@@ -1867,6 +2217,28 @@ function deleteDocument(docId) {
     .then(r => r.json())
     .then(data => {
       if (data.success) loadDocuments();
+    });
+}
+
+function syncDocToDrake(docId, btn) {
+  if (!DRAKE_SYNC_ENABLED) return;
+  const orig = btn.textContent;
+  btn.disabled = true;
+  fetch(`/return/${RETURN_ID}/documents/${docId}/sync-drake`, { method: 'POST' })
+    .then(r => r.json().then(d => ({ r, d })))
+    .then(({ r, d }) => {
+      if (r.ok && d.success) {
+        btn.textContent = '✓ Synced';
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.disabled = false;
+        }, 2000);
+      } else {
+        btn.disabled = false;
+      }
+    })
+    .catch(() => {
+      btn.disabled = false;
     });
 }
 

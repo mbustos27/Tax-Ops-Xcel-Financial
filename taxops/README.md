@@ -113,3 +113,12 @@ From the `taxops` folder:
 ```bash
 python main.py
 ```
+
+## Production / office LAN (Epic #82 · #95 / #96)
+
+NSSM-hosted deployments reachable from multiple PCs:
+
+- **`docs/OFFICE_NETWORK.md`** — LAN IP/firewall (**Private** profile), bookmarks, staff onboarding, **`/health`**, troubleshooting matrix.
+- **`scripts/smoke_deploy.py`** and **`scripts/smoke_deploy.ps1`** — probes **`GET /health`**, **`GET /login`**, **`GET /static/app.js`**; **non-zero** exit when something is wrong.
+
+See GitHub **[Production Hardening #82](https://github.com/mbustos27/Tax-Ops-Xcel-Financial/issues/82)** and child issues (**#83** audit epic, PROD issues **#89–#96**).

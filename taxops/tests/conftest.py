@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +10,9 @@ from pathlib import Path
 import pytest
 
 from tests.proof_registry import PROOF_BY_TEST_NAME
+
+# Default pytest to relaxed env validation unless TAXOPS_ENV is already pinned (NSSM-heavy CI imports).
+os.environ.setdefault("TAXOPS_ENV", "test")
 
 # Application lives in parent of tests/ (flat modules: db, config, app, …)
 _TAXOPS_ROOT = Path(__file__).resolve().parent.parent

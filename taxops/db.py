@@ -304,6 +304,25 @@ def init_db(conn: sqlite3.Connection) -> None:
           expires_at            TEXT NOT NULL,
           hit_count             INTEGER NOT NULL DEFAULT 0
         );
+
+        -- AUDIT-1: unified app audit trail (JSON snapshots; user_id = login name until a users table exists)
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id      TEXT,
+          action       TEXT NOT NULL,
+          entity_type  TEXT NOT NULL,
+          entity_id    TEXT,
+          before_json  TEXT,
+          after_json   TEXT,
+          ip_address   TEXT,
+          created_at   TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key        TEXT PRIMARY KEY,
+          value      TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
         """
     )
     for _form_sql in CREATE_TABLE_FRAGMENTS_DOC7.values():
@@ -320,6 +339,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_efile_items_batch   ON efile_batch_items(batch_id);
         CREATE INDEX IF NOT EXISTS idx_efile_items_return  ON efile_batch_items(return_id);
         CREATE INDEX IF NOT EXISTS idx_ai_chat_common_exp ON ai_chat_common_answers(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at);
         """
     )
     conn.commit()
@@ -395,6 +416,7 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             # pickup workflow
             "signatures_given INTEGER DEFAULT 0",
             "signatures_received INTEGER DEFAULT 0",
+            "adjusted_gross_income REAL",
         ],
         "payments": [
             "refund_amount REAL",
@@ -559,6 +581,28 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dashboard_saved_filters (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          filter_json TEXT NOT NULL,
+          is_default INTEGER NOT NULL DEFAULT 0,
+          is_shared INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_dash_saved_user ON dashboard_saved_filters(user_id)"
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_dash_saved_shared_default
+        ON dashboard_saved_filters(user_id, is_default)
+        """
+    )
     for _form_sql in CREATE_TABLE_FRAGMENTS_DOC7.values():
         conn.execute(_form_sql.strip())
     alter_map = get_form_alter_columns_by_table()
@@ -594,6 +638,36 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
           reviewed_at TEXT
         )
         """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id      TEXT,
+          action       TEXT NOT NULL,
+          entity_type  TEXT NOT NULL,
+          entity_id    TEXT,
+          before_json  TEXT,
+          after_json   TEXT,
+          ip_address   TEXT,
+          created_at   TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key        TEXT PRIMARY KEY,
+          value      TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at)"
     )
 
 

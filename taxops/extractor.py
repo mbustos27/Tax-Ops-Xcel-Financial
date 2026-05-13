@@ -22,7 +22,7 @@ from config import (
 from db import get_connection
 from form_schema import FORM_INTEGER_COLUMNS
 
-# LLM extraction allow-list — IRS box-* names only (no legacy wages/state columns).
+# LLM extraction allow-list — IRS box-* keys only (FORMS-3: no pre-DOC7 mirror names).
 # Includes prompt-schema fields omitted from inline spec (full W‑2 sec. b local, DIV/INT/MISC parity).
 _DOCUMENT_EXTRACT_ALLOWED_KEYS: frozenset[str] = frozenset(
     {
@@ -226,7 +226,11 @@ def _resolve_detected_table(doc_type_db: str | None, fields: dict) -> str | None
 
 
 def _process_item(conn, item: dict) -> None:
-    from ai_routes import _form_table_to_doc_type, _save_form_data
+    from ai_routes import (
+        _apply_extraction_doc_tag,
+        _form_table_to_doc_type,
+        _save_form_data,
+    )
     from utils import now as get_now, scrub_ssn_from_dict
 
     item_id = item["id"]
@@ -300,25 +304,17 @@ def _process_item(conn, item: dict) -> None:
             saved = _save_form_data(conn, detected_type, return_id, doc_id, safe_fields)
             doc_tag = _form_table_to_doc_type(detected_type)
             if saved and doc_tag != "unknown":
-                logger.info(
-                    "Auto-tagging doc %s as %s (confidence %.2f)",
-                    doc_id,
-                    detected_type,
-                    confidence,
+                tagged = _apply_extraction_doc_tag(
+                    conn, doc_id=doc_id, return_id=return_id, doc_tag=doc_tag
                 )
-                conn.execute(
-                    """
-                    UPDATE return_documents
-                    SET doc_type = ?
-                    WHERE id = ? AND return_id = ? AND is_deleted = 0
-                      AND (
-                        doc_type IS NULL
-                        OR TRIM(doc_type) = ''
-                        OR LOWER(TRIM(doc_type)) = 'unknown'
-                      )
-                    """,
-                    (doc_tag, doc_id, return_id),
-                )
+                if tagged:
+                    logger.info(
+                        "Auto-tagged doc %s as %s after form save (confidence %.2f, table %s)",
+                        doc_id,
+                        doc_tag,
+                        confidence,
+                        detected_type,
+                    )
                 conn.execute(
                     """
                     UPDATE extraction_queue

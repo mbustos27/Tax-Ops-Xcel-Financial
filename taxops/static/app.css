@@ -127,6 +127,7 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
 .dot-hold   { background: #f97316; }  /* HOLD      — orange   */
 .dot-indigo { background: #6366f1; }
 .dot-teal   { background: #0d9488; }
+.dot-violet { background: #7c3aed; }
 .dot-slate  { background: #64748b; }
 .dot-red    { background: #dc2626; }  /* REJECTED   — red     */
 

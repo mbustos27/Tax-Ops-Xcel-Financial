@@ -10,19 +10,43 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flask import (
     Flask, abort, current_app, flash, jsonify, redirect, render_template,
-    request, send_file, session, url_for,
+    request, Response, send_file, session, url_for,
 )
 
 import json
+import io
 import logging
+import secrets
+import shutil
 import sqlite3
 import tempfile
+import time
+from urllib.parse import urlencode
 
-from config import APP_ENV, DB_PATH
+from config import (
+    APP_ENV,
+    DB_PATH,
+    DRAKE_FOLDER_STRUCTURE_ENABLED,
+    KNOWN_PROMOTIONAL_DOMAINS,
+    MASS_MAILING_PREFIXES,
+    MULTIYEAR_AGI_PERCENT_THRESHOLD,
+    MULTIYEAR_BALANCE_ABS_THRESHOLD,
+    MULTIYEAR_REFUND_ABS_THRESHOLD,
+    taxops_release_version,
+)
+from logging_config import configure_logging
+
+configure_logging()
+
+from env_validation import validate_taxops_environment_and_exit
+
+validate_taxops_environment_and_exit()
+
 from csv_analyzer import analyze, iter_data_rows, normalize_status
 from db import get_connection, init_db
 from form_schema import FORM_INTEGER_COLUMNS, FORM_TABLE_INSERT_COLUMNS
 from merge_ops import merge_client_into
+from bulk_returns import bulk_apply_processor_changes, bulk_apply_status_changes
 from name_matcher import find_client as fuzzy_find_client, is_business, parse_name, _all_clients_cache
 from normalizer import normalize_date, normalize_currency, normalize_string, canonical_status, is_locked_status
 from preparer import (
@@ -31,6 +55,8 @@ from preparer import (
     preparer_filter_match_values,
     preparer_list_label,
 )
+import multiyear_comparison
+import season_rollover
 from source_compare import (
     discover_default_paths,
     list_csv_basenames,
@@ -38,6 +64,7 @@ from source_compare import (
     safe_resolve_csv,
 )
 from utils import (
+    get_drake_documents_path,
     get_return_documents_path,
     now,
     parse_iso_datetime,
@@ -48,12 +75,30 @@ from utils import (
 from mail_watcher import start_mail_watcher
 from extractor import start_extraction_worker
 from drake_documents_sync import sync_to_drake
-from config import KNOWN_PROMOTIONAL_DOMAINS, MASS_MAILING_PREFIXES
+
+_APP_START_MONOTONIC = time.monotonic()
 
 app = Flask(__name__)
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.config["APP_VERSION"] = "1.0.0"
 
 from ai_routes import ai as ai_blueprint
 app.register_blueprint(ai_blueprint)
+
+from audit_service import (
+    fetch_audit_entry,
+    format_json_diff_styled_chunks,
+    get_audit_retention_years,
+    purge_audit_logs_older_than,
+    query_audit_logs,
+    register_audit_hooks,
+    sanitize_filename_audit,
+    set_audit_retention_years,
+    write_audit_export_csv,
+)
+
+register_audit_hooks(app)
 
 app.jinja_env.globals["preparer_list_label"] = preparer_list_label
 
@@ -130,7 +175,7 @@ def _security_headers(response):
 
 # ── Workflow constants ────────────────────────────────────────────────────────
 
-STATUS_FLOW = ["PROCESSING", "HOLD", "FINALIZE", "PICKUP", "EFILE READY", "LOG OUT", "REJECTED"]
+STATUS_FLOW = ["PENDING INTAKE", "PROCESSING", "HOLD", "FINALIZE", "PICKUP", "EFILE READY", "LOG OUT", "REJECTED"]
 
 # Rejected-return client contact tracking (stored on returns; privacy: no SSN fields)
 CONTACT_STATUS_VALUES = ("not_contacted", "contacted", "follow_up_needed", "resolved")
@@ -142,6 +187,7 @@ CONTACT_LABELS = {
 }
 
 STATUS_BADGE = {
+    "PENDING INTAKE": "bg-violet-50 text-violet-800 border-violet-200",
     "PROCESSING":  "bg-sky-50 text-sky-700 border-sky-200",
     "HOLD":        "bg-orange-50 text-orange-700 border-orange-200",
     "FINALIZE":    "bg-yellow-50 text-yellow-700 border-yellow-200",
@@ -152,6 +198,7 @@ STATUS_BADGE = {
 }
 
 STATUS_DOT = {
+    "PENDING INTAKE": "dot-violet",
     "PROCESSING":  "dot-amber",
     "HOLD":        "dot-hold",
     "FINALIZE":    "dot-orange",
@@ -181,10 +228,31 @@ RETURN_EDITABLE = {
     "is_amended", "has_w7", "is_extension",
     "transfer_flag", "transfer_2025_flag", "transfer_2026_flag",
     "signatures_given", "signatures_received",
+    "filing_status",
 }
 
 # Fields that live in the clients table
-CLIENT_EDITABLE = {"display_name", "referred_by", "referral_flag", "last_name", "first_name"}
+CLIENT_EDITABLE = {
+    "display_name",
+    "referred_by",
+    "referral_flag",
+    "last_name",
+    "first_name",
+    "address",
+    "taxpayer_phone",
+    "taxpayer_cell",
+    "taxpayer_work_phone",
+    "spouse_cell",
+    "spouse_work_phone",
+    "taxpayer_email",
+    "spouse_email",
+    "taxpayer_dob",
+    "spouse_dob",
+    "spouse_last_name",
+    "spouse_first_name",
+    "taxpayer_occupation",
+    "spouse_occupation",
+}
 
 # Fields that live in the payments table
 PAYMENT_EDITABLE = {
@@ -212,6 +280,8 @@ SELECT
     r.transfer_flag, r.transfer_2025_flag, r.transfer_2026_flag,
     r.efile_date, r.ack_date, r.drake_status_raw,
     r.contact_status, r.last_contacted_date,
+    r.filing_status,
+    r.adjusted_gross_income,
     r.created_at, r.updated_at,
     c.id   AS client_id,
     c.last_name, c.first_name, c.display_name,
@@ -420,6 +490,108 @@ def get_one(return_id: int) -> dict | None:
     return _enrich(dict(row)) if row else None
 
 
+def _fetch_returns_for_client(conn: sqlite3.Connection, client_id: int) -> list[dict]:
+    rows = conn.execute(
+        f"{_SELECT} WHERE r.client_id = ? ORDER BY r.tax_year DESC, r.id DESC",
+        (client_id,),
+    ).fetchall()
+    return [_enrich(dict(r)) for r in rows]
+
+
+def _fetch_client_documents(conn: sqlite3.Connection, client_id: int) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT rd.id, rd.return_id, rd.filename, rd.original_filename,
+               rd.doc_type, rd.uploaded_at, rd.uploaded_by,
+               r.tax_year, r.log_number
+          FROM return_documents rd
+          JOIN returns r ON r.id = rd.return_id
+         WHERE r.client_id = ?
+           AND IFNULL(rd.is_deleted, 0) = 0
+         ORDER BY rd.uploaded_at IS NULL ASC, rd.uploaded_at DESC, rd.id DESC
+        """,
+        (client_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _fetch_client_activity(conn: sqlite3.Connection, client_id: int, limit: int = 150) -> list[dict]:
+    notes = conn.execute(
+        """
+        SELECT n.note_text, n.source, n.created_at, n.return_id,
+               r.tax_year, r.log_number
+          FROM notes n
+          JOIN returns r ON r.id = n.return_id
+         WHERE r.client_id = ?
+        """,
+        (client_id,),
+    ).fetchall()
+    events = conn.execute(
+        """
+        SELECT e.event_type, e.old_status, e.new_status, e.event_timestamp,
+               e.source_file, e.note, e.return_id,
+               r.tax_year, r.log_number
+          FROM status_events e
+          JOIN returns r ON r.id = e.return_id
+         WHERE r.client_id = ?
+        """,
+        (client_id,),
+    ).fetchall()
+    paired: list[tuple[str, str, dict]] = []
+    for n in notes:
+        paired.append(((n["created_at"] or ""), "note", dict(n)))
+    for e in events:
+        paired.append(((e["event_timestamp"] or ""), "event", dict(e)))
+    paired.sort(key=lambda x: x[0], reverse=True)
+
+    out: list[dict] = []
+    for ts, kind, row in paired[:limit]:
+        if kind == "note":
+            txt = row.get("note_text") or ""
+            if privacy_mode_enabled():
+                txt = _mask_value(txt)
+            ln = row.get("log_number")
+            ty = row.get("tax_year")
+            lbl = "Note · LOG " + (str(ln) if ln else "—")
+            if ty is not None:
+                lbl += f" · TY{ty}"
+            out.append({
+                "kind":      "note",
+                "at":        ts or "—",
+                "title":     lbl,
+                "body":      txt,
+                "return_id": row.get("return_id"),
+                "source":    row.get("source"),
+            })
+        else:
+            et = row.get("event_type") or "event"
+            old_s, new_s = row.get("old_status"), row.get("new_status")
+            if et == "STATUS_CHANGED":
+                summary = (
+                    ("Status · " + (str(old_s) if old_s else "—") + " → " + str(new_s))
+                    if new_s or old_s
+                    else et
+                )
+            else:
+                fragment = ": " + (row.get("note") or "") if row.get("note") else ""
+                summary = et + fragment
+            ln = row.get("log_number")
+            ty = row.get("tax_year")
+            subtitle = "LOG " + (str(ln) if ln else "—")
+            if ty is not None:
+                subtitle += f" · TY{ty}"
+            out.append({
+                "kind":       "event",
+                "at":         ts or "—",
+                "title":      summary,
+                "body":       (row.get("note") or row.get("source_file") or "") or None,
+                "return_id":  row.get("return_id"),
+                "subtitle":   subtitle,
+                "new_status": new_s,
+            })
+    return out
+
+
 def get_status_counts(year: int) -> dict[str, int]:
     conn = get_connection()
     rows = conn.execute(
@@ -463,6 +635,24 @@ def get_processors(year: int) -> list[str]:
     return [r["processor"] for r in rows]
 
 
+def _session_username() -> str | None:
+    u = (session.get("username") or "").strip()
+    return u or None
+
+
+def _season_rollover_admins() -> frozenset[str]:
+    raw = (os.environ.get("TAXOPS_ROLLOVER_ADMINS") or "").strip().lower()
+    if raw:
+        return frozenset(p.strip().lower() for p in raw.split(",") if p.strip())
+    lu = (_LOGIN_USER or "").strip().lower()
+    return frozenset({lu}) if lu else frozenset()
+
+
+def can_run_season_rollover() -> bool:
+    u = (_session_username() or "").lower()
+    return bool(u) and u in _season_rollover_admins()
+
+
 def base_ctx(year: int | None = None) -> dict:
     today_year = date.today().year
     # Never let the season picker go backwards to a tax year.
@@ -491,6 +681,7 @@ def base_ctx(year: int | None = None) -> dict:
         "pending_review_count": pending_review,
         "rejected_returns":     rejected,
         "rejected_count":       len(rejected),
+        "can_run_season_rollover": can_run_season_rollover(),
     }
 
 
@@ -634,12 +825,245 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.get("/health")
+def health():
+    """PROD-3 — liveness/readiness probe: JSON status, SQLite check, process uptime, version."""
+    db_ok = True
+    db_detail: dict = {}
+    t0 = time.perf_counter()
+    try:
+        conn = get_connection()
+        try:
+            conn.execute("SELECT 1").fetchone()
+        finally:
+            conn.close()
+        db_detail = {"ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000, 3)}
+    except sqlite3.Error as ex:
+        db_ok = False
+        db_detail = {
+            "ok": False,
+            "latency_ms": round((time.perf_counter() - t0) * 1000, 3),
+            "error": str(ex),
+        }
+
+    body = {
+        "status": "ok" if db_ok else "degraded",
+        "db": db_detail,
+        "uptime_seconds": round(time.monotonic() - _APP_START_MONOTONIC, 3),
+        "version": taxops_release_version(),
+    }
+    return jsonify(body), (200 if db_ok else 503)
+
+
+# ── Saved dashboard filters (Epic #85, FILTER-1…FILTER-6) ─────────────────────
+
+
+def _shared_saved_filter_admins() -> frozenset[str]:
+    raw = (os.environ.get("TAXOPS_SHARED_FILTER_ADMINS") or "").strip().lower()
+    if raw:
+        return frozenset(p.strip().lower() for p in raw.split(",") if p.strip())
+    lu = (_LOGIN_USER or "").strip().lower()
+    return frozenset({lu}) if lu else frozenset()
+
+
+def can_publish_shared_dashboard_filters() -> bool:
+    u = (_session_username() or "").lower()
+    return bool(u) and u in _shared_saved_filter_admins()
+
+
+def _dashboard_request_has_explicit_filters() -> bool:
+    if len(request.args.getlist("status")) > 0:
+        return True
+    for key in ("processor", "balance_due", "late_intake", "slow_cycle", "form", "reject_contact", "q"):
+        v = request.args.get(key)
+        if v is not None and str(v).strip():
+            return True
+    return False
+
+
+_ALLOWED_DASH_SAVE_FORM_FIELDS = frozenset(
+    [
+        "form_1040", "sched_a_d", "sched_c", "sched_e",
+        "form_1120", "form_1120s", "form_1065_llc",
+        "corp_officer", "business_owner", "form_990_1041",
+        "is_amended", "has_w7", "is_extension",
+    ]
+)
+
+
+def _sanitize_dashboard_filter_payload(raw: object) -> dict:
+    """Whitelist keys to match query_returns dashboard filters."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict = {}
+    sf = frozenset(s.upper() for s in STATUS_FLOW)
+    statuses = raw.get("status")
+    filtered_status: list[str] = []
+    if isinstance(statuses, list):
+        for s in statuses:
+            ss = str(s).strip().upper()
+            if ss in sf:
+                filtered_status.append(ss)
+    elif isinstance(statuses, str) and statuses.strip():
+        ss = statuses.strip().upper()
+        if ss in sf:
+            filtered_status.append(ss)
+    if filtered_status:
+        out["status"] = filtered_status
+
+    processor = raw.get("processor")
+    if processor is not None and str(processor).strip():
+        out["processor"] = str(processor).strip()
+
+    for flag in ("balance_due", "late_intake", "slow_cycle"):
+        val = raw.get(flag)
+        if val in ("1", 1, True, "true", "yes", "on"):
+            out[flag] = "1"
+
+    form_col = raw.get("form")
+    if isinstance(form_col, str) and form_col.strip():
+        fk = form_col.strip()
+        if fk in _ALLOWED_DASH_SAVE_FORM_FIELDS:
+            out["form"] = fk
+
+    rc = raw.get("reject_contact")
+    if isinstance(rc, str) and rc.strip():
+        rcv = rc.strip().lower()
+        if rcv == "needs_followup" or rcv in CONTACT_STATUS_VALUES:
+            out["reject_contact"] = rcv
+
+    qq = raw.get("q")
+    if isinstance(qq, str) and qq.strip():
+        out["q"] = qq.strip()[:500]
+
+    return out
+
+
+def _dashboard_saved_filter_meaningful(fd: dict) -> bool:
+    d = _sanitize_dashboard_filter_payload(fd)
+    return bool(d)
+
+
+def _dashboard_filter_query_string(filter_data: dict, year: int) -> str:
+    d = _sanitize_dashboard_filter_payload(filter_data)
+    pairs: list[tuple[str, str]] = [("year", str(int(year)))]
+    for s in d.get("status") or []:
+        pairs.append(("status", s))
+    proc = d.get("processor")
+    if proc:
+        pairs.append(("processor", str(proc)))
+    for flag in ("balance_due", "late_intake", "slow_cycle"):
+        if d.get(flag) == "1":
+            pairs.append((flag, "1"))
+    if d.get("form"):
+        pairs.append(("form", d["form"]))
+    if d.get("reject_contact"):
+        pairs.append(("reject_contact", d["reject_contact"]))
+    if d.get("q"):
+        pairs.append(("q", d["q"]))
+    return urlencode(pairs, doseq=True)
+
+
+def _dashboard_filter_snapshot_from_current_request(year: int) -> dict:
+    st = request.args.getlist("status")
+    fd: dict = {}
+    sf = frozenset(s.upper() for s in STATUS_FLOW)
+    st_clean = [str(x).strip().upper() for x in st if str(x).strip().upper() in sf]
+    if st_clean:
+        fd["status"] = st_clean
+    p = request.args.get("processor")
+    if p and str(p).strip():
+        fd["processor"] = str(p).strip()
+    if request.args.get("balance_due"):
+        fd["balance_due"] = "1"
+    if request.args.get("late_intake"):
+        fd["late_intake"] = "1"
+    if request.args.get("slow_cycle"):
+        fd["slow_cycle"] = "1"
+    form = request.args.get("form")
+    if form and form.strip() in _ALLOWED_DASH_SAVE_FORM_FIELDS:
+        fd["form"] = form.strip()
+    rj = request.args.get("reject_contact")
+    if rj:
+        rv = str(rj).strip().lower()
+        if rv == "needs_followup" or rv in CONTACT_STATUS_VALUES:
+            fd["reject_contact"] = rv
+    qq = request.args.get("q")
+    if qq and str(qq).strip():
+        fd["q"] = str(qq).strip()[:500]
+    return fd
+
+
+def _saved_dashboard_filters_payload(username: str | None, year: int) -> list[dict]:
+    if not username:
+        return []
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, user_id, name, filter_json, is_default, is_shared
+              FROM dashboard_saved_filters
+             WHERE is_shared = 1 OR user_id = ?
+             ORDER BY is_shared ASC, is_default DESC, lower(name), id
+            """,
+            (username,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    admins = _shared_saved_filter_admins()
+    uid_l = username.lower()
+    payload: list[dict] = []
+    for r in rows:
+        try:
+            merged = json.loads(r["filter_json"])
+        except (json.JSONDecodeError, TypeError, ValueError):
+            merged = {}
+        fd = _sanitize_dashboard_filter_payload(merged)
+        is_shared = bool(r["is_shared"])
+        qs = _dashboard_filter_query_string(fd, year)
+        owns_personal = (not is_shared) and (r["user_id"] == username)
+        payload.append({
+            "id":            r["id"],
+            "name":          r["name"],
+            "is_default":    bool(r["is_default"]) and owns_personal,
+            "is_shared":     is_shared,
+            "query_string": qs,
+            "filter":        fd,
+            "can_delete":    (is_shared and uid_l in admins) or owns_personal,
+            "can_set_default": owns_personal and not is_shared,
+        })
+    return payload
+
+
 # ── Page routes ───────────────────────────────────────────────────────────────
 
 @app.route("/")
 @login_required
 def dashboard():
     year = int(request.args.get("year", date.today().year))
+    uname = _session_username()
+
+    # FILTER-5: load user's default preset only on a \"clean\" dashboard query (season only).
+    if uname and not _dashboard_request_has_explicit_filters():
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT filter_json FROM dashboard_saved_filters "
+                "WHERE user_id = ? AND is_shared = 0 AND is_default = 1 LIMIT 1",
+                (uname,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row:
+            try:
+                sj = json.loads(row["filter_json"])
+            except (json.JSONDecodeError, TypeError, ValueError):
+                sj = {}
+            fd_clean = _sanitize_dashboard_filter_payload(sj)
+            if _dashboard_saved_filter_meaningful(fd_clean):
+                return redirect("/?" + _dashboard_filter_query_string(fd_clean, year))
+
     filters = {
         "year":        year,
         "status":      request.args.getlist("status") or None,
@@ -653,7 +1077,16 @@ def dashboard():
     }
     returns = query_returns(filters)
     ctx = base_ctx(year)
-    ctx.update({"active_page": "dashboard", "returns": returns, "filters": filters})
+    snap = _dashboard_filter_snapshot_from_current_request(year)
+    ctx.update({
+        "active_page":                         "dashboard",
+        "returns":                             returns,
+        "filters":                             filters,
+        "saved_dashboard_filters":             _saved_dashboard_filters_payload(uname, year),
+        "can_publish_shared_dashboard_filters": can_publish_shared_dashboard_filters(),
+        "dashboard_current_filter_snapshot":   snap,
+        "dashboard_snapshot_has_meaningful":    _dashboard_saved_filter_meaningful(snap),
+    })
     return render_template("dashboard.html", **ctx)
 
 
@@ -683,14 +1116,83 @@ def return_detail(return_id: int):
     # Always use current calendar year for the season picker — never the return's tax year.
     ctx = base_ctx(date.today().year)
     ctx.update({
-        "active_page":   "dashboard",
-        "ret":           ret,
-        "notes":         notes_payload,
-        "events":        [dict(e) for e in events],
-        "missing_docs":  [dict(d) for d in missing_docs],
+        "active_page":    "dashboard",
+        "ret":            ret,
+        "notes":          notes_payload,
+        "events":         [dict(e) for e in events],
+        "missing_docs":   [dict(d) for d in missing_docs],
         "contact_labels": CONTACT_LABELS,
+        "drake_enabled":  bool(DRAKE_FOLDER_STRUCTURE_ENABLED),
     })
     return render_template("return_detail.html", **ctx)
+
+
+FILING_STATUS_OPTIONS = ("SINGLE", "MFJ", "MFS", "HH", "DEPENDENT", "QUAL NON DEP")
+
+
+def profile_title_for_client(cli_d: dict, client_id: int, *, privacy: bool) -> str:
+    if privacy:
+        return f"Client {client_id}"
+    fm = (
+        cli_d.get("display_name")
+        or f"{cli_d.get('last_name') or ''}, {cli_d.get('first_name') or ''}".strip(", ")
+    )
+    return (fm.strip() or f"Client {client_id}")
+
+
+@app.route("/clients/<int:client_id>")
+@login_required
+def client_profile(client_id: int):
+    conn = get_connection()
+    try:
+        cli = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not cli:
+            abort(404)
+        client_row = dict(cli)
+        if privacy_mode_enabled():
+            client_disp = _mask_client_payload(client_row)
+        else:
+            client_disp = client_row
+
+        returns = _fetch_returns_for_client(conn, client_id)
+        documents = _fetch_client_documents(conn, client_id)
+        activity = _fetch_client_activity(conn, client_id, limit=200)
+        doc_year_options = sorted(
+            {d["tax_year"] for d in documents if d.get("tax_year") is not None},
+            reverse=True,
+        )
+    finally:
+        conn.close()
+
+    anchor_return_id = returns[0]["id"] if returns else None
+
+    nm = profile_title_for_client(client_row, client_id, privacy=privacy_mode_enabled())
+
+    yr = date.today().year
+    filing_for_form = ""
+    if returns:
+        filing_for_form = (returns[0].get("filing_status") or "").strip()
+
+    ctx = base_ctx(yr)
+    ctx.update({
+        "active_page":           "dashboard",
+        "client_id":             client_id,
+        "client":                client_disp,
+        "client_anchor_return_id": anchor_return_id,
+        "client_returns":        returns,
+        "client_documents":      documents,
+        "client_activity":       activity,
+        "doc_year_options":      doc_year_options,
+        "doc_type_options":      sorted(_ALLOWED_RETURN_DOC_TYPES),
+        "filing_status_options": FILING_STATUS_OPTIONS,
+        "filing_status_anchor": filing_for_form,
+        "profile_title_name": nm,
+        "comparison_year_choices": sorted(
+            {r["tax_year"] for r in returns if r.get("tax_year") is not None},
+            reverse=True,
+        ),
+    })
+    return render_template("client_profile.html", **ctx)
 
 
 @app.route("/return/<int:return_id>/documents/upload", methods=["POST"])
@@ -970,6 +1472,80 @@ def return_document_tag(return_id: int, doc_id: int):
         conn.close()
 
 
+@app.route(
+    "/return/<int:return_id>/documents/<int:doc_id>/sync-drake", methods=["POST"]
+)
+@login_required
+def return_document_sync_drake(return_id: int, doc_id: int):
+    """DOC-6 — copy one document file into mirrored Drake folder layout (optional)."""
+    from config import DRAKE_DOCUMENTS_BASE
+
+    conn = get_connection()
+    try:
+        doc = conn.execute(
+            """
+            SELECT id, filename, file_path FROM return_documents
+            WHERE id = ? AND return_id = ? AND is_deleted = 0
+            """,
+            (doc_id, return_id),
+        ).fetchone()
+        if not doc:
+            return jsonify({"success": False, "reason": "Not found"})
+        fp = doc["file_path"]
+        if not fp or not os.path.isfile(fp):
+            return jsonify({"success": False, "reason": "Copy failed"})
+
+        meta = conn.execute(
+            """
+            SELECT r.tax_year AS tax_year, c.last_name AS last_name
+            FROM returns r
+            JOIN clients c ON c.id = r.client_id
+            WHERE r.id = ?
+            """,
+            (return_id,),
+        ).fetchone()
+        if not meta:
+            return jsonify({"success": False, "reason": "Copy failed"})
+
+        drake_dir = get_drake_documents_path(
+            return_id,
+            str(meta["last_name"] or ""),
+            str(meta["tax_year"] if meta["tax_year"] is not None else ""),
+        )
+        if not drake_dir:
+            return jsonify(
+                {
+                    "success": False,
+                    "reason": "Drake folder structure not enabled",
+                }
+            )
+
+        base_abs = os.path.abspath(DRAKE_DOCUMENTS_BASE)
+        base_abs = os.path.normpath(base_abs)
+        fname = sanitize_filename(doc["filename"] or os.path.basename(fp))
+        stem, ext_part = os.path.splitext(fname)
+        dest_name = fname
+        counter = 1
+        while os.path.exists(os.path.join(drake_dir, dest_name)):
+            dest_name = f"{stem}_{counter}{ext_part}"
+            counter += 1
+        dest_path = os.path.join(drake_dir, dest_name)
+        try:
+            shutil.copy2(fp, dest_path)
+        except OSError:
+            return jsonify({"success": False, "reason": "Copy failed"})
+
+        dest_abs = os.path.normpath(os.path.abspath(dest_path))
+        base_norm = os.path.normpath(base_abs)
+        try:
+            rel_fwd = os.path.relpath(dest_abs, base_norm).replace(os.sep, "/")
+        except ValueError:
+            rel_fwd = dest_name.replace(os.sep, "/")
+        return jsonify({"success": True, "drake_path_relative": rel_fwd})
+    finally:
+        conn.close()
+
+
 _FORM_DATA_SQL_TABLES = frozenset(
     {
         "w2_records",
@@ -1156,6 +1732,7 @@ def return_form_data_update(return_id: int, table: str, record_id: int):
     if not allowed or field not in allowed:
         return jsonify({"error": "Invalid field"}), 400
 
+    raw_val = payload.get("value")
     val = _parse_form_update_value(field, raw_val)
 
     conn = get_connection()
@@ -1235,7 +1812,7 @@ def api_email_classifications_list():
             WHERE ec.confirmed_by IS NULL
               AND ec.source != 'rule'
               AND (ec.sender_domain IS NULL OR ec.sender_domain NOT IN (
-                  SELECT domain FROM email_sender_rules
+                  SELECT domain FROM known_sender_rules
               ))
             ORDER BY ec.created_at DESC
             LIMIT 200
@@ -1532,7 +2109,7 @@ def api_email_classifications_digest():
               AND source != 'rule'
               AND classification IN ('client_document', 'client_inquiry')
               AND (sender_domain IS NULL OR sender_domain NOT IN (
-                  SELECT domain FROM email_sender_rules
+                  SELECT domain FROM known_sender_rules
               ))
             """
         ).fetchone()[0]
@@ -1726,16 +2303,45 @@ def api_email_classification_mark_missed_reviewed(classification_id: int):
 # ── Email sender rules ────────────────────────────────────────────────────────
 
 _ESR_ALLOWED_RULE_TYPES = frozenset({"always_promotional", "always_client"})
+# Every runtime INSERT into known_sender_rules must use _insert_known_sender_rule(...)
+# with one of these insert_source values — see EMAIL-2 / mail_watcher epic.
+_KSR_ALLOWED_INSERT_SOURCES = frozenset({"manual_add", "suggestion_accept"})
+_RULE_NOTE_ACCEPTED_SUGGESTION = "staff-accepted-rule-suggestion"
+
+
+def _insert_known_sender_rule(
+    conn,
+    *,
+    domain: str,
+    rule_type: str,
+    note: str | None,
+    created_by: str | None,
+    created_at: str | None,
+    insert_source: str,
+) -> None:
+    """Single insert path for known_sender_rules — unexpected insert_source logs WARN."""
+    if insert_source not in _KSR_ALLOWED_INSERT_SOURCES:
+        logging.warning(
+            "UNEXPECTED known_sender_rules insert_site=%s domain=%s (blocked)",
+            insert_source,
+            domain,
+        )
+        raise ValueError(f"unknown known_sender_rules insert_site: {insert_source!r}")
+    conn.execute(
+        "INSERT INTO known_sender_rules (domain, rule_type, note, created_by, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (domain, rule_type, note, created_by, created_at),
+    )
 
 
 @app.route("/api/email-sender-rules")
 @login_required
-def api_email_sender_rules_list():
+def api_known_sender_rules_list():
     conn = get_connection()
     try:
         rows = conn.execute(
             "SELECT id, domain, rule_type, note, created_by, created_at "
-            "FROM email_sender_rules ORDER BY created_at DESC"
+            "FROM known_sender_rules ORDER BY created_at DESC"
         ).fetchall()
         return jsonify({
             "rules": [
@@ -1756,7 +2362,7 @@ def api_email_sender_rules_list():
 
 @app.route("/api/email-sender-rules/add", methods=["POST"])
 @login_required
-def api_email_sender_rules_add():
+def api_known_sender_rules_add():
     data      = request.get_json(silent=True) or {}
     domain    = (data.get("domain") or "").strip().lower()
     rule_type = data.get("rule_type", "always_promotional")
@@ -1769,10 +2375,14 @@ def api_email_sender_rules_add():
 
     conn = get_connection()
     try:
-        conn.execute(
-            "INSERT INTO email_sender_rules (domain, rule_type, note, created_by, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (domain, rule_type, note or None, session.get("username"), now()),
+        _insert_known_sender_rule(
+            conn,
+            domain=domain,
+            rule_type=rule_type,
+            note=note or None,
+            created_by=session.get("username"),
+            created_at=now(),
+            insert_source="manual_add",
         )
         conn.commit()
         return jsonify({"success": True, "domain": domain, "rule_type": rule_type})
@@ -1791,11 +2401,11 @@ def api_email_sender_rule_delete(rule_id: int):
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT id FROM email_sender_rules WHERE id = ?", (rule_id,)
+            "SELECT id FROM known_sender_rules WHERE id = ?", (rule_id,)
         ).fetchone()
         if row is None:
             return jsonify({"error": "Not found"}), 404
-        conn.execute("DELETE FROM email_sender_rules WHERE id = ?", (rule_id,))
+        conn.execute("DELETE FROM known_sender_rules WHERE id = ?", (rule_id,))
         conn.commit()
         return jsonify({"success": True})
     finally:
@@ -1849,10 +2459,14 @@ def api_rule_suggestion_accept(suggestion_id: int):
             return jsonify({"error": f"Invalid rule type: {rule_type}"}), 400
 
         try:
-            conn.execute(
-                "INSERT INTO email_sender_rules (domain, rule_type, note, created_by, created_at) "
-                "VALUES (?, ?, 'from-llm-suggestion', ?, ?)",
-                (domain, rule_type, session.get("username"), now()),
+            _insert_known_sender_rule(
+                conn,
+                domain=domain,
+                rule_type=rule_type,
+                note=_RULE_NOTE_ACCEPTED_SUGGESTION,
+                created_by=session.get("username"),
+                created_at=now(),
+                insert_source="suggestion_accept",
             )
         except Exception as exc:
             if "UNIQUE constraint" not in str(exc):
@@ -3214,7 +3828,39 @@ def intake_log():
     return render_template("intake_log.html", **ctx)
 
 
+
 # ── JSON API ──────────────────────────────────────────────────────────────────
+
+
+@app.post("/api/client-error")
+@login_required
+def api_client_error():
+    """PROD-6: log frontend (vanilla JS) errors without taking down the Flask process."""
+    data = request.get_json(silent=True)
+    if data is None or not isinstance(data, dict):
+        return jsonify({"ok": False, "error": "expected_json_object"}), 400
+
+    kind = str(data.get("kind") or "unknown")[:64]
+    message = str(data.get("message") or "")[:2000]
+    page_url = str(data.get("page_url") or "")[:2000]
+    filename = str(data.get("filename") or "")[:500]
+    stack = str(data.get("stack") or "")[:8000]
+    lineno = data.get("lineno")
+    colno = data.get("colno")
+
+    frontend_log = logging.getLogger("taxops.frontend")
+    frontend_log.warning(
+        "CLIENT_JS[%s]: %s | url=%r file=%r line=%s col=%s\n%s",
+        kind,
+        message.replace("\r", " ").replace("\n", " ")[:480],
+        page_url[:400],
+        filename,
+        lineno,
+        colno,
+        stack.replace("\r", "").strip()[:2500],
+    )
+    return jsonify({"ok": True})
+
 
 @app.get("/api/clients/search")
 @login_required
@@ -3321,6 +3967,88 @@ def api_client_reintake(client_id: int):
     })
 
 
+@app.get("/api/clients/<int:client_id>/years")
+@login_required
+def api_client_year_comparison(client_id: int):
+    """MULTIYEAR-6 — normalized 2–3 year comparison payload for the client."""
+    raw = request.args.get("years") or ""
+    years_asc, err = multiyear_comparison.parse_years_param(raw)
+    if err:
+        return jsonify({"error": err}), 400
+
+    conn = get_connection()
+    try:
+        cli = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not cli:
+            return jsonify({"error": "Not found"}), 404
+        cli_d = dict(cli)
+        display = profile_title_for_client(cli_d, client_id, privacy=privacy_mode_enabled())
+        thresholds = {
+            "agi_percent": float(MULTIYEAR_AGI_PERCENT_THRESHOLD),
+            "refund_abs": float(MULTIYEAR_REFUND_ABS_THRESHOLD),
+            "balance_abs": float(MULTIYEAR_BALANCE_ABS_THRESHOLD),
+        }
+        payload = multiyear_comparison.build_client_year_comparison_payload(
+            conn,
+            client_id=client_id,
+            years_asc=years_asc or [],
+            thresholds=thresholds,
+            client_display_name=display,
+            privacy_mode=privacy_mode_enabled(),
+        )
+        return jsonify(payload)
+    finally:
+        conn.close()
+
+
+@app.get("/clients/<int:client_id>/years")
+@login_required
+def legacy_client_comparison_years(client_id: int):
+    """MULTIYEAR-6 — epic path aliases the JSON API."""
+    return api_client_year_comparison(client_id)
+
+
+@app.get("/api/clients/<int:client_id>/years.pdf")
+@login_required
+def api_client_year_comparison_pdf(client_id: int):
+    """MULTIYEAR-5 — same data as JSON route, formatted for preparer/client summary."""
+    raw = request.args.get("years") or ""
+    years_asc, err = multiyear_comparison.parse_years_param(raw)
+    if err:
+        return jsonify({"error": err}), 400
+
+    conn = get_connection()
+    try:
+        cli = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not cli:
+            return jsonify({"error": "Not found"}), 404
+        cli_d = dict(cli)
+        display = profile_title_for_client(cli_d, client_id, privacy=privacy_mode_enabled())
+        thresholds = {
+            "agi_percent": float(MULTIYEAR_AGI_PERCENT_THRESHOLD),
+            "refund_abs": float(MULTIYEAR_REFUND_ABS_THRESHOLD),
+            "balance_abs": float(MULTIYEAR_BALANCE_ABS_THRESHOLD),
+        }
+        payload = multiyear_comparison.build_client_year_comparison_payload(
+            conn,
+            client_id=client_id,
+            years_asc=years_asc or [],
+            thresholds=thresholds,
+            client_display_name=display,
+            privacy_mode=privacy_mode_enabled(),
+        )
+    finally:
+        conn.close()
+
+    pdf_bytes = multiyear_comparison.render_year_comparison_pdf(payload)
+    fname = f"client_{client_id}_year_comparison.pdf"
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{fname}"'},
+    )
+
+
 @app.get("/api/search")
 @login_required
 def api_search():
@@ -3329,16 +4057,28 @@ def api_search():
     if not q:
         return jsonify([])
     results = query_returns({"year": year, "q": q})
+    deduped: list[dict] = []
+    seen: set[int] = set()
+    for r in results:
+        cid = r.get("client_id")
+        if cid is None or cid in seen:
+            continue
+        seen.add(int(cid))
+        deduped.append(r)
+        if len(deduped) >= 12:
+            break
+    priv = privacy_mode_enabled()
     return jsonify([
         {
-            "id":         r["id"],
-            "log_number": r["log_number"],
-            "name":       (f"XXXXX #{r['id']}" if privacy_mode_enabled() else r["name_full"]),
-            "status":     r["client_status"],
-            "badge":      r["badge_class"],
-            "tax_year":   r["tax_year"],
+            "id":          r["id"],
+            "client_id":   r["client_id"],
+            "log_number":  r["log_number"],
+            "name":        (f"XXXXX #{r['client_id']}" if priv else r["name_full"]),
+            "status":      r["client_status"],
+            "badge":       r["badge_class"],
+            "tax_year":    r["tax_year"],
         }
-        for r in results[:12]
+        for r in deduped
     ])
 
 
@@ -3349,6 +4089,138 @@ def api_privacy_mode():
     enabled = data.get("enabled")
     session["privacy_mode"] = bool(enabled)
     return jsonify({"success": True, "privacy_mode": bool(session.get("privacy_mode"))})
+
+
+@app.get("/api/filters")
+@login_required
+def api_dashboard_filters_list():
+    uname = _session_username()
+    if not uname:
+        return jsonify({"error": "No user in session"}), 400
+    year = int(request.args.get("year", date.today().year))
+    rows = _saved_dashboard_filters_payload(uname, year)
+    return jsonify({"filters": rows, "year": year})
+
+
+@app.post("/api/filters")
+@login_required
+def api_dashboard_filters_create():
+    uname = _session_username()
+    if not uname:
+        return jsonify({"error": "No user in session"}), 400
+    data = request.get_json(force=True) if request.data else {}
+    name = str(data.get("name") or "").strip()[:120]
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+
+    fd = _sanitize_dashboard_filter_payload(data.get("filter") or {})
+    if not _dashboard_saved_filter_meaningful(fd):
+        return jsonify({"error": "Filter has no criteria — pick status, preparer, or another filter first"}), 400
+
+    wants_shared = bool(data.get("is_shared"))
+    if wants_shared and not can_publish_shared_dashboard_filters():
+        return jsonify({"error": "Not allowed to publish shared filters"}), 403
+
+    set_default = bool(data.get("set_default")) and not wants_shared
+    ts = now()
+    year_hint = int(data.get("year", date.today().year))
+
+    new_id = None
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO dashboard_saved_filters (user_id, name, filter_json, is_default, is_shared, created_at)
+            VALUES (?, ?, ?, 0, ?, ?)
+            """,
+            (
+                uname,
+                name,
+                json.dumps(fd, separators=(",", ":"), sort_keys=True),
+                1 if wants_shared else 0,
+                ts,
+            ),
+        )
+        new_id = cur.lastrowid
+        if set_default and new_id:
+            conn.execute(
+                "UPDATE dashboard_saved_filters SET is_default = 0 WHERE user_id = ? AND is_shared = 0",
+                (uname,),
+            )
+            conn.execute(
+                "UPDATE dashboard_saved_filters SET is_default = 1 WHERE id = ?",
+                (new_id,),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        "success":      True,
+        "id":           new_id,
+        "query_string": _dashboard_filter_query_string(fd, year_hint),
+        "filter":       fd,
+        "set_default":  set_default,
+    })
+
+
+@app.delete("/api/filters/<int:fid>")
+@login_required
+def api_dashboard_filters_delete(fid: int):
+    uname = _session_username()
+    if not uname:
+        return jsonify({"error": "No user in session"}), 400
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT user_id, is_shared FROM dashboard_saved_filters WHERE id = ?",
+            (fid,),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        is_shared = bool(row["is_shared"])
+        uid = row["user_id"]
+        if is_shared:
+            if not can_publish_shared_dashboard_filters():
+                return jsonify({"error": "Forbidden"}), 403
+        elif uid != uname:
+            return jsonify({"error": "Forbidden"}), 403
+        conn.execute("DELETE FROM dashboard_saved_filters WHERE id = ?", (fid,))
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+@app.post("/api/filters/<int:fid>/default")
+@login_required
+def api_dashboard_filters_set_default(fid: int):
+    uname = _session_username()
+    if not uname:
+        return jsonify({"error": "No user in session"}), 400
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT user_id, is_shared FROM dashboard_saved_filters WHERE id = ?",
+            (fid,),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        if bool(row["is_shared"]) or row["user_id"] != uname:
+            return jsonify({"error": "Forbidden"}), 403
+        conn.execute(
+            "UPDATE dashboard_saved_filters SET is_default = 0 WHERE user_id = ? AND is_shared = 0",
+            (uname,),
+        )
+        conn.execute(
+            "UPDATE dashboard_saved_filters SET is_default = 1 "
+            "WHERE id = ? AND user_id = ? AND is_shared = 0",
+            (fid, uname),
+        )
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
 
 
 @app.post("/api/return/<int:return_id>/sync-to-drake")
@@ -3438,6 +4310,83 @@ def api_status(return_id: int):
         "client_status": new_status,
         "badge_class":   STATUS_BADGE.get(new_status, "bg-slate-100 text-slate-500 border-slate-200"),
     })
+
+
+BULK_RETURN_IDS_CAP = 500
+
+
+@app.post("/api/returns/bulk-status")
+@login_required
+def api_returns_bulk_status():
+    payload    = request.get_json(force=True) or {}
+    raw_ids    = payload.get("return_ids")
+    new_status = (payload.get("status") or "").strip().upper()
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({"error": "return_ids required (non-empty list)"}), 400
+    if len(raw_ids) > BULK_RETURN_IDS_CAP:
+        return jsonify({"error": f"Too many returns (max {BULK_RETURN_IDS_CAP})"}), 400
+    try:
+        parsed_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        return jsonify({"error": "return_ids must be integers"}), 400
+    if new_status not in STATUS_FLOW:
+        return jsonify({"error": "Invalid status"}), 400
+    actor = (session.get("username") or "").strip() or "?"
+    conn  = get_connection()
+    try:
+        conn.execute("BEGIN")
+        errors = bulk_apply_status_changes(
+            conn,
+            return_ids=parsed_ids,
+            new_status=new_status,
+            status_flow=tuple(STATUS_FLOW),
+            status_date_stamp=STATUS_DATE_STAMP,
+            actor_username=actor,
+        )
+        if errors:
+            conn.rollback()
+            return jsonify({"success": False, "errors": errors, "changed": 0}), 409
+        conn.commit()
+        return jsonify(
+            {"success": True, "errors": [], "changed": len({i for i in parsed_ids})},
+        )
+    finally:
+        conn.close()
+
+
+@app.post("/api/returns/bulk-processor")
+@login_required
+def api_returns_bulk_processor():
+    payload       = request.get_json(force=True) or {}
+    raw_ids       = payload.get("return_ids")
+    processor_raw = payload.get("processor")
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({"error": "return_ids required (non-empty list)"}), 400
+    if len(raw_ids) > BULK_RETURN_IDS_CAP:
+        return jsonify({"error": f"Too many returns (max {BULK_RETURN_IDS_CAP})"}), 400
+    try:
+        parsed_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        return jsonify({"error": "return_ids must be integers"}), 400
+    actor = (session.get("username") or "").strip() or "?"
+    conn  = get_connection()
+    try:
+        conn.execute("BEGIN")
+        errors, rows_updated = bulk_apply_processor_changes(
+            conn,
+            return_ids=parsed_ids,
+            new_processor_raw=processor_raw,
+            actor_username=actor,
+        )
+        if errors:
+            conn.rollback()
+            return jsonify({"success": False, "errors": errors, "changed": 0}), 409
+        conn.commit()
+        return jsonify(
+            {"success": True, "errors": [], "changed": rows_updated},
+        )
+    finally:
+        conn.close()
 
 
 @app.post("/api/return/<int:return_id>/field")
@@ -4479,6 +5428,282 @@ def api_audit_merge_client():
         conn.close()
 
 
+# ── Season rollover (Epic #88 — ROLLOVER-1…6) ─────────────────────────────────
+
+
+@app.route("/admin/season-rollover")
+@login_required
+def season_rollover_admin():
+    if not can_run_season_rollover():
+        abort(403)
+    ctx = base_ctx()
+    yr = date.today().year
+    ctx.update({
+        "active_page":               "season_rollover",
+        "rollover_status":           season_rollover.NEW_ROLLOVER_STATUS,
+        "default_source_tax_year":   yr - 1,
+        "default_target_tax_year":    yr,
+    })
+    return render_template("season_rollover.html", **ctx)
+
+
+@app.post("/api/admin/season-rollover/preview")
+@login_required
+def api_admin_season_rollover_preview():
+    if not can_run_season_rollover():
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        source_year = int(data["source_year"])
+        target_year = int(data["target_year"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "source_year and target_year are required integers"}), 400
+    carry_raw = data.get("carry") if isinstance(data.get("carry"), dict) else data
+    opts = season_rollover.carry_options_from_dict(carry_raw)
+
+    conn = get_connection()
+    try:
+        out = season_rollover.rollover_preview_json(
+            conn, source_year=source_year, target_year=target_year, options=opts
+        )
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/season-rollover/run")
+@login_required
+def api_admin_season_rollover_run():
+    if not can_run_season_rollover():
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        source_year = int(data["source_year"])
+        target_year = int(data["target_year"])
+        confirmation_year = int(data["confirmation_year"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify(
+            {"error": "source_year, target_year, and confirmation_year must be integers"},
+        ), 400
+
+    if confirmation_year != target_year:
+        return jsonify({"error": "Confirmation failed: enter the target tax year to confirm."}), 400
+
+    carry_raw = data.get("carry") if isinstance(data.get("carry"), dict) else data
+    opts = season_rollover.carry_options_from_dict(carry_raw)
+
+    actor = (_session_username() or "").strip() or None
+    ts = now()
+
+    conn = get_connection()
+    try:
+        result = season_rollover.rollover_commit(
+            conn,
+            source_year=source_year,
+            target_year=target_year,
+            options=opts,
+            actor=actor,
+            ts=ts,
+        )
+        if not result.get("ok"):
+            return jsonify({"ok": False, "error": result.get("error", "Rollover failed")}), 400
+
+        report = result.get("report") or {}
+        csv_body = season_rollover.build_rollover_report_csv(report)
+        session["season_rollover_export_csv"] = csv_body
+        session["season_rollover_export_filename"] = f"season_rollover_ty{target_year}_{ts[:10]}.csv"
+
+        created = report.get("created") or []
+        skipped = report.get("skipped") or []
+        noop_msg = None
+        if not created and skipped:
+            noop_msg = (
+                "No new returns created — likely an idempotent repeat (clients already "
+                f"have a TY{target_year} return)."
+            )
+        return jsonify({
+            "ok": True,
+            "created_count":   len(created),
+            "skipped_count": len(skipped),
+            "noop_message":    noop_msg,
+            "export_ready": True,
+        })
+    finally:
+        conn.close()
+
+
+@app.get("/admin/season-rollover/export.csv")
+@login_required
+def download_season_rollover_csv():
+    if not can_run_season_rollover():
+        abort(403)
+    csv_text = session.get("season_rollover_export_csv")
+    if csv_text is None:
+        abort(404)
+    fname = session.get("season_rollover_export_filename") or "season_rollover_report.csv"
+    return Response(
+        "\ufeff" + csv_text,
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+# ── AUDIT admin (AUDIT-3…AUDIT-7) ───────────────────────────────────────────
+
+
+def _audit_date_range_filters():
+    df = (request.args.get("date_from") or "").strip() or None
+    dt = (request.args.get("date_to") or "").strip() or None
+    date_from_iso = None
+    date_to_excl = None
+    try:
+        if df:
+            date_from_iso = f"{date.fromisoformat(df).isoformat()}T00:00:00"
+        if dt:
+            end_day = date.fromisoformat(dt) + timedelta(days=1)
+            date_to_excl = f"{end_day.isoformat()}T00:00:00"
+    except ValueError:
+        pass
+    return date_from_iso, date_to_excl
+
+
+@app.route("/admin/audit-log")
+@login_required
+def audit_log_admin():
+    user_f = (request.args.get("user_id") or "").strip() or None
+    action_f = (request.args.get("action") or "").strip() or None
+    entity_type_f = (request.args.get("entity_type") or "").strip() or None
+    entity_id_f = (request.args.get("entity_id") or "").strip() or None
+    date_from_iso, date_to_excl = _audit_date_range_filters()
+
+    try:
+        page = max(1, int(request.args.get("page") or "1"))
+    except ValueError:
+        page = 1
+    per_page = 75
+    offset = (page - 1) * per_page
+
+    conn = get_connection()
+    try:
+        retention_years = get_audit_retention_years(conn)
+        users_rows = conn.execute(
+            """SELECT DISTINCT user_id FROM audit_log
+               WHERE user_id IS NOT NULL AND TRIM(user_id) != ''
+               ORDER BY user_id LIMIT 400"""
+        ).fetchall()
+        users_list = [r["user_id"] for r in users_rows]
+
+        cnt, rows = query_audit_logs(
+            conn,
+            user_id=user_f,
+            action_contains=action_f,
+            entity_type=entity_type_f,
+            entity_id=entity_id_f,
+            date_from=date_from_iso,
+            date_to=date_to_excl,
+            limit=per_page,
+            offset=offset,
+        )
+    finally:
+        conn.close()
+
+    total_pages = max(1, (cnt + per_page - 1) // per_page) if cnt else 1
+
+    ctx = base_ctx()
+    ctx.update(
+        active_page="audit_log",
+        rows=rows,
+        total=cnt,
+        page=page,
+        total_pages=total_pages,
+        per_page=per_page,
+        users_list=users_list,
+        retention_years=retention_years,
+        filters={
+            "user_id": user_f or "",
+            "action": action_f or "",
+            "entity_type": entity_type_f or "",
+            "entity_id": entity_id_f or "",
+            "date_from": (request.args.get("date_from") or "").strip(),
+            "date_to": (request.args.get("date_to") or "").strip(),
+        },
+    )
+    return render_template("audit_log.html", **ctx)
+
+
+@app.route("/admin/audit-log/<int:entry_id>")
+@login_required
+def audit_log_detail(entry_id: int):
+    conn = get_connection()
+    try:
+        row = fetch_audit_entry(conn, entry_id)
+    finally:
+        conn.close()
+    if not row:
+        abort(404)
+    rowd = dict(row)
+    diff_chunks = format_json_diff_styled_chunks(rowd.get("before_json"), rowd.get("after_json"))
+    ctx = base_ctx()
+    ctx.update(active_page="audit_log", entry=rowd, diff_chunks=diff_chunks)
+    return render_template("audit_log_detail.html", **ctx)
+
+
+@app.get("/admin/audit-log/export.csv")
+@login_required
+def audit_log_export_csv():
+    user_f = (request.args.get("user_id") or "").strip() or None
+    action_f = (request.args.get("action") or "").strip() or None
+    entity_type_f = (request.args.get("entity_type") or "").strip() or None
+    entity_id_f = (request.args.get("entity_id") or "").strip() or None
+    date_from_iso, date_to_excl = _audit_date_range_filters()
+
+    conn = get_connection()
+    try:
+        buf = write_audit_export_csv(
+            conn,
+            filters={
+                "user_id": user_f,
+                "action_contains": action_f,
+                "entity_type": entity_type_f,
+                "entity_id": entity_id_f,
+                "date_from": date_from_iso,
+                "date_to": date_to_excl,
+            },
+        )
+    finally:
+        conn.close()
+
+    name = sanitize_filename_audit(
+        f"audit_export_{date.today().isoformat()}_{secrets.token_hex(4)}.csv"
+    )
+    return send_file(
+        io.BytesIO(buf.getvalue().encode("utf-8")),
+        as_attachment=True,
+        download_name=name,
+        mimetype="text/csv; charset=utf-8",
+    )
+
+
+@app.post("/admin/audit-log/retention")
+@login_required
+def audit_log_retention_update():
+    try:
+        years = int((request.form.get("retention_years") or "").strip())
+    except ValueError:
+        flash("Retention years must be a whole number.", "error")
+        return redirect(url_for("audit_log_admin"))
+
+    conn = get_connection()
+    try:
+        set_audit_retention_years(conn, years)
+        n = purge_audit_logs_older_than(conn, years)
+        conn.commit()
+        flash(f"Retention saved ({years} yr). Immediate purge removed {n} row(s).", "success")
+    finally:
+        conn.close()
+    return redirect(url_for("audit_log_admin"))
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -4487,6 +5712,12 @@ if __name__ == "__main__":
     conn.close()
     start_mail_watcher(app)
     start_extraction_worker(app)
+    try:
+        from chat_cache import start_cache_worker
+
+        start_cache_worker(app)
+    except Exception as ex:
+        logging.getLogger(__name__).warning("Chat cache worker startup skipped: %s", ex)
 
     # Load or train fastText model at startup — runs in background, never blocks
     import threading as _startup_threading

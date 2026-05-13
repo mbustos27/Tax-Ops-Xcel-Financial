@@ -136,6 +136,78 @@
       </div>
     </div>
 
+    <!-- Row 4: saved filter presets -->
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-slate-100 pt-2.5">
+      <span class="text-sm font-medium text-slate-500 shrink-0">Saved:</span>
+      <button type="button" id="btn-save-dashboard-filter"
+              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-violet-50"
+              {% if dashboard_snapshot_has_meaningful %}title="Save this filter combination for later"
+              {% else %}title="Pick at least one dashboard filter — or type 2+ characters in Quick filter — to save"
+              {% endif %}>
+        Save current view…
+      </button>
+      <div id="saved-filter-pills" class="flex flex-wrap items-center gap-1.5 min-w-0 flex-1">
+        {% if not saved_dashboard_filters %}
+        <span class="text-xs text-slate-400">None yet — narrow the list above, then save.</span>
+        {% endif %}
+        {% for sf in saved_dashboard_filters %}
+        <span class="saved-filter-chip inline-flex items-stretch shrink-0 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden divide-x divide-slate-100"
+              data-filter-id="{{ sf.id }}">
+          <a href="/?{{ sf.query_string }}" class="px-2.5 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 max-w-[14rem] truncate"
+             title="{{ 'Shared with staff — ' if sf.is_shared }}Apply saved filters">{{ sf.name }}</a>
+          {% if sf.is_shared %}
+          <span class="inline-flex items-center px-1.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-800 bg-indigo-50 whitespace-nowrap" title="Visible to everyone">Staff</span>
+          {% endif %}
+          {% if sf.can_set_default %}
+          <button type="button" class="saved-filter-star px-1.5 py-1 text-xs text-amber-600 hover:bg-amber-50 whitespace-nowrap"
+                  title="{{ 'Your default dashboard' if sf.is_default else 'Set as my default' }}"
+                  aria-pressed="{{ 'true' if sf.is_default else 'false' }}">{{ '★' if sf.is_default else '☆' }}</button>
+          {% endif %}
+          {% if sf.can_delete %}
+          <button type="button" class="saved-filter-del px-1.5 py-1 text-xs text-slate-400 hover:bg-red-50 hover:text-red-600 font-bold leading-none" title="Delete saved view" aria-label="Delete {{ sf.name }}">×</button>
+          {% endif %}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Bulk actions toolbar (shows when ≥1 row selected in this tab/year) ── -->
+  <div id="bulk-actions-bar"
+       style="display: none;"
+       class="bulk-actions-bar flex-shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 shadow-sm">
+    <span class="text-sm font-semibold text-blue-950 shrink-0">
+      <span id="bulk-actions-count" class="tabular-nums">0</span> selected — bulk actions
+    </span>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs font-medium text-slate-600 shrink-0">Status</span>
+      <select id="bulk-status-pick"
+              class="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400 min-w-[9.5rem] max-w-[14rem]">
+        {% for s in status_flow %}
+        <option value="{{ s }}" {% if loop.first %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <button type="button" id="btn-bulk-status-open"
+              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-900 hover:bg-blue-50 whitespace-nowrap">
+        Change status…
+      </button>
+    </div>
+    <div class="hidden sm:block w-px h-6 bg-blue-200 shrink-0" aria-hidden="true"></div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs font-medium text-slate-600 shrink-0">Preparer</span>
+      <select id="bulk-preparer-pick"
+              class="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400 min-w-[11rem] max-w-[18rem]">
+        <option value="">— Clear assignment</option>
+        {% for p in processors %}
+        <option value="{{ p }}">{{ preparer_list_label(p) }}</option>
+        {% endfor %}
+      </select>
+      <button type="button" id="btn-bulk-preparer-open"
+              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-900 hover:bg-blue-50 whitespace-nowrap">
+        Assign preparer…
+      </button>
+    </div>
   </div>
 
   <!-- ── Email classification reminder (hidden when nothing to act on) ─── -->
@@ -327,11 +399,141 @@
     </table>
   </div>
 
+  <!-- ── Save filter preset + bulk confirm overlays ─────────────────────── -->
+  <!-- Save dashboard filter preset -->
+  <div id="save-dashboard-filter-modal" class="fixed inset-0 z-[58] hidden items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="save-dashboard-filter-modal-title">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-200">
+      <h3 id="save-dashboard-filter-modal-title" class="text-lg font-bold text-slate-900">Save filter view</h3>
+      <p class="text-sm text-slate-600 mt-1 leading-relaxed">Name this preset. You can open it anytime from Saved below the filter bar.</p>
+      <div class="mt-4 space-y-3">
+        <div>
+          <label for="save-dash-filter-name" class="block text-xs font-semibold text-slate-600 mb-1">Name</label>
+          <input id="save-dash-filter-name" type="text" maxlength="120" placeholder="e.g. My rejects / Q4 review"
+                 class="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-400"/>
+        </div>
+        <label class="flex items-start gap-2 cursor-pointer select-none">
+          <input id="save-dash-filter-default" type="checkbox" class="mt-1 rounded border-slate-300 text-violet-600 focus:ring-violet-400"/>
+          <span class="text-sm text-slate-700">Use as my default when I open Dashboard (personal only).</span>
+        </label>
+        {% if can_publish_shared_dashboard_filters %}
+        <label class="flex items-start gap-2 cursor-pointer select-none">
+          <input id="save-dash-filter-shared" type="checkbox" class="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"/>
+          <span class="text-sm text-slate-700">Publish for <strong class="font-semibold text-indigo-900">all staff</strong> (shared preset).</span>
+        </label>
+        {% endif %}
+        <p id="save-dash-filter-error" class="hidden text-sm text-red-600"></p>
+      </div>
+      <div class="mt-6 flex flex-wrap gap-2 justify-end">
+        <button type="button" id="save-dash-filter-cancel" class="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">
+          Cancel
+        </button>
+        <button type="button" id="save-dash-filter-submit" class="px-4 py-2 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 border border-violet-700">
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="bulk-status-modal" class="fixed inset-0 z-[55] hidden items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="bulk-status-modal-title">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border border-slate-200">
+      <h3 id="bulk-status-modal-title" class="text-lg font-bold text-slate-900">Confirm status change</h3>
+      <p id="bulk-status-modal-summary" class="text-sm text-slate-600 mt-2 leading-relaxed"></p>
+      <div class="mt-5 flex flex-wrap gap-2 justify-end">
+        <button type="button" class="bulk-modal-cancel px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">
+          Cancel
+        </button>
+        <button type="button" id="bulk-status-modal-commit"
+                class="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 border border-blue-700">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+  <div id="bulk-preparer-modal" class="fixed inset-0 z-[55] hidden items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="bulk-preparer-modal-title">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border border-slate-200">
+      <h3 id="bulk-preparer-modal-title" class="text-lg font-bold text-slate-900">Confirm preparer assignment</h3>
+      <p id="bulk-preparer-modal-summary" class="text-sm text-slate-600 mt-2 leading-relaxed"></p>
+      <div class="mt-5 flex flex-wrap gap-2 justify-end">
+        <button type="button" class="bulk-modal-cancel px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">
+          Cancel
+        </button>
+        <button type="button" id="bulk-preparer-modal-commit"
+                class="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 border border-blue-700">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dashboard-bulk-toast"
+       class="pointer-events-none fixed bottom-28 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-[56] opacity-0 translate-y-2 transition-all duration-200"
+       aria-live="polite" role="status">
+    <div id="dashboard-bulk-toast-inner" class="rounded-xl border px-4 py-3 shadow-2xl text-sm pointer-events-auto"></div>
+  </div>
+
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+window.__dashboardFilterSnap = {{ dashboard_current_filter_snapshot | tojson }};
+window.__dashSnapMeaningful = {{ dashboard_snapshot_has_meaningful | tojson }};
+
+function _dashboardFilterYear() {
+  const y = document.body?.dataset?.year;
+  const n = parseInt(y || '', 10);
+  return Number.isFinite(n) ? n : new Date().getFullYear();
+}
+
+function dashboardSaveFilterMerged() {
+  const base = typeof window.__dashboardFilterSnap === 'object' && window.__dashboardFilterSnap
+    ? { ...window.__dashboardFilterSnap } : {};
+  const inp = document.getElementById('table-filter');
+  const qt = (inp?.value ?? '').trim();
+  if (qt.length >= 2) base.q = qt.slice(0, 500);
+  return base;
+}
+
+function dashboardSaveMeaningful() {
+  try {
+    return Object.keys(dashboardSaveFilterMerged()).length > 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+function syncSaveDashboardFilterBtn() {
+  const btn = document.getElementById('btn-save-dashboard-filter');
+  if (!btn) return;
+  const ok = !!(window.__dashSnapMeaningful || (document.getElementById('table-filter')?.value || '').trim().length >= 2);
+  btn.disabled = !ok;
+}
+
+function toggleSaveDashboardFilterModal(show) {
+  const m = document.getElementById('save-dashboard-filter-modal');
+  const nameEl = document.getElementById('save-dash-filter-name');
+  const err = document.getElementById('save-dash-filter-error');
+  if (!m) return;
+  if (show) {
+    err.classList.add('hidden');
+    err.textContent = '';
+    if (nameEl) nameEl.value = '';
+    const defCb = document.getElementById('save-dash-filter-default');
+    if (defCb) {
+      defCb.checked = false;
+      defCb.disabled = false;
+    }
+    const sh = document.getElementById('save-dash-filter-shared');
+    if (sh) sh.checked = false;
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+    setTimeout(() => nameEl?.focus(), 50);
+  } else {
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+  }
+}
+
 function applyFilter(key, value) {
   const url = new URL(window.location);
   if (value) url.searchParams.set(key, value);
@@ -340,7 +542,7 @@ function applyFilter(key, value) {
 }
 
 // ── Column sort ────────────────────────────────────────────────────────────
-const STATUS_ORDER = ['LOG IN','PROCESSING','FINALIZE','PICKUP','EFILE READY','LOG OUT','REJECTED'];
+const STATUS_ORDER = ['PENDING INTAKE','LOG IN','PROCESSING','FINALIZE','PICKUP','EFILE READY','LOG OUT','REJECTED'];
 let _sortCol = null, _sortAsc = true;
 
 document.querySelectorAll('th.sortable').forEach(th => {
@@ -416,6 +618,113 @@ function updateRowCount() {
       indicator.classList.add('flex');
     })
     .catch(() => {});
+})();
+</script>
+<script>
+(function () {
+  function wireSavedFilterPills() {
+    document.getElementById('saved-filter-pills')?.addEventListener('click', async (ev) => {
+      const chip = ev.target.closest('.saved-filter-chip');
+      if (!chip) return;
+      const id = chip.dataset.filterId;
+
+      const delBtn = ev.target.closest('.saved-filter-del');
+      if (delBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (!confirm('Delete this saved view?')) return;
+        try {
+          const r = await fetch('/api/filters/' + encodeURIComponent(id), { method: 'DELETE' });
+          const d = await _authJson(r);
+          if (d.success) window.location.reload();
+          else alert(d.error || 'Could not delete');
+        } catch (e) {
+          alert('Could not delete.');
+        }
+        return;
+      }
+
+      const star = ev.target.closest('.saved-filter-star');
+      if (star) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        try {
+          const r = await fetch('/api/filters/' + encodeURIComponent(id) + '/default', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          await _authJson(r);
+          window.location.reload();
+        } catch (e) {
+          alert('Could not set default.');
+        }
+      }
+    });
+  }
+
+  function wireSaveFlow() {
+    const btnSave = document.getElementById('btn-save-dashboard-filter');
+    btnSave?.addEventListener('click', () => {
+      if (!dashboardSaveMeaningful()) return;
+      toggleSaveDashboardFilterModal(true);
+    });
+
+    document.getElementById('save-dash-filter-cancel')?.addEventListener('click', () => toggleSaveDashboardFilterModal(false));
+    document.getElementById('save-dashboard-filter-modal')?.addEventListener('click', (ev) => {
+      if (ev.target.id === 'save-dashboard-filter-modal') toggleSaveDashboardFilterModal(false);
+    });
+
+    document.getElementById('save-dash-filter-submit')?.addEventListener('click', async () => {
+      const nameEl = document.getElementById('save-dash-filter-name');
+      const err = document.getElementById('save-dash-filter-error');
+      const nm = (nameEl?.value || '').trim();
+      err.classList.add('hidden');
+      err.textContent = '';
+      if (!nm) {
+        err.textContent = 'Enter a name for this preset.';
+        err.classList.remove('hidden');
+        return;
+      }
+
+      const isShared = document.getElementById('save-dash-filter-shared')?.checked || false;
+      const setDefault = !isShared && document.getElementById('save-dash-filter-default')?.checked;
+
+      const body = {
+        name: nm,
+        filter: dashboardSaveFilterMerged(),
+        year: _dashboardFilterYear(),
+        set_default: !!(setDefault),
+        is_shared: !!(isShared),
+      };
+
+      try {
+        const r = await fetch('/api/filters', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        await _authJson(r);
+        window.location.reload();
+      } catch (e) {
+        err.textContent = (e && e.message) || 'Save failed.';
+        err.classList.remove('hidden');
+      }
+    });
+
+    document.getElementById('save-dash-filter-shared')?.addEventListener('change', (ev) => {
+      if (ev.target.checked) {
+        document.getElementById('save-dash-filter-default').checked = false;
+        document.getElementById('save-dash-filter-default').disabled = true;
+      } else {
+        document.getElementById('save-dash-filter-default').disabled = false;
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    syncSaveDashboardFilterBtn();
+    const tf = document.getElementById('table-filter');
+    tf?.addEventListener('input', () => { syncSaveDashboardFilterBtn(); });
+    wireSavedFilterPills();
+    wireSaveFlow();
+  });
 })();
 </script>
 {% endblock %}

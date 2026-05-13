@@ -101,3 +101,48 @@ def test_api_sync_to_drake_unconfigured_returns_400(client_logged_in, monkeypatc
     monkeypatch.setattr(cfg, "DRAKE_DOCUMENTS_PATH", "")
     rv = client_logged_in.post("/api/return/9001/sync-to-drake")
     assert rv.status_code == 400
+
+
+def test_return_document_sync_drake_row(client_logged_in, monkeypatch, tmp_path, taxops_db_path, _patch_db_and_paths):
+    base = tmp_path / "dbf"
+    base.mkdir()
+    monkeypatch.setattr(cfg, "DRAKE_DOCUMENTS_BASE", str(base))
+    monkeypatch.setattr(cfg, "DRAKE_FOLDER_STRUCTURE_ENABLED", True)
+
+    from db import get_connection
+
+    cx = get_connection(taxops_db_path)
+    did = cx.execute(
+        "SELECT id FROM return_documents WHERE return_id=9001"
+    ).fetchone()["id"]
+    cx.close()
+
+    rv = client_logged_in.post(f"/return/9001/documents/{did}/sync-drake")
+    assert rv.status_code == 200
+    body = rv.get_json()
+    assert body["success"] is True
+    rp = body["drake_path_relative"].replace("\\", "/")
+    assert rp == "2025/ACE_9001/sample_w2.pdf"
+    copied = Path(base) / rp
+    assert copied.is_file()
+
+
+def test_return_document_sync_drake_when_disabled_returns_reason(
+    client_logged_in, monkeypatch, taxops_db_path, _patch_db_and_paths
+):
+    monkeypatch.setattr(cfg, "DRAKE_DOCUMENTS_BASE", "/tmp/unused")
+    monkeypatch.setattr(cfg, "DRAKE_FOLDER_STRUCTURE_ENABLED", False)
+
+    from db import get_connection
+
+    cx = get_connection(taxops_db_path)
+    did = cx.execute(
+        "SELECT id FROM return_documents WHERE return_id=9001"
+    ).fetchone()["id"]
+    cx.close()
+
+    rv = client_logged_in.post(f"/return/9001/documents/{did}/sync-drake")
+    assert rv.status_code == 200
+    body = rv.get_json()
+    assert body["success"] is False
+    assert "not enabled" in (body.get("reason") or "").lower()

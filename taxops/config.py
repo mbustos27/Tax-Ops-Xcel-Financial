@@ -3,6 +3,7 @@ from pathlib import Path
 # All paths are absolute, anchored to the taxops/ directory itself.
 # This ensures the importer works regardless of which directory you run
 # `python main.py` from.
+import logging
 import os
 from collections.abc import MutableMapping
 
@@ -104,6 +105,62 @@ ERROR_DIR     = str(_HERE / "data" / "error")
 # "demo" shows a banner in the UI; anything else is production
 APP_ENV = os.environ.get("TAXOPS_ENV", "production").lower()
 
+# PROD-2 — rotating JSON logs + level (see logging_config.configure_logging).
+_ll = os.environ.get("TAXOPS_LOG_LEVEL", "INFO").strip().upper()
+LOG_LEVEL_STR = _ll if _ll in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") else "INFO"
+LOG_LEVEL_INT = getattr(logging, LOG_LEVEL_STR, logging.INFO)
+
+_log_json_raw = (os.environ.get("TAXOPS_LOG_JSON_PATH") or "").strip()
+LOG_JSON_PATH = Path(_log_json_raw) if _log_json_raw else None
+
+try:
+    _log_mb = int(os.environ.get("TAXOPS_LOG_JSON_MAX_MB", "50"))
+except ValueError:
+    _log_mb = 50
+LOG_JSON_MAX_BYTES = max(1, _log_mb) * 1024 * 1024
+
+try:
+    LOG_JSON_BACKUP_COUNT = int(os.environ.get("TAXOPS_LOG_JSON_BACKUPS", "10"))
+except ValueError:
+    LOG_JSON_BACKUP_COUNT = 10
+LOG_JSON_BACKUP_COUNT = max(0, LOG_JSON_BACKUP_COUNT)
+
+_lc = os.environ.get("TAXOPS_LOG_CONSOLE", "true").lower()
+LOG_CONSOLE_ENABLED = _lc in ("true", "1", "yes", "on")
+
+# PROD-3 — GET /health version string (CI/NSSM can set explicit release label).
+_RELEASE_VERSION_CACHED: str | None = None
+
+
+def taxops_release_version() -> str:
+    """``TAXOPS_VERSION`` overrides; otherwise short git SHA when ``.git`` exists; else ``unknown``."""
+    global _RELEASE_VERSION_CACHED
+    if _RELEASE_VERSION_CACHED is not None:
+        return _RELEASE_VERSION_CACHED
+    tagged = os.environ.get("TAXOPS_VERSION", "").strip()
+    if tagged:
+        _RELEASE_VERSION_CACHED = tagged
+        return _RELEASE_VERSION_CACHED
+    if not (_HERE.parent / ".git").exists():
+        _RELEASE_VERSION_CACHED = "unknown"
+        return _RELEASE_VERSION_CACHED
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(_HERE.parent), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        out = proc.stdout.strip() if proc.stdout else ""
+        _RELEASE_VERSION_CACHED = out if proc.returncode == 0 and out else "unknown"
+    except (OSError, subprocess.TimeoutExpired):
+        _RELEASE_VERSION_CACHED = "unknown"
+    return _RELEASE_VERSION_CACHED
+
+
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 # Default Ollama tag for any code path that does not pick a model explicitly
@@ -147,7 +204,7 @@ CHAT_TRAINING_LOG_PATH = Path(
     os.environ.get("CHAT_TRAINING_LOG_PATH", str(_HERE / "data" / "ai_chat_staff_queries.jsonl"))
 )
 
-# Document extraction — model tags must exist on `ollama list` (see `.env.example`).
+
 OLLAMA_EXTRACT_MODEL_TEXT = os.environ.get(
     "OLLAMA_EXTRACT_MODEL_TEXT",
 ) or OLLAMA_MODEL
@@ -161,14 +218,32 @@ OLLAMA_EXTRACT_TIMEOUT_TEXT = int(
     os.environ.get("OLLAMA_EXTRACT_TIMEOUT_TEXT", "90")
 )
 OLLAMA_EXTRACT_TIMEOUT_VISION = int(
-    os.environ.get("OLLAMA_EXTRACT_TIMEOUT_VISION", "240")
+    os.environ.get("OLLAMA_EXTRACT_TIMEOUT_VISION", "120")
 )
 
 DOCUMENTS_BASE_PATH = os.environ.get("DOCUMENTS_BASE_PATH", str(_HERE / "documents"))
 
+# MULTIYEAR-3 — YoY highlight thresholds for GET /api/clients/<id>/years
+def _mf_env(name: str, default: str) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return float(default)
+
+
+MULTIYEAR_AGI_PERCENT_THRESHOLD = _mf_env("TAXOPS_MULTIYEAR_AGI_PCT", "10")
+MULTIYEAR_REFUND_ABS_THRESHOLD = _mf_env("TAXOPS_MULTIYEAR_REFUND_ABS", "500")
+MULTIYEAR_BALANCE_ABS_THRESHOLD = _mf_env("TAXOPS_MULTIYEAR_BALANCE_ABS", "500")
+
 # DOC-6 — Drake Documents staging root on this machine (Working/Archive Cabinet data path).
 # Blank = POST /api/return/<id>/sync-to-drake returns 400. File copy only; no Drake API.
 DRAKE_DOCUMENTS_PATH = (os.environ.get("DRAKE_DOCUMENTS_PATH") or "").strip()
+
+# Drake Documents folder structure prep — DOC-6 (mirror TaxYear / LastName_ReturnID for future sync).
+# Separate from ``DRAKE_DOCUMENTS_PATH`` (bulk staging + manifest copy).
+DRAKE_DOCUMENTS_BASE = (os.environ.get("DRAKE_DOCUMENTS_BASE") or "").strip()
+_DRAKE_FOLDER_EN = os.environ.get("DRAKE_FOLDER_STRUCTURE_ENABLED", "false").lower()
+DRAKE_FOLDER_STRUCTURE_ENABLED = _DRAKE_FOLDER_EN == "true"
 
 # Email watcher (IMAP) — leave IMAP_HOST blank to disable
 IMAP_HOST          = os.environ.get("IMAP_HOST", "")
@@ -367,6 +442,15 @@ DRAKE_TYPE_FORMS: dict[str, dict[str, int]] = {
     "990":     {"form_990_1041": 1},
     "1041":    {"form_990_1041": 1},
 }
+
+# ── AUDIT (AUDIT-2…AUDIT-7) ─────────────────────────────────────────────────
+_audit_on = (os.environ.get("AUDIT_LOGGING_ENABLED", "true") or "").lower()
+AUDIT_LOGGING_ENABLED = _audit_on in ("true", "1", "yes", "on")
+try:
+    AUDIT_RETENTION_YEARS_DEFAULT = int(os.environ.get("AUDIT_RETENTION_YEARS", "7"))
+except ValueError:
+    AUDIT_RETENTION_YEARS_DEFAULT = 7
+AUDIT_RETENTION_YEARS_DEFAULT = max(1, min(50, AUDIT_RETENTION_YEARS_DEFAULT))
 
 EXPECTED_HEADERS = [
     "LOG 2025",

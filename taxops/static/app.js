@@ -63,8 +63,10 @@ function renderSearchResults(items, container) {
     container.classList.remove("hidden");
     return;
   }
-  container.innerHTML = items.map(r => `
-    <a href="/return/${r.id}"
+  container.innerHTML = items.map(r => {
+    const href = (r.client_id != null && r.client_id !== "") ? `/clients/${r.client_id}` : `/return/${r.id}`;
+    return `
+    <a href="${href}"
        class="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
       <span class="font-mono font-bold text-slate-400 w-10 shrink-0 text-xs">${r.log_number ?? '—'}</span>
       <span class="flex-1 min-w-0">
@@ -73,7 +75,8 @@ function renderSearchResults(items, container) {
       </span>
       <span class="text-xs px-2 py-px rounded-full border shrink-0 ${r.badge || "bg-slate-100 text-slate-500 border-slate-200"}">${r.status || "—"}</span>
     </a>
-  `).join("");
+  `;
+  }).join("");
   container.classList.remove("hidden");
 }
 
@@ -454,6 +457,309 @@ function syncDashboardTableSelection() {
 
   const sc = document.getElementById("selected-count");
   if (sc) sc.textContent = String(s.size);
+
+  syncBulkActionsBar();
+}
+
+function syncBulkActionsBar() {
+  const bar = document.getElementById("bulk-actions-bar");
+  const bn = document.getElementById("bulk-actions-count");
+  if (!bar || !bn) return;
+  const n = readPersistentSet().size;
+  bn.textContent = String(n);
+  bar.style.display = n > 0 ? "flex" : "none";
+}
+
+/** Dashboard bulk overlays + toast(BULK-2…6) — no-ops unless toolbar markup exists. */
+let _bulkConfirm = null;
+let _bulkCommitInFlight = false;
+let _dashboardBulkToastTimer = null;
+
+function openBulkModal(el) {
+  if (!el) return;
+  el.classList.remove("hidden");
+  el.classList.add("flex");
+}
+
+function closeBulkModal(el) {
+  if (!el) return;
+  el.classList.add("hidden");
+  el.classList.remove("flex");
+}
+
+function hideDashboardBulkToast() {
+  const wrap = document.getElementById("dashboard-bulk-toast");
+  if (!wrap) return;
+  wrap.classList.add("opacity-0", "translate-y-2");
+  wrap.classList.remove("opacity-100", "translate-y-0");
+}
+
+/** @param {'success'|'error'|'warn'} variant */
+function showDashboardBulkToast(variant, innerHtml, durationMs) {
+  const wrap = document.getElementById("dashboard-bulk-toast");
+  const inner = document.getElementById("dashboard-bulk-toast-inner");
+  if (!wrap || !inner) return;
+
+  clearTimeout(_dashboardBulkToastTimer);
+  const skin =
+    variant === "success"
+      ? "border-green-200 bg-green-50 text-green-950"
+      : variant === "warn"
+        ? "border-amber-200 bg-amber-50 text-amber-950"
+        : "border-red-200 bg-red-50 text-red-950";
+
+  inner.className = `rounded-xl border px-4 py-3 shadow-2xl text-sm pointer-events-auto ${skin}`;
+  inner.innerHTML = innerHtml;
+
+  wrap.classList.remove("opacity-0", "translate-y-2");
+  wrap.classList.add("opacity-100", "translate-y-0");
+
+  const ms =
+    typeof durationMs === "number"
+      ? durationMs
+      : variant === "success"
+        ? 5500
+        : 14000;
+
+  _dashboardBulkToastTimer = setTimeout(() => hideDashboardBulkToast(), ms);
+}
+
+function formatBulkErrorList(errors) {
+  if (!errors || errors.length === 0) return "";
+  const cap = errors.slice(0, 35);
+  const items = cap
+    .map((e) => {
+      const id = e.return_id != null ? `#${e.return_id}` : "—";
+      return `<li class="leading-snug"><span class="font-mono">${escHtml(String(id))}</span> — ${escHtml(
+        String(e.error || ""),
+      )}</li>`;
+    })
+    .join("");
+  const more =
+    errors.length > cap.length
+      ? `<li class="text-slate-600 list-none mt-1">…and ${errors.length - cap.length} more.</li>`
+      : "";
+  return `<ul class="list-disc pl-4 mt-2 space-y-0.5 text-xs">${items}${more}</ul>`;
+}
+
+async function dashboardBulkFetchJson(endpoint, payload) {
+  let resp;
+  try {
+    resp = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    return { ok: false, status: 0, body: {}, networkError: String((e && e.message) || e || "network") };
+  }
+
+  const raw = await resp.text().catch(() => "");
+  let body = {};
+  if (raw) {
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      body = { error: raw.slice(0, 200) };
+    }
+  }
+
+  if (resp.status === 401) {
+    window.location.href = `/login?next=${encodeURIComponent(
+      `${window.location.pathname}${window.location.search}`,
+    )}`;
+    return { ok: false, status: 401, body, unauthorized: true };
+  }
+
+  return { ok: resp.ok, status: resp.status, body };
+}
+
+function initDashboardBulkActions() {
+  const bar = document.getElementById("bulk-actions-bar");
+  const statusModal = document.getElementById("bulk-status-modal");
+  const prepModal = document.getElementById("bulk-preparer-modal");
+  if (!bar || !statusModal || !prepModal) return;
+
+  const stPick = document.getElementById("bulk-status-pick");
+  const prPick = document.getElementById("bulk-preparer-pick");
+
+  [statusModal, prepModal].forEach((modal) => {
+    modal.querySelectorAll(".bulk-modal-cancel").forEach((b) => {
+      b.addEventListener("click", () => {
+        closeBulkModal(statusModal);
+        closeBulkModal(prepModal);
+        _bulkConfirm = null;
+      });
+    });
+    modal.addEventListener("click", (ev) => {
+      if (ev.target === modal) {
+        closeBulkModal(modal);
+        _bulkConfirm = null;
+      }
+    });
+  });
+
+  document.getElementById("btn-bulk-status-open")?.addEventListener("click", () => {
+    const ids =
+      typeof window.getSelectedReturnIds === "function" ? window.getSelectedReturnIds() : [];
+    if (!ids.length) {
+      showDashboardBulkToast(
+        "warn",
+        `<p class="font-semibold">No returns selected</p><p class="text-xs mt-1 opacity-90">Select one or more rows with the checkboxes first.</p>`,
+        5000,
+      );
+      return;
+    }
+    const st = stPick?.value || "";
+    const sm = document.getElementById("bulk-status-modal-summary");
+    if (sm) {
+      sm.innerHTML = `
+        <p>Set client status on <strong class="tabular-nums">${ids.length}</strong> return${ids.length === 1 ? "" : "s"} 
+        to <strong>${escHtml(st)}</strong>.</p>
+        <p class="text-xs mt-2 text-slate-500">The server applies this as one transaction — if any return cannot move, nothing changes and you’ll see details below.</p>`;
+    }
+    _bulkConfirm = { kind: "status", ids, status: st };
+    openBulkModal(statusModal);
+  });
+
+  document.getElementById("btn-bulk-preparer-open")?.addEventListener("click", () => {
+    const ids =
+      typeof window.getSelectedReturnIds === "function" ? window.getSelectedReturnIds() : [];
+    if (!ids.length) {
+      showDashboardBulkToast(
+        "warn",
+        `<p class="font-semibold">No returns selected</p><p class="text-xs mt-1 opacity-90">Select one or more rows with the checkboxes first.</p>`,
+        5000,
+      );
+      return;
+    }
+    const raw = prPick?.value ?? "";
+    const label =
+      raw && String(raw).trim()
+        ? escHtml(preparerListLabelJs(String(raw)))
+        : '<span class="italic">clear assignment</span>';
+    const sm = document.getElementById("bulk-preparer-modal-summary");
+    if (sm) {
+      sm.innerHTML = `
+        <p>Assign preparer on <strong class="tabular-nums">${ids.length}</strong> return${ids.length === 1 ? "" : "s"} 
+        to <strong>${label}</strong>.</p>
+        <p class="text-xs mt-2 text-slate-500">Rows already set to this preparer count as skipped (shown in the success toast).</p>`;
+    }
+    _bulkConfirm = { kind: "preparer", ids, processor: raw.trim() === "" ? null : raw };
+    openBulkModal(prepModal);
+  });
+
+  document.getElementById("bulk-status-modal-commit")?.addEventListener("click", async () => {
+    if (_bulkCommitInFlight || !_bulkConfirm || _bulkConfirm.kind !== "status") return;
+    const pending = _bulkConfirm;
+    const btns = statusModal.querySelectorAll("button");
+    _bulkCommitInFlight = true;
+    btns.forEach((x) => {
+      x.disabled = true;
+    });
+    try {
+      const result = await dashboardBulkFetchJson("/api/returns/bulk-status", {
+        return_ids: pending.ids,
+        status: pending.status,
+      });
+      if (result.unauthorized) return;
+
+      closeBulkModal(statusModal);
+      const b = result.body || {};
+      const errs = b.errors || [];
+
+      if (!result.ok) {
+        if (result.networkError) {
+          showDashboardBulkToast(
+            "error",
+            `<p class="font-semibold">Bulk status failed</p><p class="text-xs mt-1">${escHtml(result.networkError)}</p>`,
+          );
+          return;
+        }
+        const msg = b.error
+          ? `<p>${escHtml(String(b.error))}</p>`
+          : `<p class="font-semibold">Could not bulk update status (${result.status})</p>`;
+        showDashboardBulkToast("error", msg + formatBulkErrorList(errs));
+        return;
+      }
+
+      const nUp = typeof b.changed === "number" ? b.changed : pending.ids.length;
+      showDashboardBulkToast(
+        "success",
+        `<p class="font-semibold">Updated ${nUp} return${nUp !== 1 ? "s" : ""}</p><p class="text-xs mt-1">Reloading the dashboard…</p>`,
+        4000,
+      );
+      window.setTimeout(() => window.location.reload(), 350);
+    } finally {
+      _bulkCommitInFlight = false;
+      btns.forEach((x) => {
+        x.disabled = false;
+      });
+      _bulkConfirm = null;
+    }
+  });
+
+  document.getElementById("bulk-preparer-modal-commit")?.addEventListener("click", async () => {
+    if (_bulkCommitInFlight || !_bulkConfirm || _bulkConfirm.kind !== "preparer") return;
+    const pending = _bulkConfirm;
+    const btns = prepModal.querySelectorAll("button");
+    _bulkCommitInFlight = true;
+    btns.forEach((x) => {
+      x.disabled = true;
+    });
+    try {
+      const result = await dashboardBulkFetchJson("/api/returns/bulk-processor", {
+        return_ids: pending.ids,
+        processor: pending.processor,
+      });
+      if (result.unauthorized) return;
+
+      closeBulkModal(prepModal);
+      const b = result.body || {};
+      const errs = b.errors || [];
+
+      if (!result.ok) {
+        if (result.networkError) {
+          showDashboardBulkToast(
+            "error",
+            `<p class="font-semibold">Bulk preparer failed</p><p class="text-xs mt-1">${escHtml(result.networkError)}</p>`,
+          );
+          return;
+        }
+        const msg = b.error
+          ? `<p>${escHtml(String(b.error))}</p>`
+          : `<p class="font-semibold">Could not bulk assign preparer (${result.status})</p>`;
+        showDashboardBulkToast("error", msg + formatBulkErrorList(errs));
+        return;
+      }
+
+      const ch = typeof b.changed === "number" ? b.changed : 0;
+      const skipped = pending.ids.length - ch;
+
+      if (ch > 0) {
+        showDashboardBulkToast(
+          "success",
+          `<p class="font-semibold">Preparer updated on ${ch} return${ch !== 1 ? "s" : ""}</p>` +
+            (skipped > 0 ? `<p class="text-xs mt-1 opacity-90">${skipped} already matched — skipped.</p>` : "") +
+            `<p class="text-xs mt-1">Reloading the dashboard…</p>`,
+          5500,
+        );
+        window.setTimeout(() => window.location.reload(), 380);
+      } else {
+        showDashboardBulkToast(
+          "warn",
+          `<p class="font-semibold">Nothing to update</p><p class="text-xs mt-1">Each selected row already had this preparer assignment.</p>`,
+          7000,
+        );
+      }
+    } finally {
+      _bulkCommitInFlight = false;
+      btns.forEach((x) => {
+        x.disabled = false;
+      });
+      _bulkConfirm = null;
+    }
+  });
 }
 
 function initDashboardTableSelection() {
@@ -530,13 +836,124 @@ document.addEventListener("click", e => {
   }
 });
 
+// ── PROD-6 Client error boundary (global handlers + optional server report) ─
+
+const _CLIENT_ERR_DEDUP_MS = 60_000;
+const _clientErrDedup = new Map();
+
+const _CLIENT_ERR_DEFAULT_DETAIL =
+  "A script hit an unexpected issue. Your data on the server is fine. Reload if buttons or searches stop responding. A short report was posted to the server log for staff.";
+
+function _clientErrDedupKey(parts) {
+  return parts.join("\u241e");
+}
+
+function _clientErrShouldSend(key) {
+  const now = Date.now();
+  const t = _clientErrDedup.get(key);
+  if (t !== undefined && now - t < _CLIENT_ERR_DEDUP_MS) return false;
+  _clientErrDedup.set(key, now);
+  if (_clientErrDedup.size > 200) _clientErrDedup.clear();
+  return true;
+}
+
+function _truncateClientErrStr(s, max) {
+  const t = typeof s === "string" ? s : String(s);
+  return t.length > max ? t.slice(0, max - 1) + "\u2026" : t;
+}
+
+function postClientErrorReport(payload) {
+  try {
+    const pk = _clientErrDedupKey([
+      payload.kind || "",
+      payload.message || "",
+      payload.filename || "",
+      String(payload.lineno ?? ""),
+    ]);
+    if (!_clientErrShouldSend(pk)) return;
+    const body = {
+      kind: _truncateClientErrStr(payload.kind || "unknown", 32),
+      message: _truncateClientErrStr(payload.message || "", 2000),
+      page_url: _truncateClientErrStr(payload.page_url || "", 2000),
+      filename: _truncateClientErrStr(payload.filename || "", 500),
+      lineno: payload.lineno,
+      colno: payload.colno,
+      stack: _truncateClientErrStr(payload.stack || "", 8000),
+    };
+    fetch("/api/client-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+    }).catch(() => {});
+  } catch {
+    /* never throw — error handlers must stay safe */
+  }
+}
+
+function showClientErrorBoundaryFriendly() {
+  const panel = document.getElementById("client-error-boundary");
+  const detail = document.getElementById("client-error-boundary-detail");
+  if (!panel || !detail) return;
+  detail.textContent = _CLIENT_ERR_DEFAULT_DETAIL;
+  panel.classList.remove("hidden");
+}
+
+(function registerTaxopsClientFatalHandlers() {
+  window.addEventListener("error", (ev) => {
+    const msg = ev.message ? String(ev.message) : "Script error";
+    showClientErrorBoundaryFriendly();
+    postClientErrorReport({
+      kind: "error",
+      message: msg,
+      filename: ev.filename || "",
+      lineno: typeof ev.lineno === "number" ? ev.lineno : null,
+      colno: typeof ev.colno === "number" ? ev.colno : null,
+      stack: ev.error && ev.error.stack ? String(ev.error.stack) : "",
+      page_url: window.location.href || "",
+    });
+  });
+
+  window.addEventListener("unhandledrejection", (ev) => {
+    const r = ev.reason;
+    let msg = "Unhandled promise rejection";
+    let stack = "";
+    if (typeof r === "string") msg = r;
+    else if (r && typeof r === "object" && typeof r.message === "string") {
+      msg = r.message || msg;
+      if (typeof r.stack === "string") stack = r.stack;
+    }
+    showClientErrorBoundaryFriendly();
+    postClientErrorReport({
+      kind: "unhandledrejection",
+      message: msg,
+      filename: "",
+      lineno: null,
+      colno: null,
+      stack,
+      page_url: window.location.href || "",
+    });
+  });
+})();
+
+function wireClientErrorBoundaryButtons() {
+  const panel = document.getElementById("client-error-boundary");
+  const btnDismiss = document.getElementById("client-error-boundary-dismiss");
+  const btnReload = document.getElementById("client-error-boundary-reload");
+  if (!panel || !btnDismiss || !btnReload) return;
+  btnDismiss.addEventListener("click", () => panel.classList.add("hidden"));
+  btnReload.addEventListener("click", () => window.location.reload());
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", () => {
+  wireClientErrorBoundaryButtons();
   initSearch();
   initInlineEdit();
   initTableFilter();
   initDashboardTableSelection();
+  initDashboardBulkActions();
   initYearPicker();
 
   // Press "/" to focus search from anywhere

@@ -3,7 +3,7 @@ IRS-oriented form tables — INSERT column lists, INTEGER identifiers, ALTER spe
 
 Keeps DOC-7 DB migrations and SAVE paths aligned without circular imports.
 
-Legacy columns kept for older rows / DOC-4 field names — never renamed or dropped.
+Legacy columns may remain on disk for older rows — new inserts use IRS box-named columns only.
 """
 
 from __future__ import annotations
@@ -59,9 +59,6 @@ FORM_TABLE_INSERT_COLUMNS: dict[str, list[str]] = {
         "box6_state",
         "box7_state_income",
         "tax_year",
-        # legacy
-        "nonemployee_compensation",
-        "federal_income_tax_withheld",
     ],
     "f1099_misc_records": [
         "payer_name",
@@ -84,11 +81,6 @@ FORM_TABLE_INSERT_COLUMNS: dict[str, list[str]] = {
         "box17_state",
         "box18_state_income",
         "tax_year",
-        # legacy
-        "rents",
-        "royalties",
-        "other_income",
-        "federal_income_tax_withheld",
     ],
     "f1099_int_records": [
         "payer_name",
@@ -111,11 +103,6 @@ FORM_TABLE_INSERT_COLUMNS: dict[str, list[str]] = {
         "box16_state_identification",
         "box17_state_tax_withheld",
         "tax_year",
-        # legacy
-        "interest_income",
-        "early_withdrawal_penalty",
-        "us_savings_bond_interest",
-        "federal_income_tax_withheld",
     ],
     "f1099_div_records": [
         "payer_name",
@@ -143,11 +130,6 @@ FORM_TABLE_INSERT_COLUMNS: dict[str, list[str]] = {
         "box15_state_identification",
         "box16_state_tax_withheld",
         "tax_year",
-        # legacy
-        "total_ordinary_dividends",
-        "qualified_dividends",
-        "total_capital_gain",
-        "federal_income_tax_withheld",
     ],
 }
 
@@ -165,6 +147,62 @@ FORM_INTEGER_COLUMNS: frozenset[str] = frozenset(
 FORM_TABLE_INSERT_COLUMN_SETS: dict[str, frozenset[str]] = {
     t: frozenset(cols) for t, cols in FORM_TABLE_INSERT_COLUMNS.items()
 }
+
+# Columns kept in CREATE_TABLE / disk for migrated historical rows only (FORMS-3).
+# extractor / ai_routes._save_form_data must NEVER list these in FORM_TABLE_INSERT_COLUMNS.
+FORM_LEGACY_MIRROR_COLUMNS: dict[str, frozenset[str]] = {
+    "w2_records": frozenset(
+        {
+            "wages_tips_other",
+            "federal_income_tax_withheld",
+            "state_wages",
+            "state_income_tax",
+        }
+    ),
+    "f1099_nec_records": frozenset(
+        {
+            "nonemployee_compensation",
+            "federal_income_tax_withheld",
+        }
+    ),
+    "f1099_misc_records": frozenset(
+        {
+            "rents",
+            "royalties",
+            "other_income",
+            "federal_income_tax_withheld",
+        }
+    ),
+    "f1099_int_records": frozenset(
+        {
+            "interest_income",
+            "early_withdrawal_penalty",
+            "us_savings_bond_interest",
+            "federal_income_tax_withheld",
+        }
+    ),
+    "f1099_div_records": frozenset(
+        {
+            "total_ordinary_dividends",
+            "qualified_dividends",
+            "total_capital_gain",
+            "federal_income_tax_withheld",
+        }
+    ),
+}
+
+
+def _assert_legacy_mirrors_excluded_from_inserts() -> None:
+    for tbl, legacy in FORM_LEGACY_MIRROR_COLUMNS.items():
+        ins = FORM_TABLE_INSERT_COLUMN_SETS.get(tbl, frozenset())
+        overlap = ins & legacy
+        if overlap:
+            raise ValueError(
+                f"{tbl}: FORM_TABLE_INSERT_COLUMNS must not include legacy mirrors {sorted(overlap)}"
+            )
+
+
+_assert_legacy_mirrors_excluded_from_inserts()
 
 # DDL fragments for ALTER ADD — every business column vs empty DB bootstrap
 CREATE_TABLE_FRAGMENTS_DOC7: dict[str, str] = {

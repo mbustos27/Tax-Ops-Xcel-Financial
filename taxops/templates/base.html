@@ -50,12 +50,12 @@
         <!-- Tools dropdown (queues & utility pages consolidated to free header space for search) -->
         {% set tools_active =
             active_page in ('upload','source_compare','import_audit','merge','efile_batch','audit_log',
-                            'logout','efile','payments','review','ai_chat')
+                            'logout','efile','payments','review','ai_chat','season_rollover')
             or request.path.startswith('/email-review')
         %}
         <div class="relative" id="tools-menu-wrap">
           <button id="tools-btn"
-                  onclick="toggleToolsMenu()"
+                  type="button"
                   class="nav-link flex items-center gap-1 {% if tools_active %}active{% endif %}">
             Tools
             <svg class="w-3 h-3 mt-0.5 transition-transform" id="tools-chevron"
@@ -123,6 +123,12 @@
                class="tools-item {% if active_page == 'audit_log' %}tools-item-active{% endif %}">
               Audit log
             </a>
+            {% if can_run_season_rollover %}
+            <a href="{{ url_for('season_rollover_admin') }}"
+               class="tools-item {% if active_page == 'season_rollover' %}tools-item-active{% endif %}">
+              Season rollover
+            </a>
+            {% endif %}
             <a href="/merge-clients"
                class="tools-item {% if active_page == 'merge' %}tools-item-active{% endif %}">
               Merge Dupes
