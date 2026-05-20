@@ -280,89 +280,92 @@
   {% endfor %}
 
   <script>
-  async function applyField(returnId, field, value, source) {
-    await _applyFields(returnId, {[field]: value}, source || 'manual');
-  }
+(function () {
 
-  // Apply all fields whose recommended source/value was set by the priority rules.
-  // Each <tr> carries data-recval and data-recsource from the backend.
-  async function applyRecommended(returnId) {
-    const table = document.getElementById('cmp-table-' + returnId);
-    if (!table) return;
-    // Group by source so the backend can enforce manual-only guards cleanly.
-    const manualFields = {}, drakeFields = {};
-    table.querySelectorAll('tr[data-field]').forEach(tr => {
-      const recSrc = tr.dataset.recsource;
-      const recVal = tr.dataset.recval;
-      if (!recVal || recSrc.includes('conflict')) return;  // skip conflicts
-      if (recSrc === 'manual') manualFields[tr.dataset.field] = recVal;
-      else if (recSrc === 'drake') drakeFields[tr.dataset.field] = recVal;
-    });
-    const btn = event && event.target;
-    if (btn) btn.disabled = true;
-    let ok = true;
-    if (Object.keys(manualFields).length)
-      ok = ok && (await _applyFields(returnId, manualFields, 'manual', /*quiet*/true)).ok;
-    if (Object.keys(drakeFields).length)
-      ok = ok && (await _applyFields(returnId, drakeFields, 'drake', /*quiet*/true)).ok;
-    if (ok) {
-      const card = table.closest('details');
-      if (card) card.style.opacity = '0.5';
-      if (btn) btn.textContent = '✓ Applied';
-    } else if (btn) {
-      btn.disabled = false;
+    async function applyField(returnId, field, value, source) {
+      await _applyFields(returnId, {[field]: value}, source || 'manual');
     }
-  }
 
-  async function applyAllFrom(returnId, source) {
-    const table = document.getElementById('cmp-table-' + returnId);
-    if (!table) return;
-    const fields = {};
-    // Status fields are always manual-only regardless of source button pressed
-    const manualOnlyFields = new Set(['client_status', 'drake_status_raw']);
-    table.querySelectorAll('tr[data-field]').forEach(tr => {
-      const f = tr.dataset.field;
-      const useManual = source === 'manual' || manualOnlyFields.has(f);
-      const val = useManual ? tr.dataset.mraw : tr.dataset.draw;
-      if (val && val !== '—') fields[f] = val;
-    });
-    await _applyFields(returnId, fields, source);
-  }
-  async function _applyFields(returnId, fields, source, quiet) {
-    const btn = (!quiet && event) ? event.target : null;
-    if (btn) btn.disabled = true;
-    try {
-      const r = await fetch('/api/source-compare/apply', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({return_id: returnId, source: source || 'manual', fields})
+    // Apply all fields whose recommended source/value was set by the priority rules.
+    // Each <tr> carries data-recval and data-recsource from the backend.
+    async function applyRecommended(returnId) {
+      const table = document.getElementById('cmp-table-' + returnId);
+      if (!table) return;
+      // Group by source so the backend can enforce manual-only guards cleanly.
+      const manualFields = {}, drakeFields = {};
+      table.querySelectorAll('tr[data-field]').forEach(tr => {
+        const recSrc = tr.dataset.recsource;
+        const recVal = tr.dataset.recval;
+        if (!recVal || recSrc.includes('conflict')) return;  // skip conflicts
+        if (recSrc === 'manual') manualFields[tr.dataset.field] = recVal;
+        else if (recSrc === 'drake') drakeFields[tr.dataset.field] = recVal;
       });
-      const data = await r.json();
-      if (data.ok) {
-        const applied = data.applied || [];
-        const tableEl = document.getElementById('cmp-table-' + returnId);
-        if (tableEl) {
-          applied.forEach(col => {
-            const tr = tableEl.querySelector(`tr[data-field="${col}"]`);
-            if (tr) tr.style.opacity = '0.4';
-          });
-        }
-        if (btn && !quiet) {
-          btn.textContent = '✓ Applied';
-          btn.className = btn.className.replace(/bg-\w+-\d+/g, 'bg-green-100');
-        }
-      } else if (!quiet) {
-        alert('Error: ' + (data.error || 'Unknown error'));
-        if (btn) btn.disabled = false;
+      const btn = event && event.target;
+      if (btn) btn.disabled = true;
+      let ok = true;
+      if (Object.keys(manualFields).length)
+        ok = ok && (await _applyFields(returnId, manualFields, 'manual', /*quiet*/true)).ok;
+      if (Object.keys(drakeFields).length)
+        ok = ok && (await _applyFields(returnId, drakeFields, 'drake', /*quiet*/true)).ok;
+      if (ok) {
+        const card = table.closest('details');
+        if (card) card.style.opacity = '0.5';
+        if (btn) btn.textContent = '✓ Applied';
+      } else if (btn) {
+        btn.disabled = false;
       }
-      return data;
-    } catch(e) {
-      if (!quiet) alert('Network error: ' + e.message);
-      if (btn) btn.disabled = false;
-      return {ok: false};
     }
-  }
-  </script>
+
+    async function applyAllFrom(returnId, source) {
+      const table = document.getElementById('cmp-table-' + returnId);
+      if (!table) return;
+      const fields = {};
+      // Status fields are always manual-only regardless of source button pressed
+      const manualOnlyFields = new Set(['client_status', 'drake_status_raw']);
+      table.querySelectorAll('tr[data-field]').forEach(tr => {
+        const f = tr.dataset.field;
+        const useManual = source === 'manual' || manualOnlyFields.has(f);
+        const val = useManual ? tr.dataset.mraw : tr.dataset.draw;
+        if (val && val !== '—') fields[f] = val;
+      });
+      await _applyFields(returnId, fields, source);
+    }
+    async function _applyFields(returnId, fields, source, quiet) {
+      const btn = (!quiet && event) ? event.target : null;
+      if (btn) btn.disabled = true;
+      try {
+        const r = await _csrfFetch('/api/source-compare/apply', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({return_id: returnId, source: source || 'manual', fields})
+        });
+        const data = await r.json();
+        if (data.ok) {
+          const applied = data.applied || [];
+          const tableEl = document.getElementById('cmp-table-' + returnId);
+          if (tableEl) {
+            applied.forEach(col => {
+              const tr = tableEl.querySelector(`tr[data-field="${col}"]`);
+              if (tr) tr.style.opacity = '0.4';
+            });
+          }
+          if (btn && !quiet) {
+            btn.textContent = '✓ Applied';
+            btn.className = btn.className.replace(/bg-\w+-\d+/g, 'bg-green-100');
+          }
+        } else if (!quiet) {
+          alert('Error: ' + (data.error || 'Unknown error'));
+          if (btn) btn.disabled = false;
+        }
+        return data;
+      } catch(e) {
+        if (!quiet) alert('Network error: ' + e.message);
+        if (btn) btn.disabled = false;
+        return {ok: false};
+      }
+    }
+})();
+</script>
 
   {% if cmp.manual_orphans and cmp.manual_orphans | length > 0 %}
   <div class="bg-white rounded-xl border border-slate-200 p-4">

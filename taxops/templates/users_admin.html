@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}User Management — TaxOps{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-6 space-y-6 pb-24">
+
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Staff Accounts</h1>
+    <p class="text-sm text-slate-600 mt-1">
+      Create and manage staff logins. New accounts require a password change on first login.
+      Password hashes are never displayed.
+    </p>
+  </div>
+
+  <!-- ── Create user form ────────────────────────────────────────────────── -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wide">Create Account</h2>
+
+    <div id="create-result" class="hidden rounded-lg px-4 py-2.5 text-sm font-medium"></div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1" for="new-username">Username</label>
+        <input id="new-username" type="text" autocomplete="off" placeholder="e.g. jsmith"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1" for="new-display">Display name</label>
+        <input id="new-display" type="text" autocomplete="off" placeholder="e.g. Jane Smith"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1" for="new-role">Role</label>
+        <select id="new-role"
+                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          <option value="staff">Staff</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1" for="new-password">Temporary password</label>
+        <input id="new-password" type="text" autocomplete="new-password" placeholder="min 8 characters"
+               class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400">
+        <p class="text-xs text-slate-400 mt-1">Shown once. Staff must change it on first login.</p>
+      </div>
+    </div>
+
+    <button id="create-user-btn" type="button"
+            class="mt-1 px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors">
+      Create account
+    </button>
+  </div>
+
+  <!-- ── User table ──────────────────────────────────────────────────────── -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="px-5 py-3 border-b border-slate-100">
+      <span class="text-sm font-bold text-slate-800 uppercase tracking-wide">All Accounts</span>
+    </div>
+
+    <div id="reset-result" class="hidden mx-5 mt-3 rounded-lg px-4 py-2.5 text-sm font-medium"></div>
+
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-slate-400 uppercase tracking-wide bg-slate-50 border-b border-slate-100">
+          <th class="px-5 py-2.5 text-left">Username</th>
+          <th class="px-5 py-2.5 text-left">Display name</th>
+          <th class="px-5 py-2.5 text-left">Role</th>
+          <th class="px-5 py-2.5 text-left">Status</th>
+          <th class="px-5 py-2.5 text-left">Last login</th>
+          <th class="px-5 py-2.5 text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="users-tbody">
+        {% for u in users %}
+        <tr class="border-t border-slate-100 hover:bg-slate-50" id="user-row-{{ u.id }}">
+          <td class="px-5 py-3 font-mono text-slate-800">{{ u.username }}</td>
+          <td class="px-5 py-3 text-slate-700">
+            {{ u.display_name or u.username }}
+            {% if u.must_change_password %}
+            <span class="ml-1 text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200 rounded px-1 py-0.5">temp pw</span>
+            {% endif %}
+          </td>
+          <td class="px-5 py-3">
+            {% if u.role == 'admin' %}
+            <span class="text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200 rounded-full px-2 py-0.5">Admin</span>
+            {% else %}
+            <span class="text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-2 py-0.5">Staff</span>
+            {% endif %}
+          </td>
+          <td class="px-5 py-3">
+            {% if u.is_active %}
+            <span class="text-xs font-semibold text-green-700">Active</span>
+            {% else %}
+            <span class="text-xs font-semibold text-red-600">Inactive</span>
+            {% endif %}
+          </td>
+          <td class="px-5 py-3 text-slate-500 tabular-nums text-xs">
+            {{ (u.last_login_at or '—')[:16].replace('T',' ') }}
+          </td>
+          <td class="px-5 py-3">
+            <div class="flex gap-2 justify-end flex-wrap">
+              <!-- Reset password inline form -->
+              <form class="reset-pw-form flex gap-1" data-uid="{{ u.id }}">
+                <input type="text" autocomplete="new-password" placeholder="new temp pw"
+                       class="reset-pw-input border border-slate-300 rounded-lg px-2 py-1 text-xs font-mono w-28 focus:outline-none focus:ring-1 focus:ring-indigo-400">
+                <button type="submit"
+                        class="text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 py-1 transition-all whitespace-nowrap">
+                  Reset
+                </button>
+              </form>
+              <button type="button"
+                      class="reset-tour-btn text-xs font-semibold text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1 transition-all"
+                      data-uid="{{ u.id }}">
+                Reset tour
+              </button>
+              {% if u.is_active %}
+              <button type="button"
+                      class="deactivate-btn text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-2.5 py-1 transition-all"
+                      data-uid="{{ u.id }}" data-username="{{ u.username }}">
+                Deactivate
+              </button>
+              {% else %}
+              <button type="button"
+                      class="reactivate-btn text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-2.5 py-1 transition-all"
+                      data-uid="{{ u.id }}">
+                Reactivate
+              </button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="px-5 py-8 text-center text-slate-400 text-sm">No accounts yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  function showResult(el, ok, msg) {
+    el.className = 'rounded-lg px-4 py-2.5 text-sm font-medium ' +
+      (ok ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 5000);
+  }
+
+  // ── Create user ────────────────────────────────────────────────────────────
+  document.getElementById('create-user-btn').addEventListener('click', async () => {
+    const res = document.getElementById('create-result');
+    const username = document.getElementById('new-username').value.trim();
+    const display  = document.getElementById('new-display').value.trim();
+    const role     = document.getElementById('new-role').value;
+    const pw       = document.getElementById('new-password').value;
+    if (!username || !pw) { showResult(res, false, 'Username and temporary password are required.'); return; }
+    const r = await _csrfFetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, display_name: display, role, temporary_password: pw }),
+    });
+    const d = await r.json();
+    if (d.success) {
+      showResult(res, true, `Account created. Temporary password: ${pw} — share with staff and clear this field.`);
+      document.getElementById('new-username').value = '';
+      document.getElementById('new-display').value  = '';
+      document.getElementById('new-password').value = '';
+      setTimeout(() => location.reload(), 2500);
+    } else {
+      showResult(res, false, d.error || 'Could not create account.');
+    }
+  });
+
+  // ── Reset password ─────────────────────────────────────────────────────────
+  document.querySelectorAll('.reset-pw-form').forEach(form => {
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const uid = form.dataset.uid;
+      const pw  = form.querySelector('.reset-pw-input').value;
+      const res = document.getElementById('reset-result');
+      if (!pw) return;
+      const r = await _csrfFetch(`/api/admin/users/${uid}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ temporary_password: pw }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        showResult(res, true, `Password reset. New temporary password: ${pw}`);
+        form.querySelector('.reset-pw-input').value = '';
+      } else {
+        showResult(res, false, d.error || 'Could not reset password.');
+      }
+    });
+  });
+
+  // ── Deactivate ─────────────────────────────────────────────────────────────
+  document.querySelectorAll('.deactivate-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const uid  = btn.dataset.uid;
+      const name = btn.dataset.username;
+      if (!confirm(`Deactivate account for "${name}"? They will not be able to log in.`)) return;
+      const r = await _csrfFetch(`/api/admin/users/${uid}/deactivate`, { method: 'POST' });
+      const d = await r.json();
+      if (d.success) location.reload();
+      else alert(d.error || 'Could not deactivate.');
+    });
+  });
+
+  // ── Reactivate ─────────────────────────────────────────────────────────────
+  document.querySelectorAll('.reactivate-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const uid = btn.dataset.uid;
+      const r = await _csrfFetch(`/api/admin/users/${uid}/reactivate`, { method: 'POST' });
+      const d = await r.json();
+      if (d.success) location.reload();
+      else alert(d.error || 'Could not reactivate.');
+    });
+  });
+
+  // ── Reset tour (TOUR-4) ────────────────────────────────────────────────────
+  document.querySelectorAll('.reset-tour-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const uid = btn.dataset.uid;
+      const r = await _csrfFetch(`/api/admin/users/${uid}/reset-tour`, { method: 'POST' });
+      const d = await r.json();
+      if (d.success) {
+        btn.textContent = 'Tour reset ✓';
+        btn.disabled = true;
+        setTimeout(() => { btn.textContent = 'Reset tour'; btn.disabled = false; }, 3000);
+      } else {
+        alert(d.error || 'Could not reset tour.');
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

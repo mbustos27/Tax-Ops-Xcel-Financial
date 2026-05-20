@@ -161,6 +161,35 @@ def taxops_release_version() -> str:
     return _RELEASE_VERSION_CACHED
 
 
+def taxops_asset_cache_version() -> str:
+    """Token for ``?v=`` on static JS/CSS URLs (CACHE bust / GitHub #141).
+
+    Precedence:
+
+    1. ``TAXOPS_APP_VERSION`` — bump this on each deploy when shipping static-only
+       changes without changing ``TAXOPS_VERSION`` or git revision.
+    2. ``taxops_release_version()`` — ``TAXOPS_VERSION`` env, else short git SHA.
+    3. If that resolves to ``unknown`` (zip deploy without ``.git``), use max
+       mtime (ns) of bundled static files under ``taxops/static/`` so refreshes
+       still change when ``app.js`` / ``app.css`` / ``tw.min.css`` change.
+    """
+    tag = os.environ.get("TAXOPS_APP_VERSION", "").strip()
+    if tag:
+        return tag
+    ver = taxops_release_version()
+    if ver != "unknown":
+        return ver
+    try:
+        mt = 0
+        for rel in ("static/app.js", "static/app.css", "static/tw.min.css"):
+            p = _HERE / rel
+            if p.is_file():
+                mt = max(mt, p.stat().st_mtime_ns)
+        return f"m{mt}" if mt else "0"
+    except OSError:
+        return "0"
+
+
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 # Default Ollama tag for any code path that does not pick a model explicitly
@@ -218,7 +247,7 @@ OLLAMA_EXTRACT_TIMEOUT_TEXT = int(
     os.environ.get("OLLAMA_EXTRACT_TIMEOUT_TEXT", "90")
 )
 OLLAMA_EXTRACT_TIMEOUT_VISION = int(
-    os.environ.get("OLLAMA_EXTRACT_TIMEOUT_VISION", "120")
+    os.environ.get("OLLAMA_EXTRACT_TIMEOUT_VISION", "180")
 )
 
 DOCUMENTS_BASE_PATH = os.environ.get("DOCUMENTS_BASE_PATH", str(_HERE / "documents"))
@@ -263,6 +292,10 @@ MAIL_WATCHER_LLM_TIMEOUT = int(os.environ.get("MAIL_WATCHER_LLM_TIMEOUT", "45"))
 # Fuzzy client match minimum for routing email attachments (name_matcher ACCEPT_THRESHOLD is 88).
 # Lower values attach more aggressively — verify Office tolerance before lowering below ~80.
 MAIL_WATCHER_CLIENT_MATCH_MIN_SCORE = int(os.environ.get("MAIL_WATCHER_CLIENT_MATCH_MIN_SCORE", "82"))
+
+# EMAIL-7: matches with score >= MIN_SCORE but < LOW_CONF_THRESHOLD go to pending_review
+# instead of auto-attaching; staff confirms/rejects from Email Review → Pending Review.
+MAIL_LOW_CONF_THRESHOLD = int(os.environ.get("MAIL_LOW_CONF_THRESHOLD", "88"))
 
 # Gmail exposes its tab categories as IMAP folders.
 # Each folder is mapped to a handling strategy:
@@ -391,6 +424,35 @@ PERSONAL_EMAIL_DOMAINS: frozenset = frozenset({
     "verizon.net",
     "xcelfinancial.com",
 })
+
+# ── ACCOUNTING-2: Receipt OCR → QuickBooks categorization ────────────────────
+# Ollama vision model for receipt OCR (defaults to the existing extraction vision model).
+ACCOUNTING_VISION_MODEL: str = (
+    os.environ.get("OLLAMA_VISION_MODEL") or os.environ.get("OLLAMA_EXTRACT_MODEL_VISION", "llama3.2-vision")
+)
+ACCOUNTING_OCR_TIMEOUT: int = int(os.environ.get("ACCOUNTING_OCR_TIMEOUT", "180"))
+
+# QuickBooks export format: "csv" (QB Online) or "iif" (QB Desktop legacy).
+QB_EXPORT_MODE: str = (os.environ.get("QB_EXPORT_MODE") or "csv").lower()
+
+# Path to Chart of Accounts CSV (required for COA matching; optional at startup).
+COA_CSV_PATH: str = (os.environ.get("COA_CSV_PATH") or "").strip()
+
+# Path to historical transactions CSV (optional; used to seed embedding quality).
+HISTORY_CSV_PATH: str = (os.environ.get("HISTORY_CSV_PATH") or "").strip()
+
+# Embedding confidence bands: score >= HIGH → "high"; >= MEDIUM → "medium"; else "low".
+def _acc_float(name: str, default: str) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return float(default)
+
+ACCOUNTING_CONFIDENCE_HIGH: float   = _acc_float("ACCOUNTING_CONFIDENCE_HIGH", "0.80")
+ACCOUNTING_CONFIDENCE_MEDIUM: float = _acc_float("ACCOUNTING_CONFIDENCE_MEDIUM", "0.50")
+
+# Max retry attempts before receipt_queue item is permanently failed.
+ACCOUNTING_MAX_ATTEMPTS: int = int(os.environ.get("ACCOUNTING_MAX_ATTEMPTS", "3"))
 
 MANUAL_LOG_SOURCE = "MANUAL_LOG_IMPORT"
 DRAKE_SOURCE = "DRAKE_IMPORT"

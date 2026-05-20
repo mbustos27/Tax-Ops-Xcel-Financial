@@ -89,6 +89,16 @@ _STRUCTURED_TRY_CACHE_STATUS_PHRASES: tuple[tuple[str, str], ...] = tuple(
 )
 
 
+def _get_json_safe() -> dict | None:
+    """SEC-1: safe JSON body parser — mirrors the helper in app.py."""
+    ct = (request.content_type or "").lower()
+    if "application/json" in ct:
+        return request.get_json(silent=True)
+    if request.data:
+        return request.get_json(force=True, silent=True)
+    return None
+
+
 def _extract_chat_status_phrase(question: str) -> str | None:
     """Match workflow status only as a whole phrase (prevents hidden substring matches)."""
     for st in sorted(CHAT_ALLOWED_STATUSES, key=len, reverse=True):
@@ -409,6 +419,49 @@ _ALLOWED_FORM_TABLES = frozenset(
 )
 
 
+def _extract_field_truthy(fields: dict, key: str) -> bool:
+    v = fields.get(key)
+    if v is None:
+        return False
+    if isinstance(v, bool):
+        return v
+    return bool(str(v).strip())
+
+
+def _likely_paystub_overtime_ytd(fields: dict) -> bool:
+    """Heuristic: YTD + overtime on a check stub, without W-2 box fields filled."""
+    if _extract_field_truthy(fields, "box1_wages_tips_other") or _extract_field_truthy(
+        fields, "box3_social_security_wages"
+    ):
+        return False
+    ytd = any(
+        _extract_field_truthy(fields, k)
+        for k in (
+            "ytd_gross",
+            "ytd_net",
+            "ytd_federal_tax",
+            "ytd_state_tax",
+            "ytd_social_security",
+            "ytd_medicare",
+        )
+    )
+    ot = (
+        fields.get("has_overtime") is True
+        or _extract_field_truthy(fields, "overtime_hours")
+        or _extract_field_truthy(fields, "overtime_pay")
+    )
+    who = _extract_field_truthy(fields, "employer_name") or _extract_field_truthy(
+        fields, "employee_name"
+    )
+    stub_ctx = (
+        _extract_field_truthy(fields, "pay_date")
+        or _extract_field_truthy(fields, "pay_period_start")
+        or _extract_field_truthy(fields, "gross_pay_this_period")
+        or _extract_field_truthy(fields, "net_pay_this_period")
+    )
+    return bool(ytd and ot and who and stub_ctx)
+
+
 def _detect_form_type(doc_type: str | None, fields: dict) -> str | None:
     """
     Determine which form table to save extracted data to.
@@ -422,6 +475,9 @@ def _detect_form_type(doc_type: str | None, fields: dict) -> str | None:
         return None
 
     form_type_raw = str(fields.get("form_type", "") or "").upper().strip()
+    ft_compact = form_type_raw.replace("-", "").replace(" ", "").replace("/", "")
+    if ft_compact in ("PAYSTUB", "CHECKSTUB"):
+        return "paystub"
     form_type_map = {
         "W-2": "w2_records",
         "W2": "w2_records",
@@ -440,9 +496,13 @@ def _detect_form_type(doc_type: str | None, fields: dict) -> str | None:
     doc_type_map = {
         "W-2": "w2_records",
         "1099": "f1099_nec_records",
+        "paystub": "paystub",
     }
     if dt in doc_type_map:
         return doc_type_map[dt]
+
+    if _likely_paystub_overtime_ytd(fields):
+        return "paystub"
 
     if fields.get("box1_wages_tips_other") or fields.get("box3_social_security_wages"):
         return "w2_records"
@@ -474,7 +534,7 @@ def _detect_form_type(doc_type: str | None, fields: dict) -> str | None:
 
 
 _ALLOWED_CLASSIFY_DOC_TYPES = frozenset(
-    {"W-2", "1099", "prior_return", "government_id", "misc", "unknown"}
+    {"W-2", "1099", "prior_return", "government_id", "misc", "paystub", "unknown"}
 )
 
 _CLASSIFY_SUPPORTED_EXTS = frozenset({".pdf", ".jpg", ".jpeg", ".png"})
@@ -489,6 +549,7 @@ def _form_table_to_doc_type(table_name: str | None) -> str:
         "f1099_misc_records": "1099",
         "f1099_int_records": "1099",
         "f1099_div_records": "1099",
+        "paystub": "paystub",
     }.get(table_name, "unknown")
 
 
@@ -710,29 +771,60 @@ def _save_form_data(conn, table_name: str, return_id: int, doc_id: int, fields: 
 
 def _extract_pdf_text(file_path: str) -> str | None:
     """
-    Extract text from a generated PDF using pdfplumber.
-    Returns extracted text string or None if PDF has no text layer.
-    Never raises — returns None on any failure.
+    Extract text from a PDF for the **text-first** LLM path (DOC-4).
+
+    Order:
+
+    1. **pdfplumber** — good on many generated tax forms.
+    2. **PyMuPDF** ``get_text`` — often still finds a text layer when (1) is empty or poor.
+
+    If both fail or the best result is shorter than ``min_chars``, returns ``None``
+    and the extractor falls back to the **vision** model (rasterized first page).
+
+    Never raises.
     """
+    max_chars = 3000
+    min_chars = 50
+    log = logging.getLogger(__name__)
+    candidates: list[str] = []
+
     try:
         import pdfplumber
 
         with pdfplumber.open(file_path) as pdf:
-            text_parts = []
+            text_parts: list[str] = []
             for page in pdf.pages[:3]:
                 text = page.extract_text()
                 if text:
                     text_parts.append(text.strip())
-            full_text = "\n".join(text_parts)
-            if len(full_text.strip()) < 50:
-                return None
-            return full_text[:3000]
+            joined = "\n".join(text_parts).strip()
+            if joined:
+                candidates.append(joined)
     except Exception as e:
-        try:
-            current_app.logger.info(f"PDF text extraction failed: {e}")
-        except RuntimeError:
-            logging.getLogger(__name__).info("PDF text extraction failed: %s", e)
+        log.info("pdfplumber PDF text extraction failed: %s", e)
+
+    try:
+        import fitz
+
+        with fitz.open(file_path) as doc:
+            text_parts = []
+            for i in range(min(3, doc.page_count)):
+                t = doc.load_page(i).get_text()
+                if t:
+                    text_parts.append(t.strip())
+            joined = "\n".join(text_parts).strip()
+            if joined:
+                candidates.append(joined)
+    except Exception as e:
+        log.info("PyMuPDF PDF text extraction failed: %s", e)
+
+    if not candidates:
         return None
+
+    best = max(candidates, key=len).strip()
+    if len(best) < min_chars:
+        return None
+    return best[:max_chars]
 
 
 def _pdf_to_image_b64(file_path: str) -> str:
@@ -947,7 +1039,16 @@ def ai_chat_page():
 @ai.post("/chat")
 @_login_required
 def ai_chat():
-    """Staff chat: structured cache fast paths, KPI + dataplane LLM, optional NEEDS_LOOKUP second pass."""
+    """Staff chat: structured cache fast paths, KPI + dataplane LLM, optional NEEDS_LOOKUP second pass.
+
+    REL-1 SLA: this is the only route that can hold a Waitress worker for more than a few seconds.
+    The Ollama HTTP call is bounded by OLLAMA_CHAT_ANSWER_TIMEOUT_SEC (default 120 s; see config.py).
+    All document extraction LLM calls go through extraction_queue and never block a request worker.
+
+    A full 202+poll refactor (async queue + client polling) would eliminate the blocking entirely and
+    is tracked as a future improvement in REL-1.  For now the hard timeout on the requests call
+    (OLLAMA_CHAT_ANSWER_TIMEOUT_SEC) is the enforced upper bound per request.
+    """
     try:
         return _ai_chat_submit()
     except Exception:
@@ -1515,7 +1616,7 @@ def ai_rejection_code_lookup():
     Falls back to LLM only for unrecognized codes.
     No DB reads or writes. No ssn_last4 anywhere.
     """
-    data = request.get_json(force=True) or {}
+    data = _get_json_safe() or {}
     raw  = (data.get("code") or "").strip()
     if not raw:
         return jsonify({"error": "No code provided"}), 400
@@ -1639,7 +1740,18 @@ def ai_document_extract(doc_id: int):
         saved_to_table = None
         table_name = _detect_form_type(doc_type_val, clean)
         if table_name:
-            if _save_form_data(conn, table_name, return_id_doc, doc_id, clean):
+            if table_name == "paystub":
+                doc_tag = _form_table_to_doc_type(table_name)
+                if doc_tag != "unknown":
+                    _apply_extraction_doc_tag(
+                        conn, doc_id=doc_id, return_id=return_id_doc, doc_tag=doc_tag
+                    )
+                saved_to_table = "paystub"
+                current_app.logger.info(
+                    "DOC-7: paystub fields extracted (doc_type tag only) for return %s",
+                    return_id_doc,
+                )
+            elif _save_form_data(conn, table_name, return_id_doc, doc_id, clean):
                 saved_to_table = table_name
                 doc_tag = _form_table_to_doc_type(table_name)
                 if doc_tag != "unknown":

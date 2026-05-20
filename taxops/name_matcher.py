@@ -82,24 +82,26 @@ def parse_name(raw: str) -> tuple[str, Optional[str]]:
     - "BOCANEGRA GALLEGOS, URIEL & ADRIANA" → last=BOCANEGRA GALLEGOS, first=URIEL
     - "CORNWELL IV, JOHN"    → strips suffix from last
     - Businesses passed through as-is with first=None
-    """
-    raw = _clean(raw)
 
+    Note: the comma check MUST happen before _clean() because _clean converts
+    commas to spaces (for fuzzy-score normalisation).
+    """
     if not raw:
         return "", None
 
-    # Business — return as-is
-    if is_business(raw):
-        return raw, None
-
-    # "LAST, FIRST [& SPOUSE]" — comma-separated
+    # "LAST, FIRST [& SPOUSE]" — detect comma BEFORE _clean removes it.
+    # Spouse stripping must also happen before _clean because _clean converts & to space.
     if "," in raw:
-        parts = raw.split(",", 1)
-        last_raw = parts[0].strip()
-        first_raw = parts[1].strip() if len(parts) > 1 else ""
+        pre_parts = raw.split(",", 1)
+        last_raw = _clean(pre_parts[0]).strip()
+        first_segment = pre_parts[1].strip() if len(pre_parts) > 1 else ""
 
-        # Strip "& SPOUSE_NAME" from first → keep only primary taxpayer
-        first_raw = re.split(r"\s*&\s*", first_raw)[0].strip()
+        if is_business(last_raw):
+            return _clean(raw), None
+
+        # Strip "& SPOUSE_NAME" from first BEFORE cleaning (& → space in _clean)
+        first_segment = re.split(r"\s*&\s*", first_segment)[0].strip()
+        first_raw = _clean(first_segment).strip()
 
         # Strip suffixes from last name portion
         last_tokens = _strip_suffixes(last_raw.split())
@@ -108,7 +110,15 @@ def parse_name(raw: str) -> tuple[str, Optional[str]]:
         first = first_raw if first_raw else None
         return last, first
 
-    # No comma — return whole string as last_name (business or single-word)
+    raw = _clean(raw)
+    if not raw:
+        return "", None
+
+    # Business — return as-is
+    if is_business(raw):
+        return raw, None
+
+    # No comma — return whole string as last_name
     tokens = _strip_suffixes(raw.split())
     return " ".join(tokens), None
 

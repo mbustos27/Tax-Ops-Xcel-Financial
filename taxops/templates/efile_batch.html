@@ -371,223 +371,233 @@
 
 {% block scripts %}
 <script>
-const BATCH_ID = {{ batch.id }};
+(function () {
 
-// Export dropdown
-function toggleExportMenu() {
-  document.getElementById('export-menu').classList.toggle('hidden');
-}
-document.addEventListener('click', e => {
-  const wrap = document.getElementById('export-menu-wrap');
-  if (wrap && !wrap.contains(e.target)) {
-    document.getElementById('export-menu').classList.add('hidden');
+  const BATCH_ID = {{ batch.id }};
+
+  // Export dropdown
+  function toggleExportMenu() {
+    document.getElementById('export-menu').classList.toggle('hidden');
   }
-});
+  document.addEventListener('click', e => {
+    const wrap = document.getElementById('export-menu-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+      document.getElementById('export-menu').classList.add('hidden');
+    }
+  });
 
-// Quick filter
-const filterInput = document.getElementById('batch-filter');
-if (filterInput) {
-  filterInput.addEventListener('input', () => {
-    const q = filterInput.value.toLowerCase();
-    document.querySelectorAll('#items-tbody tr[data-search]').forEach(row => {
-      row.style.display = row.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+  // Quick filter
+  const filterInput = document.getElementById('batch-filter');
+  if (filterInput) {
+    filterInput.addEventListener('input', () => {
+      const q = filterInput.value.toLowerCase();
+      document.querySelectorAll('#items-tbody tr[data-search]').forEach(row => {
+        row.style.display = row.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+  }
+
+  async function setAck(itemId, status, extraData = {}) {
+    const body = { ack_status: status, ...extraData };
+    const res  = await _csrfFetch(`/api/efile-batch/${BATCH_ID}/item/${itemId}/ack`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    if (res.ok) {
+      location.reload();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Failed to update ACK status.');
+    }
+  }
+
+  // ── Accept modal ──────────────────────────────────────────────────────────
+  function showAcceptModal(itemId) {
+    document.getElementById('accept-item-id').value = itemId;
+    // Default to today
+    document.getElementById('accept-date').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('accept-modal').classList.remove('hidden');
+    document.getElementById('accept-date').focus();
+  }
+  function closeAcceptModal() {
+    document.getElementById('accept-modal').classList.add('hidden');
+  }
+  function submitAccept() {
+    const itemId  = document.getElementById('accept-item-id').value;
+    const ackDate = document.getElementById('accept-date').value;
+    closeAcceptModal();
+    setAck(itemId, 'accepted', { ack_date: ackDate });
+  }
+
+  // ── Reject modal ──────────────────────────────────────────────────────────
+  function showRejectDetail(itemId, existingCode = '', existingReason = '') {
+    document.getElementById('reject-item-id').value = itemId;
+    document.getElementById('reject-code').value    = existingCode;
+    document.getElementById('reject-reason').value  = existingReason;
+    document.getElementById('reject-code-err').classList.add('hidden');
+    document.getElementById('reject-reason-err').classList.add('hidden');
+    const _sh = document.getElementById('rejection-source-hint');
+    const _ah = document.getElementById('rejection-action-hint');
+    const _rh = document.getElementById('rejection-ref-hint');
+    if (_sh) { _sh.style.display = 'none'; _sh.textContent = ''; }
+    if (_ah) { _ah.style.display = 'none'; _ah.textContent = ''; }
+    if (_rh) { _rh.style.display = 'none'; _rh.innerHTML = ''; }
+    document.getElementById('reject-modal').classList.remove('hidden');
+    document.getElementById('reject-code').focus();
+  }
+  function closeRejectModal() {
+    document.getElementById('reject-modal').classList.add('hidden');
+  }
+  async function submitReject() {
+    const itemId = document.getElementById('reject-item-id').value;
+    const code   = document.getElementById('reject-code').value.trim();
+    const reason = document.getElementById('reject-reason').value.trim();
+
+    // Client-side guard
+    let valid = true;
+    if (!code)   { document.getElementById('reject-code-err').classList.remove('hidden');   valid = false; }
+    else           document.getElementById('reject-code-err').classList.add('hidden');
+    if (!reason) { document.getElementById('reject-reason-err').classList.remove('hidden'); valid = false; }
+    else           document.getElementById('reject-reason-err').classList.add('hidden');
+    if (!valid) return;
+
+    closeRejectModal();
+    const body = { ack_status: 'rejected', rejection_code: code, rejection_reason: reason };
+    const res  = await _csrfFetch(`/api/efile-batch/${BATCH_ID}/item/${itemId}/ack`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    if (res.ok) {
+      location.reload();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Failed to save rejection.');
+    }
+  }
+
+  async function markLogOut(itemId) {
+    if (!confirm('Move this return to LOG OUT status?')) return;
+    const res = await _csrfFetch(`/api/efile-batch/${BATCH_ID}/item/${itemId}/logout`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'}
+    });
+    if (res.ok) {
+      location.reload();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Failed to move to LOG OUT.');
+    }
+  }
+
+  async function markTransmitted() {
+    if (!confirm('Mark this batch as transmitted to IRS via Drake?')) return;
+    const btn = document.getElementById('transmit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    const res = await _csrfFetch(`/api/efile-batch/${BATCH_ID}/transmit`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'}
+    });
+    if (res.ok) location.reload();
+    else { btn.disabled = false; btn.textContent = '▶ Mark as Transmitted'; alert('Failed to mark transmitted.'); }
+  }
+
+  async function toggleFlag(itemId, currentlyFlagged) {
+    const res = await _csrfFetch(`/api/efile-batch/${BATCH_ID}/item/${itemId}/flag`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ needs_calculation: !currentlyFlagged })
+    });
+    if (res.ok) location.reload();
+  }
+
+  // ── Rejection code lookup (static reference table → LLM fallback) ─────────
+  document.addEventListener('DOMContentLoaded', () => {
+    const codeInput   = document.getElementById('reject-code');
+    const reasonInput = document.getElementById('reject-reason');
+    if (!codeInput || !reasonInput) return;
+
+    // 3b — clear all dynamic hints when code field is emptied
+    codeInput.addEventListener('input', function() {
+      if (!this.value.trim()) {
+        const sourceHint = document.getElementById('rejection-source-hint');
+        const actionHint = document.getElementById('rejection-action-hint');
+        const refHint    = document.getElementById('rejection-ref-hint');
+        if (sourceHint) { sourceHint.style.display = 'none'; sourceHint.textContent = ''; }
+        if (actionHint) { actionHint.style.display = 'none'; actionHint.textContent = ''; }
+        if (refHint)    { refHint.style.display = 'none'; refHint.innerHTML = ''; }
+      }
+    });
+
+    codeInput.addEventListener('blur', async () => {
+      const val = codeInput.value.trim();
+      if (!val) return;
+
+      try {
+        const resp = await _csrfFetch('/ai/rejection-code/lookup', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ code: val }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) return;
+
+        // Normalize the code field silently
+        if (data.normalized_code) codeInput.value = data.normalized_code;
+
+        // 3a — source indicator appended to code input's parent div
+        let sourceHint = document.getElementById('rejection-source-hint');
+        if (!sourceHint) {
+          sourceHint = document.createElement('span');
+          sourceHint.id = 'rejection-source-hint';
+          sourceHint.style.fontSize = '11px';
+          sourceHint.style.marginLeft = '8px';
+          codeInput.parentNode.appendChild(sourceHint);
+        }
+        if (data.source === 'reference') {
+          sourceHint.textContent = 'matched reference table';
+          sourceHint.style.color = '#16a34a';
+        } else {
+          sourceHint.textContent = 'LLM lookup';
+          sourceHint.style.color = '#94a3b8';
+        }
+        sourceHint.style.display = 'inline';
+
+        // Action hint appended to reason field's parent div
+        if (data.action) {
+          let actionHint = document.getElementById('rejection-action-hint');
+          if (!actionHint) {
+            actionHint = document.createElement('p');
+            actionHint.id = 'rejection-action-hint';
+            actionHint.style.fontSize = '12px';
+            actionHint.style.color = '#64748b';
+            reasonInput.parentNode.appendChild(actionHint);
+          }
+          actionHint.textContent = 'Next step: ' + data.action;
+          actionHint.style.display = 'block';
+        }
+
+        // IRS reference link appended below action hint
+        if (data.irs_reference) {
+          let refHint = document.getElementById('rejection-ref-hint');
+          if (!refHint) {
+            refHint = document.createElement('p');
+            refHint.id = 'rejection-ref-hint';
+            refHint.style.fontSize = '12px';
+            refHint.style.color = '#64748b';
+            reasonInput.parentNode.appendChild(refHint);
+          }
+          const searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent('IRS ' + data.normalized_code + ' ' + data.irs_reference);
+          refHint.innerHTML = 'IRS reference: <a href="' + searchUrl + '" target="_blank" rel="noopener noreferrer" style="color:#4f46e5;text-decoration:underline">' + data.irs_reference + ' ↗</a>';
+          refHint.style.display = 'block';
+        }
+      } catch (e) {
+        // Silent fail — do not block form submission
+      }
     });
   });
-}
 
-async function setAck(itemId, status, extraData = {}) {
-  const body = { ack_status: status, ...extraData };
-  const res  = await fetch(`/api/efile-batch/${BATCH_ID}/item/${itemId}/ack`, {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
-  });
-  if (res.ok) {
-    location.reload();
-  } else {
-    const data = await res.json().catch(() => ({}));
-    alert(data.error || 'Failed to update ACK status.');
-  }
-}
-
-// ── Accept modal ──────────────────────────────────────────────────────────
-function showAcceptModal(itemId) {
-  document.getElementById('accept-item-id').value = itemId;
-  // Default to today
-  document.getElementById('accept-date').value = new Date().toISOString().slice(0, 10);
-  document.getElementById('accept-modal').classList.remove('hidden');
-  document.getElementById('accept-date').focus();
-}
-function closeAcceptModal() {
-  document.getElementById('accept-modal').classList.add('hidden');
-}
-function submitAccept() {
-  const itemId  = document.getElementById('accept-item-id').value;
-  const ackDate = document.getElementById('accept-date').value;
-  closeAcceptModal();
-  setAck(itemId, 'accepted', { ack_date: ackDate });
-}
-
-// ── Reject modal ──────────────────────────────────────────────────────────
-function showRejectDetail(itemId, existingCode = '', existingReason = '') {
-  document.getElementById('reject-item-id').value = itemId;
-  document.getElementById('reject-code').value    = existingCode;
-  document.getElementById('reject-reason').value  = existingReason;
-  document.getElementById('reject-code-err').classList.add('hidden');
-  document.getElementById('reject-reason-err').classList.add('hidden');
-  const _sh = document.getElementById('rejection-source-hint');
-  const _ah = document.getElementById('rejection-action-hint');
-  const _rh = document.getElementById('rejection-ref-hint');
-  if (_sh) { _sh.style.display = 'none'; _sh.textContent = ''; }
-  if (_ah) { _ah.style.display = 'none'; _ah.textContent = ''; }
-  if (_rh) { _rh.style.display = 'none'; _rh.innerHTML = ''; }
-  document.getElementById('reject-modal').classList.remove('hidden');
-  document.getElementById('reject-code').focus();
-}
-function closeRejectModal() {
-  document.getElementById('reject-modal').classList.add('hidden');
-}
-async function submitReject() {
-  const itemId = document.getElementById('reject-item-id').value;
-  const code   = document.getElementById('reject-code').value.trim();
-  const reason = document.getElementById('reject-reason').value.trim();
-
-  // Client-side guard
-  let valid = true;
-  if (!code)   { document.getElementById('reject-code-err').classList.remove('hidden');   valid = false; }
-  else           document.getElementById('reject-code-err').classList.add('hidden');
-  if (!reason) { document.getElementById('reject-reason-err').classList.remove('hidden'); valid = false; }
-  else           document.getElementById('reject-reason-err').classList.add('hidden');
-  if (!valid) return;
-
-  closeRejectModal();
-  const body = { ack_status: 'rejected', rejection_code: code, rejection_reason: reason };
-  const res  = await fetch(`/api/efile-batch/${BATCH_ID}/item/${itemId}/ack`, {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
-  });
-  if (res.ok) {
-    location.reload();
-  } else {
-    const data = await res.json().catch(() => ({}));
-    alert(data.error || 'Failed to save rejection.');
-  }
-}
-
-async function markLogOut(itemId) {
-  if (!confirm('Move this return to LOG OUT status?')) return;
-  const res = await fetch(`/api/efile-batch/${BATCH_ID}/item/${itemId}/logout`, {
-    method: 'POST', headers: {'Content-Type': 'application/json'}
-  });
-  if (res.ok) {
-    location.reload();
-  } else {
-    const data = await res.json().catch(() => ({}));
-    alert(data.error || 'Failed to move to LOG OUT.');
-  }
-}
-
-async function markTransmitted() {
-  if (!confirm('Mark this batch as transmitted to IRS via Drake?')) return;
-  const btn = document.getElementById('transmit-btn');
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-  const res = await fetch(`/api/efile-batch/${BATCH_ID}/transmit`, {
-    method: 'POST', headers: {'Content-Type': 'application/json'}
-  });
-  if (res.ok) location.reload();
-  else { btn.disabled = false; btn.textContent = '▶ Mark as Transmitted'; alert('Failed to mark transmitted.'); }
-}
-
-async function toggleFlag(itemId, currentlyFlagged) {
-  const res = await fetch(`/api/efile-batch/${BATCH_ID}/item/${itemId}/flag`, {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ needs_calculation: !currentlyFlagged })
-  });
-  if (res.ok) location.reload();
-}
-
-// ── Rejection code lookup (static reference table → LLM fallback) ─────────
-document.addEventListener('DOMContentLoaded', () => {
-  const codeInput   = document.getElementById('reject-code');
-  const reasonInput = document.getElementById('reject-reason');
-  if (!codeInput || !reasonInput) return;
-
-  // 3b — clear all dynamic hints when code field is emptied
-  codeInput.addEventListener('input', function() {
-    if (!this.value.trim()) {
-      const sourceHint = document.getElementById('rejection-source-hint');
-      const actionHint = document.getElementById('rejection-action-hint');
-      const refHint    = document.getElementById('rejection-ref-hint');
-      if (sourceHint) { sourceHint.style.display = 'none'; sourceHint.textContent = ''; }
-      if (actionHint) { actionHint.style.display = 'none'; actionHint.textContent = ''; }
-      if (refHint)    { refHint.style.display = 'none'; refHint.innerHTML = ''; }
-    }
-  });
-
-  codeInput.addEventListener('blur', async () => {
-    const val = codeInput.value.trim();
-    if (!val) return;
-
-    try {
-      const resp = await fetch('/ai/rejection-code/lookup', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ code: val }),
-      });
-      const data = await resp.json();
-      if (!resp.ok || data.error) return;
-
-      // Normalize the code field silently
-      if (data.normalized_code) codeInput.value = data.normalized_code;
-
-      // 3a — source indicator appended to code input's parent div
-      let sourceHint = document.getElementById('rejection-source-hint');
-      if (!sourceHint) {
-        sourceHint = document.createElement('span');
-        sourceHint.id = 'rejection-source-hint';
-        sourceHint.style.fontSize = '11px';
-        sourceHint.style.marginLeft = '8px';
-        codeInput.parentNode.appendChild(sourceHint);
-      }
-      if (data.source === 'reference') {
-        sourceHint.textContent = 'matched reference table';
-        sourceHint.style.color = '#16a34a';
-      } else {
-        sourceHint.textContent = 'LLM lookup';
-        sourceHint.style.color = '#94a3b8';
-      }
-      sourceHint.style.display = 'inline';
-
-      // Action hint appended to reason field's parent div
-      if (data.action) {
-        let actionHint = document.getElementById('rejection-action-hint');
-        if (!actionHint) {
-          actionHint = document.createElement('p');
-          actionHint.id = 'rejection-action-hint';
-          actionHint.style.fontSize = '12px';
-          actionHint.style.color = '#64748b';
-          reasonInput.parentNode.appendChild(actionHint);
-        }
-        actionHint.textContent = 'Next step: ' + data.action;
-        actionHint.style.display = 'block';
-      }
-
-      // IRS reference link appended below action hint
-      if (data.irs_reference) {
-        let refHint = document.getElementById('rejection-ref-hint');
-        if (!refHint) {
-          refHint = document.createElement('p');
-          refHint.id = 'rejection-ref-hint';
-          refHint.style.fontSize = '12px';
-          refHint.style.color = '#64748b';
-          reasonInput.parentNode.appendChild(refHint);
-        }
-        const searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent('IRS ' + data.normalized_code + ' ' + data.irs_reference);
-        refHint.innerHTML = 'IRS reference: <a href="' + searchUrl + '" target="_blank" rel="noopener noreferrer" style="color:#4f46e5;text-decoration:underline">' + data.irs_reference + ' ↗</a>';
-        refHint.style.display = 'block';
-      }
-    } catch (e) {
-      // Silent fail — do not block form submission
-    }
-  });
-});
+  window.closeAcceptModal = closeAcceptModal;
+  window.closeRejectModal = closeRejectModal;
+  window.showAcceptModal = showAcceptModal;
+  window.showRejectDetail = showRejectDetail;
+  window.submitAccept = submitAccept;
+  window.toggleExportMenu = toggleExportMenu;
+})();
 </script>
 {% endblock %}

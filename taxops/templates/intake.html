@@ -670,7 +670,7 @@
   });
 
   async function fetchClients(q) {
-    const res  = await fetch(`/api/clients/search?q=${encodeURIComponent(q)}`);
+    const res  = await _csrfFetch(`/api/clients/search?q=${encodeURIComponent(q)}`);
     const data = await res.json();
     renderResults(data);
   }
@@ -702,7 +702,7 @@
     resultsBox.classList.add('hidden');
     lookupInput.value = name;
 
-    const res  = await fetch(`/api/clients/${id}/reintake`);
+    const res  = await _csrfFetch(`/api/clients/${id}/reintake`);
     const { client, last_return, dependents, habit_profile } = await res.json();
 
     // ── Client-level fields ───────────────────────────────────────────────
@@ -831,7 +831,7 @@
     const q = refInput.value.trim();
     if (q.length < 2) { refResults.classList.add('hidden'); return; }
     refTimer = setTimeout(async () => {
-      const res   = await fetch(`/api/clients/search?q=${encodeURIComponent(q)}`);
+      const res   = await _csrfFetch(`/api/clients/search?q=${encodeURIComponent(q)}`);
       const items = await res.json();
       if (!items.length) {
         // allow free-text entry — save whatever they typed

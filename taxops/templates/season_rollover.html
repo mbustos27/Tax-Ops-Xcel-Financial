@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Season rollover — TaxOps{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-6 space-y-6 pb-24">
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Next season rollover</h1>
+    <p class="text-sm text-slate-600 mt-1 leading-relaxed">
+      Create one new return per client at the <strong>target tax year</strong> from each client&apos;s newest
+      <strong>source tax year</strong> return. New rows start as <span class="font-mono font-semibold text-violet-700">{{ rollover_status }}</span>
+      so staff can intake without re-entering preparer ties you choose to carry forward.
+    </p>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wide">1 · Years</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <label class="block text-sm font-medium text-slate-700">
+        Source tax year (carry from)
+        <input id="sr-source" type="number" step="1" min="1990" max="2100" value="{{ default_source_tax_year }}"
+               class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/>
+      </label>
+      <label class="block text-sm font-medium text-slate-700">
+        Target tax year (seed new returns)
+        <input id="sr-target" type="number" step="1" min="1990" max="2100" value="{{ default_target_tax_year }}"
+               class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/>
+      </label>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wide">2 · Carry-forward (ROLLOVER-3)</h2>
+    <p class="text-xs text-slate-500">Unchecked items are left blank on the new return (recommended for fees &amp; dates).</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+      <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+        <input type="checkbox" class="sr-carry rounded border-slate-300 text-violet-600" data-field="carry_processor" checked/>
+        <span>Preparer (<code class="text-xs bg-slate-100 px-1 rounded">processor</code>)</span>
+      </label>
+      <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+        <input type="checkbox" class="sr-carry rounded border-slate-300 text-violet-600" data-field="carry_filing_status" checked/>
+        <span>Filing status</span>
+      </label>
+      <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+        <input type="checkbox" class="sr-carry rounded border-slate-300 text-violet-600" data-field="carry_return_forms"/>
+        <span>Return-form flags (<code class="text-xs bg-slate-100 px-1 rounded">return_forms</code> snapshot)</span>
+      </label>
+      <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+        <input type="checkbox" class="sr-carry rounded border-slate-300 text-violet-600" data-field="carry_intake_fields"/>
+        <span>Intake notes fields (interview / promise / delivered-by / intake notes)</span>
+      </label>
+      <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+        <input type="checkbox" class="sr-carry rounded border-slate-300 text-violet-600" data-field="carry_prior_year_log_on_client" checked/>
+        <span>Stamp <code class="text-xs bg-slate-100 px-1 rounded">prior_year_log</code> on client from prior log #</span>
+      </label>
+      <label class="inline-flex items-center gap-2 cursor-pointer select-none md:col-span-2">
+        <input type="checkbox" class="sr-carry rounded border-slate-300 text-violet-600" data-field="require_prior_logged_out"/>
+        <span>Only rollover when prior-year return status is <strong class="font-semibold">LOG OUT</strong></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="flex flex-wrap gap-2 items-center">
+    <button type="button" id="sr-btn-preview"
+            class="text-sm font-semibold px-4 py-2 rounded-lg bg-slate-800 text-white hover:bg-slate-900">
+      Preview counts
+    </button>
+    <button type="button" id="sr-btn-run" disabled
+            class="text-sm font-semibold px-4 py-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed">
+      Run rollover
+    </button>
+    <a id="sr-download" href="{{ url_for('download_season_rollover_csv') }}" style="display:none;"
+       class="text-sm font-semibold px-4 py-2 rounded-lg border border-slate-200 bg-white text-violet-800 hover:bg-violet-50">
+      Download last CSV report
+    </a>
+  </div>
+
+  <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 space-y-2">
+    <h2 class="text-sm font-bold text-amber-900 uppercase tracking-wide">3 · Confirmation gate (ROLLOVER-1)</h2>
+    <p class="text-xs text-amber-950/90">
+      To run, type the <strong>target tax year</strong> in the box below (exactly matching the Target year field).
+    </p>
+    <input id="sr-confirm" type="number" placeholder="Repeat target tax year"
+           class="w-full max-w-xs rounded-lg border border-amber-300 px-3 py-2 text-sm bg-white"/>
+  </div>
+
+  <p id="sr-err" class="hidden text-sm text-red-600"></p>
+
+  <div id="sr-preview-box" class="hidden bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3">
+    <h3 class="text-sm font-bold text-slate-800">Preview (ROLLOVER-4)</h3>
+    <div id="sr-preview-summary" class="text-sm text-slate-700"></div>
+    <div id="sr-preview-exc" class="text-xs text-slate-600 max-h-52 overflow-y-auto whitespace-pre-wrap font-mono border border-slate-100 rounded-lg p-2 bg-slate-50"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  let lastPreviewOk = false;
+
+  function carryPayload() {
+    const o = {};
+    document.querySelectorAll(".sr-carry").forEach(function (cb) {
+      const f = cb.getAttribute("data-field");
+      if (f) o[f] = cb.checked;
+    });
+    return o;
+  }
+
+  function srcYears() {
+    const s = parseInt(document.getElementById("sr-source").value, 10);
+    const t = parseInt(document.getElementById("sr-target").value, 10);
+    return { s: s, t: t };
+  }
+
+  function setErr(msg) {
+    const el = document.getElementById("sr-err");
+    if (!msg) {
+      el.textContent = "";
+      el.classList.add("hidden");
+      return;
+    }
+    el.textContent = msg;
+    el.classList.remove("hidden");
+  }
+
+  function syncRunEnabled() {
+    const { s, t } = srcYears();
+    const cf = parseInt(document.getElementById("sr-confirm").value, 10);
+    document.getElementById("sr-btn-run").disabled = !(
+      lastPreviewOk && Number.isFinite(s) && Number.isFinite(t) && Number.isFinite(cf) && cf === t);
+  }
+
+  document.getElementById("sr-source").addEventListener("input", function () {
+    lastPreviewOk = false;
+    syncRunEnabled();
+  });
+  document.getElementById("sr-target").addEventListener("input", function () {
+    lastPreviewOk = false;
+    syncRunEnabled();
+  });
+  document.getElementById("sr-confirm").addEventListener("input", syncRunEnabled);
+  document.querySelectorAll(".sr-carry").forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      lastPreviewOk = false;
+      syncRunEnabled();
+    });
+  });
+
+  document.getElementById("sr-btn-preview").addEventListener("click", async function () {
+    setErr("");
+    const { s, t } = srcYears();
+    if (!Number.isFinite(s) || !Number.isFinite(t)) {
+      setErr("Enter valid source and target years.");
+      return;
+    }
+    try {
+      const r = await _csrfFetch("/api/admin/season-rollover/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_year: s, target_year: t, carry: carryPayload() }),
+      });
+      const d = await _authJson(r);
+      if (!d.ok) {
+        lastPreviewOk = false;
+        setErr(d.error || "Preview rejected.");
+        return;
+      }
+      lastPreviewOk = true;
+      const tot = d.totals || {};
+      const skipped = Array.isArray(d.skipped_sample) ? d.skipped_sample : [];
+      const lines = skipped.map(function (x) {
+        return "SKIP client " + x.client_id + " (ret " + x.source_return_id + "): " + x.reason;
+      });
+      document.getElementById("sr-preview-summary").innerHTML =
+        "<p><strong>Would create:</strong> " + (tot.eligible ?? "?") +
+        " return(s)</p>" +
+        "<p><strong>Skipped in preview:</strong> " + (tot.skipped ?? "?") +
+        " (often already_have_target_year_return)</p>" +
+        "<p><strong>Distinct source-year rows:</strong> " + (tot.distinct_clients_in_source_year ?? "?") + "</p>";
+      document.getElementById("sr-preview-exc").textContent =
+        lines.length ? lines.join("\n") : "(no skips in sampled window — larger lists may truncate at 200 in API)";
+      document.getElementById("sr-preview-box").classList.remove("hidden");
+      syncRunEnabled();
+    } catch (e) {
+      lastPreviewOk = false;
+      setErr(e.message || "Preview failed");
+    }
+  });
+
+  document.getElementById("sr-btn-run").addEventListener("click", async function () {
+    setErr("");
+    const { s, t } = srcYears();
+    const cf = parseInt(document.getElementById("sr-confirm").value, 10);
+    if (!Number.isFinite(cf) || cf !== t) {
+      setErr("Confirmation year must equal the target tax year.");
+      return;
+    }
+    if (!confirm("Create new TY" + t + " returns now? This cannot be auto-undone.")) return;
+
+    document.getElementById("sr-btn-run").disabled = true;
+    try {
+      const r = await _csrfFetch("/api/admin/season-rollover/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_year: s,
+          target_year: t,
+          confirmation_year: cf,
+          carry: carryPayload(),
+        }),
+      });
+      const d = await _authJson(r);
+      if (!d.ok) {
+        setErr(d.error || "Run failed.");
+        syncRunEnabled();
+        return;
+      }
+      alert(
+        "Created: " + d.created_count + ". Skipped: " + d.skipped_count +
+        (d.noop_message ? "\n\n" + d.noop_message : "")
+      );
+      const dl = document.getElementById("sr-download");
+      if (dl && d.export_ready) dl.style.display = "inline-flex";
+      lastPreviewOk = false;
+    } catch (e) {
+      setErr(e.message || "Run failed.");
+    } finally {
+      syncRunEnabled();
+    }
+  });
+
+  syncRunEnabled();
+})();
+</script>
+{% endblock %}

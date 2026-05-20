@@ -131,7 +131,16 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
 .dot-slate  { background: #64748b; }
 .dot-red    { background: #dc2626; }  /* REJECTED   — red     */
 
-/* ── Filter pills ─────────────────────────────────────────────────────── */
+/* Dashboard filter bar: horizontal pill rows use overflow-x-auto; clipping the x-axis
+   at rounded corners hides scrollbar/residual paint that reads as a stray dot/wedge.
+   overflow-y stays visible so vertical focus-outline spacing is less affected than with
+   overflow: hidden on both axes. */
+#filter-bar {
+  position: relative;
+  z-index: 1;
+  overflow-x: hidden;
+}
+
 .pill {
   padding: 0.3rem 0.8rem;
   border-radius: 9999px;

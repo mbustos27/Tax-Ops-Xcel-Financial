@@ -6,6 +6,153 @@ from __future__ import annotations
 
 # Keys must match test function names in test_github_cards.py
 PROOF_BY_TEST_NAME: dict[str, list[str]] = {
+    "test_max_content_length_is_configured": [
+        "MAX_CONTENT_LENGTH is set to a non-trivial value — raw uploads are capped.",
+    ],
+    "test_max_content_length_default_is_50mb": [
+        "Default upload limit is exactly 50 MB.",
+    ],
+    "test_413_handler_returns_json": [
+        "Oversized upload returns HTTP 413 with a JSON body containing an 'error' key.",
+    ],
+    "test_sec6_indexes_exist_after_init": [
+        "All 15 SEC-6 hot-path indexes are present after init_db runs on a fresh database.",
+    ],
+    "test_return_documents_return_id_uses_index": [
+        "EXPLAIN QUERY PLAN shows SEARCH USING INDEX for return_documents(return_id).",
+    ],
+    "test_payments_return_id_uses_index": [
+        "EXPLAIN shows index scan for payments(return_id).",
+    ],
+    "test_notes_return_id_uses_index": [
+        "EXPLAIN shows index scan for notes(return_id).",
+    ],
+    "test_missing_docs_return_id_uses_index": [
+        "EXPLAIN shows index scan for missing_docs(return_id, is_resolved).",
+    ],
+    "test_extraction_queue_status_uses_index": [
+        "EXPLAIN shows index scan for extraction_queue(status, created_at).",
+    ],
+    "test_returns_status_year_uses_index": [
+        "EXPLAIN shows index scan for returns(client_status, tax_year) — dashboard filter.",
+    ],
+    "test_returns_updated_at_uses_index": [
+        "EXPLAIN shows index scan for returns ORDER BY updated_at.",
+    ],
+    "test_login_max_attempts_default": [
+        "_LOGIN_MAX_ATTEMPTS defaults to 5.",
+    ],
+    "test_login_lockout_minutes_default": [
+        "_LOGIN_LOCKOUT_MINUTES defaults to 15.",
+    ],
+    "test_failed_attempts_increments_on_bad_password": [
+        "failed_attempts counter increments on each wrong-password attempt.",
+    ],
+    "test_failed_attempts_resets_on_success": [
+        "failed_attempts resets to 0 on a successful login.",
+    ],
+    "test_account_locks_after_max_attempts": [
+        "Account returns _AUTH_LOCKED after _LOGIN_MAX_ATTEMPTS consecutive failures.",
+    ],
+    "test_locked_account_rejects_correct_password": [
+        "A locked account returns _AUTH_LOCKED even when the correct password is supplied.",
+    ],
+    "test_expired_lockout_allows_login": [
+        "A lockout whose locked_until is in the past allows a successful login.",
+    ],
+    "test_login_route_returns_same_error_for_locked_and_bad_credentials": [
+        "Locked account and wrong password both return HTTP 200 with the same error string — no info leak.",
+    ],
+    "test_sixth_rapid_failure_triggers_lockout": [
+        "The 6th consecutive failure returns _AUTH_LOCKED when max_attempts=5 (issue requirement).",
+    ],
+    "test_journal_mode_is_wal": [
+        "PRAGMA journal_mode=WAL is set by get_connection() — concurrent readers never block each other.",
+    ],
+    "test_synchronous_is_normal": [
+        "PRAGMA synchronous=NORMAL (1) gives WAL durability without full-sync overhead.",
+    ],
+    "test_busy_timeout_is_set": [
+        "PRAGMA busy_timeout >= 10000 ms — locked-DB OperationalError is not raised immediately.",
+    ],
+    "test_temp_store_is_memory": [
+        "PRAGMA temp_store=MEMORY (2) keeps temp tables in RAM rather than temp files.",
+    ],
+    "test_foreign_keys_still_on": [
+        "foreign_keys enforcement is still ON after the SEC-4 PRAGMAs are applied.",
+    ],
+    "test_concurrent_readers_do_not_block_each_other": [
+        "Four concurrent readers all finish under 2 s — WAL snapshot isolation in effect.",
+    ],
+    "test_busy_timeout_allows_writer_to_finish": [
+        "Second writer waits on busy_timeout rather than raising OperationalError immediately.",
+    ],
+    "test_session_cookie_httponly_is_true": [
+        "SESSION_COOKIE_HTTPONLY=True prevents JavaScript access to the session cookie.",
+    ],
+    "test_session_cookie_samesite_is_lax": [
+        "SESSION_COOKIE_SAMESITE=Lax blocks session cookie from being sent on cross-site POSTs.",
+    ],
+    "test_permanent_session_lifetime_is_12_hours": [
+        "PERMANENT_SESSION_LIFETIME is 12 hours — sessions expire automatically after inactivity.",
+    ],
+    "test_templates_auto_reload_matches_debug": [
+        "TEMPLATES_AUTO_RELOAD is False in non-debug mode — no unnecessary disk I/O in production.",
+    ],
+    "test_security_headers_present_on_health": [
+        "X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Cache-Control are set on all responses.",
+    ],
+    "test_csp_header_present_on_health": [
+        "Content-Security-Policy with default-src self, object-src none, base-uri self, form-action self, frame-ancestors none.",
+    ],
+    "test_csp_header_present_on_login_page": [
+        "CSP is enforced on the unauthenticated login page as well as authenticated routes.",
+    ],
+    "test_session_is_permanent_after_login": [
+        "session.permanent=True is set on login so the cookie carries Max-Age/Expires for the 12-h window.",
+    ],
+    "test_auth_users_table_exists_after_init": [
+        "auth_users table is created by init_db/migrate with all SEC-2 required columns.",
+    ],
+    "test_bootstrap_seeds_user_from_env": [
+        "bootstrap_auth_user inserts one admin row from TAXOPS_USER/TAXOPS_PASS when table is empty.",
+    ],
+    "test_bootstrap_is_noop_when_users_exist": [
+        "bootstrap_auth_user is a no-op if at least one user row exists — safe to call every startup.",
+    ],
+    "test_authenticate_correct_password": [
+        "check_password_hash path returns a user dict with correct username on valid credentials.",
+    ],
+    "test_authenticate_wrong_password_returns_none": [
+        "Wrong password returns None and increments failed_attempts counter in auth_users.",
+    ],
+    "test_authenticate_inactive_user_returns_none": [
+        "is_active=0 rows are rejected even with a correct password.",
+    ],
+    "test_authenticate_unknown_user_returns_none": [
+        "Unknown usernames return None without raising an exception.",
+    ],
+    "test_authenticate_updates_last_login_at": [
+        "Successful authentication writes a non-null last_login_at timestamp to auth_users.",
+    ],
+    "test_login_route_accepts_hashed_user": [
+        "POST /login with hashed credentials in auth_users redirects (HTTP 301/302).",
+    ],
+    "test_login_route_rejects_wrong_password": [
+        "POST /login with wrong password re-renders the login page with error message (HTTP 200).",
+    ],
+    "test_plaintext_compare_never_fires_when_users_exist": [
+        "Env-var plaintext fallback in _authenticate_user is blocked when auth_users has rows.",
+        "An attacker who knows TAXOPS_USER/TAXOPS_PASS cannot bypass auth_users after bootstrap.",
+    ],
+    "test_post_without_csrf_token_is_rejected": [
+        "POST to /api/return/<id>/status without X-CSRFToken returns HTTP 400 (CSRF blocked).",
+        "Flask-WTF CSRFProtect is active on the main app and all registered blueprints.",
+    ],
+    "test_post_with_valid_csrf_token_passes_middleware": [
+        "POST with a valid X-CSRFToken header is not rejected by CSRF middleware.",
+        "Token generated via generate_csrf() satisfies Flask-WTF validation.",
+    ],
     "test_health_ok": [
         "GET /health returns 200 JSON with ok status when SQLite responds to SELECT 1.",
         "Response includes uptime_seconds and version strings for probes and dashboards.",
@@ -67,7 +214,8 @@ PROOF_BY_TEST_NAME: dict[str, list[str]] = {
         "Smoke script maps HTTPError 503 + JSON body into readable failure lines instead of crashing urllib.",
     ],
     "test_run_checks_detects_bad_static": [
-        "run_checks fetches static/app.js and fails when content lacks JS signatures (catch broken static deploy).",
+        "run_checks parses cache-busting ``v`` from login HTML then fetches /static/app.js?v=… "
+        "and fails when JS lacks expected signatures.",
     ],
     "test_client_error_anonymous_returns_401_json": [
         "Unauthenticated POST /api/client-error returns JSON 401 (same contract as other /api/* routes).",
@@ -161,5 +309,14 @@ PROOF_BY_TEST_NAME: dict[str, list[str]] = {
     ],
     "test_rollover_preview_api_forbidden": [
         "POST /api/admin/season-rollover/preview returns 403 when the operator is not allowed to run season rollover.",
+    ],
+    "test_run_checks_requires_versioned_css_hrefs_on_login": [
+        "run_checks fails when /login omits ``?v=`` on bundled CSS URLs so stale UI shells are caught automatically.",
+    ],
+    "test_taxops_asset_cache_version_is_non_empty_string": [
+        "taxops_asset_cache_version() yields a usable non-empty ``?v=`` token for static filenames.",
+    ],
+    "test_waitress_package_available": [
+        "The waitress WSGI dependency is installed so production `python app.py` can serve outside FLASK_DEBUG mode.",
     ],
 }

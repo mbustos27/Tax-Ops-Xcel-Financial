@@ -234,44 +234,47 @@
 
 {% block scripts %}
 <script>
-const filterInput  = document.getElementById('table-filter');
-const selectAll    = document.getElementById('select-all');
-const batchPanel   = document.getElementById('batch-panel');
-const selCountEl   = document.getElementById('sel-count');
-const batchSelLbl  = document.getElementById('batch-sel-label');
+(function () {
 
-function updateSelectionUI() {
-  const checked = document.querySelectorAll('.row-check:checked');
-  const n = checked.length;
-  selCountEl.textContent = n;
-  batchSelLbl.textContent = n + ' return' + (n !== 1 ? 's' : '') + ' selected';
-  batchPanel.classList.toggle('hidden', n === 0);
-  selectAll.indeterminate = n > 0 && n < document.querySelectorAll('.row-check').length;
-  selectAll.checked = n > 0 && n === document.querySelectorAll('.row-check').length;
-}
+  const filterInput  = document.getElementById('table-filter');
+  const selectAll    = document.getElementById('select-all');
+  const batchPanel   = document.getElementById('batch-panel');
+  const selCountEl   = document.getElementById('sel-count');
+  const batchSelLbl  = document.getElementById('batch-sel-label');
 
-document.querySelectorAll('.row-check').forEach(cb => {
-  cb.addEventListener('change', updateSelectionUI);
-});
+  function updateSelectionUI() {
+    const checked = document.querySelectorAll('.row-check:checked');
+    const n = checked.length;
+    selCountEl.textContent = n;
+    batchSelLbl.textContent = n + ' return' + (n !== 1 ? 's' : '') + ' selected';
+    batchPanel.classList.toggle('hidden', n === 0);
+    selectAll.indeterminate = n > 0 && n < document.querySelectorAll('.row-check').length;
+    selectAll.checked = n > 0 && n === document.querySelectorAll('.row-check').length;
+  }
 
-selectAll.addEventListener('change', () => {
   document.querySelectorAll('.row-check').forEach(cb => {
-    // Only check visible rows
-    if (cb.closest('tr').style.display !== 'none') {
-      cb.checked = selectAll.checked;
-    }
+    cb.addEventListener('change', updateSelectionUI);
   });
-  updateSelectionUI();
-});
 
-if (filterInput) {
-  filterInput.addEventListener('input', () => {
-    const q = filterInput.value.toLowerCase();
-    document.querySelectorAll('tbody tr[data-search]').forEach(row => {
-      row.style.display = row.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+  selectAll.addEventListener('change', () => {
+    document.querySelectorAll('.row-check').forEach(cb => {
+      // Only check visible rows
+      if (cb.closest('tr').style.display !== 'none') {
+        cb.checked = selectAll.checked;
+      }
     });
     updateSelectionUI();
   });
-}
+
+  if (filterInput) {
+    filterInput.addEventListener('input', () => {
+      const q = filterInput.value.toLowerCase();
+      document.querySelectorAll('tbody tr[data-search]').forEach(row => {
+        row.style.display = row.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+      });
+      updateSelectionUI();
+    });
+  }
+})();
 </script>
 {% endblock %}

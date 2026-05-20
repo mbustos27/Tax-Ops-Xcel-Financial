@@ -262,43 +262,49 @@
 </style>
 
 <script>
-function showTab(name) {
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.remove('hidden');
-  document.querySelector(`[data-tab="${name}"]`).classList.add('active');
-}
+(function () {
 
-function filterTable(tbodyId, query) {
-  const q = query.toLowerCase();
-  document.querySelectorAll('#' + tbodyId + ' tr').forEach(row => {
-    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
-  });
-}
-
-async function mergeClient(discardId, keepId, btn) {
-  if (!confirm(`Merge client #${discardId} into #${keepId}? This cannot be undone.`)) return;
-  btn.disabled = true;
-  btn.textContent = 'Merging…';
-  const res = await fetch('/api/audit/merge-client', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({discard_id: discardId, keep_id: keepId})
-  });
-  const data = await res.json();
-  if (data.success) {
-    const row = document.getElementById('close-row-' + discardId);
-    if (row) {
-      row.style.opacity = '0.4';
-      row.querySelectorAll('td').forEach(td => td.style.textDecoration = 'line-through');
-      btn.textContent = 'Merged';
-      btn.className = 'px-3 py-1 text-xs bg-gray-300 text-gray-600 rounded-lg cursor-default';
-    }
-  } else {
-    btn.textContent = 'Error';
-    btn.className = 'px-3 py-1 text-xs bg-red-200 text-red-700 rounded-lg';
-    alert('Merge failed: ' + (data.error || 'unknown error'));
+  function showTab(name) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.remove('hidden');
+    document.querySelector(`[data-tab="${name}"]`).classList.add('active');
   }
-}
+
+  function filterTable(tbodyId, query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('#' + tbodyId + ' tr').forEach(row => {
+      row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  }
+
+  async function mergeClient(discardId, keepId, btn) {
+    if (!confirm(`Merge client #${discardId} into #${keepId}? This cannot be undone.`)) return;
+    btn.disabled = true;
+    btn.textContent = 'Merging…';
+    const res = await _csrfFetch('/api/audit/merge-client', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({discard_id: discardId, keep_id: keepId})
+    });
+    const data = await res.json();
+    if (data.success) {
+      const row = document.getElementById('close-row-' + discardId);
+      if (row) {
+        row.style.opacity = '0.4';
+        row.querySelectorAll('td').forEach(td => td.style.textDecoration = 'line-through');
+        btn.textContent = 'Merged';
+        btn.className = 'px-3 py-1 text-xs bg-gray-300 text-gray-600 rounded-lg cursor-default';
+      }
+    } else {
+      btn.textContent = 'Error';
+      btn.className = 'px-3 py-1 text-xs bg-red-200 text-red-700 rounded-lg';
+      alert('Merge failed: ' + (data.error || 'unknown error'));
+    }
+  }
+
+  window.filterTable = filterTable;
+  window.showTab = showTab;
+})();
 </script>
 {% endblock %}

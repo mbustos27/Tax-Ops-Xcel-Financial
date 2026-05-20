@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}TaxOps {{ current_year }}{% endblock %}</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='tw.min.css') }}?v={{ config.APP_VERSION }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ config.APP_VERSION }}">
 </head>
@@ -33,7 +34,7 @@
           placeholder="Log # or name… (press /)"
           autocomplete="off"
           spellcheck="false"
-          class="block w-full"
+          class="block w-full min-w-0"
         >
         <div id="search-results"
              class="hidden absolute top-full left-0 right-0 mt-1 w-full bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50 max-h-80 overflow-y-auto min-w-[min(100%,28rem)]">
@@ -50,7 +51,7 @@
         <!-- Tools dropdown (queues & utility pages consolidated to free header space for search) -->
         {% set tools_active =
             active_page in ('upload','source_compare','import_audit','merge','efile_batch','audit_log',
-                            'logout','efile','payments','review','ai_chat','season_rollover')
+                            'logout','efile','payments','review','ai_chat','season_rollover','backup_admin','failed_docs','admin_users')
             or request.path.startswith('/email-review')
         %}
         <div class="relative" id="tools-menu-wrap">
@@ -119,9 +120,43 @@
                class="tools-item {% if active_page == 'import_audit' %}tools-item-active{% endif %}">
               Import Audit
             </a>
+            <a href="{{ url_for('accounting.receipt_queue_list') }}"
+               class="tools-item {% if active_page == 'receipt_queue' %}tools-item-active{% endif %} relative">
+              Receipt Queue
+              {% if receipt_review_count and receipt_review_count > 0 %}
+              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-amber-500 text-white rounded-full leading-none">
+                {{ receipt_review_count }}
+              </span>
+              {% endif %}
+            </a>
+            <a href="{{ url_for('accounting.accounting_settings') }}"
+               class="tools-item {% if active_page == 'accounting_settings' %}tools-item-active{% endif %}">
+              QB Settings
+            </a>
+            {% if current_user_role == 'admin' %}
+            <a href="{{ url_for('users.admin_users') }}"
+               class="tools-item {% if active_page == 'admin_users' %}tools-item-active{% endif %}">
+              Staff Accounts
+            </a>
+            {% endif %}
             <a href="{{ url_for('audit_log_admin') }}"
                class="tools-item {% if active_page == 'audit_log' %}tools-item-active{% endif %}">
               Audit log
+            </a>
+            <a href="{{ url_for('backup_admin') }}"
+               class="tools-item {% if active_page == 'backup_admin' %}tools-item-active{% endif %}">
+              Backup
+            </a>
+            <a href="{{ url_for('failed_docs_admin') }}"
+               class="tools-item {% if active_page == 'failed_docs' %}tools-item-active{% endif %} relative">
+              Failed Docs
+              {% if failed_doc_count and failed_doc_count > 0 %}
+              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-red-500 text-white rounded-full leading-none">
+                {{ failed_doc_count }}
+              </span>
+              {% endif %}
             </a>
             {% if can_run_season_rollover %}
             <a href="{{ url_for('season_rollover_admin') }}"
@@ -140,6 +175,19 @@
           + New Intake
         </a>
       </nav>
+
+      <!-- ── TOUR-3: Help / relaunch tour icon ──────────────────────────── -->
+      <button id="tour-help-btn"
+              aria-label="Relaunch onboarding tour"
+              title="Relaunch tour (resets completion so auto-launch fires again on next dashboard visit)"
+              class="flex items-center justify-center w-10 h-10 rounded-full
+                     hover:bg-slate-700 transition-colors shrink-0 focus-visible:outline
+                     focus-visible:outline-2 focus-visible:outline-blue-400">
+        <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </button>
 
       <!-- ── Reject alert bell ────────────────────────────────────────────── -->
       <div class="relative shrink-0" id="reject-bell-wrap">
@@ -246,8 +294,16 @@
           </select>
         </div>
 
+        <!-- ONBOARD-3: current user + role badge + sign-out -->
         <div class="flex items-center gap-2 text-sm text-slate-300">
-          <span class="hidden sm:inline font-medium">{{ session.get('username', '') }}</span>
+          {% if current_user_name %}
+          <span class="hidden md:inline font-medium text-slate-200">{{ current_user_name }}</span>
+          {% if current_user_role == 'admin' %}
+          <span class="hidden md:inline text-[10px] font-bold bg-violet-500/30 text-violet-200 border border-violet-500/40 rounded-full px-2 py-0.5">Admin</span>
+          {% else %}
+          <span class="hidden md:inline text-[10px] font-bold bg-slate-600 text-slate-300 border border-slate-500 rounded-full px-2 py-0.5">Staff</span>
+          {% endif %}
+          {% endif %}
           <a href="/logout"
              class="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors px-2.5 py-2 rounded-lg hover:bg-slate-700 min-h-[2.25rem]"
              title="Sign out">
@@ -351,8 +407,13 @@
       {% block content %}{% endblock %}
     </div>
     <footer class="mt-auto shrink-0 border-t border-slate-200 bg-slate-100/90 py-2 px-4">
-      <div class="max-w-screen-2xl mx-auto text-center text-[11px] text-slate-500 select-none">
+      <div class="max-w-screen-2xl mx-auto text-center text-[11px] text-slate-500 select-none space-x-3">
         <span title="TaxOps">&copy; {{ current_year }} Moises Bustos</span>
+        <span aria-hidden="true">·</span>
+        <a href="{{ url_for('admin_runbook') }}"
+           class="hover:text-slate-700 hover:underline transition-colors">
+          Ops Runbook
+        </a>
       </div>
     </footer>
   </main>
@@ -376,92 +437,95 @@
 
   <script src="{{ url_for('static', filename='app.js') }}?v={{ config.APP_VERSION }}"></script>
   <script>
-    /** Fetch with timeout — avoids perpetual “Loading…” if the server hangs.
-     *  When the timer fires, `fetch` rejects with AbortError whose message is often
-     *  “signal is aborted without reason” (no AbortSignal reason). Flag timeouts so callers get a clear error. */
-    function _fetchWithTimeout(url, options, timeoutMs) {
-      var ms = timeoutMs || 45000;
-      var ctrl = new AbortController();
-      var timedOut = false;
-      var tid = setTimeout(function () {
-        timedOut = true;
-        try {
-          ctrl.abort(new DOMException('Request exceeded ' + Math.round(ms / 1000) + 's.', 'TimeoutError'));
-        } catch (ignored) {
-          ctrl.abort();
+(function () {
+
+      /** Fetch with timeout — avoids perpetual “Loading…” if the server hangs.
+       *  When the timer fires, `fetch` rejects with AbortError whose message is often
+       *  “signal is aborted without reason” (no AbortSignal reason). Flag timeouts so callers get a clear error. */
+      function _fetchWithTimeout(url, options, timeoutMs) {
+        var ms = timeoutMs || 45000;
+        var ctrl = new AbortController();
+        var timedOut = false;
+        var tid = setTimeout(function () {
+          timedOut = true;
+          try {
+            ctrl.abort(new DOMException('Request exceeded ' + Math.round(ms / 1000) + 's.', 'TimeoutError'));
+          } catch (ignored) {
+            ctrl.abort();
+          }
+        }, ms);
+        var opts = Object.assign({}, options || {}, { signal: ctrl.signal });
+        return _csrfFetch(url, opts)
+          .finally(function () { clearTimeout(tid); })
+          .catch(function (err) {
+            if (timedOut) {
+              throw new Error(
+                'Request timed out after ' +
+                  Math.round(ms / 1000) +
+                  's. Slow LLM calls may need longer — try again or bump the AI chat fetch timeout.'
+              );
+            }
+            throw err;
+          });
+      }
+
+      /** API calls return 401 JSON when the session expired (not an HTML redirect). */
+      function _authJson(r) {
+        if (r.status === 401) {
+          window.location.href =
+            '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+          return Promise.reject(new Error('Unauthorized'));
         }
-      }, ms);
-      var opts = Object.assign({}, options || {}, { signal: ctrl.signal });
-      return fetch(url, opts)
-        .finally(function () { clearTimeout(tid); })
-        .catch(function (err) {
-          if (timedOut) {
+        var ct = (r.headers.get('Content-Type') || '').toLowerCase();
+        return r.text().then(function (raw) {
+          var s = typeof raw === 'string' ? raw.trim() : '';
+          if (!s) {
+            if (!r.ok) throw new Error('HTTP ' + r.status + ' — empty response');
+            return {};
+          }
+          var first = s.charAt(0);
+          if (first === '<' || (ct.indexOf('text/html') !== -1)) {
             throw new Error(
-              'Request timed out after ' +
-                Math.round(ms / 1000) +
-                's. Slow LLM calls may need longer — try again or bump the AI chat fetch timeout.'
+              'Server returned a web page instead of JSON (HTTP ' + r.status + '). ' +
+              'Open DevTools → Network, click the failing request; if HTML is from TaxOps login, refresh and sign in again. ' +
+              'If it persists, check the server/process log — the POST /ai/chat handler may have errored.'
             );
           }
-          throw err;
-        });
-    }
-
-    /** API calls return 401 JSON when the session expired (not an HTML redirect). */
-    function _authJson(r) {
-      if (r.status === 401) {
-        window.location.href =
-          '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
-        return Promise.reject(new Error('Unauthorized'));
-      }
-      var ct = (r.headers.get('Content-Type') || '').toLowerCase();
-      return r.text().then(function (raw) {
-        var s = typeof raw === 'string' ? raw.trim() : '';
-        if (!s) {
-          if (!r.ok) throw new Error('HTTP ' + r.status + ' — empty response');
-          return {};
-        }
-        var first = s.charAt(0);
-        if (first === '<' || (ct.indexOf('text/html') !== -1)) {
-          throw new Error(
-            'Server returned a web page instead of JSON (HTTP ' + r.status + '). ' +
-            'Open DevTools → Network, click the failing request; if HTML is from TaxOps login, refresh and sign in again. ' +
-            'If it persists, check the server/process log — the POST /ai/chat handler may have errored.'
-          );
-        }
-        var body;
-        try {
-          body = JSON.parse(s);
-        } catch (ignored) {
-          throw new Error(
-            'Unexpected token in response — not valid JSON (HTTP ' +
-              r.status +
-              '): ' +
-              s.slice(0, 160)
-          );
-        }
-        if (!r.ok) {
-          var msg =
-            body && (body.error || body.message)
-              ? String(body.error || body.message)
-              : ('HTTP ' + r.status);
-          if (body && body.hint && String(body.hint).trim()) {
-            msg += ' — ' + String(body.hint).trim();
+          var body;
+          try {
+            body = JSON.parse(s);
+          } catch (ignored) {
+            throw new Error(
+              'Unexpected token in response — not valid JSON (HTTP ' +
+                r.status +
+                '): ' +
+                s.slice(0, 160)
+            );
           }
-          if (body && body.detail && String(body.detail).trim()) {
-            var det = String(body.detail).trim();
-            if (det && det !== msg && msg.indexOf(det) === -1) {
-              msg += ' (' + det.slice(0, 240) + (det.length > 240 ? '…' : '') + ')';
+          if (!r.ok) {
+            var msg =
+              body && (body.error || body.message)
+                ? String(body.error || body.message)
+                : ('HTTP ' + r.status);
+            if (body && body.hint && String(body.hint).trim()) {
+              msg += ' — ' + String(body.hint).trim();
             }
+            if (body && body.detail && String(body.detail).trim()) {
+              var det = String(body.detail).trim();
+              if (det && det !== msg && msg.indexOf(det) === -1) {
+                msg += ' (' + det.slice(0, 240) + (det.length > 240 ? '…' : '') + ')';
+              }
+            }
+            if (r.status === 503 && body && body.ollama_base_url) {
+              msg += ' [Ollama: ' + String(body.ollama_base_url).trim() + ']';
+            }
+            throw new Error(msg);
           }
-          if (r.status === 503 && body && body.ollama_base_url) {
-            msg += ' [Ollama: ' + String(body.ollama_base_url).trim() + ']';
-          }
-          throw new Error(msg);
-        }
-        return body;
-      });
-    }
-  </script>
+          return body;
+        });
+      }
+})();
+</script>
   <script>
     (function () {
       const btn = document.getElementById('back-to-top');
@@ -487,7 +551,7 @@
       btn.addEventListener('click', async () => {
         const current = btn.dataset.enabled === '1';
         try {
-          const resp = await fetch('/api/privacy-mode', {
+          const resp = await _csrfFetch('/api/privacy-mode', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled: !current }),

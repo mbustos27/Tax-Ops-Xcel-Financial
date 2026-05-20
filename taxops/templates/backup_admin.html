@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Database Backup — TaxOps{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 py-6 space-y-6 pb-24">
+
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Database Backup</h1>
+    <p class="text-sm text-slate-600 mt-1 leading-relaxed">
+      Run an on-demand backup of <code class="font-mono text-violet-700">taxops.db</code> using
+      SQLite&apos;s online backup API — safe while the app is live.
+      Backups are stored in the configured backup directory with a UTC timestamp filename.
+      Old backups beyond the 30-day retention window are pruned automatically each run.
+    </p>
+  </div>
+
+  <!-- Status card -->
+  <div id="backup-status-card" class="hidden bg-white rounded-xl border shadow-sm p-5 space-y-2">
+    <div class="flex items-center gap-2">
+      <span id="backup-status-icon" class="text-xl">⏳</span>
+      <span id="backup-status-title" class="font-semibold text-slate-800 text-sm">Running…</span>
+    </div>
+    <p id="backup-status-msg" class="text-sm text-slate-600 font-mono break-all"></p>
+    <p id="backup-status-file" class="text-xs text-slate-500 font-mono break-all"></p>
+  </div>
+
+  <!-- Action card -->
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wide">Manual Backup</h2>
+    <p class="text-sm text-slate-600">
+      Triggers the same backup routine as the nightly Task Scheduler job.
+      Each run creates one new <code class="font-mono">taxops_backup_&lt;timestamp&gt;.sqlite</code> file
+      and removes files older than 30 days.
+    </p>
+    <button id="run-backup-btn"
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 text-white
+                   text-sm font-semibold hover:bg-violet-700 active:scale-95 transition-all
+                   disabled:opacity-50 disabled:cursor-not-allowed">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+      </svg>
+      Run backup now
+    </button>
+  </div>
+
+  <!-- Info card -->
+  <div class="bg-slate-50 rounded-xl border border-slate-200 p-5 space-y-2 text-sm text-slate-700">
+    <h2 class="font-bold text-slate-800 uppercase tracking-wide text-xs">Configuration</h2>
+    <ul class="space-y-1 list-disc list-inside">
+      <li><code class="font-mono">TAXOPS_BACKUP_DIR</code> — backup destination (default: <code class="font-mono">C:\TaxOps\backups\</code>)</li>
+      <li><code class="font-mono">TAXOPS_BACKUP_RETENTION_DAYS</code> — days to keep (default: 30)</li>
+      <li><code class="font-mono">TAXOPS_BACKUP_ALERT_WEBHOOK</code> — optional Slack webhook for failure alerts</li>
+      <li><code class="font-mono">TAXOPS_BACKUP_ERROR_LOG</code> — path to error log (default: inside backup dir)</li>
+    </ul>
+    <p class="text-xs text-slate-500 pt-1">
+      Nightly schedule: Task Scheduler runs <code class="font-mono">scripts/nightly_backup_db.py</code> at 2:10 AM.
+      See <code class="font-mono">scripts/register-nightly-backup-task.ps1</code> to register the task.
+    </p>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  const btn    = document.getElementById('run-backup-btn');
+  const card   = document.getElementById('backup-status-card');
+  const icon   = document.getElementById('backup-status-icon');
+  const title  = document.getElementById('backup-status-title');
+  const msgEl  = document.getElementById('backup-status-msg');
+  const fileEl = document.getElementById('backup-status-file');
+
+  function showStatus(ok, msg, file) {
+    card.classList.remove('hidden');
+    card.classList.remove('border-green-300', 'border-red-300', 'border-slate-200');
+    if (ok === null) {
+      icon.textContent  = '⏳';
+      title.textContent = 'Running…';
+      title.className   = 'font-semibold text-slate-700 text-sm';
+      card.classList.add('border-slate-200');
+    } else if (ok) {
+      icon.textContent  = '✅';
+      title.textContent = 'Backup succeeded';
+      title.className   = 'font-semibold text-green-700 text-sm';
+      card.classList.add('border-green-300');
+    } else {
+      icon.textContent  = '❌';
+      title.textContent = 'Backup failed';
+      title.className   = 'font-semibold text-red-700 text-sm';
+      card.classList.add('border-red-300');
+    }
+    msgEl.textContent  = msg || '';
+    fileEl.textContent = file ? ('File: ' + file) : '';
+  }
+
+  btn.addEventListener('click', async function () {
+    btn.disabled = true;
+    showStatus(null, 'Please wait…', null);
+
+    try {
+      const resp = await _csrfFetch('/api/admin/backup/run', {
+        method:  'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''
+        },
+      });
+      const data = await resp.json();
+      showStatus(data.success === true, data.message || '', data.backup_file || null);
+    } catch (err) {
+      showStatus(false, 'Network error: ' + err.message, null);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

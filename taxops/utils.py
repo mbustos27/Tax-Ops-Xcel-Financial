@@ -187,6 +187,12 @@ def _enqueue_extraction(doc_id: int, return_id: int) -> None:
             cq.commit()
         finally:
             cq.close()
+        # REL-5: wake the extraction worker immediately instead of waiting POLL_INTERVAL.
+        try:
+            from extractor import _notify_extraction_worker
+            _notify_extraction_worker()
+        except Exception:
+            pass
     except Exception as e:
         log.error("Failed to enqueue doc %s: %s", doc_id, e)
 

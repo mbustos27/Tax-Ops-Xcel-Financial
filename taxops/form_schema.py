@@ -141,6 +141,7 @@ FORM_INTEGER_COLUMNS: frozenset[str] = frozenset(
         "box2_direct_sales_indicator",
         "box7_direct_sales_indicator",
         "box11_fatca_filing_requirement",
+        "has_overtime",
     }
 )
 

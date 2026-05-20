@@ -2,6 +2,39 @@
 Background document extraction worker for TaxOps.
 Polls extraction_queue, extracts fields, detects form types,
 tags documents silently if confident, queues for review if not.
+
+DEBT-8 — confidence scoring rationale
+--------------------------------------
+``_extract_fields(file_path, filename) -> (fields | None, method | None)``
+  Returns the cleaned field dict and the extraction method ("text" or "vision"),
+  or ``(None, None)`` on failure.  It does NOT return a confidence value because
+  the LLM output alone is insufficient to judge quality — detected_type is also
+  required.
+
+``_compute_confidence(fields, detected_type) -> float [0.0 – 1.0]``
+  Computes the final score AFTER the type is resolved:
+
+  * **paystub**: weighted sum of employer/employee name (0.28), YTD gross/net (0.32),
+    overtime indicators (0.35), plus a bonus 0.12 for explicit form_type label.
+  * **W-2** (``w2_records``): fraction of [employer_name, tax_year,
+    box1_wages_tips_other, box2_federal_income_tax_withheld] present, +0.1 if
+    form_type is set.
+  * **1099-NEC/MISC/INT/DIV**: similar fraction of their respective required fields.
+  * **Unknown type** (no ``required_fields`` entry): returns 0.5 (neutral; routes
+    to review queue for manual type assignment).
+  * **No detected_type or empty fields**: returns 0.0.
+
+  ``HIGH_CONFIDENCE = 0.85`` — documents at or above this threshold are
+  auto-tagged and saved without human review.  Below this threshold the item is
+  placed on the review queue (status = 'needs_review').
+
+Vision fallback
+---------------
+Image-only documents (JPEG/PNG) and PDFs with no embedded text always go through
+the vision model (``OLLAMA_EXTRACT_MODEL_VISION``).  Multi-page PDFs are rendered
+to a single composite thumbnail by ``_pdf_to_image_b64`` before sending to the
+vision model.  For very long documents this means later pages may be underweighted;
+a future improvement can cap and send multiple thumbnails per page range.
 """
 
 from __future__ import annotations
@@ -128,23 +161,87 @@ _DOCUMENT_EXTRACT_ALLOWED_KEYS: frozenset[str] = frozenset(
         "box14_state",
         "box15_state_identification",
         "box16_state_tax_withheld",
+        # ── PAYSTUB / check stub (earnings statements with OT & YTD) ─────────────
+        "employee_name",
+        "pay_period_start",
+        "pay_period_end",
+        "pay_date",
+        "gross_pay_this_period",
+        "net_pay_this_period",
+        "regular_hours",
+        "regular_pay",
+        "overtime_hours",
+        "overtime_pay",
+        "has_overtime",
+        "ytd_gross",
+        "ytd_net",
+        "ytd_federal_tax",
+        "ytd_state_tax",
+        "ytd_social_security",
+        "ytd_medicare",
     }
 )
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL = 60          # seconds between queue checks
-MAX_ATTEMPTS = 3           # max retries before marking failed
+POLL_INTERVAL = 60          # seconds between queue checks (max wait when idle)
+MAX_ATTEMPTS = 3           # max retries before permanently failing (dead letter)
 HIGH_CONFIDENCE = 0.85     # threshold for silent auto-tagging
 _SUPPORTED_EXTS = frozenset({".pdf", ".jpg", ".jpeg", ".png"})
 
 _worker_started = False
 _worker_lock = threading.Lock()
+_worker_thread: threading.Thread | None = None  # HEALTH-3: tracked for is_alive() check
+
+# REL-5: event signalled by _notify_extraction_worker() when a new row is enqueued.
+# The worker uses event.wait(POLL_INTERVAL) so it wakes immediately rather than
+# waiting up to 60 s after an upload.
+_work_event = threading.Event()
+
+
+def _notify_extraction_worker() -> None:
+    """Signal the worker that a new queue row is available."""
+    _work_event.set()
+
+
+def _emit_extraction_audit(
+    *,
+    doc_id: int,
+    return_id: int,
+    status: str,
+    confidence: float | None = None,
+    detected_type: str | None = None,
+    reason: str | None = None,
+    method: str | None = None,
+) -> None:
+    """DOC-HARD-5: non-blocking audit log entry for extraction outcomes."""
+    try:
+        from audit_service import _enqueue_write
+        _enqueue_write(
+            user_id="extractor",
+            action=f"extraction_{status}",
+            entity_type="return_document",
+            entity_id=str(doc_id),
+            before=None,
+            after={
+                "doc_id": doc_id,
+                "return_id": return_id,
+                "status": status,
+                "confidence": confidence,
+                "detected_type": detected_type,
+                "extraction_method": method,
+                "reason": reason,
+            },
+            ip_address=None,
+            http_status=200,
+        )
+    except Exception as exc:
+        logger.warning("extraction_audit write failed: %s", exc)
 
 
 def start_extraction_worker(app) -> None:
     """Start the background extraction worker thread (daemon)."""
-    global _worker_started
+    global _worker_started, _worker_thread
     with _worker_lock:
         if _worker_started:
             logger.info("Extraction worker already running")
@@ -156,18 +253,29 @@ def start_extraction_worker(app) -> None:
         daemon=True,
         name="extraction-worker",
     )
+    _worker_thread = thread
     thread.start()
     logger.info("Extraction worker started")
 
 
+def extraction_worker_status() -> dict:
+    """HEALTH-3: return thread liveness for /health endpoint."""
+    thread = _worker_thread
+    if thread is None:
+        return {"started": False, "running": False}
+    return {"started": True, "running": thread.is_alive()}
+
+
 def _worker_loop(app):
     while True:
+        # REL-5: block until woken by _notify_extraction_worker() or POLL_INTERVAL expires.
+        _work_event.wait(timeout=POLL_INTERVAL)
+        _work_event.clear()
         try:
             with app.app_context():
                 _process_queue()
         except Exception as e:
             logger.error("Extraction worker error: %s", e)
-        time.sleep(POLL_INTERVAL)
 
 
 def _process_queue():
@@ -213,6 +321,9 @@ def _table_from_form_type_hint(raw: str | None) -> str | None:
             return "f1099_div_records"
     if "W-2" in u or "W2" in u.replace(" ", "").replace("-", ""):
         return "w2_records"
+    cup = compact.replace(" ", "")
+    if compact in ("CHECK STUB", "PAY STUB") or cup in {"PAYSTUB", "CHECKSTUB"}:
+        return "paystub"
     return None
 
 
@@ -252,6 +363,8 @@ def _process_item(conn, item: dict) -> None:
             (get_now(), item_id),
         )
         conn.commit()
+        _emit_extraction_audit(doc_id=doc_id, return_id=return_id, status="failed",
+                               reason="File not found on disk")
         return
 
     ext = os.path.splitext(file_path)[1].lower()
@@ -280,18 +393,34 @@ def _process_item(conn, item: dict) -> None:
     conn.commit()
 
     try:
-        fields, method, _raw_c = _extract_fields(file_path, filename)
+        fields, method = _extract_fields(file_path, filename)
         if not fields:
-            conn.execute(
-                """
-                UPDATE extraction_queue
-                SET status = 'failed',
-                    error_message = 'No fields extracted',
-                    processed_at = ?
-                WHERE id = ?
-                """,
-                (get_now(), item_id),
-            )
+            # DOC-HARD-2: retry up to MAX_ATTEMPTS before permanently failing.
+            new_attempts = item["attempts"] + 1  # DB already incremented
+            if new_attempts < MAX_ATTEMPTS:
+                logger.info(
+                    "Doc %s: no fields extracted (attempt %d/%d) — will retry",
+                    doc_id, new_attempts, MAX_ATTEMPTS,
+                )
+                conn.execute(
+                    "UPDATE extraction_queue SET status = 'pending', error_message = ? WHERE id = ?",
+                    (f"No fields extracted (attempt {new_attempts}/{MAX_ATTEMPTS})", item_id),
+                )
+            else:
+                logger.warning(
+                    "Doc %s: no fields extracted after %d attempts — dead letter",
+                    doc_id, new_attempts,
+                )
+                conn.execute(
+                    """
+                    UPDATE extraction_queue
+                    SET status = 'failed',
+                        error_message = 'No fields extracted after %d attempts',
+                        processed_at = ?
+                    WHERE id = ?
+                    """ % new_attempts,
+                    (get_now(), item_id),
+                )
             conn.commit()
             return
 
@@ -301,20 +430,35 @@ def _process_item(conn, item: dict) -> None:
         fields_json = json.dumps(safe_fields)
 
         if confidence >= HIGH_CONFIDENCE and detected_type:
-            saved = _save_form_data(conn, detected_type, return_id, doc_id, safe_fields)
-            doc_tag = _form_table_to_doc_type(detected_type)
+            if detected_type == "paystub":
+                saved = True
+                doc_tag = _form_table_to_doc_type("paystub")
+            else:
+                saved = _save_form_data(
+                    conn, detected_type, return_id, doc_id, safe_fields
+                )
+                doc_tag = _form_table_to_doc_type(detected_type)
             if saved and doc_tag != "unknown":
                 tagged = _apply_extraction_doc_tag(
                     conn, doc_id=doc_id, return_id=return_id, doc_tag=doc_tag
                 )
                 if tagged:
-                    logger.info(
-                        "Auto-tagged doc %s as %s after form save (confidence %.2f, table %s)",
-                        doc_id,
-                        doc_tag,
-                        confidence,
-                        detected_type,
-                    )
+                    if detected_type == "paystub":
+                        logger.info(
+                            "Auto-tagged doc %s as paystub "
+                            "(no typed SQL row; confidence %.2f)",
+                            doc_id,
+                            confidence,
+                        )
+                    else:
+                        logger.info(
+                            "Auto-tagged doc %s as %s after form save "
+                            "(confidence %.2f, table %s)",
+                            doc_id,
+                            doc_tag,
+                            confidence,
+                            detected_type,
+                        )
                 conn.execute(
                     """
                     UPDATE extraction_queue
@@ -334,6 +478,11 @@ def _process_item(conn, item: dict) -> None:
                         get_now(),
                         item_id,
                     ),
+                )
+                # DOC-HARD-5: emit audit trail for completed extraction.
+                _emit_extraction_audit(
+                    doc_id=doc_id, return_id=return_id, status="completed",
+                    confidence=confidence, detected_type=detected_type, method=method,
                 )
             else:
                 logger.info(
@@ -396,18 +545,37 @@ def _process_item(conn, item: dict) -> None:
     except Exception as e:
         err = str(e)[:200]
         logger.error("Extraction failed for doc %s: %s", doc_id, e)
+        # DOC-HARD-2: retry up to MAX_ATTEMPTS; permanently fail on exhaustion (dead letter).
+        new_attempts = item["attempts"] + 1  # DB already incremented
+        if new_attempts < MAX_ATTEMPTS:
+            status = "pending"
+            logger.info(
+                "Doc %s: extraction error (attempt %d/%d) — will retry",
+                doc_id, new_attempts, MAX_ATTEMPTS,
+            )
+        else:
+            status = "failed"
+            logger.warning(
+                "Doc %s: extraction permanently failed after %d attempts",
+                doc_id, new_attempts,
+            )
         try:
             conn.execute(
                 """
                 UPDATE extraction_queue
-                SET status = 'failed',
+                SET status = ?,
                     error_message = ?,
-                    processed_at = ?
+                    processed_at = CASE WHEN ? = 'failed' THEN ? ELSE processed_at END
                 WHERE id = ?
                 """,
-                (err, get_now(), item_id),
+                (status, err, status, get_now(), item_id),
             )
             conn.commit()
+            if status == "failed":
+                # DOC-HARD-5: audit trail for permanent (dead-letter) failure.
+                _emit_extraction_audit(
+                    doc_id=doc_id, return_id=return_id, status="failed", reason=err,
+                )
         except Exception:
             conn.rollback()
 
@@ -422,7 +590,9 @@ def _irs_form_extraction_block() -> str:
         "- NEVER extract Social Security Numbers (SSN) — not full, not partial\n"
         "- NEVER extract Employer Identification Numbers (EIN)\n"
         "- NEVER extract Taxpayer Identification Numbers (TIN)\n"
-        "- If you see a 9-digit number formatted as XXX-XX-XXXX or XX-XXXXXXX — skip it\n\n"
+        "- If you see a 9-digit number formatted as XXX-XX-XXXX or XX-XXXXXXX — skip it\n"
+        "- Vision runs only after mechanical PDF text proves unusable — it is never used to transcribe "
+        "SSN/EIN/TIN from imagery into JSON (leave identification numbers blank)\n\n"
         "MONETARY VALUES: numbers only, no $ symbols, no commas (e.g. '52000' not '$52,000')\n"
         "EMPTY FIELDS: use empty string '' for fields not found — do not guess\n\n"
         "First identify the form type, then extract all applicable fields:\n\n"
@@ -526,14 +696,66 @@ def _irs_form_extraction_block() -> str:
         '"box14_state": "", '
         '"box15_state_identification": "", '
         '"box16_state_tax_withheld": ""}\n\n'
+        "FOR PAYSTUB / CHECK-STUB (employee paystub — often REG vs OT/OVT rows and YEAR-TO-DATE / YTD totals):\n"
+        "Identify as PAYSTUB rather than Form W-2 when you see net pay per check, "
+        "pay-period dates/number, hours worked, overtime lines, or YTD columns tied to THIS pay date.\n"
+        '{"form_type": "PAYSTUB", "tax_year": "", '
+        '"employee_name": "", "employer_name": "", '
+        '"pay_period_start": "", "pay_period_end": "", "pay_date": "", '
+        '"gross_pay_this_period": "", "net_pay_this_period": "", '
+        '"regular_hours": "", "regular_pay": "", '
+        '"overtime_hours": "", "overtime_pay": "", '
+        '"has_overtime": false, '
+        '"ytd_gross": "", "ytd_net": "", '
+        '"ytd_federal_tax": "", "ytd_state_tax": "", '
+        '"ytd_social_security": "", "ytd_medicare": ""}\n\n'
     )
+
+
+def _extract_json_retry_on_timeout(
+    filename: str,
+    *,
+    prompt: str,
+    model: str,
+    image_b64: str | None,
+    timeout: int,
+):
+    """Call ``extract_json``; retry once after backoff on read/connect timeouts (busy Ollama host)."""
+    from requests.exceptions import ConnectTimeout, ReadTimeout
+
+    from llm import extract_json
+
+    last_exc: BaseException | None = None
+    for attempt in range(2):
+        if attempt > 0:
+            time.sleep(8)
+        try:
+            return extract_json(
+                prompt,
+                model=model,
+                image_b64=image_b64,
+                timeout=timeout,
+            )
+        except (ReadTimeout, ConnectTimeout) as exc:
+            last_exc = exc
+            logger.warning(
+                "Ollama extract timed out (%s/2) for %s — %s",
+                attempt + 1,
+                filename,
+                exc,
+            )
+    assert last_exc is not None
+    raise last_exc
 
 
 def _extract_fields(
     file_path: str, filename: str
-) -> tuple[dict[str, Any] | None, str | None, float]:
-    from llm import extract_json
-
+) -> tuple[dict[str, Any] | None, str | None]:
+    """DEBT-8: returns (fields, method) only.  Confidence is computed separately
+    by _compute_confidence once the detected_type is known.  Callers must not
+    use the presence of fields as a proxy for confidence — always call
+    _compute_confidence(fields, detected_type) explicitly.
+    """
     from ai_routes import _extract_pdf_text, _image_to_b64, _pdf_to_image_b64
     from utils import scrub_ssn_from_dict
 
@@ -545,17 +767,24 @@ def _extract_fields(
             if pdf_text:
                 method = "text"
                 prompt = _build_text_prompt(pdf_text, filename)
-                raw = extract_json(
-                    prompt,
+                raw = _extract_json_retry_on_timeout(
+                    filename,
+                    prompt=prompt,
                     model=OLLAMA_EXTRACT_MODEL_TEXT,
+                    image_b64=None,
                     timeout=OLLAMA_EXTRACT_TIMEOUT_TEXT,
                 )
             else:
                 method = "vision"
                 image_b64 = _pdf_to_image_b64(file_path)
                 prompt = _build_vision_prompt()
-                raw = extract_json(
-                    prompt,
+                logger.info(
+                    "Extraction: vision fallback (no usable embedded PDF text) for %s",
+                    filename,
+                )
+                raw = _extract_json_retry_on_timeout(
+                    filename,
+                    prompt=prompt,
                     model=OLLAMA_EXTRACT_MODEL_VISION,
                     image_b64=image_b64,
                     timeout=OLLAMA_EXTRACT_TIMEOUT_VISION,
@@ -565,18 +794,20 @@ def _extract_fields(
             method = "vision"
             image_b64 = _image_to_b64(file_path)
             prompt = _build_vision_prompt()
-            raw = extract_json(
-                prompt,
+            logger.info("Extraction: vision (raster/image input) for %s", filename)
+            raw = _extract_json_retry_on_timeout(
+                filename,
+                prompt=prompt,
                 model=OLLAMA_EXTRACT_MODEL_VISION,
                 image_b64=image_b64,
                 timeout=OLLAMA_EXTRACT_TIMEOUT_VISION,
             )
         else:
             logger.info("Unsupported extension for extraction: %s", ext)
-            return None, None, 0.0
+            return None, None
 
         if raw is None or not isinstance(raw, dict):
-            return None, None, 0.0
+            return None, None
 
         scrubbed = scrub_ssn_from_dict(raw)
 
@@ -600,11 +831,11 @@ def _extract_fields(
             if sval:
                 clean[k] = sval
 
-        return clean, method, 1.0
+        return clean, method
 
     except Exception as e:
         logger.error("Field extraction failed for %s: %s", filename, e)
-        return None, None, 0.0
+        return None, None
 
 
 def _build_text_prompt(pdf_text: str, filename: str = "") -> str:
@@ -613,6 +844,8 @@ def _build_text_prompt(pdf_text: str, filename: str = "") -> str:
         fn_note = f"Original filename: {filename.strip()}\n\n"
     return (
         _irs_form_extraction_block()
+        + "EXTRACTION MODE: The following text was copied mechanically from the PDF's embedded text layer "
+        "(not vision). Image-only scans may yield incomplete text.\n\n"
         + "Identify which form type this document is and return ONLY the JSON "
         "structure for that form type. Do not return multiple structures.\n\n"
         + fn_note
@@ -624,6 +857,9 @@ def _build_text_prompt(pdf_text: str, filename: str = "") -> str:
 def _build_vision_prompt() -> str:
     return (
         _irs_form_extraction_block()
+        + "EXTRACTION MODE — VISION (final fallback): There was no usable selectable text from this PDF, "
+        "or the upload is already a raster image. Read layout from pixels only; identification numbers "
+        "stay blank under the CRITICAL PRIVACY RULES above.\n\n"
         + "Examine the document image carefully. Read every box label and value. "
         "Identify which form type this document is and return ONLY the JSON "
         "structure for that form type. Do not return multiple structures. "
@@ -643,6 +879,25 @@ def _field_truthy(fields: dict, key: str) -> bool:
 def _compute_confidence(fields: dict, detected_type: str | None) -> float:
     if not fields or not detected_type:
         return 0.0
+
+    if detected_type == "paystub":
+        score = 0.0
+        if _field_truthy(fields, "employer_name") or _field_truthy(fields, "employee_name"):
+            score += 0.28
+        if _field_truthy(fields, "ytd_gross") or _field_truthy(fields, "ytd_net"):
+            score += 0.32
+        ot_line = (
+            fields.get("has_overtime") is True
+            or _field_truthy(fields, "overtime_hours")
+            or _field_truthy(fields, "overtime_pay")
+        )
+        if ot_line:
+            score += 0.35
+        ft = str(fields.get("form_type") or "").strip().upper()
+        ft_c = ft.replace("-", "").replace(" ", "").replace("/", "")
+        if "PAYSTUB" in ft_c or "CHECKSTUB" in ft_c or ft in ("PAY STUB", "CHECK STUB"):
+            score = min(score + 0.12, 1.0)
+        return max(min(score, 1.0), 0.0)
 
     required_fields = {
         "w2_records": [

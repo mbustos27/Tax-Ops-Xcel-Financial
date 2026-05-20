@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import functools
 import os
 import threading
@@ -9,7 +10,7 @@ from datetime import date, datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flask import (
-    Flask, abort, current_app, flash, jsonify, redirect, render_template,
+    Flask, abort, current_app, flash, g, jsonify, redirect, render_template,
     request, Response, send_file, session, url_for,
 )
 
@@ -32,6 +33,7 @@ from config import (
     MULTIYEAR_AGI_PERCENT_THRESHOLD,
     MULTIYEAR_BALANCE_ABS_THRESHOLD,
     MULTIYEAR_REFUND_ABS_THRESHOLD,
+    taxops_asset_cache_version,
     taxops_release_version,
 )
 from logging_config import configure_logging
@@ -43,7 +45,7 @@ from env_validation import validate_taxops_environment_and_exit
 validate_taxops_environment_and_exit()
 
 from csv_analyzer import analyze, iter_data_rows, normalize_status
-from db import get_connection, init_db
+from db import CURRENT_SCHEMA_VERSION, get_connection, get_schema_version, init_db
 from form_schema import FORM_INTEGER_COLUMNS, FORM_TABLE_INSERT_COLUMNS
 from merge_ops import merge_client_into
 from bulk_returns import bulk_apply_processor_changes, bulk_apply_status_changes
@@ -79,14 +81,40 @@ from drake_documents_sync import sync_to_drake
 _APP_START_MONOTONIC = time.monotonic()
 
 app = Flask(__name__)
+# CACHE / #142: never rely on intermediary caches honoring long TTL for send_file-backed responses.
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
-app.config["TEMPLATES_AUTO_RELOAD"] = True
-app.config["APP_VERSION"] = "1.0.0"
+# SEC-3: only reload templates in debug/dev mode — avoids unnecessary disk I/O in production.
+app.config["TEMPLATES_AUTO_RELOAD"] = app.debug
+# CACHE / #143: ``?v=`` on static URLs — resolved via taxops_asset_cache_version() (+ optional TAXOPS_APP_VERSION).
+app.config["APP_VERSION"] = taxops_asset_cache_version()
+
+# SEC-3: session cookie hardening + lifetime.
+# SESSION_COOKIE_SECURE is intentionally left False here because the office LAN
+# does not currently terminate HTTPS in front of this server.  Enable it once a
+# reverse proxy or load balancer provides TLS (see issue SEC-3).
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+)
+
+# SEC-5: cap incoming request bodies so a large upload cannot exhaust disk or
+# tie up Waitress threads.  50 MB covers the largest realistic tax document
+# bundles (multi-page PDF + photos).  Overridable via TAXOPS_MAX_UPLOAD_MB.
+_max_mb = max(1, min(int(os.environ.get("TAXOPS_MAX_UPLOAD_MB", "50")), 500))
+app.config["MAX_CONTENT_LENGTH"] = _max_mb * 1024 * 1024
+
+# SEC-1: CSRF protection via Flask-WTF.
+# WTF_CSRF_SECRET_KEY defaults to Flask's secret_key when not set separately — that is intentional here.
+# TESTING mode disables enforcement automatically (set app.config["WTF_CSRF_ENABLED"] = False in tests).
+from flask_wtf.csrf import CSRFProtect, CSRFError
+_csrf = CSRFProtect(app)
 
 from ai_routes import ai as ai_blueprint
 app.register_blueprint(ai_blueprint)
 
 from audit_service import (
+    audit_queue_depth,
     fetch_audit_entry,
     format_json_diff_styled_chunks,
     get_audit_retention_years,
@@ -95,20 +123,166 @@ from audit_service import (
     register_audit_hooks,
     sanitize_filename_audit,
     set_audit_retention_years,
+    start_audit_writer,
     write_audit_export_csv,
 )
 
 register_audit_hooks(app)
+start_audit_writer()   # REL-2: single long-lived writer thread
+
+# DEBT-1: register extracted blueprints.
+from routes.documents import documents_bp
+from routes.email_review import email_review_bp
+from routes.accounting import accounting_bp
+from routes.users import users_bp
+app.register_blueprint(documents_bp)
+app.register_blueprint(email_review_bp)
+app.register_blueprint(accounting_bp)
+app.register_blueprint(users_bp)
+
+
+# REL-4: Flask g-based DB helper — lets routes use get_db() and have the connection
+# closed automatically at teardown, as a safer alternative to manual try/finally.
+def get_db():
+    """Return a per-request SQLite connection stored on Flask g (auto-closed at teardown)."""
+    if not hasattr(g, "db"):
+        g.db = get_connection()
+    return g.db
+
+
+@app.teardown_appcontext
+def _close_db(exc):  # noqa: ARG001
+    db = g.pop("db", None)
+    if db is not None:
+        db.close()
+
 
 app.jinja_env.globals["preparer_list_label"] = preparer_list_label
 
 # Secret key for signing session cookies.
 # Set TAXOPS_SECRET env-var in production; a random fallback is fine for dev.
-app.secret_key = os.environ.get("TAXOPS_SECRET", os.urandom(24))
+_secret = os.environ.get("TAXOPS_SECRET")
+if not _secret:
+    _secret_file = os.path.join(os.path.dirname(__file__), ".secret_key")
+    if os.path.exists(_secret_file):
+        _secret = open(_secret_file, "rb").read()
+    else:
+        _secret = os.urandom(32)
+        with open(_secret_file, "wb") as _f:
+            _f.write(_secret)
+app.secret_key = _secret
 
-# Login credentials — override via environment variables.
+# SEC-2: Legacy env-var credentials kept only for the bootstrap seed and test fixtures.
+# Production auth now goes through auth_users (check_password_hash).
+# These are intentionally preserved so that an existing deployment that hasn't yet
+# been bootstrapped can still log in via the fallback path below.
 _LOGIN_USER = os.environ.get("TAXOPS_USER", "info")
 _LOGIN_PASS = os.environ.get("TAXOPS_PASS", "2703Tax")
+
+
+# ── SEC-2: per-user auth helpers ─────────────────────────────────────────────
+
+from werkzeug.security import check_password_hash, generate_password_hash
+
+
+def _auth_users_exist(conn) -> bool:
+    """Return True if the auth_users table has at least one active user row."""
+    row = conn.execute("SELECT 1 FROM auth_users WHERE is_active = 1 LIMIT 1").fetchone()
+    return row is not None
+
+
+def bootstrap_auth_user(conn) -> bool:
+    """SEC-2: If auth_users is empty, seed one admin from TAXOPS_USER/TAXOPS_PASS env vars.
+
+    Returns True if a new row was created, False if the table already had users.
+    Safe to call every startup — is a no-op once any row exists.
+    """
+    if _auth_users_exist(conn):
+        return False
+    username = (os.environ.get("TAXOPS_USER") or "").strip()
+    password = os.environ.get("TAXOPS_PASS") or ""
+    if not username or not password:
+        return False
+    hashed = generate_password_hash(password)
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO auth_users (username, password_hash, display_name, role, is_active, created_at)
+        VALUES (?, ?, ?, 'admin', 1, ?)
+        """,
+        (username, hashed, username, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())),
+    )
+    conn.commit()
+    return True
+
+
+# SEC-7: max consecutive failures before account is locked.
+# Set TAXOPS_LOGIN_MAX_ATTEMPTS in the environment to change the threshold.
+# Lockout duration is TAXOPS_LOGIN_LOCKOUT_MINUTES (default 15).
+_LOGIN_MAX_ATTEMPTS: int = max(1, int(os.environ.get("TAXOPS_LOGIN_MAX_ATTEMPTS", "5")))
+_LOGIN_LOCKOUT_MINUTES: int = max(1, int(os.environ.get("TAXOPS_LOGIN_LOCKOUT_MINUTES", "15")))
+
+# Sentinel returned by _authenticate_user to distinguish lockout from bad credentials.
+_AUTH_LOCKED = object()
+
+
+def _authenticate_user(username: str, password: str):
+    """SEC-2/SEC-7: Look up username in auth_users, enforce lockout, verify hash.
+
+    Returns:
+      - dict with 'username'/'display_name'/'role' on success
+      - _AUTH_LOCKED sentinel when the account is currently locked
+      - None on bad credentials or unknown user
+
+    Falls back to env-var plaintext comparison ONLY when the table has no active
+    users yet (bootstrap not yet run), so existing deployments aren't locked out.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM auth_users WHERE username = ? AND is_active = 1 LIMIT 1",
+            (username,),
+        ).fetchone()
+        if row:
+            now_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+            # SEC-7: check existing lockout before verifying the password.
+            if row["locked_until"] and row["locked_until"] > now_utc:
+                return _AUTH_LOCKED
+
+            if check_password_hash(row["password_hash"], password):
+                conn.execute(
+                    "UPDATE auth_users SET last_login_at = ?, failed_attempts = 0, locked_until = NULL WHERE id = ?",
+                    (now_utc, row["id"]),
+                )
+                conn.commit()
+                return {
+                    "username": row["username"],
+                    "display_name": row["display_name"] or row["username"],
+                    "role": row["role"],
+                    "must_change_password": int(row["must_change_password"] or 0),
+                }
+            else:
+                new_attempts = (row["failed_attempts"] or 0) + 1
+                locked_until = None
+                if new_attempts >= _LOGIN_MAX_ATTEMPTS:
+                    import datetime as _dt
+                    locked_until = (
+                        _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(minutes=_LOGIN_LOCKOUT_MINUTES)
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                conn.execute(
+                    "UPDATE auth_users SET failed_attempts = ?, locked_until = ? WHERE id = ?",
+                    (new_attempts, locked_until, row["id"]),
+                )
+                conn.commit()
+                return None
+
+        # Fallback: no users in table yet — accept env-var credentials.
+        if not _auth_users_exist(conn):
+            if username == _LOGIN_USER and password == _LOGIN_PASS and username:
+                return {"username": username, "display_name": username, "role": "admin"}
+        return None
+    finally:
+        conn.close()
 
 
 def privacy_mode_enabled() -> bool:
@@ -150,32 +324,98 @@ def _mask_client_payload(payload: dict) -> dict:
     return masked
 
 
-def login_required(f):
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        if not session.get("logged_in"):
-            # Fetch/XHR callers follow redirects into the HTML login page; that hides
-            # session expiry and spams logs with 302 + /login. Return JSON instead.
-            p = request.path or ""
-            if p.startswith("/api/") or p.startswith("/ai/"):
-                return jsonify({"error": "login_required"}), 401
-            return redirect(url_for("login", next=request.path))
-        return f(*args, **kwargs)
-    return wrapper
+# DEBT-1: login_required lives in auth.py to avoid circular imports with blueprints.
+from auth import login_required  # noqa: E402 (import after path setup)
 
 
 @app.after_request
 def _security_headers(response):
-    """Add basic security headers — this app is internal-only."""
+    """SEC-3 / DEBT-5: security response headers — this app is internal-only (LAN).
+
+    Cache-Control strategy (DEBT-5):
+    - Versioned /static/ assets (?v=... query param added by taxops_asset_cache_version)
+      get "public, max-age=31536000, immutable" so browsers re-use them across sessions.
+    - All other responses (HTML pages, API JSON) stay "no-store" to prevent sensitive data
+      from being served from browser cache.
+
+    CSP notes:
+    - 'unsafe-inline' for script/style covers inline <script> blocks in templates.
+      A future hardening pass (nonce-based CSP) can eliminate it — tracked in DEBT-2.
+    - object-src 'none', base-uri 'self', form-action 'self' and
+      frame-ancestors 'none' provide the highest-value protections even with
+      'unsafe-inline' present.
+    - img-src includes data: and blob: for document upload previews.
+    """
     response.headers["X-Frame-Options"]        = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"]        = "same-origin"
-    response.headers["Cache-Control"]          = "no-store"
+
+    # DEBT-5: versioned static assets get a long-lived immutable cache.
+    # Flask's test_request_context may not have request available, guard safely.
+    try:
+        is_static = request.path.startswith("/static/") and "v=" in request.query_string.decode("ascii", errors="replace")
+    except RuntimeError:
+        is_static = False
+
+    if is_static:
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    else:
+        response.headers["Cache-Control"] = "no-store"
+
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none';"
+    )
     return response
+
+
+@app.errorhandler(CSRFError)
+def _csrf_error(e: CSRFError):
+    """SEC-1: return a clean JSON/HTML error instead of Werkzeug 400 page."""
+    p = request.path or ""
+    if p.startswith("/api/") or p.startswith("/ai/"):
+        return jsonify({"error": "CSRF token missing or invalid. Reload the page and try again."}), 400
+    return "<h1>400 Bad Request</h1><p>CSRF token missing or invalid. Please go back and try again.</p>", 400
+
+
+from werkzeug.exceptions import RequestEntityTooLarge
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def _handle_too_large(_e: RequestEntityTooLarge):
+    """SEC-5: return a readable JSON 413 instead of Werkzeug's HTML page."""
+    limit_mb = app.config.get("MAX_CONTENT_LENGTH", 0) // (1024 * 1024)
+    return jsonify({"error": f"File too large. Maximum upload size is {limit_mb} MB."}), 413
+
 
 # ── Workflow constants ────────────────────────────────────────────────────────
 
 STATUS_FLOW = ["PENDING INTAKE", "PROCESSING", "HOLD", "FINALIZE", "PICKUP", "EFILE READY", "LOG OUT", "REJECTED"]
+
+def _get_json_safe() -> dict | None:
+    """SEC-1: safe JSON body parser.
+
+    Accepts requests whose Content-Type contains 'application/json' OR whose body
+    looks like a JSON object/array (for legacy curl / integration callers that omit the
+    Content-Type header). Returns the parsed dict/list, or None if parsing fails.
+    Callers that need to reject a missing body entirely should check the return value.
+    """
+    ct = (request.content_type or "").lower()
+    if "application/json" in ct:
+        return request.get_json(silent=True)
+    # Fallback: try parsing if there is a body (tolerates missing Content-Type header).
+    if request.data:
+        return request.get_json(force=True, silent=True)
+    return None
+
 
 # Rejected-return client contact tracking (stored on returns; privacy: no SSN fields)
 CONTACT_STATUS_VALUES = ("not_contacted", "contacted", "follow_up_needed", "resolved")
@@ -265,7 +505,15 @@ CARD_FEE_RATE = 0.03   # 3 % card processing surcharge
 
 # Return document uploads (DOC-2)
 _ALLOWED_RETURN_DOC_TYPES = frozenset(
-    {"W-2", "1099", "prior_return", "government_id", "misc", "unknown"}
+    {
+        "W-2",
+        "1099",
+        "paystub",
+        "prior_return",
+        "government_id",
+        "misc",
+        "unknown",
+    }
 )
 _ALLOWED_RETURN_DOC_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".pdf"})
 
@@ -378,7 +626,7 @@ def _parse_iso_date(value: str | None):
 
 
 def query_returns(filters: dict | None = None) -> list[dict]:
-    conn = get_connection()
+    conn = get_connection()  # REL-4: closed in finally below
     f = filters or {}
     clauses: list[str] = []
     params:  list      = []
@@ -478,16 +726,33 @@ def query_returns(filters: dict | None = None) -> list[dict]:
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     sql   = f"{_SELECT} {where} ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END, CAST(r.log_number AS INTEGER), r.id"
 
-    rows = conn.execute(sql, params).fetchall()
-    conn.close()
-    return [_enrich(dict(r)) for r in rows]
+    try:
+        rows = conn.execute(sql, params).fetchall()
+        return [_enrich(dict(r)) for r in rows]
+    finally:
+        conn.close()
 
 
 def get_one(return_id: int) -> dict | None:
-    conn = get_connection()
-    row  = conn.execute(f"{_SELECT} WHERE r.id = ?", (return_id,)).fetchone()
-    conn.close()
-    return _enrich(dict(row)) if row else None
+    with contextlib.closing(get_connection()) as conn:
+        row = conn.execute(f"{_SELECT} WHERE r.id = ?", (return_id,)).fetchone()
+        return _enrich(dict(row)) if row else None
+
+
+def batch_fetch_returns(return_ids: list[int]) -> dict[int, dict]:
+    """DEBT-4: fetch multiple returns in ONE query keyed by return_id.
+
+    Eliminates the N+1 pattern where callers loop over return_ids calling get_one()
+    individually.  Returns a mapping {return_id: enriched_dict}; missing ids are absent.
+    """
+    if not return_ids:
+        return {}
+    placeholders = ",".join("?" * len(return_ids))
+    with contextlib.closing(get_connection()) as conn:
+        rows = conn.execute(
+            f"{_SELECT} WHERE r.id IN ({placeholders})", list(return_ids)
+        ).fetchall()
+    return {r["id"]: _enrich(dict(r)) for r in rows}
 
 
 def _fetch_returns_for_client(conn: sqlite3.Connection, client_id: int) -> list[dict]:
@@ -640,6 +905,41 @@ def _session_username() -> str | None:
     return u or None
 
 
+def _resolve_current_role() -> str:
+    """Return the current user's role.
+
+    Prefer the session value (set on login with the new code). Fall back to
+    a DB lookup so that sessions created before ONBOARD-3 still get the
+    correct role without requiring a log-out / log-in cycle.  Env-var
+    fallback accounts are treated as admin.
+    """
+    if session.get("role"):
+        return session["role"]
+    username = _session_username()
+    if not username:
+        return "staff"
+    # Env-var fallback user has no DB row — treat as admin.
+    _tmp_conn = get_connection()
+    _no_db_users = not _auth_users_exist(_tmp_conn)
+    _tmp_conn.close()
+    if username == (_LOGIN_USER or "").strip().lower() and _no_db_users:
+        return "admin"
+    try:
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT role FROM auth_users WHERE username = ? AND is_active = 1 LIMIT 1",
+                (username,),
+            ).fetchone()
+        finally:
+            conn.close()
+        role = (row["role"] if row else None) or "staff"
+        session["role"] = role  # cache for subsequent requests
+        return role
+    except Exception:
+        return "staff"
+
+
 def _season_rollover_admins() -> frozenset[str]:
     raw = (os.environ.get("TAXOPS_ROLLOVER_ADMINS") or "").strip().lower()
     if raw:
@@ -662,6 +962,20 @@ def base_ctx(year: int | None = None) -> dict:
     pending_review = conn.execute(
         "SELECT COUNT(*) n FROM review_queue WHERE status='pending'"
     ).fetchone()["n"]
+    # DOC-HARD-3: count permanently failed (dead-letter) extractions for the nav badge.
+    try:
+        failed_doc_count = conn.execute(
+            "SELECT COUNT(*) n FROM extraction_queue WHERE status = 'failed'"
+        ).fetchone()["n"]
+    except Exception:
+        failed_doc_count = 0
+    # ACCOUNTING-9: count receipts awaiting staff review for the nav badge.
+    try:
+        receipt_review_count = conn.execute(
+            "SELECT COUNT(*) n FROM receipt_queue WHERE status = 'review'"
+        ).fetchone()["n"]
+    except Exception:
+        receipt_review_count = 0
     # Rejected returns — always pulled regardless of season filter
     rejected_rows = conn.execute(
         f"{_SELECT} WHERE r.client_status = 'REJECTED' ORDER BY r.updated_at DESC"
@@ -682,6 +996,12 @@ def base_ctx(year: int | None = None) -> dict:
         "rejected_returns":     rejected,
         "rejected_count":       len(rejected),
         "can_run_season_rollover": can_run_season_rollover(),
+        "failed_doc_count":       failed_doc_count,
+        "receipt_review_count":   receipt_review_count,
+        # ONBOARD-3: current user info for nav display.
+        # Fall back to DB lookup so sessions created before role was stored still work.
+        "current_user_name":    session.get("display_name") or session.get("username"),
+        "current_user_role":    _resolve_current_role(),
     }
 
 
@@ -810,12 +1130,26 @@ def login():
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
-        if username == _LOGIN_USER and password == _LOGIN_PASS:
-            session["logged_in"] = True
-            session["username"]  = username
+        user = _authenticate_user(username, password)
+        if user is _AUTH_LOCKED:
+            # SEC-7: account locked — same UX string as bad-password to avoid info leak.
+            error = "Invalid username or password."
+        elif user:
+            session.permanent = True  # SEC-3: enforce PERMANENT_SESSION_LIFETIME (12 h)
+            session["logged_in"]     = True
+            session["username"]      = user["username"]
+            session["role"]          = user.get("role", "staff")
+            session["display_name"]  = user.get("display_name") or user["username"]
+            # ONBOARD-2: check if user must change their temporary password
+            _mcp = user.get("must_change_password", 0)
+            if _mcp:
+                session["must_change_password"] = True
+                return redirect(url_for("change_password"))
+            session.pop("must_change_password", None)
             next_url = request.args.get("next") or url_for("dashboard")
             return redirect(next_url)
-        error = "Invalid username or password."
+        else:
+            error = "Invalid username or password."
     return render_template("login.html", error=error)
 
 
@@ -823,6 +1157,156 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+# ── ONBOARD-2: Forced password change ────────────────────────────────────────
+
+@app.route("/change-password", methods=["GET", "POST"])
+def change_password():
+    """ONBOARD-2: staff with must_change_password=1 are redirected here after login."""
+    if not session.get("logged_in"):
+        return redirect(url_for("login"))
+    if request.method == "GET":
+        return render_template("change_password.html")
+    new_pw = request.form.get("new_password") or ""
+    confirm_pw = request.form.get("confirm_password") or ""
+    if len(new_pw) < 8:
+        return render_template("change_password.html", error="Password must be at least 8 characters.")
+    if new_pw != confirm_pw:
+        return render_template("change_password.html", error="Passwords do not match.")
+    username = session.get("username")
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id, password_hash FROM auth_users WHERE username = ? AND is_active = 1",
+            (username,),
+        ).fetchone()
+        if not row:
+            return render_template("change_password.html", error="Account not found.")
+        from werkzeug.security import check_password_hash as _chk, generate_password_hash as _gen
+        if _chk(row["password_hash"], new_pw):
+            return render_template("change_password.html", error="New password must be different from the temporary password.")
+        conn.execute(
+            "UPDATE auth_users SET password_hash = ?, must_change_password = 0, failed_attempts = 0 WHERE id = ?",
+            (_gen(new_pw), row["id"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    session.pop("must_change_password", None)
+    # ONBOARD-4: route to orientation if staff hasn't seen it yet
+    conn2 = get_connection()
+    try:
+        orow = conn2.execute(
+            "SELECT has_seen_orientation FROM auth_users WHERE username = ?", (username,)
+        ).fetchone()
+        if orow and not orow["has_seen_orientation"]:
+            return redirect(url_for("orientation"))
+    finally:
+        conn2.close()
+    return redirect(url_for("dashboard"))
+
+
+# ── ONBOARD-4: First-login orientation ───────────────────────────────────────
+
+@app.route("/orientation")
+@login_required
+def orientation():
+    username = session.get("username")
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT has_seen_orientation FROM auth_users WHERE username = ?", (username,)
+        ).fetchone()
+        if row and row["has_seen_orientation"]:
+            return redirect(url_for("dashboard"))
+    finally:
+        conn.close()
+    return render_template("orientation.html")
+
+
+@app.post("/orientation/dismiss")
+@login_required
+def orientation_dismiss():
+    username = session.get("username")
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE auth_users SET has_seen_orientation = 1 WHERE username = ?", (username,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("dashboard"))
+
+
+# ── TOUR-3: Tour state API ────────────────────────────────────────────────────
+
+def _tour_key_for_user(username: str) -> str | None:
+    """Return the app_settings key for the user's tour completion, or None if user not found."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id FROM auth_users WHERE username = ? LIMIT 1", (username,)
+        ).fetchone()
+        if row:
+            return f"tour_completed_{row['id']}"
+        # env-var fallback user has no DB row — use username directly
+        return f"tour_completed_env_{username}"
+    finally:
+        conn.close()
+
+
+@app.get("/api/tour/status")
+@login_required
+def api_tour_status():
+    """TOUR-3: return {completed: bool} for the current user."""
+    key = _tour_key_for_user(session.get("username") or "")
+    if not key:
+        return jsonify({"completed": False})
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?", (key,)
+        ).fetchone()
+        return jsonify({"completed": bool(row)})
+    finally:
+        conn.close()
+
+
+@app.post("/api/tour/complete")
+@login_required
+def api_tour_complete():
+    """TOUR-3: mark the tour as completed for the current user."""
+    key = _tour_key_for_user(session.get("username") or "")
+    if not key:
+        return jsonify({"success": False, "error": "user not found"}), 400
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
+            (key, now(), now()),
+        )
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+@app.post("/api/tour/reset")
+@login_required
+def api_tour_reset():
+    """TOUR-3: self-serve reset — lets any user replay their own tour."""
+    key = _tour_key_for_user(session.get("username") or "")
+    if not key:
+        return jsonify({"success": False, "error": "user not found"}), 400
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
 
 
 @app.get("/health")
@@ -846,11 +1330,54 @@ def health():
             "error": str(ex),
         }
 
+    schema_ver: int | None = None
+    if db_ok:
+        try:
+            _sv_conn = get_connection()
+            try:
+                schema_ver = get_schema_version(_sv_conn)
+            finally:
+                _sv_conn.close()
+        except Exception:
+            pass
+
+    # DOC-HARD-1: include extraction queue depth so ops / monitoring can see pending docs.
+    extraction_q: dict | None = None
+    if db_ok:
+        try:
+            from extractor import extraction_queue_status_for_api
+            extraction_q = extraction_queue_status_for_api()
+        except Exception:
+            pass
+
+    # HEALTH-2/3: worker thread liveness
+    workers: dict = {}
+    try:
+        from extractor import extraction_worker_status
+        workers["extraction"] = extraction_worker_status()
+    except Exception:
+        workers["extraction"] = {"started": False, "running": False}
+    try:
+        from mail_watcher import mail_watcher_status
+        workers["mail_watcher"] = mail_watcher_status()
+    except Exception:
+        workers["mail_watcher"] = {"started": False, "running": False}
+    try:
+        from accounting_worker import accounting_worker_status
+        workers["accounting"] = accounting_worker_status()
+    except Exception:
+        pass  # accounting worker is optional
+
     body = {
         "status": "ok" if db_ok else "degraded",
         "db": db_detail,
         "uptime_seconds": round(time.monotonic() - _APP_START_MONOTONIC, 3),
         "version": taxops_release_version(),
+        "audit_queue_depth": audit_queue_depth(),
+        "schema_version": schema_ver,
+        "schema_version_expected": CURRENT_SCHEMA_VERSION,
+        "extraction_queue": extraction_q,
+        "workers": workers,
     }
     return jsonify(body), (200 if db_ok else 503)
 
@@ -1195,476 +1722,7 @@ def client_profile(client_id: int):
     return render_template("client_profile.html", **ctx)
 
 
-@app.route("/return/<int:return_id>/documents/upload", methods=["POST"])
-@login_required
-def return_documents_upload(return_id: int):
-    conn = get_connection()
-    full_path: str | None = None
-    try:
-        exists = conn.execute("SELECT id FROM returns WHERE id = ?", (return_id,)).fetchone()
-        if not exists:
-            return jsonify({"error": "Return not found"}), 404
-
-        if "document" not in request.files:
-            return jsonify({"error": "No file uploaded"}), 400
-
-        upload = request.files["document"]
-        if not upload or not upload.filename:
-            return jsonify({"error": "No file uploaded"}), 400
-
-        original_filename = upload.filename
-        ext = os.path.splitext(original_filename)[1].lower()
-        if ext not in _ALLOWED_RETURN_DOC_EXTENSIONS:
-            return jsonify({"error": "Unsupported file type. Use jpg, png, or pdf"}), 400
-
-        folder = get_return_documents_path(return_id)
-        sanitized = sanitize_filename(original_filename)
-        stem, ext_part = os.path.splitext(sanitized)
-        candidate = sanitized
-        counter = 1
-        while os.path.exists(os.path.join(folder, candidate)):
-            candidate = f"{stem}_{counter}{ext_part}"
-            counter += 1
-
-        full_path = os.path.abspath(os.path.join(folder, candidate))
-
-        raw_doc_type = (request.form.get("doc_type") or "unknown").strip()
-        doc_type = raw_doc_type if raw_doc_type in _ALLOWED_RETURN_DOC_TYPES else "unknown"
-
-        uploaded_at = now()
-        uploaded_by = session.get("username")
-
-        try:
-            upload.save(full_path)
-        except OSError:
-            return jsonify({"error": "Failed to save file"}), 500
-
-        file_size_bytes = os.path.getsize(full_path)
-
-        try:
-            cur = conn.execute(
-                """
-                INSERT INTO return_documents (
-                  return_id, filename, original_filename, doc_type, source,
-                  file_path, file_size_bytes, uploaded_by, uploaded_at, notes, is_deleted
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-                """,
-                (
-                    return_id,
-                    candidate,
-                    original_filename,
-                    doc_type,
-                    "walk_in",
-                    full_path,
-                    file_size_bytes,
-                    uploaded_by,
-                    uploaded_at,
-                    None,
-                ),
-            )
-            doc_id = cur.lastrowid
-            conn.commit()
-            _enqueue_extraction(doc_id, return_id)
-
-            app_obj = current_app._get_current_object()
-
-            def _bg_classify():
-                try:
-                    with app_obj.app_context():
-                        from ai_routes import _classify_document
-
-                        _classify_document(doc_id, only_if_still_unknown=True)
-                except Exception as e:
-                    logging.getLogger(__name__).error(
-                        "Background classify failed for doc %s: %s", doc_id, e
-                    )
-
-            threading.Thread(target=_bg_classify, daemon=True).start()
-        except Exception:
-            conn.rollback()
-            if full_path and os.path.isfile(full_path):
-                try:
-                    os.remove(full_path)
-                except OSError:
-                    pass
-            return jsonify({"error": "Could not record document"}), 500
-
-        return jsonify(
-            scrub_ssn_from_dict(
-                {
-                    "success": True,
-                    "doc_id": doc_id,
-                    "filename": candidate,
-                    "doc_type": doc_type,
-                    "uploaded_at": uploaded_at,
-                }
-            )
-        )
-    finally:
-        conn.close()
-
-
-@app.route("/return/<int:return_id>/documents")
-@login_required
-def return_documents_list(return_id: int):
-    conn = get_connection()
-    try:
-        rows = conn.execute(
-            """
-            SELECT
-                rd.id,
-                rd.filename,
-                rd.original_filename,
-                rd.doc_type,
-                rd.source,
-                rd.uploaded_by,
-                rd.uploaded_at,
-                rd.file_size_bytes,
-                eq.status AS extraction_status,
-                eq.confidence AS extraction_confidence,
-                eq.detected_form_type AS extraction_detected_table,
-                eq.extracted_fields AS extraction_fields_raw
-            FROM return_documents rd
-            LEFT JOIN (
-                SELECT e.id, e.doc_id, e.status, e.confidence,
-                       e.detected_form_type, e.extracted_fields
-                FROM extraction_queue e
-                INNER JOIN (
-                    SELECT doc_id AS d2, MAX(id) AS mid
-                    FROM extraction_queue
-                    GROUP BY doc_id
-                ) latest ON e.doc_id = latest.d2 AND e.id = latest.mid
-            ) eq ON eq.doc_id = rd.id
-            WHERE rd.return_id = ? AND rd.is_deleted = 0
-            ORDER BY rd.uploaded_at DESC
-            """,
-            (return_id,),
-        ).fetchall()
-        documents = []
-        for r in rows:
-            ext_stat = r["extraction_status"]
-            ext_conf_raw = r["extraction_confidence"]
-            try:
-                if ext_conf_raw is None:
-                    extraction_confidence = None
-                else:
-                    extraction_confidence = float(ext_conf_raw)
-            except (TypeError, ValueError):
-                extraction_confidence = None
-            extracted_fields_view = None
-            if ext_stat == "needs_review":
-                raw_j = r["extraction_fields_raw"]
-                if raw_j:
-                    try:
-                        parsed = json.loads(raw_j)
-                        if isinstance(parsed, dict):
-                            extracted_fields_view = scrub_ssn_from_dict(parsed)
-                        else:
-                            extracted_fields_view = {}
-                    except json.JSONDecodeError:
-                        extracted_fields_view = {}
-
-            documents.append(
-                scrub_ssn_from_dict(
-                    {
-                        "id": r["id"],
-                        "filename": r["filename"],
-                        "original_filename": r["original_filename"],
-                        "doc_type": r["doc_type"],
-                        "source": r["source"],
-                        "uploaded_by": r["uploaded_by"],
-                        "uploaded_at": r["uploaded_at"],
-                        "file_size_bytes": r["file_size_bytes"],
-                        "extraction_status": ext_stat,
-                        "extraction_confidence": extraction_confidence,
-                        "extracted_fields": extracted_fields_view,
-                    }
-                )
-            )
-        return jsonify({"documents": documents})
-    finally:
-        conn.close()
-
-
-@app.route("/return/<int:return_id>/documents/<int:doc_id>/view")
-@login_required
-def return_document_view(return_id: int, doc_id: int):
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            """
-            SELECT file_path, filename FROM return_documents
-            WHERE id = ? AND return_id = ? AND is_deleted = 0
-            """,
-            (doc_id, return_id),
-        ).fetchone()
-        if not row:
-            abort(404)
-        disk_path = row["file_path"]
-        if not disk_path or not os.path.isfile(disk_path):
-            return jsonify({"error": "File not found on disk"}), 404
-
-        fname = row["filename"] or ""
-        view_ext = os.path.splitext(fname)[1].lower()
-        mimetype = None
-        if view_ext == ".pdf":
-            mimetype = "application/pdf"
-        elif view_ext in (".jpg", ".jpeg"):
-            mimetype = "image/jpeg"
-        elif view_ext == ".png":
-            mimetype = "image/png"
-
-        return send_file(disk_path, as_attachment=False, mimetype=mimetype)
-    finally:
-        conn.close()
-
-
-@app.route("/return/<int:return_id>/documents/<int:doc_id>/delete", methods=["POST"])
-@login_required
-def return_document_delete(return_id: int, doc_id: int):
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            """
-            SELECT id FROM return_documents
-            WHERE id = ? AND return_id = ? AND is_deleted = 0
-            """,
-            (doc_id, return_id),
-        ).fetchone()
-        if not row:
-            return jsonify({"error": "Not found"}), 404
-        conn.execute(
-            "UPDATE return_documents SET is_deleted = 1 WHERE id = ?",
-            (doc_id,),
-        )
-        conn.commit()
-        return jsonify({"success": True})
-    finally:
-        conn.close()
-
-
-@app.route("/return/<int:return_id>/documents/<int:doc_id>/tag", methods=["POST"])
-@login_required
-def return_document_tag(return_id: int, doc_id: int):
-    payload = request.get_json(silent=True) or {}
-    raw = payload.get("doc_type")
-    if raw is None or not isinstance(raw, str):
-        return jsonify({"error": "Missing or invalid doc_type"}), 400
-    doc_type = raw.strip()
-    if doc_type not in _ALLOWED_RETURN_DOC_TYPES:
-        return jsonify({"error": "Invalid doc_type"}), 400
-
-    conn = get_connection()
-    try:
-        cur = conn.execute(
-            """
-            UPDATE return_documents SET doc_type = ?
-            WHERE id = ? AND return_id = ? AND is_deleted = 0
-            """,
-            (doc_type, doc_id, return_id),
-        )
-        if cur.rowcount == 0:
-            return jsonify({"error": "Not found"}), 404
-        conn.commit()
-        return jsonify({"success": True, "doc_type": doc_type})
-    finally:
-        conn.close()
-
-
-@app.route(
-    "/return/<int:return_id>/documents/<int:doc_id>/sync-drake", methods=["POST"]
-)
-@login_required
-def return_document_sync_drake(return_id: int, doc_id: int):
-    """DOC-6 — copy one document file into mirrored Drake folder layout (optional)."""
-    from config import DRAKE_DOCUMENTS_BASE
-
-    conn = get_connection()
-    try:
-        doc = conn.execute(
-            """
-            SELECT id, filename, file_path FROM return_documents
-            WHERE id = ? AND return_id = ? AND is_deleted = 0
-            """,
-            (doc_id, return_id),
-        ).fetchone()
-        if not doc:
-            return jsonify({"success": False, "reason": "Not found"})
-        fp = doc["file_path"]
-        if not fp or not os.path.isfile(fp):
-            return jsonify({"success": False, "reason": "Copy failed"})
-
-        meta = conn.execute(
-            """
-            SELECT r.tax_year AS tax_year, c.last_name AS last_name
-            FROM returns r
-            JOIN clients c ON c.id = r.client_id
-            WHERE r.id = ?
-            """,
-            (return_id,),
-        ).fetchone()
-        if not meta:
-            return jsonify({"success": False, "reason": "Copy failed"})
-
-        drake_dir = get_drake_documents_path(
-            return_id,
-            str(meta["last_name"] or ""),
-            str(meta["tax_year"] if meta["tax_year"] is not None else ""),
-        )
-        if not drake_dir:
-            return jsonify(
-                {
-                    "success": False,
-                    "reason": "Drake folder structure not enabled",
-                }
-            )
-
-        base_abs = os.path.abspath(DRAKE_DOCUMENTS_BASE)
-        base_abs = os.path.normpath(base_abs)
-        fname = sanitize_filename(doc["filename"] or os.path.basename(fp))
-        stem, ext_part = os.path.splitext(fname)
-        dest_name = fname
-        counter = 1
-        while os.path.exists(os.path.join(drake_dir, dest_name)):
-            dest_name = f"{stem}_{counter}{ext_part}"
-            counter += 1
-        dest_path = os.path.join(drake_dir, dest_name)
-        try:
-            shutil.copy2(fp, dest_path)
-        except OSError:
-            return jsonify({"success": False, "reason": "Copy failed"})
-
-        dest_abs = os.path.normpath(os.path.abspath(dest_path))
-        base_norm = os.path.normpath(base_abs)
-        try:
-            rel_fwd = os.path.relpath(dest_abs, base_norm).replace(os.sep, "/")
-        except ValueError:
-            rel_fwd = dest_name.replace(os.sep, "/")
-        return jsonify({"success": True, "drake_path_relative": rel_fwd})
-    finally:
-        conn.close()
-
-
-_FORM_DATA_SQL_TABLES = frozenset(
-    {
-        "w2_records",
-        "f1099_nec_records",
-        "f1099_misc_records",
-        "f1099_int_records",
-        "f1099_div_records",
-    }
-)
-
-
-_FORM_DATA_UPDATE_FIELDS: dict[str, frozenset[str]] = {
-    tbl: frozenset(cols) for tbl, cols in FORM_TABLE_INSERT_COLUMNS.items()
-}
-
-
-def _parse_form_update_value(field: str, raw_val) -> object:
-    if field in FORM_INTEGER_COLUMNS:
-        if isinstance(raw_val, bool):
-            return 1 if raw_val else 0
-        s = str(raw_val or "").strip().lower()
-        return 1 if s in ("1", "true", "yes", "y", "on") else 0
-    if raw_val is None:
-        return ""
-    return str(raw_val).strip()
-
-
-@app.route("/return/<int:return_id>/documents/<int:doc_id>/confirm-extraction", methods=["POST"])
-@login_required
-def return_document_confirm_extraction(return_id: int, doc_id: int):
-    """Staff confirms queued extraction marked needs_review."""
-    from ai_routes import _form_table_to_doc_type, _save_form_data
-    from extractor import _resolve_detected_table
-
-    reviewer = session.get("username") or "staff"
-
-    conn = get_connection()
-    try:
-        doc = conn.execute(
-            """
-            SELECT id, doc_type FROM return_documents
-            WHERE id = ? AND return_id = ? AND is_deleted = 0
-            """,
-            (doc_id, return_id),
-        ).fetchone()
-        if not doc:
-            return jsonify({"error": "Not found"}), 404
-
-        eq = conn.execute(
-            """
-            SELECT id, extracted_fields, detected_form_type
-            FROM extraction_queue
-            WHERE doc_id = ? AND return_id = ? AND status = 'needs_review'
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (doc_id, return_id),
-        ).fetchone()
-        if not eq:
-            return jsonify({"error": "No extraction pending review"}), 400
-
-        raw_fields = eq["extracted_fields"] or "{}"
-        try:
-            fields = json.loads(raw_fields)
-            if not isinstance(fields, dict):
-                return jsonify({"error": "Invalid stored extraction"}), 400
-        except json.JSONDecodeError:
-            return jsonify({"error": "Invalid stored extraction"}), 400
-
-        fields = scrub_ssn_from_dict(fields)
-
-        table_name = eq["detected_form_type"]
-        if not table_name or table_name not in _FORM_DATA_SQL_TABLES:
-            table_name = _resolve_detected_table(doc["doc_type"], fields)
-
-        if not table_name or table_name not in _FORM_DATA_SQL_TABLES:
-            return jsonify({"error": "Could not resolve form type"}), 400
-
-        if not _save_form_data(conn, table_name, return_id, doc_id, fields):
-            return jsonify({"error": "Could not save form data"}), 500
-
-        doc_type_ui = _form_table_to_doc_type(table_name)
-        if doc_type_ui == "unknown":
-            return jsonify({"error": "Could not resolve document type"}), 400
-
-        conn.execute(
-            """
-            UPDATE return_documents SET doc_type = ?
-            WHERE id = ? AND return_id = ? AND is_deleted = 0
-            """,
-            (doc_type_ui, doc_id, return_id),
-        )
-        ts = now()
-        conn.execute(
-            """
-            UPDATE extraction_queue SET
-                status = 'completed',
-                reviewed_by = ?,
-                reviewed_at = ?,
-                processed_at = COALESCE(processed_at, ?),
-                extracted_fields = ?,
-                detected_form_type = ?,
-                confidence = COALESCE(confidence, 1.0)
-            WHERE id = ?
-            """,
-            (
-                reviewer,
-                ts,
-                ts,
-                json.dumps(fields),
-                table_name,
-                eq["id"],
-            ),
-        )
-        conn.commit()
-        return jsonify({"success": True, "doc_type": doc_type_ui})
-    finally:
-        conn.close()
-
+# DEBT-1: document routes moved to routes/documents.py (Blueprint).
 
 def _serialize_form_row(row: sqlite3.Row) -> dict:
     d = dict(row)
@@ -1780,525 +1838,7 @@ def return_form_data_soft_delete(return_id: int, table: str, record_id: int):
         conn.close()
 
 
-# ── Email classification review ───────────────────────────────────────────────
-
-_EC_ALLOWED = frozenset({"client_document", "client_inquiry", "promotional", "unknown"})
-
-
-@app.route("/email-review")
-@login_required
-def email_review():
-    ctx = base_ctx()
-    ctx["active_page"] = "email_review"
-    return render_template("email_review.html", **ctx)
-
-
-@app.route("/api/email-classifications")
-@login_required
-def api_email_classifications_list():
-    conn = get_connection()
-    try:
-        rows = conn.execute(
-            """
-            SELECT ec.id, ec.sender_domain, ec.subject_snippet, ec.classification,
-                   ec.source, ec.created_at,
-                   (SELECT rd.return_id FROM return_documents rd
-                    WHERE rd.source = 'email' AND rd.is_deleted = 0
-                      AND rd.uploaded_at BETWEEN
-                          datetime(ec.created_at, '-10 minutes') AND
-                          datetime(ec.created_at, '+10 minutes')
-                    LIMIT 1) AS linked_return_id
-            FROM email_classifications ec
-            WHERE ec.confirmed_by IS NULL
-              AND ec.source != 'rule'
-              AND (ec.sender_domain IS NULL OR ec.sender_domain NOT IN (
-                  SELECT domain FROM known_sender_rules
-              ))
-            ORDER BY ec.created_at DESC
-            LIMIT 200
-            """
-        ).fetchall()
-        return jsonify({
-            "classifications": [
-                {
-                    "id": r["id"],
-                    "sender_domain": r["sender_domain"] or "",
-                    "subject_snippet": r["subject_snippet"] or "",
-                    "classification": r["classification"],
-                    "source": r["source"] or "auto",
-                    "created_at": r["created_at"],
-                    "linked_return_id": r["linked_return_id"],
-                }
-                for r in rows
-            ]
-        })
-    finally:
-        conn.close()
-
-
-@app.route("/api/email-classifications/<int:classification_id>/confirm", methods=["POST"])
-@login_required
-def api_email_classification_confirm(classification_id: int):
-    data = request.get_json(silent=True) or {}
-    confirm_current = (
-        bool(data.get("confirm_current"))
-        or str(data.get("confirm_current") or "").lower() in {"1", "true", "yes"}
-    )
-
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            "SELECT id, sender_domain, classification FROM email_classifications WHERE id = ?",
-            (classification_id,),
-        ).fetchone()
-        if row is None:
-            return jsonify({"error": "Not found"}), 404
-
-        if confirm_current:
-            classification = row["classification"] if row["classification"] in _EC_ALLOWED else "unknown"
-        else:
-            classification = data.get("classification", "")
-            if classification not in _EC_ALLOWED:
-                return (
-                    jsonify(
-                        {
-                            "error": "Invalid classification.",
-                            "allowed": sorted(_EC_ALLOWED),
-                        }
-                    ),
-                    400,
-                )
-
-        conn.execute(
-            """
-            UPDATE email_classifications
-            SET classification = ?, confirmed_by = ?, confirmed_at = ?, source = 'staff'
-            WHERE id = ?
-            """,
-            (classification, session.get("username"), now(), classification_id),
-        )
-
-        # Staff confirmation: upsert domain_classifications with boosted confidence.
-        # confidence_count = MAX(existing + 2, 3) so graduation threshold is met
-        # on first staff confirm for any non-personal domain.
-        domain = row["sender_domain"]
-        if domain:
-            conn.execute(
-                """
-                INSERT INTO domain_classifications
-                    (domain, classification, confidence_count, last_seen,
-                     last_confirmed_by, last_confirmed_at)
-                VALUES (?, ?, 3, ?, ?, ?)
-                ON CONFLICT(domain) DO UPDATE SET
-                    classification      = excluded.classification,
-                    confidence_count    = MAX(confidence_count + 2, 3),
-                    last_seen           = excluded.last_seen,
-                    last_confirmed_by   = excluded.last_confirmed_by,
-                    last_confirmed_at   = excluded.last_confirmed_at
-                """,
-                (domain, classification, now(), session.get("username"), now()),
-            )
-
-        conn.commit()
-
-        # Trigger graduation check in a background thread — never blocks the response
-        if domain:
-            import threading as _t
-            from mail_watcher import _check_graduation_trigger as _cgt
-            _t.Thread(
-                target=_cgt,
-                args=(current_app._get_current_object(), domain),
-                daemon=True,
-            ).start()
-
-        # Trigger fastText retrain — uses confirmed data, runs in background
-        from classifier import trigger_retrain_async
-        trigger_retrain_async(DB_PATH)
-
-        return jsonify({"success": True, "classification": classification})
-    finally:
-        conn.close()
-
-
-@app.route("/api/email-classifications/train", methods=["POST"])
-@login_required
-def api_email_classifications_train():
-    data = request.get_json(silent=True) or {}
-    confirmations = data.get("confirmations", [])
-    if not isinstance(confirmations, list):
-        return jsonify({"error": "confirmations must be a list"}), 400
-    updated = 0
-    conn = get_connection()
-    try:
-        for item in confirmations:
-            if not isinstance(item, dict):
-                continue
-            cid = item.get("id")
-            cls = item.get("classification", "")
-            if not isinstance(cid, int) or cls not in _EC_ALLOWED:
-                continue
-            conn.execute(
-                """
-                UPDATE email_classifications
-                SET classification = ?, confirmed_by = ?, confirmed_at = ?, source = 'staff'
-                WHERE id = ?
-                """,
-                (cls, session.get("username"), now(), cid),
-            )
-            updated += 1
-        conn.commit()
-        return jsonify({"success": True, "updated": updated})
-    finally:
-        conn.close()
-
-
-@app.route("/api/email-classifications/stats")
-@login_required
-def api_email_classifications_stats():
-    today = date.today().isoformat()
-    conn = get_connection()
-    try:
-        total_today = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications WHERE created_at >= ?", (today,)
-        ).fetchone()[0]
-        total_confirmed = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications WHERE confirmed_by IS NOT NULL"
-        ).fetchone()[0]
-        total_promotional = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications WHERE classification = 'promotional'"
-        ).fetchone()[0]
-        total_pending = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications WHERE confirmed_by IS NULL"
-        ).fetchone()[0]
-
-        # Domain classification learning progress
-        domains_cached = conn.execute(
-            "SELECT COUNT(*) FROM domain_classifications"
-        ).fetchone()[0]
-        domains_near_graduation = conn.execute(
-            "SELECT COUNT(*) FROM domain_classifications "
-            "WHERE confidence_count >= 2 AND graduated = 0"
-        ).fetchone()[0]
-        domains_graduated = conn.execute(
-            "SELECT COUNT(*) FROM domain_classifications WHERE graduated = 1"
-        ).fetchone()[0]
-        pending_suggestions = conn.execute(
-            "SELECT COUNT(*) FROM rule_suggestions WHERE status = 'pending'"
-        ).fetchone()[0]
-
-        return jsonify({
-            "total_today":           total_today,
-            "total_confirmed":       total_confirmed,
-            "total_promotional":     total_promotional,
-            "total_pending_review":  total_pending,
-            "domains_cached":        domains_cached,
-            "domains_near_graduation": domains_near_graduation,
-            "domains_graduated":     domains_graduated,
-            "pending_suggestions":   pending_suggestions,
-        })
-    finally:
-        conn.close()
-
-
-# ── Email classification helpers ─────────────────────────────────────────────
-
-def _is_promotional_domain(domain: str) -> bool:
-    """
-    Return True when a sender domain is known-promotional or a mass-mailing subdomain.
-    Used to suppress false-positive missed-attachment alerts.
-    """
-    if not domain:
-        return False
-    if any(domain.startswith(prefix) for prefix in MASS_MAILING_PREFIXES):
-        return True
-    parts = domain.split(".")
-    base = ".".join(parts[-2:]) if len(parts) >= 2 else domain
-    return base in KNOWN_PROMOTIONAL_DOMAINS
-
-
-# ── Email classification digest ───────────────────────────────────────────────
-
-@app.route("/api/email-classifications/digest")
-@login_required
-def api_email_classifications_digest():
-    today = date.today().isoformat()
-    conn = get_connection()
-    try:
-        client_docs_today = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications "
-            "WHERE classification = 'client_document' AND created_at >= ?",
-            (today,),
-        ).fetchone()[0]
-
-        need_tagging = conn.execute(
-            "SELECT COUNT(*) FROM return_documents "
-            "WHERE source = 'email' AND is_deleted = 0 "
-            "AND (doc_type IS NULL OR doc_type = 'unknown')"
-        ).fetchone()[0]
-
-        already_tagged = conn.execute(
-            "SELECT COUNT(*) FROM return_documents "
-            "WHERE source = 'email' AND is_deleted = 0 "
-            "AND doc_type IS NOT NULL AND doc_type != 'unknown'"
-        ).fetchone()[0]
-
-        # Missed-attachment hint: client_document today, not staff-dismissed, and
-        # mail_watcher did not mark email_routed_ok after saving files / drive note.
-        # Legacy rows pre-email_routed_ok still use a time proximity check in Python
-        # because SQLite datetime(..., modifier) may not parse ISO offsets from now().
-        raw_missed_rows = conn.execute(
-            """
-            SELECT ec.id, ec.sender_domain, ec.subject_snippet, ec.created_at
-            FROM email_classifications ec
-            WHERE ec.classification = 'client_document'
-              AND ec.created_at >= ?
-              AND COALESCE(ec.reviewed_missed, 0) = 0
-              AND COALESCE(ec.email_routed_ok, 0) = 0
-            ORDER BY ec.created_at DESC
-            """,
-            (today,),
-        ).fetchall()
-
-        window_start = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
-        doc_rows = conn.execute(
-            """
-            SELECT uploaded_at FROM return_documents
-            WHERE source = 'email' AND is_deleted = 0
-              AND substr(COALESCE(uploaded_at, ''), 1, 10) >= ?
-            """,
-            (window_start,),
-        ).fetchall()
-        doc_times = [
-            t for r in doc_rows
-            if (t := parse_iso_datetime(r["uploaded_at"])) is not None
-        ]
-        _miss_window_sec = 30 * 60
-
-        def _no_email_upload_near(ec_row) -> bool:
-            ec_t = parse_iso_datetime(ec_row["created_at"])
-            if ec_t is None:
-                return True
-            return not any(
-                abs((ec_t - d).total_seconds()) <= _miss_window_sec
-                for d in doc_times
-            )
-
-        # Exclude known promotional domains — their classification as client_document
-        # is a residual data artifact that does not represent a real missed attachment.
-        missed_rows = [
-            r for r in raw_missed_rows
-            if _no_email_upload_near(r)
-            and not _is_promotional_domain(r["sender_domain"] or "")
-        ]
-
-        client_inquiries_today = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications "
-            "WHERE classification = 'client_inquiry' AND created_at >= ?",
-            (today,),
-        ).fetchone()[0]
-
-        promotional_unconfirmed = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications "
-            "WHERE classification = 'promotional' AND confirmed_by IS NULL"
-        ).fetchone()[0]
-
-        need_attention = conn.execute(
-            """
-            SELECT COUNT(*) FROM email_classifications
-            WHERE confirmed_by IS NULL
-              AND source != 'rule'
-              AND classification IN ('client_document', 'client_inquiry')
-              AND (sender_domain IS NULL OR sender_domain NOT IN (
-                  SELECT domain FROM known_sender_rules
-              ))
-            """
-        ).fetchone()[0]
-
-        untagged = conn.execute(
-            """
-            SELECT
-                rd.id AS doc_id,
-                rd.filename,
-                rd.return_id,
-                rd.uploaded_at,
-                c.display_name AS client_name,
-                r.tax_year,
-                r.log_number
-            FROM return_documents rd
-            JOIN returns r ON rd.return_id = r.id
-            JOIN clients c ON r.client_id = c.id
-            WHERE rd.source = 'email'
-              AND rd.doc_type = 'unknown'
-              AND rd.is_deleted = 0
-            ORDER BY rd.uploaded_at DESC
-            """
-        ).fetchall()
-
-        untagged_docs = []
-        for r in untagged:
-            untagged_docs.append(
-                scrub_ssn_from_dict(
-                    {
-                        "doc_id": r["doc_id"],
-                        "filename": r["filename"],
-                        "return_id": r["return_id"],
-                        "uploaded_at": r["uploaded_at"],
-                        "client_name": r["client_name"] or "",
-                        "tax_year": r["tax_year"],
-                        "log_number": r["log_number"] or "",
-                    }
-                )
-            )
-
-        return jsonify({
-            "client_docs_today": client_docs_today,
-            "need_tagging": need_tagging,
-            "already_tagged": already_tagged,
-            "possible_missed": len(missed_rows),
-            "client_inquiries_today": client_inquiries_today,
-            "promotional_unconfirmed": promotional_unconfirmed,
-            "need_attention": need_attention,
-            "missed_items": [
-                {
-                    "id": r["id"],
-                    "sender_domain": r["sender_domain"] or "",
-                    "subject_snippet": r["subject_snippet"] or "",
-                    "created_at": r["created_at"],
-                }
-                for r in missed_rows
-            ],
-            "untagged_docs": untagged_docs,
-            "untagged_count": len(untagged_docs),
-        })
-    finally:
-        conn.close()
-
-
-@app.route("/api/email-classifications/bulk-confirm", methods=["POST"])
-@login_required
-def api_email_classifications_bulk_confirm():
-    data = request.get_json(silent=True) or {}
-    classification = data.get("classification", "")
-    if classification not in _EC_ALLOWED:
-        return jsonify({"error": f"Invalid classification. Allowed: {', '.join(sorted(_EC_ALLOWED))}"}), 400
-    conn = get_connection()
-    try:
-        # Collect unique domains BEFORE the bulk update so we can run graduation checks
-        affected_domains = [
-            r["sender_domain"]
-            for r in conn.execute(
-                "SELECT DISTINCT sender_domain FROM email_classifications "
-                "WHERE classification = ? AND confirmed_by IS NULL",
-                (classification,),
-            ).fetchall()
-            if r["sender_domain"]
-        ]
-
-        result = conn.execute(
-            """
-            UPDATE email_classifications
-            SET confirmed_by = ?, confirmed_at = ?, source = 'staff'
-            WHERE classification = ? AND confirmed_by IS NULL
-            """,
-            (session.get("username") or "staff", now(), classification),
-        )
-
-        # Upsert domain_classifications for every affected domain
-        for domain in affected_domains:
-            conn.execute(
-                """
-                INSERT INTO domain_classifications
-                    (domain, classification, confidence_count, last_seen,
-                     last_confirmed_by, last_confirmed_at)
-                VALUES (?, ?, 3, ?, ?, ?)
-                ON CONFLICT(domain) DO UPDATE SET
-                    classification      = excluded.classification,
-                    confidence_count    = MAX(confidence_count + 2, 3),
-                    last_seen           = excluded.last_seen,
-                    last_confirmed_by   = excluded.last_confirmed_by,
-                    last_confirmed_at   = excluded.last_confirmed_at
-                """,
-                (domain, classification, now(), session.get("username") or "staff", now()),
-            )
-
-        conn.commit()
-
-        # Trigger graduation check for each unique domain in background threads
-        if affected_domains:
-            import threading as _t
-            from mail_watcher import _check_graduation_trigger as _cgt
-            _app = current_app._get_current_object()
-            for domain in affected_domains:
-                _t.Thread(
-                    target=_cgt, args=(_app, domain), daemon=True
-                ).start()
-
-        # Trigger fastText retrain once after all bulk confirms — background only
-        from classifier import trigger_retrain_async
-        trigger_retrain_async(DB_PATH)
-
-        return jsonify({"success": True, "confirmed_count": result.rowcount})
-    except Exception:
-        conn.rollback()
-        return jsonify({"error": "Could not bulk confirm"}), 500
-    finally:
-        conn.close()
-
-
-@app.route("/api/email-classifications/today-confirmed")
-@login_required
-def api_email_classifications_today_confirmed():
-    today = date.today().isoformat()
-    conn = get_connection()
-    try:
-        rows = conn.execute(
-            """
-            SELECT id, sender_domain, subject_snippet, classification,
-                   confirmed_by, confirmed_at, created_at
-            FROM email_classifications
-            WHERE confirmed_by IS NOT NULL AND created_at >= ?
-            ORDER BY confirmed_at DESC
-            LIMIT 200
-            """,
-            (today,),
-        ).fetchall()
-        return jsonify({
-            "confirmed": [
-                {
-                    "id": r["id"],
-                    "sender_domain": r["sender_domain"] or "",
-                    "subject_snippet": r["subject_snippet"] or "",
-                    "classification": r["classification"],
-                    "confirmed_by": r["confirmed_by"] or "",
-                    "confirmed_at": (r["confirmed_at"] or "").replace("T", " ")[:16],
-                    "created_at": r["created_at"],
-                }
-                for r in rows
-            ]
-        })
-    finally:
-        conn.close()
-
-
-@app.route("/api/email-classifications/<int:classification_id>/mark-missed-reviewed", methods=["POST"])
-@login_required
-def api_email_classification_mark_missed_reviewed(classification_id: int):
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            "SELECT id FROM email_classifications WHERE id = ?", (classification_id,)
-        ).fetchone()
-        if row is None:
-            return jsonify({"error": "Not found"}), 404
-        conn.execute(
-            "UPDATE email_classifications SET reviewed_missed = 1 WHERE id = ?",
-            (classification_id,),
-        )
-        conn.commit()
-        return jsonify({"success": True})
-    finally:
-        conn.close()
-
+# DEBT-1: email review routes moved to routes/email_review.py (Blueprint).
 
 # ── Email sender rules ────────────────────────────────────────────────────────
 
@@ -3036,7 +2576,7 @@ def upload_preview():
 @login_required
 def upload_confirm():
     """Execute import using the analysis result confirmed by staff."""
-    data       = request.get_json(force=True)
+    data       = _get_json_safe()
     tmp_path   = data.get("tmp_path", "")
     overrides  = data.get("overrides", {})   # {str(col_index): "table.field" | "skip"}
     tax_year   = int(data.get("tax_year", date.today().year))
@@ -3736,7 +3276,7 @@ def review_resolve():
       action    : 'confirm' | 'new' | 'link'
       client_id : int  (required for 'link'; ignored otherwise)
     """
-    data     = request.get_json(force=True)
+    data     = _get_json_safe()
     queue_id = int(data.get("queue_id", 0))
     action   = data.get("action", "")   # confirm | new | link
     override_client_id = data.get("client_id")  # for 'link'
@@ -4085,7 +3625,7 @@ def api_search():
 @app.post("/api/privacy-mode")
 @login_required
 def api_privacy_mode():
-    data = request.get_json(force=True) if request.data else {}
+    data = _get_json_safe() if request.data else {}
     enabled = data.get("enabled")
     session["privacy_mode"] = bool(enabled)
     return jsonify({"success": True, "privacy_mode": bool(session.get("privacy_mode"))})
@@ -4108,7 +3648,7 @@ def api_dashboard_filters_create():
     uname = _session_username()
     if not uname:
         return jsonify({"error": "No user in session"}), 400
-    data = request.get_json(force=True) if request.data else {}
+    data = _get_json_safe() if request.data else {}
     name = str(data.get("name") or "").strip()[:120]
     if not name:
         return jsonify({"error": "Name is required"}), 400
@@ -4250,7 +3790,7 @@ def api_return_sync_to_drake(return_id: int):
 @app.post("/api/return/<int:return_id>/status")
 @login_required
 def api_status(return_id: int):
-    data       = request.get_json(force=True)
+    data       = _get_json_safe()
     new_status = (data.get("status") or "").upper().strip()
     if new_status not in STATUS_FLOW:
         return jsonify({"error": "Invalid status"}), 400
@@ -4318,7 +3858,7 @@ BULK_RETURN_IDS_CAP = 500
 @app.post("/api/returns/bulk-status")
 @login_required
 def api_returns_bulk_status():
-    payload    = request.get_json(force=True) or {}
+    payload    = _get_json_safe() or {}
     raw_ids    = payload.get("return_ids")
     new_status = (payload.get("status") or "").strip().upper()
     if not isinstance(raw_ids, list) or not raw_ids:
@@ -4357,7 +3897,7 @@ def api_returns_bulk_status():
 @app.post("/api/returns/bulk-processor")
 @login_required
 def api_returns_bulk_processor():
-    payload       = request.get_json(force=True) or {}
+    payload       = _get_json_safe() or {}
     raw_ids       = payload.get("return_ids")
     processor_raw = payload.get("processor")
     if not isinstance(raw_ids, list) or not raw_ids:
@@ -4389,14 +3929,93 @@ def api_returns_bulk_processor():
         conn.close()
 
 
+def _validate_field(field: str, value) -> tuple[bool, str]:
+    """REL-6: coerce and validate a value for a known editable field.
+
+    Returns (ok, coerced_value_or_error_message).  Validators are intentionally
+    lenient about None/empty-string so clearing a field always works.
+    """
+    import re as _re
+
+    def _is_empty(v) -> bool:
+        return v is None or str(v).strip() == ""
+
+    # INTEGER boolean flags (0/1 only; None = clear)
+    _BOOL_FIELDS = {
+        "verified", "is_amended", "has_w7", "is_extension",
+        "transfer_flag", "transfer_2025_flag", "transfer_2026_flag",
+        "signatures_given", "signatures_received", "referral_flag",
+    }
+    # ISO-8601 date fields (YYYY-MM-DD or empty)
+    _DATE_FIELDS = {
+        "intake_date", "date_emailed", "pickup_date", "logout_date",
+        "updated_date", "efile_date", "ack_date", "taxpayer_dob", "spouse_dob",
+    }
+    # 4-digit tax-year integer
+    _YEAR_FIELDS = {"tax_year"}
+    # Money (REAL >= 0)
+    _MONEY_FIELDS = {"total_fee", "fee_paid", "cc_fee", "refund_amount", "bank_deposit"}
+
+    if field in _BOOL_FIELDS:
+        if _is_empty(value):
+            return True, None
+        try:
+            v = int(value)
+        except (TypeError, ValueError):
+            return False, f"Field '{field}' must be 0 or 1, got {value!r}"
+        if v not in (0, 1):
+            return False, f"Field '{field}' must be 0 or 1, got {v!r}"
+        return True, v
+
+    if field in _DATE_FIELDS:
+        if _is_empty(value):
+            return True, None
+        s = str(value).strip()
+        if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+            return False, f"Field '{field}' must be YYYY-MM-DD, got {s!r}"
+        return True, s
+
+    if field in _YEAR_FIELDS:
+        if _is_empty(value):
+            return True, None
+        try:
+            v = int(value)
+        except (TypeError, ValueError):
+            return False, f"Field '{field}' must be a 4-digit year, got {value!r}"
+        if not (1990 <= v <= 2100):
+            return False, f"Field '{field}' year {v} out of range 1990–2100"
+        return True, v
+
+    if field in _MONEY_FIELDS:
+        if _is_empty(value):
+            return True, None
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return False, f"Field '{field}' must be a number, got {value!r}"
+        if v < 0:
+            return False, f"Field '{field}' cannot be negative, got {v!r}"
+        return True, round(v, 2)
+
+    # Everything else (TEXT fields) — accept as-is; strip leading/trailing whitespace.
+    if value is None:
+        return True, None
+    return True, str(value).strip() or None
+
+
 @app.post("/api/return/<int:return_id>/field")
 @login_required
 def api_field(return_id: int):
-    data  = request.get_json(force=True)
+    data  = _get_json_safe()
     field = (data.get("field") or "").strip()
     value = data.get("value")
     if field == "processor":
         value = normalize_preparer(value) if (value is not None and str(value).strip() != "") else None
+    elif field in (RETURN_EDITABLE | CLIENT_EDITABLE | PAYMENT_EDITABLE):
+        ok, coerced = _validate_field(field, value)
+        if not ok:
+            return jsonify({"error": coerced}), 400
+        value = coerced
 
     conn = get_connection()
     try:
@@ -4461,7 +4080,7 @@ def api_field(return_id: int):
 @app.post("/api/return/<int:return_id>/note")
 @login_required
 def api_note(return_id: int):
-    data = request.get_json(force=True)
+    data = _get_json_safe()
     text = (data.get("text") or "").strip()
     if not text:
         return jsonify({"error": "Empty note"}), 400
@@ -4490,7 +4109,7 @@ def api_note(return_id: int):
 @login_required
 def api_return_contact(return_id: int):
     """Update client-contact follow-up fields for REJECTED returns."""
-    data  = request.get_json(force=True) or {}
+    data  = _get_json_safe() or {}
     cs_in = (data.get("contact_status") or "").strip().lower()
     if cs_in not in CONTACT_STATUS_VALUES:
         return jsonify({"error": "Invalid contact_status"}), 400
@@ -4530,7 +4149,7 @@ def api_return_contact(return_id: int):
 @app.post("/api/return/<int:return_id>/missing-doc")
 @login_required
 def api_missing_doc_add(return_id: int):
-    data = request.get_json(force=True)
+    data = _get_json_safe()
     text = (data.get("text") or "").strip()
     if not text:
         return jsonify({"error": "Empty item"}), 400
@@ -4743,7 +4362,7 @@ def api_merge_clients():
     Merge 'discard' client into 'keep' client.
     Moves all returns (and review_queue refs) from discard → keep, then deletes discard.
     """
-    data       = request.get_json(force=True)
+    data       = _get_json_safe()
     keep_id    = int(data.get("keep_id", 0))
     discard_id = int(data.get("discard_id", 0))
     if not keep_id or not discard_id or keep_id == discard_id:
@@ -4825,7 +4444,7 @@ def api_merge_clients_bulk():
 @login_required
 def api_merge_skip():
     """Mark a pair as 'not duplicates' by storing a skip record (simple session list)."""
-    data = request.get_json(force=True)
+    data = _get_json_safe()
     skipped = session.get("merge_skipped", [])
     pair_key = f"{min(data['keep_id'], data['discard_id'])}-{max(data['keep_id'], data['discard_id'])}"
     if pair_key not in skipped:
@@ -5010,7 +4629,7 @@ def efile_batch_transmit(batch_id: int):
 @login_required
 def efile_batch_item_ack(batch_id: int, item_id: int):
     """Update ACK status on a single batch item."""
-    data       = request.get_json(force=True)
+    data       = _get_json_safe()
     ack_status = data.get("ack_status", "").lower()
     if ack_status not in ("pending", "accepted", "rejected"):
         return jsonify({"success": False, "error": "Invalid ack_status"}), 400
@@ -5124,7 +4743,7 @@ def efile_batch_item_ack(batch_id: int, item_id: int):
 @login_required
 def efile_batch_item_flag(batch_id: int, item_id: int):
     """Toggle 'needs calculation' flag on a batch item."""
-    data = request.get_json(force=True)
+    data = _get_json_safe()
     conn = get_connection()
     conn.execute(
         "UPDATE efile_batch_items SET needs_calculation=? WHERE id=? AND batch_id=?",
@@ -5413,7 +5032,7 @@ def import_audit():
 @login_required
 def api_audit_merge_client():
     """Merge an unlogged client into a logged one (from the audit page)."""
-    data       = request.get_json(force=True)
+    data       = _get_json_safe()
     discard_id = int(data["discard_id"])
     keep_id    = int(data["keep_id"])
     conn = get_connection()
@@ -5429,6 +5048,127 @@ def api_audit_merge_client():
 
 
 # ── Season rollover (Epic #88 — ROLLOVER-1…6) ─────────────────────────────────
+
+
+# ── OPS-5: serve RUNBOOK.md in the admin UI ──────────────────────────────────
+
+@app.route("/admin/runbook")
+@login_required
+def admin_runbook():
+    """OPS-5: render RUNBOOK.md as a readable HTML page accessible from the footer."""
+    runbook_path = os.path.join(os.path.dirname(__file__), "docs", "RUNBOOK.md")
+    try:
+        with open(runbook_path, encoding="utf-8") as fh:
+            raw_md = fh.read()
+    except OSError:
+        raw_md = "# RUNBOOK.md not found\n\nFile expected at `docs/RUNBOOK.md`."
+    return render_template(
+        "runbook.html",
+        raw_md=raw_md,
+        active_page="runbook",
+    )
+
+
+@app.route("/admin/runbook/raw")
+@login_required
+def admin_runbook_raw():
+    """Serve raw RUNBOOK.md as plain text (for download / copy-paste)."""
+    runbook_path = os.path.join(os.path.dirname(__file__), "docs", "RUNBOOK.md")
+    try:
+        with open(runbook_path, encoding="utf-8") as fh:
+            content = fh.read()
+    except OSError:
+        content = "# RUNBOOK.md not found"
+    from flask import Response
+    return Response(content, mimetype="text/plain; charset=utf-8")
+
+
+# ── DOC-HARD-3: Failed document (dead-letter) admin ──────────────────────────
+
+@app.route("/admin/failed-docs")
+@login_required
+def failed_docs_admin():
+    """DOC-HARD-3: list extraction dead-letter items; staff can retry or dismiss."""
+    from extractor import MAX_ATTEMPTS
+    ctx = base_ctx()
+    ctx["active_page"] = "failed_docs"
+    with contextlib.closing(get_connection()) as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                eq.id AS eq_id, eq.doc_id, eq.attempts, eq.error_message,
+                eq.created_at, eq.processed_at,
+                rd.filename, rd.original_filename, rd.doc_type, rd.return_id,
+                r.log_number, c.last_name, c.first_name, r.tax_year
+            FROM extraction_queue eq
+            JOIN return_documents rd ON eq.doc_id = rd.id AND rd.is_deleted = 0
+            JOIN returns r ON eq.return_id = r.id
+            JOIN clients c ON c.id = r.client_id
+            WHERE eq.status = 'failed'
+            ORDER BY eq.processed_at DESC
+            LIMIT 200
+            """
+        ).fetchall()
+    ctx["failed_docs"] = [dict(r) for r in rows]
+    ctx["max_attempts"] = MAX_ATTEMPTS
+    return render_template("failed_docs_admin.html", **ctx)
+
+
+@app.post("/api/admin/documents/<int:doc_id>/retry")
+@login_required
+def api_admin_document_retry(doc_id: int):
+    """DOC-HARD-3: reset a dead-letter extraction item back to pending for retry."""
+    reviewer = session.get("username") or "staff"
+    with contextlib.closing(get_connection()) as conn:
+        row = conn.execute(
+            "SELECT id, return_id FROM extraction_queue WHERE doc_id = ? AND status = 'failed' "
+            "ORDER BY id DESC LIMIT 1",
+            (doc_id,),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "No failed extraction found for this document"}), 404
+        conn.execute(
+            """
+            UPDATE extraction_queue
+            SET status = 'pending', attempts = 0, error_message = ?,
+                processed_at = NULL
+            WHERE id = ?
+            """,
+            (f"Manually retried by {reviewer}", row["id"]),
+        )
+        conn.commit()
+        from extractor import _notify_extraction_worker
+        _notify_extraction_worker()
+    return jsonify({"success": True, "doc_id": doc_id})
+
+
+# ── BACKUP-5: on-demand backup admin ─────────────────────────────────────────
+
+@app.route("/admin/backup")
+@login_required
+def backup_admin():
+    """BACKUP-5: admin page with manual backup trigger button."""
+    ctx = base_ctx()
+    ctx["active_page"] = "backup_admin"
+    return render_template("backup_admin.html", **ctx)
+
+
+@app.post("/api/admin/backup/run")
+@login_required
+def api_admin_backup_run():
+    """BACKUP-5: trigger an on-demand backup; returns JSON result."""
+    from backup import run_backup
+    try:
+        result = run_backup()
+        return jsonify({
+            "success": result.success,
+            "message": result.message,
+            "backup_file": result.backup_file,
+            "size_bytes": result.size_bytes,
+        }), (200 if result.success else 500)
+    except Exception as exc:
+        current_app.logger.exception("Manual backup failed")
+        return jsonify({"success": False, "message": str(exc), "backup_file": None, "size_bytes": None}), 500
 
 
 @app.route("/admin/season-rollover")
@@ -5706,42 +5446,98 @@ def audit_log_retention_update():
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+def register_workers(flask_app) -> None:
+    """REL-3: initialise DB, seed users, and start all background daemons.
+
+    Call this from *any* entry point (python app.py, waitress-serve, tests that
+    need background workers) rather than relying on __main__ guard.
+
+    Supported single entry point remains: ``python taxops/app.py``
+    (``waitress-serve taxops.app:app`` skips DB migration; run register_workers
+    explicitly or use the python app.py entry point instead).
+    """
+    _log = logging.getLogger(__name__)
+
     conn = get_connection()
     init_db(conn)
+    seeded = bootstrap_auth_user(conn)
+    if seeded:
+        _log.info(
+            "SEC-2: auth_users bootstrapped from TAXOPS_USER env var. "
+            "Consider unsetting TAXOPS_PASS after verifying login works."
+        )
     conn.close()
-    start_mail_watcher(app)
-    start_extraction_worker(app)
+
+    _taxops_env = os.environ.get("TAXOPS_ENV", "").lower()
+    if _taxops_env == "production" and not flask_app.config.get("SESSION_COOKIE_SECURE"):
+        _log.warning(
+            "SEC-3: SESSION_COOKIE_SECURE is False in a production environment. "
+            "Session cookies will be sent over plain HTTP. "
+            "Set app.config['SESSION_COOKIE_SECURE'] = True once TLS terminates in front of this server."
+        )
+
+    start_mail_watcher(flask_app)
+    start_extraction_worker(flask_app)
+    try:
+        from accounting_worker import start_accounting_worker
+        start_accounting_worker(flask_app)
+    except Exception as ex:
+        _log.warning("Accounting worker startup skipped: %s", ex)
     try:
         from chat_cache import start_cache_worker
-
-        start_cache_worker(app)
+        start_cache_worker(flask_app)
     except Exception as ex:
-        logging.getLogger(__name__).warning("Chat cache worker startup skipped: %s", ex)
+        _log.warning("Chat cache worker startup skipped: %s", ex)
 
-    # Load or train fastText model at startup — runs in background, never blocks
-    import threading as _startup_threading
     def _startup_classifier():
         from classifier import _load_model, retrain
-        _load_model()         # hot-load existing model if available
-        retrain(DB_PATH)      # retrain on any newly confirmed data since last run
-    _startup_threading.Thread(
-        target=_startup_classifier, daemon=True, name="fasttext-startup"
-    ).start()
+        _load_model()
+        retrain(DB_PATH)
+
+    threading.Thread(target=_startup_classifier, daemon=True, name="fasttext-startup").start()
 
     def _warm_chat_cache():
         try:
             from datetime import date as _d
             from chat_cache import refresh_chat_cache as _warm_cc
-
             _warm_cc(year=_d.today().year)
         except Exception as ex:
-            logging.getLogger(__name__).warning("Chat cache warmup skipped: %s", ex)
+            _log.warning("Chat cache warmup skipped: %s", ex)
 
-    threading.Thread(
-        target=_warm_chat_cache, daemon=True, name="chat-cache-warm"
-    ).start()
+    threading.Thread(target=_warm_chat_cache, daemon=True, name="chat-cache-warm").start()
 
-    print("TaxOps running at http://localhost:5000")
+
+if __name__ == "__main__":
+    register_workers(app)
+
+    host = (os.environ.get("WAITRESS_HOST") or os.environ.get("HOST") or "0.0.0.0").strip() or "0.0.0.0"
+    port_raw = (
+        os.environ.get("WAITRESS_PORT")
+        or os.environ.get("PORT")
+        or "5000"
+    )
+    try:
+        port = int(str(port_raw).strip())
+    except ValueError:
+        port = 5000
+
+    print(f"TaxOps running at http://localhost:{port}", flush=True)
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
-    app.run(host="0.0.0.0", port=5000, debug=debug_mode, use_reloader=debug_mode)
+
+    # WSGI-2 (#138): Production/offices use Waitress; keep FLASK_DEBUG=1 only for interactive dev + reloader.
+    if debug_mode:
+        app.run(host=host, port=port, debug=True, use_reloader=True)
+    else:
+        from waitress import serve
+
+        try:
+            threads = int(os.environ.get("WAITRESS_THREADS", "8"))
+        except ValueError:
+            threads = 8
+        threads = max(1, min(threads, 64))
+
+        print(
+            f"Waitress listening on http://{host}:{port}/ (threads={threads})",
+            flush=True,
+        )
+        serve(app, host=host, port=port, threads=threads)

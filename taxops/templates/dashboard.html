@@ -27,7 +27,7 @@
         ~ pproc ~ pbal ~ plate ~ pslow %}
 
     <!-- Row 1: status pills -->
-    <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
+    <div id="status-pills" class="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
       <span class="text-sm font-medium text-slate-500 shrink-0">Status:</span>
       <a href="/?year={{ current_year }}{{ persist }}"
          class="pill shrink-0 {% if not filters.status %}pill-active{% else %}pill-inactive{% endif %}">All</a>
@@ -476,148 +476,155 @@
 
 {% block scripts %}
 <script>
-window.__dashboardFilterSnap = {{ dashboard_current_filter_snapshot | tojson }};
-window.__dashSnapMeaningful = {{ dashboard_snapshot_has_meaningful | tojson }};
-
-function _dashboardFilterYear() {
-  const y = document.body?.dataset?.year;
-  const n = parseInt(y || '', 10);
-  return Number.isFinite(n) ? n : new Date().getFullYear();
-}
-
-function dashboardSaveFilterMerged() {
-  const base = typeof window.__dashboardFilterSnap === 'object' && window.__dashboardFilterSnap
-    ? { ...window.__dashboardFilterSnap } : {};
-  const inp = document.getElementById('table-filter');
-  const qt = (inp?.value ?? '').trim();
-  if (qt.length >= 2) base.q = qt.slice(0, 500);
-  return base;
-}
-
-function dashboardSaveMeaningful() {
-  try {
-    return Object.keys(dashboardSaveFilterMerged()).length > 0;
-  } catch (_) {
-    return false;
-  }
-}
-
-function syncSaveDashboardFilterBtn() {
-  const btn = document.getElementById('btn-save-dashboard-filter');
-  if (!btn) return;
-  const ok = !!(window.__dashSnapMeaningful || (document.getElementById('table-filter')?.value || '').trim().length >= 2);
-  btn.disabled = !ok;
-}
-
-function toggleSaveDashboardFilterModal(show) {
-  const m = document.getElementById('save-dashboard-filter-modal');
-  const nameEl = document.getElementById('save-dash-filter-name');
-  const err = document.getElementById('save-dash-filter-error');
-  if (!m) return;
-  if (show) {
-    err.classList.add('hidden');
-    err.textContent = '';
-    if (nameEl) nameEl.value = '';
-    const defCb = document.getElementById('save-dash-filter-default');
-    if (defCb) {
-      defCb.checked = false;
-      defCb.disabled = false;
-    }
-    const sh = document.getElementById('save-dash-filter-shared');
-    if (sh) sh.checked = false;
-    m.classList.remove('hidden');
-    m.classList.add('flex');
-    setTimeout(() => nameEl?.focus(), 50);
-  } else {
-    m.classList.add('hidden');
-    m.classList.remove('flex');
-  }
-}
-
-function applyFilter(key, value) {
-  const url = new URL(window.location);
-  if (value) url.searchParams.set(key, value);
-  else       url.searchParams.delete(key);
-  window.location = url.toString();
-}
-
-// ── Column sort ────────────────────────────────────────────────────────────
-const STATUS_ORDER = ['PENDING INTAKE','LOG IN','PROCESSING','FINALIZE','PICKUP','EFILE READY','LOG OUT','REJECTED'];
-let _sortCol = null, _sortAsc = true;
-
-document.querySelectorAll('th.sortable').forEach(th => {
-  th.addEventListener('click', () => {
-    const col = th.dataset.col;
-    if (_sortCol === col) _sortAsc = !_sortAsc;
-    else { _sortCol = col; _sortAsc = true; }
-
-    // Update arrow indicators
-    document.querySelectorAll('th.sortable .sort-arrow').forEach(a => a.className = 'sort-arrow');
-    th.querySelector('.sort-arrow').className = 'sort-arrow ' + (_sortAsc ? 'asc' : 'desc');
-
-    sortTable(col, th.dataset.type, _sortAsc);
-  });
-});
-
-function sortTable(col, type, asc) {
-  const tbody = document.querySelector('.data-table tbody');
-  const rows  = Array.from(tbody.querySelectorAll('tr[data-log]')); // skip empty-state row
-  rows.sort((a, b) => {
-    let va = a.dataset[col] || '';
-    let vb = b.dataset[col] || '';
-    let cmp = 0;
-    if (type === 'num') {
-      cmp = (parseFloat(va) || 0) - (parseFloat(vb) || 0);
-    } else if (type === 'status') {
-      cmp = STATUS_ORDER.indexOf(va) - STATUS_ORDER.indexOf(vb);
-    } else {
-      cmp = va.localeCompare(vb, undefined, {sensitivity: 'base'});
-    }
-    return asc ? cmp : -cmp;
-  });
-  rows.forEach(r => tbody.appendChild(r));
-  // recount visible rows after sort
-  updateRowCount();
-}
-
-function updateRowCount() {
-  const visible = document.querySelectorAll('.data-table tbody tr[data-search]:not(.tr-filter-hidden)').length;
-  const el = document.getElementById('row-count');
-  if (el) el.textContent = visible;
-  if (typeof syncDashboardTableSelection === "function") syncDashboardTableSelection();
-}
-
-// ── Email classification reminder ─────────────────────────────────────────────
 (function () {
-  fetch('/api/email-classifications/digest')
-    .then(r => _authJson(r))
-    .then(d => {
-      const missed  = d.possible_missed  || 0;
-      const attn    = d.need_attention   || 0;
-      if (missed <= 0 && attn <= 0) return;
 
-      const indicator = document.getElementById('email-review-indicator');
-      const lines     = document.getElementById('email-review-lines');
-      if (!indicator || !lines) return;
+  window.__dashboardFilterSnap = {{ dashboard_current_filter_snapshot | tojson }};
+  window.__dashSnapMeaningful = {{ dashboard_snapshot_has_meaningful | tojson }};
 
-      const parts = [];
-      if (missed > 0) {
-        parts.push(
-          `<a href="/email-review#missed-alerts" class="block text-sm font-bold text-red-600 hover:underline">` +
-          `⚠ ${missed} possible missed attachment${missed !== 1 ? 's' : ''}</a>`
-        );
+  function _dashboardFilterYear() {
+    const y = document.body?.dataset?.year;
+    const n = parseInt(y || '', 10);
+    return Number.isFinite(n) ? n : new Date().getFullYear();
+  }
+
+  function dashboardSaveFilterMerged() {
+    const base = typeof window.__dashboardFilterSnap === 'object' && window.__dashboardFilterSnap
+      ? { ...window.__dashboardFilterSnap } : {};
+    const inp = document.getElementById('table-filter');
+    const qt = (inp?.value ?? '').trim();
+    if (qt.length >= 2) base.q = qt.slice(0, 500);
+    return base;
+  }
+
+  function dashboardSaveMeaningful() {
+    try {
+      return Object.keys(dashboardSaveFilterMerged()).length > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function syncSaveDashboardFilterBtn() {
+    const btn = document.getElementById('btn-save-dashboard-filter');
+    if (!btn) return;
+    const ok = !!(window.__dashSnapMeaningful || (document.getElementById('table-filter')?.value || '').trim().length >= 2);
+    btn.disabled = !ok;
+  }
+
+  function toggleSaveDashboardFilterModal(show) {
+    const m = document.getElementById('save-dashboard-filter-modal');
+    const nameEl = document.getElementById('save-dash-filter-name');
+    const err = document.getElementById('save-dash-filter-error');
+    if (!m) return;
+    if (show) {
+      err.classList.add('hidden');
+      err.textContent = '';
+      if (nameEl) nameEl.value = '';
+      const defCb = document.getElementById('save-dash-filter-default');
+      if (defCb) {
+        defCb.checked = false;
+        defCb.disabled = false;
       }
-      if (attn > 0) {
-        parts.push(
-          `<a href="/email-review" class="block text-sm font-semibold text-amber-700 hover:underline">` +
-          `${attn} client email${attn !== 1 ? 's' : ''} need${attn !== 1 ? '' : 's'} review</a>`
-        );
+      const sh = document.getElementById('save-dash-filter-shared');
+      if (sh) sh.checked = false;
+      m.classList.remove('hidden');
+      m.classList.add('flex');
+      setTimeout(() => nameEl?.focus(), 50);
+    } else {
+      m.classList.add('hidden');
+      m.classList.remove('flex');
+    }
+  }
+
+  function applyFilter(key, value) {
+    const url = new URL(window.location);
+    if (value) url.searchParams.set(key, value);
+    else       url.searchParams.delete(key);
+    window.location = url.toString();
+  }
+
+  // ── Column sort ────────────────────────────────────────────────────────────
+  const STATUS_ORDER = ['PENDING INTAKE','LOG IN','PROCESSING','FINALIZE','PICKUP','EFILE READY','LOG OUT','REJECTED'];
+  let _sortCol = null, _sortAsc = true;
+
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (_sortCol === col) _sortAsc = !_sortAsc;
+      else { _sortCol = col; _sortAsc = true; }
+
+      // Update arrow indicators
+      document.querySelectorAll('th.sortable .sort-arrow').forEach(a => a.className = 'sort-arrow');
+      th.querySelector('.sort-arrow').className = 'sort-arrow ' + (_sortAsc ? 'asc' : 'desc');
+
+      sortTable(col, th.dataset.type, _sortAsc);
+    });
+  });
+
+  function sortTable(col, type, asc) {
+    const tbody = document.querySelector('.data-table tbody');
+    const rows  = Array.from(tbody.querySelectorAll('tr[data-log]')); // skip empty-state row
+    rows.sort((a, b) => {
+      let va = a.dataset[col] || '';
+      let vb = b.dataset[col] || '';
+      let cmp = 0;
+      if (type === 'num') {
+        cmp = (parseFloat(va) || 0) - (parseFloat(vb) || 0);
+      } else if (type === 'status') {
+        cmp = STATUS_ORDER.indexOf(va) - STATUS_ORDER.indexOf(vb);
+      } else {
+        cmp = va.localeCompare(vb, undefined, {sensitivity: 'base'});
       }
-      lines.innerHTML = parts.join('');
-      indicator.classList.remove('hidden');
-      indicator.classList.add('flex');
-    })
-    .catch(() => {});
+      return asc ? cmp : -cmp;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+    // recount visible rows after sort
+    updateRowCount();
+  }
+
+  function updateRowCount() {
+    const visible = document.querySelectorAll('.data-table tbody tr[data-search]:not(.tr-filter-hidden)').length;
+    const el = document.getElementById('row-count');
+    if (el) el.textContent = visible;
+    if (typeof syncDashboardTableSelection === "function") syncDashboardTableSelection();
+  }
+
+  // ── Email classification reminder ─────────────────────────────────────────────
+  (function () {
+    _csrfFetch('/api/email-classifications/digest')
+      .then(r => _authJson(r))
+      .then(d => {
+        const missed  = d.possible_missed  || 0;
+        const attn    = d.need_attention   || 0;
+        if (missed <= 0 && attn <= 0) return;
+
+        const indicator = document.getElementById('email-review-indicator');
+        const lines     = document.getElementById('email-review-lines');
+        if (!indicator || !lines) return;
+
+        const parts = [];
+        if (missed > 0) {
+          parts.push(
+            `<a href="/email-review#missed-alerts" class="block text-sm font-bold text-red-600 hover:underline">` +
+            `⚠ ${missed} possible missed attachment${missed !== 1 ? 's' : ''}</a>`
+          );
+        }
+        if (attn > 0) {
+          parts.push(
+            `<a href="/email-review" class="block text-sm font-semibold text-amber-700 hover:underline">` +
+            `${attn} client email${attn !== 1 ? 's' : ''} need${attn !== 1 ? '' : 's'} review</a>`
+          );
+        }
+        lines.innerHTML = parts.join('');
+        indicator.classList.remove('hidden');
+        indicator.classList.add('flex');
+      })
+      .catch(() => {});
+  })();
+
+  window.applyFilter = applyFilter;
+  window.syncSaveDashboardFilterBtn = syncSaveDashboardFilterBtn;
+  window.toggleSaveDashboardFilterModal = toggleSaveDashboardFilterModal;
 })();
 </script>
 <script>
@@ -634,7 +641,7 @@ function updateRowCount() {
         ev.stopPropagation();
         if (!confirm('Delete this saved view?')) return;
         try {
-          const r = await fetch('/api/filters/' + encodeURIComponent(id), { method: 'DELETE' });
+          const r = await _csrfFetch('/api/filters/' + encodeURIComponent(id), { method: 'DELETE' });
           const d = await _authJson(r);
           if (d.success) window.location.reload();
           else alert(d.error || 'Could not delete');
@@ -649,7 +656,7 @@ function updateRowCount() {
         ev.preventDefault();
         ev.stopPropagation();
         try {
-          const r = await fetch('/api/filters/' + encodeURIComponent(id) + '/default', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          const r = await _csrfFetch('/api/filters/' + encodeURIComponent(id) + '/default', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
           await _authJson(r);
           window.location.reload();
         } catch (e) {
@@ -695,7 +702,7 @@ function updateRowCount() {
       };
 
       try {
-        const r = await fetch('/api/filters', {
+        const r = await _csrfFetch('/api/filters', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -724,6 +731,21 @@ function updateRowCount() {
     tf?.addEventListener('input', () => { syncSaveDashboardFilterBtn(); });
     wireSavedFilterPills();
     wireSaveFlow();
+  });
+})();
+</script>
+
+<!-- TOUR-3: auto-launch tour on first dashboard visit if not yet completed -->
+<script>
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    // Only auto-launch if TaxOpsTour engine is loaded and no pending resume
+    if (!window.TaxOpsTour) return;
+    if (sessionStorage.getItem('taxops_tour_step') !== null) return;
+    fetch('/api/tour/status', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (!d.completed) window.TaxOpsTour.start(); })
+      .catch(function () {});
   });
 })();
 </script>

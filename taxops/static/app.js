@@ -1,3 +1,22 @@
+// ── SEC-1: CSRF-aware fetch helper ─────────────────────────────────────────
+// Reads the token from <meta name="csrf-token"> (injected by base.html / login.html).
+// All mutating requests (POST / PATCH / PUT / DELETE) automatically get X-CSRFToken.
+// Read-only methods (GET / HEAD) are passed through unchanged.
+function _csrfToken() {
+  const m = document.querySelector('meta[name="csrf-token"]');
+  return m ? m.getAttribute("content") : "";
+}
+
+function _csrfFetch(url, options) {
+  const opts = Object.assign({}, options || {});
+  const method = ((opts.method || "GET").toUpperCase());
+  const mutating = method === "POST" || method === "PATCH" || method === "PUT" || method === "DELETE";
+  if (mutating) {
+    opts.headers = Object.assign({ "X-CSRFToken": _csrfToken() }, opts.headers || {});
+  }
+  return fetch(url, opts);
+}
+
 // ── Status badge Tailwind classes (mirrors app.py STATUS_BADGE) ───────────
 const STATUS_BADGE = {
   "PROCESSING":  "bg-sky-50 text-sky-700 border-sky-200",
@@ -94,7 +113,7 @@ async function setStatus(returnId, status, btn) {
   const menu  = btn.closest(".status-menu");
   const badge = menu.previousElementSibling;
   try {
-    const resp = await fetch(`/api/return/${returnId}/status`, {
+    const resp = await _csrfFetch(`/api/return/${returnId}/status`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ status }),
@@ -223,7 +242,7 @@ async function commitEdit(el, value) {
   if (unchanged) { el.textContent = inlineFieldDisplay(el, original); return; }
 
   try {
-    const resp = await fetch(`/api/return/${returnId}/field`, {
+    const resp = await _csrfFetch(`/api/return/${returnId}/field`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ field, value: value || null }),
@@ -253,7 +272,7 @@ async function toggleBool(el) {
   const isTrue   = el.dataset.value === "1";
   const newVal   = isTrue ? 0 : 1;
   try {
-    const resp = await fetch(`/api/return/${returnId}/field`, {
+    const resp = await _csrfFetch(`/api/return/${returnId}/field`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ field, value: newVal }),
@@ -277,7 +296,7 @@ async function submitNote(returnId) {
   if (!text) return;
 
   try {
-    const resp = await fetch(`/api/return/${returnId}/note`, {
+    const resp = await _csrfFetch(`/api/return/${returnId}/note`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ text }),
@@ -335,7 +354,7 @@ function runTableQuickFilter() {
   syncDashboardTableSelection();
 }
 
-function scheduleTableQuickFilter(immediate) {
+function scheduleTableQuickFilter(_immediate) {
   if (_tableFilterRaf) cancelAnimationFrame(_tableFilterRaf);
   _tableFilterRaf = requestAnimationFrame(() => {
     _tableFilterRaf = 0;
@@ -880,7 +899,7 @@ function postClientErrorReport(payload) {
       colno: payload.colno,
       stack: _truncateClientErrStr(payload.stack || "", 8000),
     };
-    fetch("/api/client-error", {
+    _csrfFetch("/api/client-error", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
@@ -956,6 +975,17 @@ document.addEventListener("DOMContentLoaded", () => {
   initDashboardBulkActions();
   initYearPicker();
 
+  // TOUR-3: help icon resets server-side completion then restarts the tour
+  const _tourHelpBtn = document.getElementById("tour-help-btn");
+  if (_tourHelpBtn) {
+    _tourHelpBtn.addEventListener("click", async () => {
+      try {
+        await _csrfFetch("/api/tour/reset", { method: "POST" });
+      } catch (_) { /* non-fatal — still restart visually */ }
+      if (window.TaxOpsTour) window.TaxOpsTour.restart();
+    });
+  }
+
   // Press "/" to focus search from anywhere
   document.addEventListener("keydown", e => {
     const tag = document.activeElement?.tagName;
@@ -965,3 +995,293 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
+
+// ── TOUR-1/2/3: Staff onboarding tooltip tour ─────────────────────────────────
+// Vanilla JS — no external library. Exposes window.TaxOpsTour.start() and
+// window.TaxOpsTour.restart(). State persisted in app_settings via API.
+
+window.TaxOpsTour = (function () {
+
+  // ── Step definitions (TOUR-2) ───────────────────────────────────────────────
+  // Each step: { selector, title, body, position, page, navigate }
+  //   page      — URL prefix the step lives on (null = any page)
+  //   navigate  — URL to go to before this step (triggers page reload + resume)
+  const STEPS = [
+    {
+      selector: "#global-search",
+      title: "Find any client instantly",
+      body: "Type a name or return number here. Results appear as you type. This is the fastest way to get to any client or return.",
+      position: "below",
+      page: "/",
+    },
+    {
+      selector: "#status-pills",
+      title: "Track where every return stands",
+      body: "These tabs filter by workflow status. PROCESSING means actively being worked. PICKUP means ready for the client. Click any tab to see only those returns.",
+      position: "below",
+      page: "/",
+    },
+    {
+      selector: "#documents",
+      title: "Every document in one place",
+      body: "W-2s, 1099s, and anything the client emails gets saved here automatically. You can also upload documents directly. Click any file to view it.",
+      position: "below",
+      page: "/return/",
+      navigate: "_first_return",
+    },
+    {
+      selector: "#return-status-control",
+      title: "Change status as work progresses",
+      body: "Click the status badge to change where this return stands — PROCESSING while you work it, FINALIZE when it needs review, PICKUP when the client can collect.",
+      position: "below",
+      page: "/return/",
+    },
+    {
+      selector: "#notes-card",
+      title: "Keep your team in sync",
+      body: "Leave notes that are visible to everyone on the team. Useful for flagging missing documents, client callbacks, or anything the next person working this return needs to know.",
+      position: "below",
+      page: "/return/",
+    },
+    {
+      selector: "#zone-a-section",
+      title: "Incoming client documents",
+      body: "When a client emails their documents they appear here. Review and confirm to attach them to the right return. The system matches clients automatically — you just verify.",
+      position: "below",
+      page: "/email-review",
+      navigate: "/email-review",
+    },
+    {
+      selector: "#site-header",
+      title: "You are ready",
+      body: "That covers the essentials. You can relaunch this tour anytime from the help icon in the top navigation. If you have questions check the runbook or ask your admin.",
+      position: "below",
+      page: null,
+    },
+  ];
+
+  const SESSION_KEY = "taxops_tour_step";
+  let _currentStep = 0;
+  let _active = false;
+
+  // ── DOM helpers ─────────────────────────────────────────────────────────────
+
+  function _cleanup() {
+    document.querySelectorAll("[data-taxops-tour]").forEach(el => el.remove());
+    document.querySelectorAll("[data-taxops-tour-highlight]").forEach(el => {
+      el.style.position = "";
+      el.style.zIndex = "";
+      el.style.outline = "";
+      el.removeAttribute("data-taxops-tour-highlight");
+    });
+    _active = false;
+  }
+
+  function _backdrop() {
+    const bd = document.createElement("div");
+    bd.setAttribute("data-taxops-tour", "backdrop");
+    Object.assign(bd.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "9998",
+      pointerEvents: "all",
+    });
+    bd.addEventListener("click", () => dismiss());
+    document.body.appendChild(bd);
+    return bd;
+  }
+
+  function _highlightEl(el) {
+    const prev = document.querySelector("[data-taxops-tour-highlight]");
+    if (prev) {
+      prev.style.position = "";
+      prev.style.zIndex = "";
+      prev.style.outline = "";
+      prev.removeAttribute("data-taxops-tour-highlight");
+    }
+    el.setAttribute("data-taxops-tour-highlight", "1");
+    const cs = window.getComputedStyle(el);
+    if (cs.position === "static") el.style.position = "relative";
+    el.style.zIndex = "9999";
+    el.style.outline = "2px solid #6366f1";
+    el.style.borderRadius = el.style.borderRadius || "6px";
+  }
+
+  function _tooltip(step, idx, total) {
+    const tt = document.createElement("div");
+    tt.setAttribute("data-taxops-tour", "tooltip");
+    Object.assign(tt.style, {
+      position: "fixed",
+      zIndex: "10000",
+      maxWidth: "320px",
+      background: "#1e293b",
+      color: "#f1f5f9",
+      borderRadius: "12px",
+      padding: "16px 18px",
+      boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
+      opacity: "0",
+      transition: "opacity 150ms ease",
+      pointerEvents: "all",
+    });
+
+    const progress = `<span style="font-size:11px;color:#94a3b8;display:block;margin-bottom:8px;">Step ${idx + 1} of ${total}</span>`;
+    const titleHtml = `<p style="font-weight:700;font-size:14px;margin:0 0 6px;">${escHtml(step.title)}</p>`;
+    const bodyHtml  = `<p style="font-size:13px;line-height:1.55;margin:0 0 14px;color:#cbd5e1;">${escHtml(step.body)}</p>`;
+    const isLast    = idx === total - 1;
+    const nextLabel = isLast ? "Done ✓" : "Next →";
+    const btnRow = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <button data-taxops-tour="skip"
+          style="font-size:12px;color:#94a3b8;background:none;border:none;cursor:pointer;padding:0;">
+          Skip tour
+        </button>
+        <button data-taxops-tour="next"
+          style="font-size:13px;font-weight:600;background:#6366f1;color:#fff;border:none;
+                 border-radius:7px;padding:7px 16px;cursor:pointer;">
+          ${nextLabel}
+        </button>
+      </div>`;
+
+    tt.innerHTML = progress + titleHtml + bodyHtml + btnRow;
+    document.body.appendChild(tt);
+    requestAnimationFrame(() => { tt.style.opacity = "1"; });
+
+    tt.querySelector("[data-taxops-tour='skip']").addEventListener("click", () => dismiss());
+    tt.querySelector("[data-taxops-tour='next']").addEventListener("click", () => {
+      if (isLast) complete();
+      else goToStep(_currentStep + 1);
+    });
+    return tt;
+  }
+
+  function _positionTooltip(tt, target) {
+    const tr = target.getBoundingClientRect();
+    const ttH = tt.offsetHeight || 160;
+    const ttW = tt.offsetWidth  || 320;
+    const vp  = { w: window.innerWidth, h: window.innerHeight };
+    const margin = 12;
+
+    let top, left;
+    if (tr.bottom + ttH + margin < vp.h) {
+      top  = tr.bottom + margin;
+      left = Math.min(Math.max(tr.left, margin), vp.w - ttW - margin);
+    } else {
+      top  = Math.max(tr.top - ttH - margin, margin);
+      left = Math.min(Math.max(tr.left, margin), vp.w - ttW - margin);
+    }
+    tt.style.top  = top  + "px";
+    tt.style.left = left + "px";
+  }
+
+  // ── Navigation helpers ──────────────────────────────────────────────────────
+
+  function _firstReturnUrl() {
+    const links = document.querySelectorAll("a[href^='/return/']");
+    if (links.length) return links[0].getAttribute("href");
+    const trs = document.querySelectorAll("tr[data-id]");
+    if (trs.length) return `/return/${trs[0].dataset.id}`;
+    return null;
+  }
+
+  function _navigateForStep(step, stepIdx) {
+    if (!step.navigate) return false;
+    const nav = step.navigate === "_first_return" ? _firstReturnUrl() : step.navigate;
+    if (!nav) return false;
+    const path = window.location.pathname;
+    if (path.startsWith("/return/") && step.page === "/return/") return false;
+    if (step.navigate !== "_first_return" && path.startsWith(step.navigate)) return false;
+    sessionStorage.setItem(SESSION_KEY, String(stepIdx));
+    window.location.href = nav;
+    return true;
+  }
+
+  // ── Step runner ─────────────────────────────────────────────────────────────
+
+  function goToStep(idx) {
+    if (idx >= STEPS.length) { complete(); return; }
+    _currentStep = idx;
+
+    const step = STEPS[idx];
+
+    // Navigate to a different page if needed
+    if (_navigateForStep(step, idx)) return;
+
+    // Remove previous tooltip
+    document.querySelectorAll("[data-taxops-tour='tooltip']").forEach(el => el.remove());
+
+    const target = document.querySelector(step.selector);
+    if (!target) {
+      // Target not found on this page — skip silently
+      goToStep(idx + 1);
+      return;
+    }
+
+    _highlightEl(target);
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    setTimeout(() => {
+      const tt = _tooltip(step, idx, STEPS.length);
+      setTimeout(() => _positionTooltip(tt, target), 20);
+      // Reposition on scroll/resize
+      const repos = () => _positionTooltip(tt, target);
+      window.addEventListener("scroll", repos, { passive: true });
+      window.addEventListener("resize", repos, { passive: true });
+      tt._cleanupRepos = () => {
+        window.removeEventListener("scroll", repos);
+        window.removeEventListener("resize", repos);
+      };
+    }, 80);
+  }
+
+  // ── Public API ───────────────────────────────────────────────────────────────
+
+  function start() {
+    if (_active) return;
+    _active = true;
+    _cleanup();
+    _backdrop();
+    goToStep(0);
+  }
+
+  function restart() {
+    _cleanup();
+    _active = true;
+    sessionStorage.removeItem(SESSION_KEY);
+    _backdrop();
+    goToStep(0);
+  }
+
+  function dismiss() {
+    sessionStorage.removeItem(SESSION_KEY);
+    _cleanup();
+  }
+
+  function complete() {
+    sessionStorage.removeItem(SESSION_KEY);
+    _cleanup();
+    _csrfFetch("/api/tour/complete", { method: "POST" }).catch(() => {});
+  }
+
+  // ── Resume from sessionStorage after page navigation ────────────────────────
+
+  function _maybeResume() {
+    const pending = sessionStorage.getItem(SESSION_KEY);
+    if (pending === null) return;
+    const idx = parseInt(pending, 10);
+    if (isNaN(idx) || idx < 0 || idx >= STEPS.length) {
+      sessionStorage.removeItem(SESSION_KEY);
+      return;
+    }
+    sessionStorage.removeItem(SESSION_KEY);
+    setTimeout(() => {
+      _active = true;
+      _backdrop();
+      goToStep(idx);
+    }, 500);
+  }
+
+  document.addEventListener("DOMContentLoaded", _maybeResume);
+
+  return { start, restart, dismiss, complete };
+
+})();

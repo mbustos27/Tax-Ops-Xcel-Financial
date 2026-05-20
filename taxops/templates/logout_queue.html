@@ -152,23 +152,26 @@
 
 {% block scripts %}
 <script>
-async function quickStatus(returnId, status, btn) {
-  btn.disabled = true;
-  const original = btn.textContent;
-  btn.textContent = '…';
-  try {
-    const resp = await fetch(`/api/return/${returnId}/status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    const data = await resp.json();
-    if (data.success) window.location.reload();
-    else { btn.disabled = false; btn.textContent = original; }
-  } catch {
-    btn.disabled = false;
-    btn.textContent = original;
+(function () {
+
+  async function quickStatus(returnId, status, btn) {
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = '…';
+    try {
+      const resp = await _csrfFetch(`/api/return/${returnId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const data = await resp.json();
+      if (data.success) window.location.reload();
+      else { btn.disabled = false; btn.textContent = original; }
+    } catch {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
   }
-}
+})();
 </script>
 {% endblock %}

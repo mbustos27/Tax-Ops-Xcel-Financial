@@ -22,6 +22,7 @@ import logging
 import os
 import threading
 import time
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
@@ -29,19 +30,37 @@ _ALLOWED_ATTACHMENT_EXTS = frozenset({".pdf", ".jpg", ".jpeg", ".png"})
 
 # Prevents two poll cycles from running concurrently when LLM calls are slow
 _poll_lock = threading.Lock()
+_poll_skip_count = 0          # EMAIL-4: incremented each time a cycle is skipped
 
 # Prevents start_mail_watcher from launching a second poll thread on Flask
 # dev-server reloads (which re-execute module-level code in the child process).
 _watcher_started = False
+_watcher_thread: "threading.Thread | None" = None  # HEALTH-2: tracked for is_alive() check
 
-# UIDs claimed for this process lifetime — keyed by (folder, uid_str).
-# Prevents the same IMAP message from being handled twice across poll cycles while
-# the message may still appear UNSEEN until STORE \\Seen succeeds. Cleared only
-# on interpreter restart (_processed_uids is never reset between polls).
-_processed_uids: set[tuple[str, str]] = set()
+# DEBT-7: LRU-capped duplicate-suppression memo.
+# Keyed by (folder, uid_str); value is True (sentinel — only the key matters).
+# Oldest entries are evicted when the cap is reached so memory is bounded across
+# long-lived processes (was an unbounded set before this fix).
+_PROCESSED_UIDS_CAP = int(os.environ.get("MAIL_PROCESSED_UIDS_CAP", "10000"))
+_processed_uids: OrderedDict[tuple[str, str], None] = OrderedDict()
 
 # Serializes memo checks / claims so concurrent callers cannot duplicate-claim one UID.
 _processed_uids_lock = threading.Lock()
+
+
+def _mark_uid_processed(folder: str, uid: str) -> bool:
+    """DEBT-7: claim a (folder, uid) pair; return True if newly claimed, False if already seen.
+
+    Evicts the oldest entry when the cap is reached (O(1) — OrderedDict).
+    """
+    key = (folder, uid)
+    with _processed_uids_lock:
+        if key in _processed_uids:
+            return False
+        _processed_uids[key] = None
+        if len(_processed_uids) > _PROCESSED_UIDS_CAP:
+            _processed_uids.popitem(last=False)  # evict oldest
+        return True
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -49,7 +68,7 @@ _processed_uids_lock = threading.Lock()
 def start_mail_watcher(app) -> None:
     """Start the background IMAP poll thread. No-op if IMAP_HOST is not configured.
     Safe to call multiple times — only the first call launches the thread."""
-    global _watcher_started
+    global _watcher_started, _watcher_thread
     if _watcher_started:
         logger.info("Mail watcher already started — ignoring duplicate start call")
         return
@@ -64,8 +83,21 @@ def start_mail_watcher(app) -> None:
         daemon=True,
         name="mail-watcher",
     )
+    _watcher_thread = thread
     thread.start()
     logger.info("Mail watcher started")
+
+
+def mail_watcher_status() -> dict:
+    """HEALTH-2 / EMAIL-4: return thread liveness and config status for /health endpoint."""
+    from config import IMAP_HOST
+    base: dict = {"poll_skipped": _poll_skip_count}
+    if not IMAP_HOST:
+        return {**base, "started": False, "running": False, "configured": False}
+    thread = _watcher_thread
+    if thread is None:
+        return {**base, "started": False, "running": False, "configured": True}
+    return {**base, "started": True, "running": thread.is_alive(), "configured": True}
 
 
 # ── Poll loop ─────────────────────────────────────────────────────────────────
@@ -100,7 +132,11 @@ def _poll_once(app) -> None:
     Skips entirely if a previous cycle is still running (LLM calls can be slow).
     """
     if not _poll_lock.acquire(blocking=False):
-        logger.info("Previous poll cycle still running — skipping")
+        global _poll_skip_count
+        _poll_skip_count += 1
+        logger.info(
+            f"Previous poll cycle still running — skipping (skip #{_poll_skip_count})"
+        )
         return
     try:
         _poll_once_inner(app)
@@ -232,15 +268,30 @@ def _fetch_message_data(imap, uid) -> dict | None:
 
 
 def _dispatch_classified_message(app, msg: dict) -> None:
-    """
-    Execute the appropriate action for a message whose classification is known.
+    """Execute the appropriate action for a message whose classification is known.
+
     Handles: hard-skip, promotional, unknown, client_document/inquiry.
     source_layer controls whether the result is recorded in email_classifications.
 
     Does NOT touch IMAP state — Gmail read/unread is left unchanged.
-    Re-processing within a process lifetime is prevented by claiming UIDs into
-    _processed_uids in the poll loop before fetch/dispatch, and across restarts by the 24-hour dedup guard in
-    _record_classification.
+
+    EMAIL-1 — UID deduplication contract
+    ─────────────────────────────────────
+    Every caller MUST claim the UID via ``_mark_uid_processed()`` *before* calling
+    this function (done in ``_poll_once_inner``).  This function never registers UIDs
+    itself because it is agnostic to folders and IMAP state.  The result is:
+
+    * If this function raises, the UID is still claimed → message is skipped on
+      the next cycle rather than being dispatched twice.  This is intentional.
+    * All early-return paths below are correct without UID re-registration.
+
+    EMAIL-2 — Early-return audit
+    ─────────────────────────────
+    Every code path in this function ends in one of:
+      1. return (hard-skip / promotional) — UID already registered, no DB write needed.
+      2. _log_unmatched()                 — UID registered; no client/return found.
+      3. _save_attachments() + _add_note() — UID registered; documents attached.
+    No path can produce a duplicate dispatch.
     """
     classification = msg["classification"]
     source_layer   = msg["source_layer"]
@@ -286,10 +337,32 @@ def _dispatch_classified_message(app, msg: dict) -> None:
         return
 
     # client_document or client_inquiry ──────────────────────────────────────
+    from config import MAIL_LOW_CONF_THRESHOLD
+    from name_matcher import ACCEPT_THRESHOLD as _ACCEPT_THRESHOLD
+
+    # Resolve the client match upfront so we have the score for recording
+    name = _extract_client_name(subject, body_text)
+    # body_text is discarded after this point — never passed further or stored
+    client = _match_client(app, name) if name else None
+    match_score: int | None = client["match_score"] if client else None
+    matched_client_id: int | None = client["id"] if client else None
+
+    # EMAIL-7: borderline match → hold for staff review instead of auto-attaching
+    is_low_confidence = (
+        client is not None
+        and match_score is not None
+        and match_score < MAIL_LOW_CONF_THRESHOLD
+    )
+    match_status = "pending_review" if is_low_confidence else "auto"
+
     ec_id: int | None = None
     if should_record:
         ec_id = _record_classification(
-            sender_email, sender_domain, subject, classification, source="auto"
+            sender_email, sender_domain, subject, classification,
+            source="auto",
+            match_score=match_score,
+            matched_client_id=matched_client_id,
+            match_status=match_status,
         )
     if should_update_cache:
         _update_domain_cache(sender_domain, classification)
@@ -297,31 +370,54 @@ def _dispatch_classified_message(app, msg: dict) -> None:
     # Drive share — add a note, skip attachment saving
     if _is_drive_share(subject, body_text):
         logger.info(f"Drive share from {sender_domain} — adding note")
-        name = _extract_client_name(subject, body_text)
         if name:
-            client = _match_client(app, name)
             if client:
+                if is_low_confidence:
+                    logger.info(
+                        f"Drive share low-confidence match score={match_score} "
+                        f"for {name!r} — queued for review (ec_id={ec_id})"
+                    )
+                    return
                 ret = _find_current_return(app, client["id"])
                 if ret:
                     if _add_note(app, ret["id"], sender, subject, 0, drive_share=True):
                         if ec_id is not None:
                             _mark_email_routed_ok(ec_id)
+                else:
+                    _log_unmatched(app, sender, subject)  # EMAIL-2: no open return
+            else:
+                _log_unmatched(app, sender, subject)  # EMAIL-2: client not found
+        else:
+            _log_unmatched(app, sender, subject)  # EMAIL-2: name not extracted
         return
 
     # Normal attachment + note flow
-    name = _extract_client_name(subject, body_text)
-    # body_text is discarded after this point — never passed further or stored
     if name:
-        client = _match_client(app, name)
         if client:
-            ret = _find_current_return(app, client["id"])
-            if ret:
-                count = _save_attachments(app, message, ret["id"])
-                _add_note(app, ret["id"], sender, subject, count)
-                if ec_id is not None and count > 0:
-                    _mark_email_routed_ok(ec_id)
+            if is_low_confidence:
+                # EMAIL-7: low-confidence — save attachments but mark as pending_review
+                # so staff can confirm/reject before documents are considered authoritative.
+                ret = _find_current_return(app, client["id"])
+                if ret:
+                    count = _save_attachments(
+                        app, message, ret["id"], source="mail_pending_review"
+                    )
+                    logger.info(
+                        f"Low-confidence match score={match_score} for {name!r} "
+                        f"({client['first_name']} {client['last_name']}) — "
+                        f"saved {count} doc(s) as pending_review (ec_id={ec_id})"
+                    )
+                else:
+                    _log_unmatched(app, sender, subject)
             else:
-                _log_unmatched(app, sender, subject)
+                ret = _find_current_return(app, client["id"])
+                if ret:
+                    count = _save_attachments(app, message, ret["id"])
+                    _add_note(app, ret["id"], sender, subject, count)
+                    if ec_id is not None and count > 0:
+                        _mark_email_routed_ok(ec_id)
+                else:
+                    _log_unmatched(app, sender, subject)
         else:
             _log_unmatched(app, sender, subject)
     else:
@@ -390,20 +486,22 @@ def _poll_once_inner(app) -> None:
                 logger.info(f"No unseen messages in {folder!r}")
                 continue
 
+            total_unseen = len(raw_uids)
             claimed_uids: list[bytes] = []
-            with _processed_uids_lock:
-                for uid in raw_uids:
-                    uid_str = uid.decode("ascii", errors="replace")
-                    uid_key = (folder, uid_str)
-                    if uid_key in _processed_uids:
-                        logger.debug(
-                            f"UID {uid_str} in {folder} already processed — skipping"
-                        )
-                        continue
-                    _processed_uids.add(uid_key)
+            for uid in raw_uids:
+                uid_str = uid.decode("ascii", errors="replace")
+                if _mark_uid_processed(folder, uid_str):
                     claimed_uids.append(uid)
+                else:
+                    logger.debug(f"UID {uid_str} in {folder} already processed — skipping")
 
-            logger.info(f"Folder {folder}: {len(claimed_uids)} new unseen")
+            already_seen = total_unseen - len(claimed_uids)
+            # EMAIL-3: diagnostic counter — shows full funnel per poll cycle
+            logger.info(
+                f"Folder {folder}: {len(claimed_uids)} new"
+                f" of {total_unseen} unseen"
+                f" ({already_seen} already seen)"
+            )
 
             if not claimed_uids:
                 continue
@@ -583,10 +681,14 @@ def _record_classification(
     subject: str,
     classification: str,
     source: str = "auto",
+    match_score: int | None = None,
+    matched_client_id: int | None = None,
+    match_status: str = "auto",
 ) -> int | None:
-    """
-    Insert one row into email_classifications.
+    """Insert one row into email_classifications.
+
     source is 'auto' (LLM) or 'staff' (confirmed by staff).
+    match_score / matched_client_id / match_status support EMAIL-6/7.
     Never raises — logs errors; returns None on failure.
     Body is never stored here.
 
@@ -621,10 +723,14 @@ def _record_classification(
             conn.execute(
                 """
                 INSERT INTO email_classifications
-                    (sender_email, sender_domain, subject_snippet, classification, source, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (sender_email, sender_domain, subject_snippet, classification,
+                     source, created_at, match_score, matched_client_id, match_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (sender_email, sender_domain, subject_snippet, classification, source, now()),
+                (
+                    sender_email, sender_domain, subject_snippet, classification,
+                    source, now(), match_score, matched_client_id, match_status,
+                ),
             )
             conn.commit()
             new_id_row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
@@ -1397,7 +1503,13 @@ def _match_client(app, name: str) -> dict | None:
         ).fetchone()
         if row is None:
             return None
-        return {"id": row["id"], "last_name": row["last_name"], "first_name": row["first_name"]}
+        # EMAIL-6: include match_score so dispatch can store it and route low-confidence
+        return {
+            "id": row["id"],
+            "last_name": row["last_name"],
+            "first_name": row["first_name"],
+            "match_score": best_score,
+        }
     finally:
         conn.close()
 
@@ -1436,9 +1548,10 @@ def _find_current_return(app, client_id: int) -> dict | None:
 
 # ── Attachment saving ─────────────────────────────────────────────────────────
 
-def _save_attachments(app, message, return_id: int) -> int:
-    """
-    Walk MIME parts, save allowed attachments (pdf/jpg/jpeg/png) to disk,
+def _save_attachments(
+    app, message, return_id: int, source: str = "email"
+) -> int:
+    """Walk MIME parts, save allowed attachments (pdf/jpg/jpeg/png) to disk,
     and record each in return_documents.
 
     Files are stored as-is — there is no OCR or automated text extraction on
@@ -1449,7 +1562,9 @@ def _save_attachments(app, message, return_id: int) -> int:
     matching SHA-256 of payload (file_hash) or same sanitized MIME filename +
     byte size as an existing row (cheap path for legacy rows without hash).
 
-    - source is always 'email'
+    EMAIL-7: pass source='mail_pending_review' for low-confidence matches so
+    staff can identify and confirm/reject them from the email review queue.
+
     - doc_type is always 'unknown' — staff tags later
     - uploaded_by is always 'mail_watcher'
     - file_path is stored in DB but never returned to any caller
@@ -1572,7 +1687,7 @@ def _save_attachments(app, message, return_id: int) -> int:
                         safe["filename"],
                         safe["original_filename"],
                         "unknown",
-                        "email",
+                        source,             # EMAIL-7: 'email' or 'mail_pending_review'
                         full_path,          # stored server-side only
                         file_size_bytes,
                         file_hash_hex,
