@@ -110,6 +110,22 @@ app.config["MAX_CONTENT_LENGTH"] = _max_mb * 1024 * 1024
 from flask_wtf.csrf import CSRFProtect, CSRFError
 _csrf = CSRFProtect(app)
 
+# ── I18N-1: Flask-Babel ───────────────────────────────────────────────────────
+from flask_babel import Babel, gettext as _t
+
+_SUPPORTED_LOCALES = ("en", "es_MX")
+
+
+def _get_locale() -> str:
+    locale = session.get("locale", "en")
+    return locale if locale in _SUPPORTED_LOCALES else "en"
+
+
+babel = Babel(app, locale_selector=_get_locale)
+
+app.config["BABEL_DEFAULT_LOCALE"] = "en"
+app.config["BABEL_TRANSLATION_DIRECTORIES"] = "translations"
+
 from ai_routes import ai as ai_blueprint
 app.register_blueprint(ai_blueprint)
 
@@ -382,7 +398,7 @@ def _csrf_error(e: CSRFError):
     """SEC-1: return a clean JSON/HTML error instead of Werkzeug 400 page."""
     p = request.path or ""
     if p.startswith("/api/") or p.startswith("/ai/"):
-        return jsonify({"error": "CSRF token missing or invalid. Reload the page and try again."}), 400
+        return jsonify({"error": _t("CSRF token missing or invalid. Reload the page and try again.")}), 400
     return "<h1>400 Bad Request</h1><p>CSRF token missing or invalid. Please go back and try again.</p>", 400
 
 
@@ -393,7 +409,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 def _handle_too_large(_e: RequestEntityTooLarge):
     """SEC-5: return a readable JSON 413 instead of Werkzeug's HTML page."""
     limit_mb = app.config.get("MAX_CONTENT_LENGTH", 0) // (1024 * 1024)
-    return jsonify({"error": f"File too large. Maximum upload size is {limit_mb} MB."}), 413
+    return jsonify({"error": _t("File too large. Maximum upload size is %(mb)s MB.", mb=limit_mb)}), 413
 
 
 # ── Workflow constants ────────────────────────────────────────────────────────
@@ -1171,9 +1187,9 @@ def change_password():
     new_pw = request.form.get("new_password") or ""
     confirm_pw = request.form.get("confirm_password") or ""
     if len(new_pw) < 8:
-        return render_template("change_password.html", error="Password must be at least 8 characters.")
+        return render_template("change_password.html", error=_t("Password must be at least 8 characters."))
     if new_pw != confirm_pw:
-        return render_template("change_password.html", error="Passwords do not match.")
+        return render_template("change_password.html", error=_t("Passwords do not match."))
     username = session.get("username")
     conn = get_connection()
     try:
@@ -1182,10 +1198,10 @@ def change_password():
             (username,),
         ).fetchone()
         if not row:
-            return render_template("change_password.html", error="Account not found.")
+            return render_template("change_password.html", error=_t("Account not found."))
         from werkzeug.security import check_password_hash as _chk, generate_password_hash as _gen
         if _chk(row["password_hash"], new_pw):
-            return render_template("change_password.html", error="New password must be different from the temporary password.")
+            return render_template("change_password.html", error=_t("New password must be different from the temporary password."))
         conn.execute(
             "UPDATE auth_users SET password_hash = ?, must_change_password = 0, failed_attempts = 0 WHERE id = ?",
             (_gen(new_pw), row["id"]),
@@ -1238,6 +1254,29 @@ def orientation_dismiss():
     finally:
         conn.close()
     return redirect(url_for("dashboard"))
+
+
+# ── I18N-1: locale context processor + language toggle ───────────────────────
+
+@app.context_processor
+def _inject_locale():
+    """Make current_locale available in every template."""
+    return {"current_locale": _get_locale()}
+
+
+@app.post("/set-language")
+@login_required
+def set_language():
+    """I18N-1: switch the session locale. Accepts JSON {locale: 'es'|'en'}."""
+    data = request.get_json(silent=True) or {}
+    raw = (data.get("locale") or "").strip()
+    # Normalize to canonical form (accept es_mx or es_MX)
+    _LOCALE_ALIAS = {"en": "en", "es_mx": "es_MX", "es_MX": "es_MX"}
+    locale = _LOCALE_ALIAS.get(raw, "")
+    if not locale:
+        return jsonify({"error": "Unsupported locale. Supported: en, es_MX"}), 400
+    session["locale"] = locale
+    return jsonify({"success": True, "locale": locale})
 
 
 # ── TOUR-3: Tour state API ────────────────────────────────────────────────────
@@ -1307,6 +1346,47 @@ def api_tour_reset():
         return jsonify({"success": True})
     finally:
         conn.close()
+
+
+@app.get("/api/translations")
+def api_translations():
+    """I18N-4: JS-side translatable strings for the current session locale.
+
+    Not gated by @login_required so the page can fetch it before session checks.
+    Returns a JSON object keyed by stable English keys.
+    """
+    strings = {
+        "loading":              _t("Loading..."),
+        "saving":               _t("Saving..."),
+        "uploading":            _t("Uploading..."),
+        "confirm_delete":       _t("Are you sure you want to delete this?"),
+        "no_results":           _t("No results"),
+        "error_generic":        _t("Something went wrong. Please try again."),
+        "upload_success":       _t("Document uploaded successfully."),
+        "upload_error":         _t("Upload failed. Please try again."),
+        "doc_deleted":          _t("Document deleted."),
+        "classification_saved": _t("Classification saved."),
+        "session_expired":      _t("Your session has expired. Please sign in again."),
+        # Tour step titles and bodies
+        "tour_s1_title":        _t("Find any client instantly"),
+        "tour_s1_body":         _t("Type a name or return number here. Results appear as you type. This is the fastest way to get to any client or return."),
+        "tour_s2_title":        _t("Track where every return stands"),
+        "tour_s2_body":         _t("These tabs filter by workflow status. PROCESSING means actively being worked. PICKUP means ready for the client. Click any tab to see only those returns."),
+        "tour_s3_title":        _t("Every document in one place"),
+        "tour_s3_body":         _t("W-2s, 1099s, and anything the client emails gets saved here automatically. You can also upload documents directly. Click any file to view it."),
+        "tour_s4_title":        _t("Change the return status"),
+        "tour_s4_body":         _t("Use this control to move the return through the workflow — from PROCESSING to FINALIZE to PICKUP — as you work it."),
+        "tour_s5_title":        _t("Keep your team in sync"),
+        "tour_s5_body":         _t("Add notes visible to everyone on the team. Record what was discussed, what's outstanding, or anything the next person needs to know."),
+        "tour_s6_title":        _t("Incoming client documents"),
+        "tour_s6_body":         _t("When a client emails their documents they appear here. Review and confirm to attach them to the right return. The system matches clients automatically — you just verify."),
+        "tour_s7_title":        _t("You are ready"),
+        "tour_s7_body":         _t("That covers the essentials. You can relaunch this tour anytime from the help icon in the top navigation. If you have questions check the runbook or ask your admin."),
+    }
+    resp = jsonify(strings)
+    # Short-lived cache is OK — locale rarely changes mid-session
+    resp.headers["Cache-Control"] = "private, max-age=60"
+    return resp
 
 
 @app.get("/health")

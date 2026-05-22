@@ -1,0 +1,291 @@
+# Spanish translations for TaxOps.
+# Copyright (C) 2026 Xcel Financial
+# This file is distributed under the same license as the TaxOps project.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: TaxOps\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-05-22 10:00-0700\n"
+"PO-Revision-Date: 2026-05-22 10:00-0700\n"
+"Last-Translator: TaxOps Team\n"
+"Language: es_MX\n"
+"Language-Team: es_MX\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: app.py:401
+msgid "CSRF token missing or invalid. Reload the page and try again."
+msgstr "Token de seguridad faltante o inválido. Recargue la página e intente de nuevo."
+
+#: app.py:412
+#, python-format
+msgid "File too large. Maximum upload size is %(mb)s MB."
+msgstr "Archivo demasiado grande. El tamaño máximo permitido es %(mb)s MB."
+
+#: app.py:1190
+msgid "Password must be at least 8 characters."
+msgstr "La contraseña debe tener al menos 8 caracteres."
+
+#: app.py:1192
+msgid "Passwords do not match."
+msgstr "Las contraseñas no coinciden."
+
+#: app.py:1201
+msgid "Account not found."
+msgstr "Cuenta no encontrada."
+
+#: app.py:1204
+msgid "New password must be different from the temporary password."
+msgstr "La nueva contraseña debe ser diferente a la contraseña temporal."
+
+#: app.py:1356
+msgid "Loading..."
+msgstr "Cargando..."
+
+#: app.py:1357
+msgid "Saving..."
+msgstr "Guardando..."
+
+#: app.py:1358
+msgid "Uploading..."
+msgstr "Subiendo..."
+
+#: app.py:1359
+msgid "Are you sure you want to delete this?"
+msgstr "¿Está seguro de que desea eliminar esto?"
+
+#: app.py:1360
+msgid "No results"
+msgstr "Sin resultados"
+
+#: app.py:1361
+msgid "Something went wrong. Please try again."
+msgstr "Ocurrió un error. Por favor intente de nuevo."
+
+#: app.py:1362
+msgid "Document uploaded successfully."
+msgstr "Documento subido exitosamente."
+
+#: app.py:1363
+msgid "Upload failed. Please try again."
+msgstr "Error al subir el archivo. Por favor intente de nuevo."
+
+#: app.py:1364
+msgid "Document deleted."
+msgstr "Documento eliminado."
+
+#: app.py:1365
+msgid "Classification saved."
+msgstr "Clasificación guardada."
+
+#: app.py:1366
+msgid "Your session has expired. Please sign in again."
+msgstr "Su sesión ha expirado. Por favor inicie sesión nuevamente."
+
+#: app.py:1368
+msgid "Find any client instantly"
+msgstr "Encuentra cualquier cliente al instante"
+
+#: app.py:1369
+msgid ""
+"Type a name or return number here. Results appear as you type. This is "
+"the fastest way to get to any client or return."
+msgstr ""
+"Escriba un nombre o número de declaración aquí. Los resultados aparecen "
+"mientras escribe. Esta es la forma más rápida de llegar a cualquier "
+"cliente o declaración."
+
+#: app.py:1370
+msgid "Track where every return stands"
+msgstr "Sigue el estado de cada declaración"
+
+#: app.py:1371
+msgid ""
+"These tabs filter by workflow status. PROCESSING means actively being "
+"worked. PICKUP means ready for the client. Click any tab to see only "
+"those returns."
+msgstr ""
+"Estas pestañas filtran por estado del proceso. EN PROCESO significa que "
+"se está trabajando activamente. LISTO PARA RECOGER significa que está "
+"listo para el cliente. Haga clic en cualquier pestaña para ver solo esas "
+"declaraciones."
+
+#: app.py:1372
+msgid "Every document in one place"
+msgstr "Todos los documentos en un solo lugar"
+
+#: app.py:1373
+msgid ""
+"W-2s, 1099s, and anything the client emails gets saved here "
+"automatically. You can also upload documents directly. Click any file to "
+"view it."
+msgstr ""
+"Los W-2, 1099 y todo lo que el cliente envíe por correo se guarda aquí "
+"automáticamente. También puede subir documentos directamente. Haga clic "
+"en cualquier archivo para verlo."
+
+#: app.py:1374
+msgid "Change the return status"
+msgstr "Cambiar el estado de la declaración"
+
+#: app.py:1375
+msgid ""
+"Use this control to move the return through the workflow — from "
+"PROCESSING to FINALIZE to PICKUP — as you work it."
+msgstr ""
+"Use este control para mover la declaración por el flujo de trabajo — de "
+"EN PROCESO a FINALIZAR a LISTO PARA RECOGER — conforme la trabaja."
+
+#: app.py:1376
+msgid "Keep your team in sync"
+msgstr "Mantén a tu equipo sincronizado"
+
+#: app.py:1377
+msgid ""
+"Add notes visible to everyone on the team. Record what was discussed, "
+"what's outstanding, or anything the next person needs to know."
+msgstr ""
+"Agregue notas visibles para todo el equipo. Registre lo que se discutió, "
+"lo que está pendiente o cualquier cosa que la siguiente persona necesite "
+"saber."
+
+#: app.py:1378
+msgid "Incoming client documents"
+msgstr "Documentos entrantes de clientes"
+
+#: app.py:1379
+msgid ""
+"When a client emails their documents they appear here. Review and confirm"
+" to attach them to the right return. The system matches clients "
+"automatically — you just verify."
+msgstr ""
+"Cuando un cliente envía sus documentos por correo aparecen aquí. Revise "
+"y confirme para adjuntarlos a la declaración correcta. El sistema "
+"empareja clientes automáticamente — usted solo verifica."
+
+#: app.py:1380
+msgid "You are ready"
+msgstr "Está listo"
+
+#: app.py:1381
+msgid ""
+"That covers the essentials. You can relaunch this tour anytime from the "
+"help icon in the top navigation. If you have questions check the runbook "
+"or ask your admin."
+msgstr ""
+"Eso cubre lo esencial. Puede volver a ver este recorrido en cualquier "
+"momento desde el ícono de ayuda en la navegación. Si tiene preguntas "
+"consulte el manual de operaciones o pregúntele a su administrador."
+
+#: templates/base.html:48
+msgid "Dashboard"
+msgstr "Panel Principal"
+
+#: templates/base.html:61
+msgid "Tools"
+msgstr "Herramientas"
+
+#: templates/base.html:71
+msgid "Pickup Queue"
+msgstr "Cola de Entrega"
+
+#: templates/base.html:79
+msgid "E-File Queue"
+msgstr "Cola de E-File"
+
+#: templates/base.html:87
+msgid "Payments"
+msgstr "Pagos"
+
+#: templates/base.html:91
+msgid "Review"
+msgstr "Revisión"
+
+#: templates/base.html:98
+msgid "AI Assistant"
+msgstr "Asistente IA"
+
+#: templates/base.html:102
+msgid "Email Review"
+msgstr "Revisión de Correos"
+
+#: templates/base.html:109
+msgid "E-file Batches"
+msgstr "Lotes E-file"
+
+#: templates/base.html:113
+msgid "Import CSV"
+msgstr "Importar CSV"
+
+#: templates/base.html:117
+msgid "Source Compare"
+msgstr "Comparar Fuentes"
+
+#: templates/base.html:121
+msgid "Import Audit"
+msgstr "Auditoría de Importación"
+
+#: templates/base.html:125
+msgid "Receipt Queue"
+msgstr "Cola de Recibos"
+
+#: templates/base.html:135
+msgid "QB Settings"
+msgstr "Config. QB"
+
+#: templates/base.html:140
+msgid "Staff Accounts"
+msgstr "Cuentas del Personal"
+
+#: templates/base.html:145
+msgid "Audit log"
+msgstr "Registro de Auditoría"
+
+#: templates/base.html:149
+msgid "Backup"
+msgstr "Respaldo"
+
+#: templates/base.html:153
+msgid "Failed Docs"
+msgstr "Docs Fallidos"
+
+#: templates/base.html:164
+msgid "Season rollover"
+msgstr "Cambio de Temporada"
+
+#: templates/base.html:169
+msgid "Merge Dupes"
+msgstr "Fusionar Duplicados"
+
+#: templates/base.html:175
+msgid "+ New Intake"
+msgstr "+ Nuevo Cliente"
+
+#: templates/base.html:285
+msgid "Privacy: ON"
+msgstr "Privacidad: ACTIVADA"
+
+#: templates/base.html:285
+msgid "Privacy: OFF"
+msgstr "Privacidad: DESACTIVADA"
+
+#: templates/base.html:302
+msgid "Admin"
+msgstr "Administrador"
+
+#: templates/base.html:304
+msgid "Staff"
+msgstr "Personal"
+
+#: templates/base.html:314
+msgid "Sign out"
+msgstr "Cerrar sesión"
+
+#: templates/base.html:415
+msgid "Ops Runbook"
+msgstr "Manual de Operaciones"
+

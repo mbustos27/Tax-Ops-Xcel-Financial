@@ -1,0 +1,271 @@
+# English translations for PROJECT.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the PROJECT project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-05-22 10:00-0700\n"
+"PO-Revision-Date: 2026-05-22 09:59-0700\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: app.py:401
+msgid "CSRF token missing or invalid. Reload the page and try again."
+msgstr ""
+
+#: app.py:412
+#, python-format
+msgid "File too large. Maximum upload size is %(mb)s MB."
+msgstr ""
+
+#: app.py:1190
+msgid "Password must be at least 8 characters."
+msgstr ""
+
+#: app.py:1192
+msgid "Passwords do not match."
+msgstr ""
+
+#: app.py:1201
+msgid "Account not found."
+msgstr ""
+
+#: app.py:1204
+msgid "New password must be different from the temporary password."
+msgstr ""
+
+#: app.py:1356
+msgid "Loading..."
+msgstr ""
+
+#: app.py:1357
+msgid "Saving..."
+msgstr ""
+
+#: app.py:1358
+msgid "Uploading..."
+msgstr ""
+
+#: app.py:1359
+msgid "Are you sure you want to delete this?"
+msgstr ""
+
+#: app.py:1360
+msgid "No results"
+msgstr ""
+
+#: app.py:1361
+msgid "Something went wrong. Please try again."
+msgstr ""
+
+#: app.py:1362
+msgid "Document uploaded successfully."
+msgstr ""
+
+#: app.py:1363
+msgid "Upload failed. Please try again."
+msgstr ""
+
+#: app.py:1364
+msgid "Document deleted."
+msgstr ""
+
+#: app.py:1365
+msgid "Classification saved."
+msgstr ""
+
+#: app.py:1366
+msgid "Your session has expired. Please sign in again."
+msgstr ""
+
+#: app.py:1368
+msgid "Find any client instantly"
+msgstr ""
+
+#: app.py:1369
+msgid ""
+"Type a name or return number here. Results appear as you type. This is "
+"the fastest way to get to any client or return."
+msgstr ""
+
+#: app.py:1370
+msgid "Track where every return stands"
+msgstr ""
+
+#: app.py:1371
+msgid ""
+"These tabs filter by workflow status. PROCESSING means actively being "
+"worked. PICKUP means ready for the client. Click any tab to see only "
+"those returns."
+msgstr ""
+
+#: app.py:1372
+msgid "Every document in one place"
+msgstr ""
+
+#: app.py:1373
+msgid ""
+"W-2s, 1099s, and anything the client emails gets saved here "
+"automatically. You can also upload documents directly. Click any file to "
+"view it."
+msgstr ""
+
+#: app.py:1374
+msgid "Change the return status"
+msgstr ""
+
+#: app.py:1375
+msgid ""
+"Use this control to move the return through the workflow — from "
+"PROCESSING to FINALIZE to PICKUP — as you work it."
+msgstr ""
+
+#: app.py:1376
+msgid "Keep your team in sync"
+msgstr ""
+
+#: app.py:1377
+msgid ""
+"Add notes visible to everyone on the team. Record what was discussed, "
+"what's outstanding, or anything the next person needs to know."
+msgstr ""
+
+#: app.py:1378
+msgid "Incoming client documents"
+msgstr ""
+
+#: app.py:1379
+msgid ""
+"When a client emails their documents they appear here. Review and confirm"
+" to attach them to the right return. The system matches clients "
+"automatically — you just verify."
+msgstr ""
+
+#: app.py:1380
+msgid "You are ready"
+msgstr ""
+
+#: app.py:1381
+msgid ""
+"That covers the essentials. You can relaunch this tour anytime from the "
+"help icon in the top navigation. If you have questions check the runbook "
+"or ask your admin."
+msgstr ""
+
+#: templates/base.html:48
+msgid "Dashboard"
+msgstr ""
+
+#: templates/base.html:61
+msgid "Tools"
+msgstr ""
+
+#: templates/base.html:71
+msgid "Pickup Queue"
+msgstr ""
+
+#: templates/base.html:79
+msgid "E-File Queue"
+msgstr ""
+
+#: templates/base.html:87
+msgid "Payments"
+msgstr ""
+
+#: templates/base.html:91
+msgid "Review"
+msgstr ""
+
+#: templates/base.html:98
+msgid "AI Assistant"
+msgstr ""
+
+#: templates/base.html:102
+msgid "Email Review"
+msgstr ""
+
+#: templates/base.html:109
+msgid "E-file Batches"
+msgstr ""
+
+#: templates/base.html:113
+msgid "Import CSV"
+msgstr ""
+
+#: templates/base.html:117
+msgid "Source Compare"
+msgstr ""
+
+#: templates/base.html:121
+msgid "Import Audit"
+msgstr ""
+
+#: templates/base.html:125
+msgid "Receipt Queue"
+msgstr ""
+
+#: templates/base.html:135
+msgid "QB Settings"
+msgstr ""
+
+#: templates/base.html:140
+msgid "Staff Accounts"
+msgstr ""
+
+#: templates/base.html:145
+msgid "Audit log"
+msgstr ""
+
+#: templates/base.html:149
+msgid "Backup"
+msgstr ""
+
+#: templates/base.html:153
+msgid "Failed Docs"
+msgstr ""
+
+#: templates/base.html:164
+msgid "Season rollover"
+msgstr ""
+
+#: templates/base.html:169
+msgid "Merge Dupes"
+msgstr ""
+
+#: templates/base.html:175
+msgid "+ New Intake"
+msgstr ""
+
+#: templates/base.html:285
+msgid "Privacy: ON"
+msgstr ""
+
+#: templates/base.html:285
+msgid "Privacy: OFF"
+msgstr ""
+
+#: templates/base.html:302
+msgid "Admin"
+msgstr ""
+
+#: templates/base.html:304
+msgid "Staff"
+msgstr ""
+
+#: templates/base.html:314
+msgid "Sign out"
+msgstr ""
+
+#: templates/base.html:415
+msgid "Ops Runbook"
+msgstr ""
+

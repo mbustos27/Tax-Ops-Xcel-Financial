@@ -17,6 +17,19 @@ function _csrfFetch(url, options) {
   return fetch(url, opts);
 }
 
+// ── I18N-4: JS translation helper ────────────────────────────────────────────
+// Populated on DOMContentLoaded from GET /api/translations (current session locale).
+window._t = {};
+function t(key) {
+  return window._t[key] !== undefined ? window._t[key] : key;
+}
+(function _loadTranslations() {
+  fetch("/api/translations")
+    .then(function (r) { return r.ok ? r.json() : {}; })
+    .then(function (data) { window._t = data || {}; })
+    .catch(function () { /* fail silently — English fallback via key */ });
+})();
+
 // ── Status badge Tailwind classes (mirrors app.py STATUS_BADGE) ───────────
 const STATUS_BADGE = {
   "PROCESSING":  "bg-sky-50 text-sky-700 border-sky-200",
@@ -78,7 +91,7 @@ async function runSearch(q) {
 
 function renderSearchResults(items, container) {
   if (!items.length) {
-    container.innerHTML = `<div class="px-4 py-3 text-sm text-slate-400">No results</div>`;
+    container.innerHTML = `<div class="px-4 py-3 text-sm text-slate-400">${t("no_results")}</div>`;
     container.classList.remove("hidden");
     return;
   }
@@ -1006,59 +1019,61 @@ window.TaxOpsTour = (function () {
   // Each step: { selector, title, body, position, page, navigate }
   //   page      — URL prefix the step lives on (null = any page)
   //   navigate  — URL to go to before this step (triggers page reload + resume)
-  const STEPS = [
-    {
-      selector: "#global-search",
-      title: "Find any client instantly",
-      body: "Type a name or return number here. Results appear as you type. This is the fastest way to get to any client or return.",
-      position: "below",
-      page: "/",
-    },
-    {
-      selector: "#status-pills",
-      title: "Track where every return stands",
-      body: "These tabs filter by workflow status. PROCESSING means actively being worked. PICKUP means ready for the client. Click any tab to see only those returns.",
-      position: "below",
-      page: "/",
-    },
-    {
-      selector: "#documents",
-      title: "Every document in one place",
-      body: "W-2s, 1099s, and anything the client emails gets saved here automatically. You can also upload documents directly. Click any file to view it.",
-      position: "below",
-      page: "/return/",
-      navigate: "_first_return",
-    },
-    {
-      selector: "#return-status-control",
-      title: "Change status as work progresses",
-      body: "Click the status badge to change where this return stands — PROCESSING while you work it, FINALIZE when it needs review, PICKUP when the client can collect.",
-      position: "below",
-      page: "/return/",
-    },
-    {
-      selector: "#notes-card",
-      title: "Keep your team in sync",
-      body: "Leave notes that are visible to everyone on the team. Useful for flagging missing documents, client callbacks, or anything the next person working this return needs to know.",
-      position: "below",
-      page: "/return/",
-    },
-    {
-      selector: "#zone-a-section",
-      title: "Incoming client documents",
-      body: "When a client emails their documents they appear here. Review and confirm to attach them to the right return. The system matches clients automatically — you just verify.",
-      position: "below",
-      page: "/email-review",
-      navigate: "/email-review",
-    },
-    {
-      selector: "#site-header",
-      title: "You are ready",
-      body: "That covers the essentials. You can relaunch this tour anytime from the help icon in the top navigation. If you have questions check the runbook or ask your admin.",
-      position: "below",
-      page: null,
-    },
-  ];
+  function _steps() {
+    return [
+      {
+        selector: "#global-search",
+        title: t("tour_s1_title"),
+        body: t("tour_s1_body"),
+        position: "below",
+        page: "/",
+      },
+      {
+        selector: "#status-pills",
+        title: t("tour_s2_title"),
+        body: t("tour_s2_body"),
+        position: "below",
+        page: "/",
+      },
+      {
+        selector: "#documents",
+        title: t("tour_s3_title"),
+        body: t("tour_s3_body"),
+        position: "below",
+        page: "/return/",
+        navigate: "_first_return",
+      },
+      {
+        selector: "#return-status-control",
+        title: t("tour_s4_title"),
+        body: t("tour_s4_body"),
+        position: "below",
+        page: "/return/",
+      },
+      {
+        selector: "#notes-card",
+        title: t("tour_s5_title"),
+        body: t("tour_s5_body"),
+        position: "below",
+        page: "/return/",
+      },
+      {
+        selector: "#zone-a-section",
+        title: t("tour_s6_title"),
+        body: t("tour_s6_body"),
+        position: "below",
+        page: "/email-review",
+        navigate: "/email-review",
+      },
+      {
+        selector: "#site-header",
+        title: t("tour_s7_title"),
+        body: t("tour_s7_body"),
+        position: "below",
+        page: null,
+      },
+    ];
+  }
 
   const SESSION_KEY = "taxops_tour_step";
   let _currentStep = 0;
@@ -1198,6 +1213,7 @@ window.TaxOpsTour = (function () {
   // ── Step runner ─────────────────────────────────────────────────────────────
 
   function goToStep(idx) {
+    const STEPS = _steps();
     if (idx >= STEPS.length) { complete(); return; }
     _currentStep = idx;
 
@@ -1220,7 +1236,7 @@ window.TaxOpsTour = (function () {
     target.scrollIntoView({ behavior: "smooth", block: "center" });
 
     setTimeout(() => {
-      const tt = _tooltip(step, idx, STEPS.length);
+      const tt = _tooltip(step, idx, _steps().length);
       setTimeout(() => _positionTooltip(tt, target), 20);
       // Reposition on scroll/resize
       const repos = () => _positionTooltip(tt, target);
@@ -1268,7 +1284,7 @@ window.TaxOpsTour = (function () {
     const pending = sessionStorage.getItem(SESSION_KEY);
     if (pending === null) return;
     const idx = parseInt(pending, 10);
-    if (isNaN(idx) || idx < 0 || idx >= STEPS.length) {
+    if (isNaN(idx) || idx < 0 || idx >= _steps().length) {
       sessionStorage.removeItem(SESSION_KEY);
       return;
     }
