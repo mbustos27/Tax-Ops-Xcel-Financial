@@ -118,8 +118,27 @@ function toggleStatusMenu(btn) {
   const menu   = btn.nextElementSibling;
   const hidden = menu.classList.contains("hidden");
   // close all open menus first
-  document.querySelectorAll(".status-menu").forEach(m => m.classList.add("hidden"));
-  if (hidden) menu.classList.remove("hidden");
+  document.querySelectorAll(".status-menu").forEach(m => {
+    m.classList.add("hidden");
+    const b = m.previousElementSibling;
+    if (b) b.setAttribute("aria-expanded", "false");
+  });
+  if (hidden) {
+    menu.classList.remove("hidden");
+    btn.setAttribute("aria-expanded", "true");
+    // WCAG 2.1.1: close on Escape
+    const closeOnEscape = (e) => {
+      if (e.key === "Escape") {
+        menu.classList.add("hidden");
+        btn.setAttribute("aria-expanded", "false");
+        btn.focus();
+        document.removeEventListener("keydown", closeOnEscape);
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+  } else {
+    btn.setAttribute("aria-expanded", "false");
+  }
 }
 
 async function setStatus(returnId, status, btn) {
@@ -977,6 +996,293 @@ function wireClientErrorBoundaryButtons() {
   btnReload.addEventListener("click", () => window.location.reload());
 }
 
+// ── INTAKE-6: Phone auto-formatter ───────────────────────────────────────────
+// Attach to any input with data-phone-input attribute.
+
+function _formatPhoneValue(value) {
+  const digits = value.replace(/\D/g, "").slice(0, 10);
+  if (digits.length === 0) return "";
+  if (digits.length <= 3) return "(" + digits;
+  if (digits.length <= 6) return "(" + digits.slice(0, 3) + ") " + digits.slice(3);
+  return "(" + digits.slice(0, 3) + ") " + digits.slice(3, 6) + "-" + digits.slice(6);
+}
+
+function initPhoneFormat() {
+  function _attachPhone(el) {
+    el.addEventListener("input", () => {
+      const cur = el.selectionStart;
+      const oldLen = el.value.length;
+      el.value = _formatPhoneValue(el.value);
+      const diff = el.value.length - oldLen;
+      const next = Math.max(0, cur + diff);
+      el.setSelectionRange(next, next);
+    });
+    el.addEventListener("paste", () => {
+      setTimeout(() => { el.value = _formatPhoneValue(el.value); }, 0);
+    });
+  }
+  document.querySelectorAll("[data-phone-input]").forEach(_attachPhone);
+}
+
+// ── INTAKE-1: Year expansion ──────────────────────────────────────────────────
+// Attach to any input with data-year-input attribute.
+// On blur: 2-digit 00-29 → 2000-2029, 30-99 → 1930-1999. 4-digit unchanged.
+
+function initYearExpand() {
+  function _expandYear(el) {
+    el.addEventListener("blur", () => {
+      const v = el.value.trim();
+      if (!/^\d{2}$/.test(v)) return;
+      const n = parseInt(v, 10);
+      el.value = n <= 29 ? String(2000 + n) : String(1900 + n);
+    });
+  }
+  document.querySelectorAll("[data-year-input]").forEach(_expandYear);
+}
+
+// ── INTAKE-2: SSN formatter ───────────────────────────────────────────────────
+// Attach to any input with data-ssn-input attribute.
+// Formats as XXX-XX-XXXX as user types. Uses type=password for shoulder safety.
+
+function initSsnFormat() {
+  function _formatSsn(value) {
+    const d = value.replace(/\D/g, "").slice(0, 9);
+    if (d.length <= 3) return d;
+    if (d.length <= 5) return d.slice(0, 3) + "-" + d.slice(3);
+    return d.slice(0, 3) + "-" + d.slice(3, 5) + "-" + d.slice(5);
+  }
+  function _attachSsn(el) {
+    el.addEventListener("input", () => {
+      const pos = el.selectionStart;
+      const oldLen = el.value.length;
+      el.value = _formatSsn(el.value);
+      const diff = el.value.length - oldLen;
+      const next = Math.max(0, pos + diff);
+      el.setSelectionRange(next, next);
+    });
+    el.addEventListener("paste", () => {
+      setTimeout(() => { el.value = _formatSsn(el.value); }, 0);
+    });
+  }
+  document.querySelectorAll("[data-ssn-input]").forEach(_attachSsn);
+}
+
+// ── INTAKE-4: Spouse last name auto-fill ─────────────────────────────────────
+
+function initSpouseAutoFill() {
+  const taxpayerLast = document.getElementById("field-last_name");
+  const spouseLast   = document.getElementById("field-spouse_last_name");
+  const hint         = document.getElementById("spouse-autofill-hint");
+  if (!taxpayerLast || !spouseLast) return;
+
+  taxpayerLast.addEventListener("keyup", () => {
+    if (spouseLast.value !== "" && !spouseLast.dataset.autofilled) return;
+    spouseLast.value = taxpayerLast.value;
+    spouseLast.dataset.autofilled = "true";
+    if (hint) hint.classList.remove("hidden");
+  });
+
+  spouseLast.addEventListener("input", () => {
+    delete spouseLast.dataset.autofilled;
+    if (hint) hint.classList.add("hidden");
+  });
+}
+
+// ── INTAKE-5: Address autocomplete (Nominatim / OpenStreetMap) ───────────────
+// Debounced — fires after 400ms of no typing. PII-free query (address only).
+// Fails silently if Nominatim is unreachable — never blocks intake submission.
+
+function initAddressAutocomplete() {
+  const field = document.getElementById("field-address");
+  if (!field) return;
+
+  const wrapper = field.parentElement;
+  const prevPos = window.getComputedStyle(wrapper).position;
+  if (prevPos === "static") wrapper.style.position = "relative";
+
+  const dropdown = document.createElement("div");
+  dropdown.id = "address-dropdown";
+  dropdown.className = "hidden absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden max-h-56 overflow-y-auto";
+  wrapper.appendChild(dropdown);
+
+  let _addrTimer = null;
+
+  field.addEventListener("input", () => {
+    clearTimeout(_addrTimer);
+    const q = field.value.trim();
+    if (q.length < 5) { dropdown.classList.add("hidden"); return; }
+    _addrTimer = setTimeout(() => _fetchAddresses(q), 400);
+  });
+
+  field.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") dropdown.classList.add("hidden");
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!field.contains(e.target) && !dropdown.contains(e.target))
+      dropdown.classList.add("hidden");
+  });
+
+  async function _fetchAddresses(q) {
+    try {
+      const url =
+        "https://nominatim.openstreetmap.org/search?q=" +
+        encodeURIComponent(q) +
+        "&countrycodes=us&format=json&addressdetails=1&limit=5";
+      const resp = await fetch(url, { headers: { "User-Agent": "TaxOps/1.0" } });
+      if (!resp.ok) { dropdown.classList.add("hidden"); return; }
+      const results = await resp.json();
+      _renderAddressResults(results);
+    } catch {
+      dropdown.classList.add("hidden");
+    }
+  }
+
+  function _renderAddressResults(results) {
+    if (!results || !results.length) { dropdown.classList.add("hidden"); return; }
+    dropdown.innerHTML = results.map((r, i) =>
+      `<button type="button" data-idx="${i}"
+               class="addr-pick w-full text-left px-4 py-2.5 hover:bg-slate-50
+                      transition-colors border-b border-slate-100 last:border-0 text-sm text-slate-800">
+         ${escHtml(r.display_name || "")}
+       </button>`
+    ).join("");
+    dropdown.classList.remove("hidden");
+    dropdown.querySelectorAll(".addr-pick").forEach((btn) => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      btn.addEventListener("click", () => _selectAddress(results[idx]));
+    });
+  }
+
+  function _selectAddress(result) {
+    const a = result.address || {};
+    const street = [a.house_number, a.road].filter(Boolean).join(" ");
+    const city   = a.city || a.town || a.village || a.hamlet || "";
+    const state  = a.state || "";
+    const zip    = a.postcode || "";
+    field.value = [street, city, state, zip].filter(Boolean).join(", ");
+    dropdown.classList.add("hidden");
+  }
+}
+
+// ── BANK-1: Routing number → bank name auto-fill ──────────────────────────────
+// Attach to any input with [data-routing-input]. On blur, if value is exactly
+// 9 digits, calls GET /api/routing-number/{value}. On success fills the bank
+// name field identified by [data-bank-name-target] and shows a small hint.
+// On not-found does nothing — staff types manually.
+// Routing numbers are never logged by the server route.
+
+function initRoutingLookup() {
+  document.querySelectorAll("[data-routing-input]").forEach((input) => {
+    const targetId  = input.dataset.bankNameTarget;
+    const hintEl    = document.getElementById("routing-lookup-hint");
+
+    input.addEventListener("blur", async () => {
+      const val = input.value.trim();
+      if (!/^\d{9}$/.test(val)) return;
+      try {
+        const res  = await _csrfFetch(`/api/routing-number/${encodeURIComponent(val)}`);
+        const data = await res.json();
+        if (!data.found) return;
+        const bankField = targetId ? document.getElementById(targetId) : null;
+        if (bankField && !bankField.value) {
+          bankField.value = data.bank_name;
+        }
+        if (hintEl) {
+          hintEl.textContent = `${data.bank_name} — confirm or edit`;
+          hintEl.classList.remove("hidden");
+        }
+        if (bankField) {
+          bankField.addEventListener("input", () => {
+            if (hintEl) hintEl.classList.add("hidden");
+          }, { once: true });
+        }
+      } catch {
+        // fail silently — staff types manually
+      }
+    });
+  });
+}
+
+// ── Section 5: Inline field validation (blur-based, WCAG 3.3.1) ──────────────
+
+function _fieldError(el, msg) {
+  let err = document.getElementById("err-" + el.id);
+  if (!err) {
+    err = document.createElement("p");
+    err.id = "err-" + el.id;
+    err.className = "field-error";
+    err.setAttribute("role", "alert");
+    el.parentNode.appendChild(err);
+    el.setAttribute("aria-describedby", "err-" + el.id);
+  }
+  if (msg) {
+    err.textContent = msg;
+    err.classList.add("visible");
+    el.setAttribute("aria-invalid", "true");
+  } else {
+    err.classList.remove("visible");
+    el.removeAttribute("aria-invalid");
+  }
+}
+
+function initIntakeValidation() {
+  // Phone fields: require 10 digits on blur
+  document.querySelectorAll("[data-phone-input]").forEach((el) => {
+    el.addEventListener("blur", () => {
+      const digits = el.value.replace(/\D/g, "");
+      if (el.value.length > 0 && digits.length < 10) {
+        _fieldError(el, t("Invalid phone number — must be 10 digits"));
+      } else {
+        _fieldError(el, "");
+      }
+    });
+    el.addEventListener("input", () => _fieldError(el, ""));
+  });
+
+  // Routing number: must be exactly 9 digits
+  document.querySelectorAll("[data-routing-input]").forEach((el) => {
+    el.addEventListener("blur", () => {
+      if (el.value.length > 0 && !/^\d{9}$/.test(el.value)) {
+        _fieldError(el, t("Routing numbers are 9 digits"));
+      } else {
+        _fieldError(el, "");
+      }
+    });
+    el.addEventListener("input", () => _fieldError(el, ""));
+  });
+
+  // Year fields: expanded value should be 4-digit year in reasonable range
+  document.querySelectorAll("[data-year-input]").forEach((el) => {
+    el.addEventListener("blur", () => {
+      const v = el.value.trim();
+      if (!v) return;
+      const n = parseInt(v, 10);
+      if (isNaN(n) || v.length < 2 || n < 1900 || n > 2099) {
+        _fieldError(el, t("Please enter a valid year"));
+      } else {
+        _fieldError(el, "");
+      }
+    });
+    el.addEventListener("input", () => _fieldError(el, ""));
+  });
+
+  // Required fields: show message on blur if empty
+  const intakeForm = document.getElementById("intake-form");
+  if (intakeForm) {
+    intakeForm.querySelectorAll("[required]").forEach((el) => {
+      el.addEventListener("blur", () => {
+        if (!el.value.trim()) {
+          _fieldError(el, t("This field is required"));
+        } else {
+          _fieldError(el, "");
+        }
+      });
+      el.addEventListener("input", () => _fieldError(el, ""));
+    });
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -987,6 +1293,13 @@ document.addEventListener("DOMContentLoaded", () => {
   initDashboardTableSelection();
   initDashboardBulkActions();
   initYearPicker();
+  initPhoneFormat();
+  initYearExpand();
+  initSsnFormat();
+  initSpouseAutoFill();
+  initAddressAutocomplete();
+  initRoutingLookup();
+  initIntakeValidation();
 
   // TOUR-3: help icon resets server-side completion then restarts the tour
   const _tourHelpBtn = document.getElementById("tour-help-btn");

@@ -11,7 +11,7 @@
         <div class="flex gap-3 min-w-0 flex-1">
           <a href="javascript:history.back()"
              class="shrink-0 text-slate-400 hover:text-slate-700 transition-colors p-1 rounded-lg hover:bg-slate-100 h-9 w-9 flex items-center justify-center"
-             title="Back">
+             title="{{ _('Back') }}">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
             </svg>
@@ -54,7 +54,7 @@
               {% if ret.client_id %}
               <a href="{{ url_for('client_profile', client_id=ret.client_id) }}"
                  class="text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
-                Client profile →
+                {{ _('Client profile') }} →
               </a>
               {% endif %}
             </div>
@@ -68,7 +68,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
             </svg>
-            Pickup workflow
+            {{ _('Pickup workflow') }}
           </a>
           {% endif %}
           <button type="button" onclick="printSticker()"
@@ -77,8 +77,44 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
             </svg>
-            Print sticker
+            {{ _('Print sticker') }}
           </button>
+          {# LIFE-3: Intake sheet PDF #}
+          <button type="button" onclick="window.open('/api/return/{{ ret.id }}/intake-sheet','_blank')"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 transition-all">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5l2 2v14a2 2 0 01-2 2h-1m4-14v3a2 2 0 002 2h3"/>
+            </svg>
+            {{ _('Print intake sheet') }}
+          </button>
+          {# LIFE-1: Cancel return #}
+          {% if ret.client_status != 'CANCELLED' %}
+          <button type="button" id="cancel-return-btn" onclick="showCancelForm({{ ret.id }})"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-3 py-2 transition-all">
+            {{ _('Cancel return') }}
+          </button>
+          {% else %}
+          <button type="button" onclick="uncancelReturn({{ ret.id }})"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg px-3 py-2 transition-all">
+            {{ _('Reinstate return') }}
+          </button>
+          {% endif %}
+          {# Inline cancel reason form #}
+          <div id="cancel-reason-form" class="hidden w-full mt-1">
+            <input id="cancel-reason-input" type="text" placeholder="{{ _('Reason for cancellation…') }}"
+                   class="w-full text-xs border border-red-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300">
+            <div class="flex gap-2 mt-1">
+              <button type="button" onclick="confirmCancel({{ ret.id }})"
+                      class="text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg px-3 py-1.5 font-semibold transition-colors">
+                {{ _('Confirm cancel') }}
+              </button>
+              <button type="button" onclick="hideCancelForm()"
+                      class="text-xs text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg px-3 py-1.5 transition-colors">
+                {{ _('Dismiss') }}
+              </button>
+            </div>
+          </div>
         </nav>
       </div>
     </div>
@@ -87,7 +123,7 @@
   <!-- ── Quick flags ────────────────────────────────────────────────────── -->
   <div class="bg-white rounded-xl border border-slate-200 px-4 py-4 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
     <div class="flex flex-col gap-3 min-w-0 flex-1">
-      <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Quick flags</span>
+      <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">{{ _('Quick flags') }}</span>
       <div class="flex flex-wrap items-center gap-2">
     {% macro qflag(label, field, val, color='blue') %}
     <button type="button" onclick="quickToggle({{ ret.id }}, '{{ field }}', this)"
@@ -104,18 +140,18 @@
     </button>
     {% endmacro %}
 
-    {{ qflag('Verified',      'verified',           ret.verified,           'green') }}
-    {{ qflag('Transfer',      'transfer_flag',      ret.transfer_flag,      'amber') }}
-    {{ qflag('Amended',       'is_amended',         ret.is_amended,         'amber') }}
-    {{ qflag('Extension',     'is_extension',       ret.is_extension,       'amber') }}
+    {{ qflag(_('Verified'),      'verified',           ret.verified,           'green') }}
+    {{ qflag(_('Transfer'),      'transfer_flag',      ret.transfer_flag,      'amber') }}
+    {{ qflag(_('Amended'),       'is_amended',         ret.is_amended,         'amber') }}
+    {{ qflag(_('Extension'),     'is_extension',       ret.is_extension,       'amber') }}
     {{ qflag('W-7',           'has_w7',             ret.has_w7,             'blue') }}
-    {{ qflag('TY25 Transfer', 'transfer_2025_flag', ret.transfer_2025_flag, 'blue') }}
-    {{ qflag('TY26 Transfer', 'transfer_2026_flag', ret.transfer_2026_flag, 'blue') }}
+    {{ qflag(_('TY25 Transfer'), 'transfer_2025_flag', ret.transfer_2025_flag, 'blue') }}
+    {{ qflag(_('TY26 Transfer'), 'transfer_2026_flag', ret.transfer_2026_flag, 'blue') }}
       </div>
     </div>
     <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm border-t border-slate-100 pt-3 xl:border-t-0 xl:border-l xl:pl-6 xl:pt-0 shrink-0">
       <div class="flex items-center gap-2">
-        <span class="text-slate-500 text-xs font-semibold uppercase tracking-wide">E-filed</span>
+        <span class="text-slate-500 text-xs font-semibold uppercase tracking-wide">{{ _('E-filed') }}</span>
         <span class="editable font-mono text-slate-800 font-semibold"
               data-return-id="{{ ret.id }}" data-field="efile_date"
               data-value="{{ ret.efile_date or '' }}" data-placeholder="YYYY-MM-DD">
@@ -135,7 +171,7 @@
 
   <!-- ── Status workflow ─────────────────────────────────────────────────── -->
   <section class="bg-white rounded-xl border border-slate-200 px-4 py-3 sm:px-5 sm:py-4" aria-label="Workflow">
-    <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Workflow</p>
+    <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{{ _('Workflow') }}</p>
     <div class="flex items-center gap-1.5 overflow-x-auto">
       {% set current_idx = status_flow.index(ret.client_status) if ret.client_status in status_flow else -1 %}
       {% for s in status_flow %}
@@ -179,16 +215,16 @@
     <div class="section-header flex flex-wrap items-center justify-between gap-2
          {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}bg-red-50 border-b border-red-200{% endif %}">
       <span class="flex items-center gap-2">
-        Client contact
+        {{ _('Client contact') }}
         {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}
-        <span class="text-xs font-bold uppercase tracking-wide text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-full">Needs client contact</span>
+        <span class="text-xs font-bold uppercase tracking-wide text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-full">{{ _('Needs client contact') }}</span>
         {% endif %}
       </span>
-      <a href="#notes-card" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold">Notes &rarr;</a>
+      <a href="#notes-card" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold">{{ _('Notes') }} &rarr;</a>
     </div>
     <div class="p-4 flex flex-wrap items-end gap-4">
       <label class="flex flex-col gap-1 text-sm">
-        <span class="text-slate-500 font-medium">Contact status</span>
+        <span class="text-slate-500 font-medium">{{ _('Contact status') }}</span>
         <select id="contact-status-sel" onchange="saveContactStatus({{ ret.id }})"
                 class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 min-w-[13rem] focus:outline-none focus:ring-2 focus:ring-indigo-400">
           {% for k, lab in contact_labels.items() %}
@@ -197,7 +233,7 @@
         </select>
       </label>
       <label class="flex flex-col gap-1 text-sm">
-        <span class="text-slate-500 font-medium">Last contacted</span>
+        <span class="text-slate-500 font-medium">{{ _('Last contacted') }}</span>
         <input type="date" id="contact-date-input" value="{{ ret.last_contacted_date[:10] if ret.last_contacted_date else '' }}"
                onchange="saveContactDate({{ ret.id }})"
                class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-400">
@@ -208,7 +244,7 @@
 
   <!-- ── AI draft email (rejected returns only) ────────────────────────── -->
   <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-    <div class="section-header">Draft follow-up email</div>
+    <div class="section-header">{{ _('Draft follow-up email') }}</div>
     <div class="p-4 flex flex-col gap-3">
       <div class="flex items-center gap-3">
         <button id="draft-email-btn"
@@ -256,7 +292,7 @@
 
       <!-- Return info -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div class="section-header">Return Info</div>
+        <div class="section-header">{{ _('Return Info') }}</div>
         <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
 
           {% macro ef(label, field, val, typ='text', ph='') %}
@@ -312,6 +348,33 @@
         {% endif %}
       </div>
 
+      <!-- DEP-1/DEP-3: Dependents -->
+      {% if dependents %}
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header">{{ _('Dependents') }}</div>
+        <div class="divide-y divide-slate-100">
+          {% for dep in dependents %}
+          <div id="dep-row-{{ dep.id }}" class="flex items-center gap-3 px-4 py-2.5 text-sm">
+            <span class="flex-1 font-medium text-slate-800">
+              {{ dep.full_name or '—' }}
+              {% if dep.on_medicare %}
+              <span class="ml-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full border
+                           bg-sky-50 text-sky-700 border-sky-200">Medicare</span>
+              {% endif %}
+            </span>
+            <span class="text-slate-500 text-xs">{{ dep.relationship or '' }}</span>
+            <span class="text-slate-400 text-xs font-mono">{{ dep.date_of_birth or '' }}</span>
+            <button type="button"
+                    onclick="removeDependent({{ ret.id }}, {{ dep.id }}, '{{ dep.full_name | replace("'","") }}')"
+                    class="text-slate-300 hover:text-red-400 transition-colors text-xs ml-2" title="{{ _('Remove') }}">
+              &#10005;
+            </button>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
       <!-- Missing Documents -->
       {% set open_docs   = missing_docs | selectattr('is_resolved', 'equalto', 0) | list %}
       {% set closed_docs = missing_docs | selectattr('is_resolved', 'equalto', 1) | list %}
@@ -321,10 +384,10 @@
         <div class="section-header flex items-center justify-between
                     {% if open_docs %}bg-orange-50 border-b border-orange-200{% endif %}">
           <span class="flex items-center gap-2">
-            Missing Documents
+            {{ _('Missing Documents') }}
             {% if open_docs %}
             <span class="text-xs font-bold bg-orange-500 text-white px-2 py-0.5 rounded-full">
-              {{ open_docs | length }} open
+              {{ open_docs | length }} {{ _('open') }}
             </span>
             {% elif missing_docs %}
             <span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
@@ -377,7 +440,7 @@
 
       <!-- Forms -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div class="section-header">Return Forms</div>
+        <div class="section-header">{{ _('Return Forms') }}</div>
         <div class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
           {% set form_list = [
             ('form_1040',    'Form 1040'),
@@ -411,13 +474,13 @@
       <!-- Payment -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div class="section-header flex items-center justify-between">
-          <span>Payment</span>
+          <span>{{ _('Payment') }}</span>
           {% if ret.total_fee %}
             {% if ret.paid_in_full %}
-            <span class="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">PAID IN FULL</span>
+            <span class="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">{{ _('PAID IN FULL') }}</span>
             {% else %}
             <span class="text-xs font-bold text-red-500 bg-red-50 px-2.5 py-1 rounded-full">
-              BALANCE DUE ${{ "{:,.2f}".format(ret.balance) }}
+              {{ _('BALANCE DUE') }} ${{ "{:,.2f}".format(ret.balance) }}
             </span>
             {% endif %}
           {% endif %}
@@ -435,10 +498,10 @@
           </div>
           {% endmacro %}
 
-          {{ pf('Total Fee',    'total_fee',          ret.total_fee,          True) }}
-          {{ pf('Fee Paid',     'fee_paid',           ret.fee_paid,           True) }}
-          {{ pf('CC Fee',       'cc_fee',             ret.cc_fee,             True) }}
-          {{ pf('Receipt #',    'receipt_number',     ret.receipt_number) }}
+          {{ pf(_('Total Fee'),    'total_fee',          ret.total_fee,          True) }}
+          {{ pf(_('Fee Paid'),     'fee_paid',           ret.fee_paid,           True) }}
+          {{ pf(_('CC Fee'),       'cc_fee',             ret.cc_fee,             True) }}
+          {{ pf(_('Receipt #'),    'receipt_number',     ret.receipt_number) }}
           {{ pf('Zelle / CK #', 'zelle_or_check_ref', ret.zelle_or_check_ref) }}
           {{ pf('Cash / QPay',  'cash_or_qpay_ref',  ret.cash_or_qpay_ref) }}
         </div>
@@ -446,16 +509,16 @@
 
       <!-- Documents -->
       <div id="documents" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
-        <div class="section-header">Documents</div>
+        <div class="section-header">{{ _('Documents') }}</div>
         <div class="p-4 space-y-4">
           <div class="flex flex-wrap items-end gap-3">
             <label class="flex flex-col gap-1 text-sm shrink-0">
-              <span class="text-slate-500 font-medium">File(s)</span>
+              <span class="text-slate-500 font-medium">{{ _('File(s)') }}</span>
               <input type="file" id="doc-file-input" accept="image/*,.pdf" multiple
                      class="text-sm text-slate-700 max-w-[14rem] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200">
             </label>
             <label class="flex flex-col gap-1 text-sm">
-              <span class="text-slate-500 font-medium">Type</span>
+              <span class="text-slate-500 font-medium">{{ _('Type') }}</span>
               <select id="doc-type-select"
                       class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 min-w-[11rem] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
                 <option value="W-2" selected>W-2</option>
@@ -467,7 +530,7 @@
             </label>
             <button type="button" id="doc-upload-btn"
                     class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
-              Upload
+              {{ _('Upload') }}
             </button>
           </div>
           <p id="doc-upload-status" class="hidden text-xs font-medium"></p>
@@ -483,9 +546,9 @@
       </div>
 
       <div id="form-data-root" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
-        <div class="section-header">Document Data</div>
+        <div class="section-header">{{ _('Document Data') }}</div>
         <div id="form-data-empty" class="px-4 py-5 text-center text-sm text-slate-400">
-          No document data yet. Run <strong>Extract fields</strong> on a tagged document to populate this section.
+          {{ _('No document data yet. Run') }} <strong>{{ _('Extract fields') }}</strong> {{ _('on a tagged document to populate this section.') }}
         </div>
         <div id="form-data-groups" class="p-4 space-y-6 hidden"></div>
       </div>
@@ -497,17 +560,17 @@
 
       <!-- Notes -->
       <div id="notes-card" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
-        <div class="section-header">Notes</div>
+        <div class="section-header">{{ _('Notes') }}</div>
         <div class="p-3 border-b border-slate-100">
-          <textarea id="note-input" rows="2" placeholder="Add a note… (Ctrl+Enter to save)"
+          <textarea id="note-input" rows="2" placeholder="{{ _('Add a note\u2026 (Ctrl+Enter to save)') }}"
                     class="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
                     onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();submitNote({{ ret.id }})}"></textarea>
           <button onclick="submitNote({{ ret.id }})"
                   class="mt-2 w-full text-xs bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg py-1.5 font-semibold transition-colors">
-            Save Note
+            {{ _('Save Note') }}
           </button>
         </div>
-        <div id="notes-list" class="divide-y divide-slate-100 max-h-56 overflow-y-auto">
+        <div id="notes-list" class="divide-y divide-slate-100 max-h-56 overflow-y-auto" aria-live="polite" aria-label="{{ _('Notes') }}">
           {% for note in notes %}
           <div class="px-4 py-3">
             <p class="text-sm text-slate-800 leading-snug">{{ note.note_text }}</p>
@@ -521,7 +584,7 @@
 
       <!-- Status history -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div class="section-header">History</div>
+        <div class="section-header">{{ _('History') }}</div>
         <div class="divide-y divide-slate-100 max-h-64 overflow-y-auto">
           {% for event in events %}
           <div class="px-4 py-3">
@@ -538,14 +601,14 @@
             </p>
           </div>
           {% else %}
-          <div class="px-4 py-6 text-center text-sm text-slate-400">No history yet</div>
+          <div class="px-4 py-6 text-center text-sm text-slate-400">{{ _('No history yet') }}</div>
           {% endfor %}
         </div>
       </div>
 
       <!-- Client info -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div class="section-header">Client</div>
+        <div class="section-header">{{ _('Client') }}</div>
         <div class="p-4 space-y-3 text-sm">
           <div>
             <div class="field-label">Last name</div>
@@ -676,6 +739,70 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ field, value }),
     });
+  }
+
+  // ── LIFE-1: Cancel / uncancel return ─────────────────────────────────────
+  function showCancelForm(returnId) {
+    const form = document.getElementById('cancel-reason-form');
+    const btn  = document.getElementById('cancel-return-btn');
+    if (!form) return;
+    form.classList.remove('hidden');
+    if (btn) btn.classList.add('hidden');
+    document.getElementById('cancel-reason-input')?.focus();
+  }
+
+  function hideCancelForm() {
+    const form = document.getElementById('cancel-reason-form');
+    const btn  = document.getElementById('cancel-return-btn');
+    if (form) form.classList.add('hidden');
+    if (btn) btn.classList.remove('hidden');
+  }
+
+  async function confirmCancel(returnId) {
+    const reason = (document.getElementById('cancel-reason-input')?.value || '').trim();
+    if (!reason) { alert('Please enter a reason for cancellation.'); return; }
+    const resp = await _csrfFetch(`/api/return/${returnId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    window.location.reload();
+  }
+
+  async function uncancelReturn(returnId) {
+    if (!confirm('Reinstate this return?')) return;
+    const resp = await _csrfFetch(`/api/return/${returnId}/uncancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    window.location.reload();
+  }
+
+  // ── DEP-1: Remove dependent from return ──────────────────────────────────
+  async function removeDependent(returnId, depId, name) {
+    const label = name || 'this dependent';
+    const row   = document.getElementById(`dep-row-${depId}`);
+    if (!row) return;
+    if (!row.dataset.confirming) {
+      row.dataset.confirming = '1';
+      const xBtn = row.querySelector('button[onclick*="removeDependent"]');
+      if (xBtn) {
+        xBtn.textContent = `Remove ${label}?`;
+        xBtn.className = 'text-red-500 text-xs font-semibold hover:text-red-700 ml-2';
+      }
+      return;
+    }
+    const resp = await _csrfFetch(`/api/return/${returnId}/dependents/${depId}`, {
+      method: 'DELETE',
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    row.remove();
   }
 
   // ── Missing documents tracker ─────────────────────────────────────────────

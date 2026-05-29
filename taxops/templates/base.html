@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ 'es' if current_locale == 'es_MX' else 'en' }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -43,7 +43,7 @@
 
       <!-- Nav + bell + session -->
       <div class="flex items-center gap-3 shrink-0 flex-nowrap">
-      <nav class="flex items-center gap-1 shrink-0 flex-nowrap">
+      <nav class="flex items-center gap-1 shrink-0 flex-nowrap" aria-label="{{ _('Main navigation') }}">
         <a href="/?year={{ current_year }}" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">
           {{ _('Dashboard') }}
         </a>
@@ -57,6 +57,9 @@
         <div class="relative" id="tools-menu-wrap">
           <button id="tools-btn"
                   type="button"
+                  aria-expanded="false"
+                  aria-haspopup="true"
+                  aria-controls="tools-dropdown"
                   class="nav-link flex items-center gap-1 {% if tools_active %}active{% endif %}">
             {{ _('Tools') }}
             <svg class="w-3 h-3 mt-0.5 transition-transform" id="tools-chevron"
@@ -98,8 +101,13 @@
               {{ _('AI Assistant') }}
             </a>
             <a href="/email-review"
-               class="tools-item {% if request.path.startswith('/email-review') %}tools-item-active{% endif %}">
-              {{ _('Email Review') }}
+               class="tools-item {% if request.path.startswith('/email-review') %}tools-item-active{% endif %} flex items-center justify-between gap-3">
+              <span>{{ _('Email Review') }}</span>
+              {# Section 4: unread email-doc badge — count populated by JS polling below #}
+              <span id="email-unread-badge"
+                    class="hidden shrink-0 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-amber-500 text-white rounded-full leading-none">
+              </span>
             </a>
 
             <div class="my-1 border-t border-slate-100"></div>
@@ -193,6 +201,9 @@
       <div class="relative shrink-0" id="reject-bell-wrap">
         <button id="reject-bell"
                 aria-label="Rejected returns"
+                aria-expanded="false"
+                aria-haspopup="true"
+                aria-controls="reject-dropdown"
                 title="Rejected returns"
                 class="relative flex items-center justify-center w-10 h-10 rounded-full
                        hover:bg-slate-700 transition-colors focus-visible:outline
@@ -276,7 +287,7 @@
         <button id="privacy-toggle"
                 type="button"
                 data-enabled="{{ '1' if privacy_mode else '0' }}"
-                class="text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.25rem]
+                class="text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.75rem] whitespace-nowrap
                        {% if privacy_mode %}
                        bg-red-50 text-red-700 border-red-300 hover:bg-red-100
                        {% else %}
@@ -299,8 +310,9 @@
                 type="button"
                 data-locale="{{ current_locale }}"
                 title="{{ 'Switch to English' if current_locale == 'es_MX' else 'Cambiar a Español' }}"
-                class="text-xs font-bold rounded-full px-2.5 py-1 border transition-colors
-                       bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600 min-h-[2.25rem]">
+                aria-label="{{ 'Switch to English' if current_locale == 'es_MX' else 'Cambiar a Español' }}"
+                class="text-xs font-bold rounded-full px-2.5 py-1 border transition-colors whitespace-nowrap
+                       bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600 min-h-[2.75rem]">
           {{ 'EN' if current_locale == 'es_MX' else 'ES' }}
         </button>
 
@@ -333,10 +345,11 @@
       <div class="max-w-screen-2xl mx-auto px-4 py-2 flex items-center gap-5 overflow-x-auto text-sm">
         {% for s in status_flow %}
         <a href="/?status={{ s }}&year={{ current_year }}"
-           class="flex items-center gap-2 whitespace-nowrap hover:opacity-90 transition-opacity group">
-          <span class="status-dot {{ status_dot.get(s, 'dot-slate') }}"></span>
+           class="flex items-center gap-2 whitespace-nowrap hover:opacity-90 transition-opacity group"
+           aria-label="{{ s }}: {{ status_counts.get(s, 0) }} {{ _('returns') }}">
+          <span class="status-dot {{ status_dot.get(s, 'dot-slate') }}" aria-hidden="true"></span>
           <span class="text-slate-300 group-hover:text-white transition-colors">{{ s }}</span>
-          <span class="font-bold text-white tabular-nums text-base">{{ status_counts.get(s, 0) }}</span>
+          <span class="font-bold text-white tabular-nums text-base" aria-hidden="true">{{ status_counts.get(s, 0) }}</span>
         </a>
         {% endfor %}
 
@@ -534,6 +547,9 @@
           return body;
         });
       }
+
+      window._fetchWithTimeout = _fetchWithTimeout;
+      window._authJson = _authJson;
 })();
 </script>
   <script>
@@ -554,8 +570,8 @@
         btn.dataset.enabled = enabled ? '1' : '0';
         btn.textContent = enabled ? 'Privacy: ON' : 'Privacy: OFF';
         btn.className = enabled
-          ? 'text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.25rem] bg-red-50 text-red-700 border-red-300 hover:bg-red-100'
-          : 'text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.25rem] bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600';
+          ? 'text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.75rem] whitespace-nowrap bg-red-50 text-red-700 border-red-300 hover:bg-red-100'
+          : 'text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.75rem] whitespace-nowrap bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600';
       }
 
       btn.addEventListener('click', async () => {
@@ -586,26 +602,36 @@
       const wrap     = document.getElementById('reject-bell-wrap');
       if (!bell || !dropdown) return;
 
+      function openRejectDropdown() {
+        dropdown.classList.remove('hidden');
+        bell.setAttribute('aria-expanded', 'true');
+        dropdown.style.opacity = '0';
+        dropdown.style.transform = 'translateY(-6px)';
+        requestAnimationFrame(() => {
+          dropdown.style.transition = 'opacity 150ms ease, transform 150ms ease';
+          dropdown.style.opacity = '1';
+          dropdown.style.transform = 'translateY(0)';
+        });
+      }
+      function closeRejectDropdown() {
+        dropdown.classList.add('hidden');
+        bell.setAttribute('aria-expanded', 'false');
+      }
+
       bell.addEventListener('click', (e) => {
         e.stopPropagation();
         const open = !dropdown.classList.contains('hidden');
-        dropdown.classList.toggle('hidden', open);
-        // Subtle entrance animation
-        if (!open) {
-          dropdown.style.opacity = '0';
-          dropdown.style.transform = 'translateY(-6px)';
-          requestAnimationFrame(() => {
-            dropdown.style.transition = 'opacity 150ms ease, transform 150ms ease';
-            dropdown.style.opacity = '1';
-            dropdown.style.transform = 'translateY(0)';
-          });
-        }
+        if (open) closeRejectDropdown(); else openRejectDropdown();
       });
 
-      // Close when clicking outside
+      // Close when clicking outside or pressing Escape
       document.addEventListener('click', (e) => {
-        if (!wrap.contains(e.target)) {
-          dropdown.classList.add('hidden');
+        if (!wrap.contains(e.target)) closeRejectDropdown();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
+          closeRejectDropdown();
+          bell.focus();
         }
       });
     })();
@@ -618,30 +644,68 @@
       const chevron  = document.getElementById('tools-chevron');
       if (!btn || !dropdown) return;
 
+      function openToolsDropdown() {
+        dropdown.classList.remove('hidden');
+        btn.setAttribute('aria-expanded', 'true');
+        chevron.style.transform = 'rotate(180deg)';
+        dropdown.style.opacity = '0';
+        dropdown.style.transform = 'translateY(-6px)';
+        requestAnimationFrame(() => {
+          dropdown.style.transition = 'opacity 140ms ease, transform 140ms ease';
+          dropdown.style.opacity = '1';
+          dropdown.style.transform = 'translateY(0)';
+        });
+      }
+      function closeToolsDropdown() {
+        dropdown.classList.add('hidden');
+        btn.setAttribute('aria-expanded', 'false');
+        chevron.style.transform = '';
+      }
+
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const opening = dropdown.classList.contains('hidden');
-        dropdown.classList.toggle('hidden', !opening);
-        chevron.style.transform = opening ? 'rotate(180deg)' : '';
-        if (opening) {
-          dropdown.style.opacity = '0';
-          dropdown.style.transform = 'translateY(-6px)';
-          requestAnimationFrame(() => {
-            dropdown.style.transition = 'opacity 140ms ease, transform 140ms ease';
-            dropdown.style.opacity = '1';
-            dropdown.style.transform = 'translateY(0)';
-          });
-        }
+        if (opening) openToolsDropdown(); else closeToolsDropdown();
       });
 
       document.addEventListener('click', (e) => {
-        if (!wrap.contains(e.target)) {
-          dropdown.classList.add('hidden');
-          chevron.style.transform = '';
+        if (!wrap.contains(e.target)) closeToolsDropdown();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
+          closeToolsDropdown();
+          btn.focus();
         }
       });
     })();
   </script>
+  <!-- Section 4: email unread-document badge polling (60 s interval, logged-in users only) -->
+  {% if current_user_name %}
+  <script>
+  (function () {
+    var badge = document.getElementById('email-unread-badge');
+    if (!badge) return;
+    function _updateBadge() {
+      fetch('/api/notifications/unread-documents', { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : { count: 0 }; })
+        .then(function (d) {
+          var n = (d && d.count) ? parseInt(d.count, 10) : 0;
+          if (n > 0) {
+            badge.textContent = n > 99 ? '99+' : String(n);
+            badge.classList.remove('hidden');
+          } else {
+            badge.classList.add('hidden');
+          }
+        })
+        .catch(function () { /* fail silently */ });
+    }
+    _updateBadge();
+    setInterval(_updateBadge, 60000);
+  })();
+  </script>
+  {% endif %}
+
   <!-- I18N-6: language toggle handler -->
   <script>
     (function () {
