@@ -1,8 +1,15 @@
 {% extends "base.html" %}
-{% block title %}New Intake — TaxOps {{ current_year }}{% endblock %}
+{% block title %}{{ _('New Intake') }} — TaxOps {{ current_year }}{% endblock %}
 
 {% block content %}
 <form id="intake-form" method="post" action="/intake" autocomplete="off" class="space-y-6">
+
+  <!-- WCAG 3.3.1: error summary — shown on submit if required fields are empty -->
+  <div id="intake-error-summary" class="hidden bg-red-50 border border-red-200 rounded-xl px-4 py-3"
+       role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1">
+    <p class="font-semibold text-red-800 text-sm">{{ _('Please fix the following before saving:') }}</p>
+    <ul id="intake-error-list" class="mt-2 list-disc list-inside text-sm text-red-700 space-y-1"></ul>
+  </div>
 
   <!-- Hidden client_id populated by JS when an existing client is selected -->
   <input type="hidden" name="client_id" id="client_id_field" value="">
@@ -10,15 +17,15 @@
   <!-- ── Page header ──────────────────────────────────────────────────────── -->
   <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-xl font-bold text-slate-800" id="intake-title">New Client Intake</h1>
-      <p class="text-sm text-slate-500 mt-0.5">Xcel Financial Services, LLC — Income Tax Client Information
+      <h1 class="text-xl font-bold text-slate-800" id="intake-title">{{ _('New Client Intake') }}</h1>
+      <p class="text-sm text-slate-500 mt-0.5">Xcel Financial Services, LLC — {{ _('Income Tax Client Information') }}
         <span id="reintake-badge" class="hidden ml-2 bg-amber-100 text-amber-700 border border-amber-300
-              text-xs font-bold px-2 py-0.5 rounded-full">Re-intake</span>
+              text-xs font-bold px-2 py-0.5 rounded-full">{{ _('Re-intake') }}</span>
       </p>
     </div>
     <button type="submit"
             class="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-6 py-2.5 text-sm shadow transition-colors">
-      Save &amp; Create Return
+      {{ _('Save & Create Return') }}
     </button>
   </div>
 
@@ -29,12 +36,13 @@
   <!-- ── Returning client lookup ───────────────────────────────────────────── -->
   <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5">
     <p class="text-xs font-bold text-amber-700 uppercase tracking-widest mb-3">
-      Returning Client? Search to pre-fill
+      {{ _('Returning Client? Search to pre-fill') }}
     </p>
     <div class="flex gap-3 items-start">
       <div class="relative flex-1 max-w-sm">
+        <label for="client-lookup" class="sr-only">{{ _('Search returning client by name') }}</label>
         <input type="text" id="client-lookup"
-               placeholder="Type last name or first name…"
+               placeholder="{{ _('Type last name or first name\u2026') }}"
                autocomplete="off" spellcheck="false"
                class="w-full border border-amber-300 bg-white rounded-xl px-3 py-2.5 text-sm
                       focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent">
@@ -46,12 +54,12 @@
       <button type="button" id="clear-client"
               class="hidden text-xs text-red-600 hover:text-red-800 font-semibold px-3 py-2.5
                      border border-red-200 rounded-xl bg-red-50 hover:bg-red-100 transition-colors whitespace-nowrap">
-        ✕ Clear — New Client
+        {{ _('\u2715 Clear \u2014 New Client') }}
       </button>
     </div>
     <div id="selected-client-info" class="hidden mt-3 text-sm text-amber-800 font-medium"></div>
     <div id="habit-profile-panel" class="hidden mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
-      <p class="text-xs font-bold text-blue-700 uppercase tracking-widest mb-2">Client Habit Profile</p>
+      <p class="text-xs font-bold text-blue-700 uppercase tracking-widest mb-2">{{ _('Client Habit Profile') }}</p>
       <div id="habit-profile-content" class="text-sm text-blue-900"></div>
     </div>
   </div>
@@ -59,13 +67,13 @@
   <!-- ── Section A: Header info ───────────────────────────────────────────── -->
   <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
     <div class="px-5 py-3 bg-slate-800 flex items-center gap-2">
-      <span class="text-white font-bold text-sm tracking-wide">A — Log &amp; Interview Info</span>
+      <span class="text-white font-bold text-sm tracking-wide">{{ _('A \u2014 Log & Interview Info') }}</span>
     </div>
     <div class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
 
       <div>
-        <label class="intake-label">Tax Year</label>
-        <select name="tax_year" class="intake-input">
+        <label class="intake-label" for="field-tax_year">{{ _('Tax Year') }}</label>
+        <select name="tax_year" id="field-tax_year" class="intake-input">
           {% for y in [2026, 2025, 2024, 2023] %}
           <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
           {% endfor %}
@@ -73,26 +81,27 @@
       </div>
 
       <div>
-        <label class="intake-label">Log # <span class="text-slate-400 font-normal normal-case">(auto)</span></label>
-        <div class="intake-input bg-slate-50 text-slate-400 text-sm flex items-center select-none">
-          Assigned on save
+        <p class="intake-label" aria-hidden="true">{{ _('Log #') }} <span class="text-slate-500 font-normal normal-case">({{ _('auto') }})</span></p>
+        <div class="intake-input bg-slate-50 text-slate-500 text-sm flex items-center select-none"
+             aria-label="{{ _('Log number — assigned on save') }}">
+          {{ _('Assigned on save') }}
         </div>
       </div>
 
       <div>
-        <label class="intake-label">Prior Year Log #</label>
-        <input type="text" name="prior_year_log" class="intake-input" placeholder="e.g. 24" id="field-prior_year_log">
+        <label class="intake-label" for="field-prior_year_log">{{ _('Prior Year Log #') }}</label>
+        <input type="text" name="prior_year_log" class="intake-input" placeholder="{{ _('e.g. 24') }}" id="field-prior_year_log" data-year-input>
       </div>
 
       <div>
-        <label class="intake-label">Interview Date</label>
+        <label class="intake-label" for="field-intake_date">{{ _('Interview Date') }}</label>
         <input type="date" name="intake_date" id="field-intake_date" class="intake-input" value="{{ today }}">
       </div>
 
       <div>
-        <label class="intake-label">Interviewed By</label>
-        <select name="interview_by" class="intake-input">
-          <option value="">— select —</option>
+        <label class="intake-label" for="field-interview_by">{{ _('Interviewed By') }}</label>
+        <select name="interview_by" id="field-interview_by" class="intake-input">
+          <option value="">{{ _('\u2014 select \u2014') }}</option>
           {% for p in processors %}
           <option value="{{ p }}">{{ preparer_list_label(p) }}</option>
           {% endfor %}
@@ -100,30 +109,31 @@
       </div>
 
       <div>
-        <label class="intake-label">Client Type</label>
-        <div class="flex gap-3 mt-2">
-          <label class="flex items-center gap-1.5 text-sm cursor-pointer">
-            <input type="radio" name="is_new_client" value="0" checked class="accent-blue-600"> Return
-          </label>
-          <label class="flex items-center gap-1.5 text-sm cursor-pointer">
-            <input type="radio" name="is_new_client" value="1" class="accent-blue-600"> New
-          </label>
-        </div>
+        <fieldset>
+          <legend class="intake-label">{{ _('Client Type') }}</legend>
+          <div class="flex gap-3 mt-2" role="radiogroup">
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input type="radio" name="is_new_client" id="field-is_new_client" value="0" checked class="accent-blue-600"> {{ _('Return') }}
+            </label>
+            <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input type="radio" name="is_new_client" id="field-is_new_client" value="1" class="accent-blue-600"> {{ _('New') }}
+            </label>
+          </div>
+        </fieldset>
       </div>
 
       <div class="md:col-span-2">
-        <label class="intake-label">Referred By</label>
+        <label class="intake-label" for="referral-lookup">{{ _('Referred By') }}</label>
         <div class="relative">
           <input type="text" id="referral-lookup"
-                 placeholder="Search client name…"
+                 placeholder="{{ _('Search client name\u2026') }}"
                  autocomplete="off" spellcheck="false"
                  class="intake-input pr-8">
-          <!-- hidden field holds the actual stored value -->
           <input type="hidden" name="referred_by" id="referral-value">
           <button type="button" id="referral-clear"
                   class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-slate-400
                          hover:text-slate-700 text-lg leading-none"
-                  title="Clear">&times;</button>
+                  title="{{ _('Clear') }}">&times;</button>
           <div id="referral-results"
                class="hidden absolute top-full left-0 right-0 mt-1 bg-white rounded-xl
                       shadow-2xl border border-slate-200 z-50 overflow-hidden
@@ -133,11 +143,11 @@
       </div>
 
       <div>
-        <label class="intake-label">Referral</label>
+        <label class="intake-label" for="referral-flag-check">{{ _('Referral') }}</label>
         <div class="flex gap-3 mt-2">
           <label class="flex items-center gap-1.5 text-sm cursor-pointer">
             <input type="checkbox" name="referral_flag" id="referral-flag-check"
-                   value="1" class="accent-blue-600"> Yes
+                   value="1" class="accent-blue-600"> {{ _('Yes') }}
           </label>
         </div>
       </div>
@@ -148,104 +158,107 @@
   <!-- ── Section B: Taxpayer & Spouse ─────────────────────────────────────── -->
   <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
     <div class="px-5 py-3 bg-slate-800">
-      <span class="text-white font-bold text-sm tracking-wide">B — Taxpayer &amp; Spouse</span>
+      <span class="text-white font-bold text-sm tracking-wide">{{ _('B \u2014 Taxpayer & Spouse') }}</span>
     </div>
     <div class="p-5 space-y-5">
 
       <!-- Taxpayer row -->
-      <div>
-        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Taxpayer</p>
+      <fieldset>
+        <legend class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">{{ _('Taxpayer') }}</legend>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <label class="intake-label">Last Name</label>
-            <input type="text" name="last_name" id="field-last_name" class="intake-input" placeholder="Last" required>
+            <label class="intake-label" for="field-last_name">{{ _('Last Name') }}</label>
+            <input type="text" name="last_name" id="field-last_name" class="intake-input" placeholder="{{ _('Last') }}" required>
           </div>
           <div>
-            <label class="intake-label">First Name</label>
-            <input type="text" name="first_name" id="field-first_name" class="intake-input" placeholder="First">
+            <label class="intake-label" for="field-first_name">{{ _('First Name') }}</label>
+            <input type="text" name="first_name" id="field-first_name" class="intake-input" placeholder="{{ _('First') }}">
           </div>
           <div>
-            <label class="intake-label">Date of Birth</label>
+            <label class="intake-label" for="field-taxpayer_dob">{{ _('Date of Birth') }}</label>
             <input type="date" name="taxpayer_dob" id="field-taxpayer_dob" class="intake-input">
           </div>
           <div>
-            <label class="intake-label">SSN Last 4</label>
-            <input type="text" name="ssn_last4" id="field-ssn_last4" maxlength="4" pattern="\d{4}"
-                   class="intake-input font-mono" placeholder="••••">
+            <label class="intake-label" for="field-ssn_full">{{ _('SSN') }}</label>
+            <input type="password" name="ssn_full" id="field-ssn_full" maxlength="11"
+                   autocomplete="off" spellcheck="false" data-ssn-input
+                   class="intake-input font-mono" placeholder="XXX-XX-XXXX">
           </div>
           <div>
-            <label class="intake-label">Occupation</label>
+            <label class="intake-label" for="field-taxpayer_occupation">{{ _('Occupation') }}</label>
             <input type="text" name="taxpayer_occupation" id="field-taxpayer_occupation" class="intake-input">
           </div>
           <div>
-            <label class="intake-label">Home Phone</label>
-            <input type="tel" name="taxpayer_phone" id="field-taxpayer_phone" class="intake-input" placeholder="(   )">
+            <label class="intake-label" for="field-taxpayer_cell">{{ _('Cell') }}</label>
+            <input type="tel" name="taxpayer_cell" id="field-taxpayer_cell" class="intake-input" placeholder="(   )" data-phone-input>
           </div>
           <div>
-            <label class="intake-label">Cell</label>
-            <input type="tel" name="taxpayer_cell" id="field-taxpayer_cell" class="intake-input" placeholder="(   )">
+            <label class="intake-label" for="field-taxpayer_phone">{{ _('Home Phone') }} <span class="text-slate-500 font-normal normal-case">({{ _('optional') }})</span></label>
+            <input type="tel" name="taxpayer_phone" id="field-taxpayer_phone" class="intake-input" placeholder="(   )" data-phone-input>
           </div>
           <div>
-            <label class="intake-label">Email</label>
+            <label class="intake-label" for="field-taxpayer_email">{{ _('Email') }}</label>
             <input type="email" name="taxpayer_email" id="field-taxpayer_email" class="intake-input">
           </div>
         </div>
-      </div>
+      </fieldset>
 
       <hr class="border-slate-100">
 
       <!-- Spouse row -->
-      <div>
-        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Spouse</p>
+      <fieldset>
+        <legend class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">{{ _('Spouse') }}</legend>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <label class="intake-label">Last Name</label>
-            <input type="text" name="spouse_last_name" id="field-spouse_last_name" class="intake-input" placeholder="Last">
+            <label class="intake-label" for="field-spouse_last_name">{{ _('Last Name') }}</label>
+            <input type="text" name="spouse_last_name" id="field-spouse_last_name" class="intake-input" placeholder="{{ _('Last') }}">
+            <p id="spouse-autofill-hint" class="hidden hint-text">{{ _('Auto-filled from taxpayer \u2014 edit to change') }}</p>
           </div>
           <div>
-            <label class="intake-label">First Name</label>
-            <input type="text" name="spouse_first_name" id="field-spouse_first_name" class="intake-input" placeholder="First">
+            <label class="intake-label" for="field-spouse_first_name">{{ _('First Name') }}</label>
+            <input type="text" name="spouse_first_name" id="field-spouse_first_name" class="intake-input" placeholder="{{ _('First') }}">
           </div>
           <div>
-            <label class="intake-label">Date of Birth</label>
+            <label class="intake-label" for="field-spouse_dob">{{ _('Date of Birth') }}</label>
             <input type="date" name="spouse_dob" id="field-spouse_dob" class="intake-input">
           </div>
           <div>
-            <label class="intake-label">SSN Last 4</label>
-            <input type="text" name="spouse_ssn_last4" id="field-spouse_ssn_last4" maxlength="4" pattern="\d{4}"
-                   class="intake-input font-mono" placeholder="••••">
+            <label class="intake-label" for="field-spouse_ssn_full">{{ _('SSN') }}</label>
+            <input type="password" name="spouse_ssn_full" id="field-spouse_ssn_full" maxlength="11"
+                   autocomplete="off" spellcheck="false" data-ssn-input
+                   class="intake-input font-mono" placeholder="XXX-XX-XXXX">
           </div>
           <div>
-            <label class="intake-label">Occupation</label>
+            <label class="intake-label" for="field-spouse_occupation">{{ _('Occupation') }}</label>
             <input type="text" name="spouse_occupation" id="field-spouse_occupation" class="intake-input">
           </div>
           <div>
-            <label class="intake-label">Cell</label>
-            <input type="tel" name="spouse_cell" id="field-spouse_cell" class="intake-input" placeholder="(   )">
+            <label class="intake-label" for="field-spouse_cell">{{ _('Cell') }}</label>
+            <input type="tel" name="spouse_cell" id="field-spouse_cell" class="intake-input" placeholder="(   )" data-phone-input>
           </div>
           <div>
-            <label class="intake-label">Work Phone</label>
-            <input type="tel" name="spouse_work_phone" id="field-spouse_work_phone" class="intake-input" placeholder="(   )">
+            <label class="intake-label" for="field-spouse_work_phone">{{ _('Work Phone') }}</label>
+            <input type="tel" name="spouse_work_phone" id="field-spouse_work_phone" class="intake-input" placeholder="(   )" data-phone-input>
           </div>
           <div>
-            <label class="intake-label">Email</label>
+            <label class="intake-label" for="field-spouse_email">{{ _('Email') }}</label>
             <input type="email" name="spouse_email" id="field-spouse_email" class="intake-input">
           </div>
         </div>
-      </div>
+      </fieldset>
 
       <hr class="border-slate-100">
 
       <!-- Address & filing status -->
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="md:col-span-2">
-          <label class="intake-label">Address</label>
-          <input type="text" name="address" id="field-address" class="intake-input" placeholder="Street, City, State, ZIP">
+          <label class="intake-label" for="field-address">{{ _('Address') }}</label>
+          <input type="text" name="address" id="field-address" class="intake-input" placeholder="{{ _('Street, City, State, ZIP') }}">
         </div>
         <div>
-          <label class="intake-label">Filing Status</label>
+          <label class="intake-label" for="field-filing_status">{{ _('Filing Status') }}</label>
           <select name="filing_status" id="field-filing_status" class="intake-input">
-            <option value="">— select —</option>
+            <option value="">{{ _('\u2014 select \u2014') }}</option>
             <option>SINGLE</option>
             <option>MFJ</option>
             <option>MFS</option>
@@ -262,22 +275,25 @@
   <!-- ── Section C: Dependents ────────────────────────────────────────────── -->
   <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
     <div class="px-5 py-3 bg-slate-800 flex items-center justify-between">
-      <span class="text-white font-bold text-sm tracking-wide">C — Dependents</span>
+      <span class="text-white font-bold text-sm tracking-wide">{{ _('C \u2014 Dependents') }}</span>
       <button type="button" id="add-dependent"
               class="text-xs text-blue-300 hover:text-white transition-colors font-semibold">
-        + Add Row
+        {{ _('+ Add Row') }}
       </button>
     </div>
     <div class="p-5 overflow-x-auto">
+      <fieldset>
+        <legend class="sr-only">{{ _('Dependents') }}</legend>
       <table class="w-full text-sm" id="dependents-table">
         <thead>
           <tr class="text-left">
             <th class="th-sm w-8">#</th>
-            <th class="th-sm">Full Name</th>
-            <th class="th-sm w-24">SSN Last 4</th>
-            <th class="th-sm w-32">Relationship</th>
-            <th class="th-sm w-36">Date of Birth</th>
-            <th class="th-sm w-20 text-center">Medi-Cal</th>
+            <th class="th-sm">{{ _('Full Name') }}</th>
+            <th class="th-sm w-24">{{ _('SSN Last 4') }}</th>
+            <th class="th-sm w-44">{{ _('Relationship') }}</th>
+            <th class="th-sm w-36">{{ _('Date of Birth') }}</th>
+            <th class="th-sm w-20 text-center">{{ _('Medi-Cal') }}</th>
+            <th class="th-sm w-20 text-center">{{ _('Medicare') }}</th>
             <th class="th-sm w-8"></th>
           </tr>
         </thead>
@@ -285,44 +301,72 @@
           {% for i in range(1, 7) %}
           <tr class="dependent-row border-t border-slate-100">
             <td class="py-2 px-2 text-slate-400 text-xs font-mono">{{ i }}</td>
-            <td class="py-1 px-1"><input type="text" name="dep_name_{{ i }}" class="intake-input-sm"></td>
-            <td class="py-1 px-1"><input type="text" name="dep_ssn_{{ i }}" maxlength="4" class="intake-input-sm font-mono" placeholder="••••"></td>
+            <td class="py-1 px-1"><input type="text" name="dep_name_{{ i }}" id="field-dep_name_{{ i }}" class="intake-input-sm"></td>
+            <td class="py-1 px-1"><input type="text" name="dep_ssn_{{ i }}" id="field-dep_ssn_{{ i }}" maxlength="4" class="intake-input-sm font-mono" placeholder="••••"></td>
             <td class="py-1 px-1">
-              <select name="dep_rel_{{ i }}" class="intake-input-sm">
+              <select name="dep_rel_{{ i }}" id="field-dep_rel_{{ i }}" class="intake-input-sm">
                 <option value=""></option>
-                <option>SON</option>
-                <option>DAUGHTER</option>
-                <option>PARENT</option>
-                <option>OTHER</option>
+                <optgroup label="{{ _('Qualifying Child — EIC eligible') }}">
+                  <option>{{ _('Son / Daughter (biological)') }}</option>
+                  <option>{{ _('Stepson / Stepdaughter') }}</option>
+                  <option>{{ _('Foster child (authorized placement)') }}</option>
+                  <option>{{ _('Brother / Sister (full)') }}</option>
+                  <option>{{ _('Half-brother / Half-sister') }}</option>
+                  <option>{{ _('Stepbrother / Stepsister') }}</option>
+                  <option>{{ _('Grandchild') }}</option>
+                  <option>{{ _('Niece / Nephew') }}</option>
+                </optgroup>
+                <optgroup label="{{ _('Qualifying Relative — EIC rules differ') }}">
+                  <option>{{ _('Parent / Stepparent') }}</option>
+                  <option>{{ _('Grandparent') }}</option>
+                  <option>{{ _('Uncle / Aunt') }}</option>
+                  <option>{{ _('Other qualifying relative') }}</option>
+                </optgroup>
+                <optgroup label="{{ _('Non-qualifying') }}">
+                  <option>{{ _('Other (non-qualifying)') }}</option>
+                </optgroup>
               </select>
+              {% if loop.first %}
+              <p class="hint-text">{{ _('EIC eligibility varies by relationship type — qualifying child rules differ from qualifying relative rules.') }}</p>
+              {% endif %}
             </td>
-            <td class="py-1 px-1"><input type="date" name="dep_dob_{{ i }}" class="intake-input-sm"></td>
+            <td class="py-1 px-1"><input type="date" name="dep_dob_{{ i }}" id="field-dep_dob_{{ i }}" class="intake-input-sm"></td>
             <td class="py-1 px-1 text-center">
-              <input type="checkbox" name="dep_medicaid_{{ i }}" value="1" class="accent-blue-600 w-4 h-4">
+              <input type="checkbox" name="dep_medicaid_{{ i }}" id="field-dep_medicaid_{{ i }}" value="1" class="accent-blue-600 w-4 h-4">
             </td>
-            <td class="py-1 px-1"></td>
+            <td class="py-1 px-1 text-center">
+              <input type="checkbox" name="dep_medicare_{{ i }}" id="field-dep_medicare_{{ i }}" value="1" class="accent-blue-600 w-4 h-4">
+            </td>
+            <td class="py-1 px-1">
+              <button type="button"
+                      class="dep-remove-btn hidden text-slate-500 hover:text-red-600 transition-colors touch-target"
+                      data-row="{{ i }}"
+                      aria-label="{{ _('Remove dependent') }}"
+                      title="{{ _('Remove dependent') }}">&#10005;</button>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
       <input type="hidden" name="dep_count" value="6" id="dep-count">
+      </fieldset>
     </div>
   </div>
 
   <!-- ── Section D: Insurance & Assets ────────────────────────────────────── -->
   <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
     <div class="px-5 py-3 bg-slate-800">
-      <span class="text-white font-bold text-sm tracking-wide">D — Insurance &amp; Digital Assets</span>
+      <span class="text-white font-bold text-sm tracking-wide">{{ _('D \u2014 Insurance & Digital Assets') }}</span>
     </div>
     <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
 
       <div>
-        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Insurance Coverage</p>
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">{{ _('Insurance Coverage') }}</p>
         <div class="space-y-2">
           {% for opt in ["Employer", "Medi-Cal", "Medicare", "Marketplace / 1095-A", "Private Insurance", "Not Insured", "Not Legal Resident"] %}
           <label class="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="radio" name="insurance_type" value="{{ opt }}" class="accent-blue-600">
-            {{ opt }}
+            <input type="radio" name="insurance_type" id="field-insurance_type" value="{{ opt }}" class="accent-blue-600">
+            {{ _(opt) }}
           </label>
           {% endfor %}
         </div>
@@ -330,25 +374,25 @@
 
       <div class="space-y-5">
         <div>
-          <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Digital Assets</p>
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">{{ _('Digital Assets') }}</p>
           <div class="flex gap-4">
             <label class="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input type="radio" name="digital_assets" value="1" class="accent-blue-600"> Yes
+              <input type="radio" name="digital_assets" id="field-digital_assets" value="1" class="accent-blue-600"> {{ _('Yes') }}
             </label>
             <label class="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input type="radio" name="digital_assets" value="0" checked class="accent-blue-600"> No
+              <input type="radio" name="digital_assets" id="field-digital_assets" value="0" checked class="accent-blue-600"> {{ _('No') }}
             </label>
           </div>
         </div>
 
         <div>
-          <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Overtime</p>
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">{{ _('Overtime') }}</p>
           <div class="flex gap-4">
             <label class="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input type="radio" name="overtime_flag" value="1" class="accent-blue-600"> Yes
+              <input type="radio" name="overtime_flag" id="field-overtime_flag" value="1" class="accent-blue-600"> {{ _('Yes') }}
             </label>
             <label class="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input type="radio" name="overtime_flag" value="0" checked class="accent-blue-600"> No
+              <input type="radio" name="overtime_flag" id="field-overtime_flag" value="0" checked class="accent-blue-600"> {{ _('No') }}
             </label>
           </div>
         </div>
@@ -360,36 +404,42 @@
   <!-- ── Section E: Banking ────────────────────────────────────────────────── -->
   <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
     <div class="px-5 py-3 bg-slate-800">
-      <span class="text-white font-bold text-sm tracking-wide">E — Banking Information</span>
+      <span class="text-white font-bold text-sm tracking-wide">{{ _('E \u2014 Banking Information') }}</span>
     </div>
+    <fieldset>
+      <legend class="sr-only">{{ _('Banking Information') }}</legend>
     <div class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
       <div>
-        <label class="intake-label">Bank Name</label>
+        <label class="intake-label" for="field-bank_name">{{ _('Bank Name') }}</label>
         <input type="text" name="bank_name" id="field-bank_name" class="intake-input">
       </div>
       <div>
-        <label class="intake-label">Routing #</label>
-        <input type="text" name="bank_routing" id="field-bank_routing" maxlength="9" class="intake-input font-mono">
+        <label class="intake-label" for="field-bank_routing">{{ _('Routing #') }}</label>
+        <input type="text" name="bank_routing" id="field-bank_routing" maxlength="9"
+               class="intake-input font-mono" data-routing-input
+               data-bank-name-target="field-bank_name">
+        <p id="routing-lookup-hint" class="hidden hint-text" aria-live="polite"></p>
       </div>
       <div>
-        <label class="intake-label">Account #</label>
+        <label class="intake-label" for="field-bank_account">{{ _('Account #') }}</label>
         <input type="text" name="bank_account" id="field-bank_account" class="intake-input font-mono">
       </div>
       <div>
-        <label class="intake-label">Account Type</label>
+        <label class="intake-label" for="field-bank_account_type">{{ _('Account Type') }}</label>
         <select name="bank_account_type" id="field-bank_account_type" class="intake-input">
-          <option value="">— select —</option>
-          <option value="CHECKING">Checking</option>
-          <option value="SAVINGS">Savings</option>
+          <option value="">{{ _('\u2014 select \u2014') }}</option>
+          <option value="CHECKING">{{ _('Checking') }}</option>
+          <option value="SAVINGS">{{ _('Savings') }}</option>
         </select>
       </div>
     </div>
+    </fieldset>
   </div>
 
   <!-- ── Section F: Forms & Return Type ───────────────────────────────────── -->
   <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
     <div class="px-5 py-3 bg-slate-800">
-      <span class="text-white font-bold text-sm tracking-wide">F — Forms &amp; Return Type</span>
+      <span class="text-white font-bold text-sm tracking-wide">{{ _('F \u2014 Forms & Return Type') }}</span>
     </div>
     <div class="p-5">
       <div class="flex flex-wrap gap-4">
@@ -403,7 +453,7 @@
         <label class="flex items-center gap-2 text-sm cursor-pointer bg-slate-50 border border-slate-200
                       rounded-lg px-3 py-2 hover:bg-blue-50 hover:border-blue-300 transition-colors
                       has-[:checked]:bg-blue-50 has-[:checked]:border-blue-400">
-          <input type="checkbox" name="{{ field }}" value="1" class="accent-blue-600">
+          <input type="checkbox" name="{{ field }}" id="field-{{ field }}" value="1" class="accent-blue-600">
           <span class="font-medium">{{ label }}</span>
         </label>
         {% endfor %}
@@ -414,39 +464,39 @@
   <!-- ── Section G: Processing ─────────────────────────────────────────────── -->
   <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
     <div class="px-5 py-3 bg-slate-800">
-      <span class="text-white font-bold text-sm tracking-wide">G — Processing</span>
+      <span class="text-white font-bold text-sm tracking-wide">{{ _('G \u2014 Processing') }}</span>
     </div>
     <div class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
       <div>
-        <label class="intake-label">Processor</label>
+        <label class="intake-label" for="field-processor">{{ _('Processor') }}</label>
         <select name="processor" id="field-processor" class="intake-input">
-          <option value="">— select —</option>
+          <option value="">{{ _('\u2014 select \u2014') }}</option>
           {% for p in processors %}
           <option value="{{ p }}">{{ preparer_list_label(p) }}</option>
           {% endfor %}
         </select>
       </div>
       <div>
-        <label class="intake-label">Promise Date</label>
-        <input type="date" name="promise_date" class="intake-input">
+        <label class="intake-label" for="field-promise_date">{{ _('Promise Date') }}</label>
+        <input type="date" name="promise_date" id="field-promise_date" class="intake-input">
       </div>
       <div>
-        <label class="intake-label">Delivered By</label>
-        <input type="text" name="delivered_by" class="intake-input" placeholder="Initials">
+        <label class="intake-label" for="field-delivered_by">{{ _('Delivered By') }}</label>
+        <input type="text" name="delivered_by" id="field-delivered_by" class="intake-input" placeholder="{{ _('Initials') }}">
       </div>
       <div>
-        <label class="intake-label">Date Signatures Emailed</label>
-        <input type="date" name="date_signatures_emailed" class="intake-input">
+        <label class="intake-label" for="field-date_signatures_emailed">{{ _('Date Signatures Emailed') }}</label>
+        <input type="date" name="date_signatures_emailed" id="field-date_signatures_emailed" class="intake-input">
       </div>
       <div>
-        <label class="intake-label">Date Reports Emailed</label>
-        <input type="date" name="date_reports_emailed" class="intake-input">
+        <label class="intake-label" for="field-date_reports_emailed">{{ _('Date Reports Emailed') }}</label>
+        <input type="date" name="date_reports_emailed" id="field-date_reports_emailed" class="intake-input">
       </div>
       <div>
-        <label class="intake-label">Verified</label>
+        <label class="intake-label" for="field-verified">{{ _('Verified') }}</label>
         <div class="flex gap-3 mt-2">
           <label class="flex items-center gap-1.5 text-sm cursor-pointer">
-            <input type="checkbox" name="verified" value="1" class="accent-blue-600"> Yes
+            <input type="checkbox" name="verified" id="field-verified" value="1" class="accent-blue-600"> {{ _('Yes') }}
           </label>
         </div>
       </div>
@@ -456,90 +506,92 @@
   <!-- ── Section H: Fees ───────────────────────────────────────────────────── -->
   <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
     <div class="px-5 py-3 bg-slate-800">
-      <span class="text-white font-bold text-sm tracking-wide">H — Fees &amp; Payment</span>
+      <span class="text-white font-bold text-sm tracking-wide">{{ _('H \u2014 Fees & Payment') }}</span>
     </div>
     <div class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
 
       <div>
-        <label class="intake-label">Total Fee</label>
+        <label class="intake-label" for="fee-total">{{ _('Total Fee') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
           <input type="number" name="total_fee" step="0.01" min="0"
-                 class="intake-input pl-6" placeholder="0.00" id="fee-total">
+                 class="intake-input pl-6 text-right" placeholder="0.00" id="fee-total">
+        </div>
+        <p id="prior-year-fee-hint" class="hidden hint-text" aria-live="polite"></p>
+      </div>
+      <div>
+        <label class="intake-label" for="field-accounting_fee">{{ _('Accounting Fee') }}</label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+          <input type="number" name="accounting_fee" id="field-accounting_fee" step="0.01" min="0" class="intake-input pl-6 text-right" placeholder="0.00">
         </div>
       </div>
       <div>
-        <label class="intake-label">Accounting Fee</label>
+        <label class="intake-label" for="field-w7_fee">{{ _('W-7 Fee') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-          <input type="number" name="accounting_fee" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+          <input type="number" name="w7_fee" id="field-w7_fee" step="0.01" min="0" class="intake-input pl-6 text-right" placeholder="0.00">
         </div>
       </div>
       <div>
-        <label class="intake-label">W-7 Fee</label>
+        <label class="intake-label" for="field-form_1099_fee">{{ _('1099s Fee') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-          <input type="number" name="w7_fee" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+          <input type="number" name="form_1099_fee" id="field-form_1099_fee" step="0.01" min="0" class="intake-input pl-6 text-right" placeholder="0.00">
         </div>
       </div>
       <div>
-        <label class="intake-label">1099s Fee</label>
+        <label class="intake-label" for="field-license_fee">{{ _('License Processing') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-          <input type="number" name="form_1099_fee" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+          <input type="number" name="license_fee" id="field-license_fee" step="0.01" min="0" class="intake-input pl-6 text-right" placeholder="0.00">
         </div>
       </div>
       <div>
-        <label class="intake-label">License Processing</label>
+        <label class="intake-label" for="field-reprocess_fee">{{ _('Reprocess / Reprint') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-          <input type="number" name="license_fee" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+          <input type="number" name="reprocess_fee" id="field-reprocess_fee" step="0.01" min="0" class="intake-input pl-6 text-right" placeholder="0.00">
         </div>
       </div>
       <div>
-        <label class="intake-label">Reprocess / Reprint</label>
+        <label class="intake-label" for="field-discount_amount">{{ _('New Client Discount') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-          <input type="number" name="reprocess_fee" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+          <input type="number" name="discount_amount" id="field-discount_amount" step="0.01" min="0" class="intake-input pl-6 text-right" placeholder="0.00" value="20">
         </div>
+        <p class="hint-text">{{ _('Set to 0 to remove') }}</p>
       </div>
       <div>
-        <label class="intake-label">Discount (coupon)</label>
+        <label class="intake-label" for="field-special_discount">{{ _('Special Discount') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-          <input type="number" name="discount_amount" step="0.01" min="0" class="intake-input pl-6" placeholder="20.00">
-        </div>
-      </div>
-      <div>
-        <label class="intake-label">Special Discount</label>
-        <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-          <input type="number" name="special_discount" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+          <input type="number" name="special_discount" id="field-special_discount" step="0.01" min="0" class="intake-input pl-6 text-right" placeholder="0.00">
         </div>
       </div>
 
       <div class="border-t border-slate-100 col-span-2 md:col-span-4 pt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
         <div>
-          <label class="intake-label">Down Payment / Deposit</label>
+          <label class="intake-label" for="field-down_payment">{{ _('Down Payment / Deposit') }}</label>
           <div class="relative">
-            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-            <input type="number" name="down_payment" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+            <input type="number" name="down_payment" id="field-down_payment" step="0.01" min="0" class="intake-input pl-6 text-right" placeholder="0.00">
           </div>
         </div>
         <div>
-          <label class="intake-label">Fee Paid</label>
+          <label class="intake-label" for="field-fee_paid">{{ _('Fee Paid') }}</label>
           <div class="relative">
-            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-            <input type="number" name="fee_paid" step="0.01" min="0" class="intake-input pl-6" placeholder="0.00">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+            <input type="number" name="fee_paid" id="field-fee_paid" step="0.01" min="0" class="intake-input pl-6 text-right" placeholder="0.00">
           </div>
         </div>
         <div>
-          <label class="intake-label">Receipt # (1)</label>
-          <input type="text" name="receipt_number" class="intake-input">
+          <label class="intake-label" for="field-receipt_number">{{ _('Receipt # (1)') }}</label>
+          <input type="text" name="receipt_number" id="field-receipt_number" class="intake-input">
         </div>
         <div>
-          <label class="intake-label">Receipt # (2)</label>
-          <input type="text" name="receipt2_number" class="intake-input">
+          <label class="intake-label" for="field-receipt2_number">{{ _('Receipt # (2)') }}</label>
+          <input type="text" name="receipt2_number" id="field-receipt2_number" class="intake-input">
         </div>
       </div>
 
@@ -549,35 +601,35 @@
   <!-- ── Section I: Estimates ──────────────────────────────────────────────── -->
   <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
     <div class="px-5 py-3 bg-slate-800">
-      <span class="text-white font-bold text-sm tracking-wide">I — Estimates &amp; Refunds</span>
+      <span class="text-white font-bold text-sm tracking-wide">{{ _('I \u2014 Estimates & Refunds') }}</span>
     </div>
     <div class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
       <div>
-        <label class="intake-label">Estimate — IRS</label>
+        <label class="intake-label" for="field-estimate_irs">{{ _('Estimate \u2014 IRS') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-          <input type="number" name="estimate_irs" step="0.01" class="intake-input pl-6" placeholder="0.00">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+          <input type="number" name="estimate_irs" id="field-estimate_irs" step="0.01" class="intake-input pl-6 text-right" placeholder="0.00">
         </div>
       </div>
       <div>
-        <label class="intake-label">Estimate — State</label>
+        <label class="intake-label" for="field-estimate_state">{{ _('Estimate \u2014 State') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-          <input type="number" name="estimate_state" step="0.01" class="intake-input pl-6" placeholder="0.00">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+          <input type="number" name="estimate_state" id="field-estimate_state" step="0.01" class="intake-input pl-6 text-right" placeholder="0.00">
         </div>
       </div>
       <div>
-        <label class="intake-label">Final — IRS</label>
+        <label class="intake-label" for="field-final_irs">{{ _('Final \u2014 IRS') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-          <input type="number" name="final_irs" step="0.01" class="intake-input pl-6" placeholder="0.00">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+          <input type="number" name="final_irs" id="field-final_irs" step="0.01" class="intake-input pl-6 text-right" placeholder="0.00">
         </div>
       </div>
       <div>
-        <label class="intake-label">Final — State</label>
+        <label class="intake-label" for="field-final_state">{{ _('Final \u2014 State') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-          <input type="number" name="final_state" step="0.01" class="intake-input pl-6" placeholder="0.00">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">$</span>
+          <input type="number" name="final_state" id="field-final_state" step="0.01" class="intake-input pl-6 text-right" placeholder="0.00">
         </div>
       </div>
     </div>
@@ -586,24 +638,24 @@
   <!-- ── Section J: Notes ──────────────────────────────────────────────────── -->
   <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
     <div class="px-5 py-3 bg-slate-800">
-      <span class="text-white font-bold text-sm tracking-wide">J — Notes</span>
+      <span class="text-white font-bold text-sm tracking-wide">{{ _('J \u2014 Notes') }}</span>
     </div>
     <div class="p-5">
-      <textarea name="notes_intake" rows="3"
+      <textarea name="notes_intake" id="field-notes_intake" rows="3"
                 class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-800
                        focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent resize-y"
-                placeholder="Special notes, instructions, or flags…"></textarea>
+                placeholder="{{ _('Special notes, instructions, or flags\u2026') }}"></textarea>
     </div>
   </div>
 
   <!-- ── Footer submit ─────────────────────────────────────────────────────── -->
   <div class="flex justify-end gap-3 pb-6">
     <a href="/" class="px-5 py-2.5 text-sm text-slate-600 hover:text-slate-800 font-medium transition-colors">
-      Cancel
+      {{ _('Cancel') }}
     </a>
     <button type="submit"
             class="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl px-8 py-2.5 text-sm shadow transition-colors">
-      Save &amp; Create Return
+      {{ _('Save & Create Return') }}
     </button>
   </div>
 
@@ -623,7 +675,7 @@
   const habitPanel    = document.getElementById('habit-profile-panel');
   const habitContent  = document.getElementById('habit-profile-content');
 
-  // client-level text fields (persist year to year)
+  // client-level text fields (persist year to year) — ssn_full intentionally omitted (never stored)
   const CLIENT_TEXT = [
     'last_name','first_name','taxpayer_dob','taxpayer_occupation',
     'taxpayer_phone','taxpayer_cell','taxpayer_work_phone','taxpayer_email',
@@ -679,7 +731,7 @@
     if (!items.length) {
       resultsBox.innerHTML = `
         <p class="text-sm text-slate-400 px-4 py-3">
-          No existing clients found — will create new.
+          ${t('no_results')} — {{ _('will create new') }}.
         </p>`;
     } else {
       resultsBox.innerHTML = items.map(c => `
@@ -719,9 +771,13 @@
 
     // ── UI state ──────────────────────────────────────────────────────────
     clientIdField.value = id;
-    intakeTitle.textContent = `Re-intake — ${name}`;
+    intakeTitle.textContent = `{{ _('Re-intake') }} — ${name}`;
     reintakeBadge.classList.remove('hidden');
     clearBtn.classList.remove('hidden');
+
+    // INTAKE-8: clear the auto-discount for returning clients (they don't get the new-client $20)
+    const discountEl = document.getElementById('field-discount_amount');
+    if (discountEl) discountEl.value = '';
 
     const prevYear = last_return.tax_year;
     const newYear  = document.querySelector('[name=tax_year]').value;
@@ -731,7 +787,74 @@
       : `Existing client found. A new TY${newYear} return will be created.`;
     selectedInfo.classList.remove('hidden');
     renderHabitProfile(habit_profile);
+
+    // LIFE-2: fetch prior year fee and show suggestion
+    _fetchPriorFee(id);
   }
+
+  // LIFE-2: prior year fee suggestion
+  async function _fetchPriorFee(clientId) {
+    const hint = document.getElementById('prior-year-fee-hint');
+    const feeEl = document.getElementById('fee-total');
+    if (!hint || !feeEl) return;
+    try {
+      const res  = await _csrfFetch(`/api/clients/${clientId}/prior-fee`);
+      const data = await res.json();
+      if (!data.found) { hint.classList.add('hidden'); return; }
+      const upchargePct = {{ intake_suggested_upcharge_pct | default(8) }};
+      const suggested   = Math.round(data.total_fee * (1 + upchargePct / 100));
+      hint.textContent  = `Last year (${data.tax_year}): $${data.total_fee.toFixed(0)} — suggested this year: $${suggested} (+${upchargePct}%)`;
+      hint.classList.remove('hidden');
+      if (!feeEl.value || feeEl.value === '0') {
+        feeEl.value = suggested;
+        markPrefilled(feeEl);
+      }
+    } catch(e) {
+      hint.classList.add('hidden');
+    }
+  }
+
+  // DEP-1: remove dependent row (client-side only during intake)
+  document.getElementById('dependents-body').addEventListener('click', function(e) {
+    const btn = e.target.closest('.dep-remove-btn');
+    if (!btn) return;
+    const row = btn.closest('tr.dependent-row');
+    const depName = row.querySelector('[name^="dep_name_"]');
+    const name = (depName && depName.value.trim()) || 'this dependent';
+    // inline confirmation: replace button text
+    if (!btn.dataset.confirming) {
+      btn.dataset.confirming = '1';
+      btn.textContent = `Remove ${name}?`;
+      btn.classList.add('text-red-500', 'text-xs', 'font-semibold');
+      btn.classList.remove('text-slate-300');
+      // reset if user clicks elsewhere
+      const reset = () => {
+        if (btn.dataset.confirming) {
+          delete btn.dataset.confirming;
+          btn.textContent = '✕';
+          btn.classList.remove('text-red-500', 'text-xs', 'font-semibold');
+          btn.classList.add('text-slate-300');
+        }
+        document.removeEventListener('click', reset);
+      };
+      setTimeout(() => document.addEventListener('click', reset), 50);
+      return;
+    }
+    // confirmed — clear the row fields
+    delete btn.dataset.confirming;
+    if (depName) depName.value = '';
+    const n = btn.dataset.row;
+    ['dep_ssn_','dep_rel_','dep_dob_'].forEach(p => {
+      const el = row.querySelector(`[name="${p}${n}"]`);
+      if (el) el.value = '';
+    });
+    ['dep_medicaid_','dep_medicare_'].forEach(p => {
+      const el = row.querySelector(`[name="${p}${n}"]`);
+      if (el) el.checked = false;
+    });
+    btn.classList.add('hidden');
+    delete btn.dataset.confirming;
+  });
 
   // ── Prefill helpers ────────────────────────────────────────────────────────
 
@@ -772,10 +895,15 @@
       const relEl  = document.querySelector(`[name="dep_rel_${n}"]`);
       const dobEl  = document.querySelector(`[name="dep_dob_${n}"]`);
       const mcEl   = document.querySelector(`[name="dep_medicaid_${n}"]`);
+      const medEl  = document.querySelector(`[name="dep_medicare_${n}"]`);
       if (nameEl && dep.full_name) { nameEl.value = dep.full_name; markPrefilled(nameEl); }
       if (relEl  && dep.relationship) { relEl.value = dep.relationship; markPrefilled(relEl); }
       if (dobEl  && dep.date_of_birth) { dobEl.value = dep.date_of_birth; markPrefilled(dobEl); }
       if (mcEl)  { mcEl.checked = !!dep.medi_cal; if (dep.medi_cal) markPrefilled(mcEl); }
+      if (medEl) { medEl.checked = !!dep.on_medicare; }
+      // DEP-1: show X button when returning client is loaded
+      const btn = document.querySelector(`.dep-remove-btn[data-row="${n}"]`);
+      if (btn && dep.full_name) btn.classList.remove('hidden');
     });
   }
 
@@ -834,7 +962,6 @@
       const res   = await _csrfFetch(`/api/clients/search?q=${encodeURIComponent(q)}`);
       const items = await res.json();
       if (!items.length) {
-        // allow free-text entry — save whatever they typed
         refResults.innerHTML = `
           <button type="button" data-name="${q}"
                   class="ref-pick w-full text-left px-4 py-2.5 text-sm text-slate-500
@@ -855,7 +982,7 @@
         btn.addEventListener('click', () => {
           refInput.value  = btn.dataset.name;
           refValue.value  = btn.dataset.name;
-          refFlag.checked = true;          // auto-tick referral flag
+          refFlag.checked = true;
           refResults.classList.add('hidden');
           refClear.classList.remove('hidden');
         })
@@ -864,7 +991,6 @@
   });
 
   refInput.addEventListener('blur', () => {
-    // if user typed something without picking, save the typed text
     setTimeout(() => {
       if (!refValue.value && refInput.value.trim()) {
         refValue.value = refInput.value.trim();
@@ -894,7 +1020,7 @@
   clearBtn.addEventListener('click', () => {
     clientIdField.value = '';
     lookupInput.value   = '';
-    intakeTitle.textContent = 'New Client Intake';
+    intakeTitle.textContent = '{{ _("New Client Intake") }}';
     reintakeBadge.classList.add('hidden');
     clearBtn.classList.add('hidden');
     selectedInfo.classList.add('hidden');
@@ -915,6 +1041,10 @@
     });
     document.querySelectorAll('.prefilled').forEach(el => el.classList.remove('prefilled'));
 
+    // reset auto-discount to new-client default
+    const discountEl = document.getElementById('field-discount_amount');
+    if (discountEl) discountEl.value = '20';
+
     // clear referral
     refInput.value  = '';
     refValue.value  = '';
@@ -927,9 +1057,18 @@
         const el = document.querySelector(`[name="${p}${i}"]`);
         if (el) el.value = '';
       });
-      const mc = document.querySelector(`[name="dep_medicaid_${i}"]`);
-      if (mc) mc.checked = false;
+      const mc  = document.querySelector(`[name="dep_medicaid_${i}"]`);
+      if (mc)  mc.checked = false;
+      const med = document.querySelector(`[name="dep_medicare_${i}"]`);
+      if (med) med.checked = false;
+      const btn = document.querySelector(`.dep-remove-btn[data-row="${i}"]`);
+      if (btn) btn.classList.add('hidden');
     }
+    // clear prior-year fee hint
+    const priorHint = document.getElementById('prior-year-fee-hint');
+    if (priorHint) { priorHint.classList.add('hidden'); priorHint.textContent = ''; }
+    const feeEl = document.getElementById('fee-total');
+    if (feeEl) feeEl.value = '';
   });
 })();
 </script>
@@ -989,5 +1128,50 @@
     color: #94a3b8;
     white-space: nowrap;
   }
+  /* WCAG 3.3.1: th-sm table headers — upgrade to slate-500 for contrast */
+  .th-sm { color: #64748b; }
 </style>
+<script>
+(function () {
+  // WCAG 3.3.1: On submit, check required fields and show error summary
+  var form = document.getElementById('intake-form');
+  if (!form) return;
+  form.addEventListener('submit', function (e) {
+    var errors = [];
+    form.querySelectorAll('[required]').forEach(function (el) {
+      if (!el.value.trim()) {
+        var label = form.querySelector('label[for="' + el.id + '"]');
+        var labelText = label ? (label.textContent || label.innerText || '').trim() : (el.name || el.id);
+        errors.push({ el: el, label: labelText.replace(/\s*\*\s*$/, '') });
+      }
+    });
+    var summary = document.getElementById('intake-error-summary');
+    var list    = document.getElementById('intake-error-list');
+    if (!errors.length) {
+      if (summary) summary.classList.add('hidden');
+      return;
+    }
+    e.preventDefault();
+    list.innerHTML = '';
+    errors.forEach(function (item) {
+      var li = document.createElement('li');
+      var a  = document.createElement('a');
+      a.href = '#' + item.el.id;
+      a.className = 'underline hover:no-underline';
+      a.textContent = item.label + ' \u2014 {{ _("This field is required") }}';
+      li.appendChild(a);
+      list.appendChild(li);
+    });
+    summary.classList.remove('hidden');
+    summary.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    summary.focus();
+    errors.forEach(function (item) {
+      item.el.setAttribute('aria-invalid', 'true');
+      var err = document.getElementById('err-' + item.el.id);
+      if (err) { err.textContent = '{{ _("This field is required") }}'; err.classList.add('visible'); }
+    });
+  });
+})();
+</script>
 {% endblock %}
+
