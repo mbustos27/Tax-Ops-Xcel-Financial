@@ -48,6 +48,10 @@
           {{ _('Dashboard') }}
         </a>
 
+        <a href="/reports?year={{ current_year }}" class="nav-link {% if active_page == 'reports' %}active{% endif %}">
+          {{ _('Reports') }}
+        </a>
+
         <!-- Tools dropdown (queues & utility pages consolidated to free header space for search) -->
         {% set tools_active =
             active_page in ('upload','source_compare','import_audit','merge','efile_batch','audit_log',
