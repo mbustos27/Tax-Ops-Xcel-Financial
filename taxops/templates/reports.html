@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Reports') }} — TaxOps {{ report_year }}{% endblock %}
+
+{% block content %}
+<div class="max-w-screen-2xl mx-auto px-4 py-6 space-y-6">
+
+  <!-- ── Header row: title + year picker + print ───────────────────────── -->
+  <div class="flex items-center justify-between gap-4 flex-wrap">
+    <h1 class="text-xl font-bold text-slate-900">{{ _('Season Reports') }}</h1>
+
+    <div class="flex items-center gap-3">
+      <!-- Year picker pills -->
+      <nav class="flex items-center gap-1" aria-label="{{ _('Tax year') }}">
+        {% for y in report.available_years %}
+        <a href="/reports?year={{ y }}"
+           id="year-pill-{{ y }}"
+           class="pill shrink-0 {% if y == report_year %}pill-active{% else %}pill-inactive{% endif %}">
+          {{ y }}
+        </a>
+        {% endfor %}
+      </nav>
+
+      <!-- Print -->
+      <button onclick="window.print()"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-600 hover:bg-slate-50 transition-colors shadow-sm print:hidden">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 9V3h12v6M6 18H4a1 1 0 01-1-1v-5a1 1 0 011-1h16a1 1 0 011 1v5a1 1 0 01-1 1h-2M6 14h12v7H6v-7z"/>
+        </svg>
+        {{ _('Print') }}
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Section A: Season summary KPI cards ───────────────────────────── -->
+  {% set s = report.summary %}
+  <section aria-labelledby="summary-heading">
+    <h2 id="summary-heading" class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">{{ _('Season Summary') }}</h2>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+
+      <!-- Total Billed -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">{{ _('Total Billed') }}</p>
+        <p class="text-2xl font-bold text-slate-900 tabular-nums">${{ "{:,.0f}".format(s.total_billed or 0) }}</p>
+        {% if s.yoy_billed_pct is not none %}
+        <p class="mt-1 text-xs font-semibold {{ 'text-green-600' if s.yoy_billed_pct >= 0 else 'text-red-500' }}">
+          {{ '+' if s.yoy_billed_pct >= 0 else '' }}{{ s.yoy_billed_pct }}%
+          <span class="font-normal text-slate-400">vs {{ s.prev_year }}</span>
+        </p>
+        {% endif %}
+      </div>
+
+      <!-- Total Collected -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">{{ _('Total Collected') }}</p>
+        <p class="text-2xl font-bold text-green-700 tabular-nums">${{ "{:,.0f}".format(s.total_collected or 0) }}</p>
+        <p class="mt-1 text-xs text-slate-500">
+          {{ _('Collection rate:') }}
+          <span class="font-semibold text-slate-700">{{ s.collection_rate or 0 }}%</span>
+        </p>
+      </div>
+
+      <!-- Outstanding -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">{{ _('Outstanding Balance') }}</p>
+        <p class="text-2xl font-bold {{ 'text-red-600' if (s.total_outstanding or 0) > 0 else 'text-slate-900' }} tabular-nums">
+          ${{ "{:,.0f}".format(s.total_outstanding or 0) }}
+        </p>
+        <p class="mt-1 text-xs text-slate-500">
+          <span class="font-semibold text-slate-700">{{ s.balance_due_count or 0 }}</span> {{ _('returns') }}
+        </p>
+      </div>
+
+      <!-- Average Fee -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">{{ _('Average Fee') }}</p>
+        <p class="text-2xl font-bold text-slate-900 tabular-nums">
+          ${{ "{:,.0f}".format(s.avg_fee or 0) }}
+        </p>
+        {% if s.yoy_avg_fee_pct is not none %}
+        <p class="mt-1 text-xs font-semibold {{ 'text-green-600' if s.yoy_avg_fee_pct >= 0 else 'text-red-500' }}">
+          {{ '+' if s.yoy_avg_fee_pct >= 0 else '' }}{{ s.yoy_avg_fee_pct }}%
+          <span class="font-normal text-slate-400">vs {{ s.prev_year }}</span>
+        </p>
+        {% endif %}
+      </div>
+
+    </div>
+
+    <!-- Summary sentence -->
+    <p class="mt-3 text-sm text-slate-500">
+      {{ _('As of') }} {{ as_of_date }} ·
+      <span class="font-semibold text-slate-700">{{ s.return_count or 0 }}</span> {{ _('returns') }} ·
+      {{ report_year }} {{ _('tax season') }}
+    </p>
+  </section>
+
+  <!-- ── Section B: Preparer performance ───────────────────────────────── -->
+  <section aria-labelledby="preparer-heading">
+    <h2 id="preparer-heading" class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">{{ _('Preparer Performance') }}</h2>
+
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <table class="w-full text-sm" id="preparer-table">
+        <thead>
+          <tr class="border-b border-slate-100">
+            <th class="th text-left sortable cursor-pointer select-none" data-col="0" data-type="str">{{ _('Preparer') }} <span class="sort-arrow"></span></th>
+            <th class="th text-right sortable cursor-pointer select-none" data-col="1" data-type="num">{{ _('Returns') }} <span class="sort-arrow"></span></th>
+            <th class="th text-right sortable cursor-pointer select-none" data-col="2" data-type="num">{{ _('Avg Fee') }} <span class="sort-arrow"></span></th>
+            <th class="th text-right sortable cursor-pointer select-none" data-col="3" data-type="num">{{ _('Total Billed') }} <span class="sort-arrow"></span></th>
+            <th class="th text-right sortable cursor-pointer select-none" data-col="4" data-type="num">{{ _('Completed') }} <span class="sort-arrow"></span></th>
+            <th class="th text-right sortable cursor-pointer select-none" data-col="5" data-type="num">{{ _('In Progress') }} <span class="sort-arrow"></span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for p in report.preparers %}
+          <tr class="hover:bg-slate-50 transition-colors">
+            <td class="td">
+              <div class="font-medium text-slate-800">{{ p.processor }}</div>
+              <!-- Share bar -->
+              <div class="mt-1 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full bg-blue-400 rounded-full" style="width: {{ p.share_pct }}%"></div>
+              </div>
+              <div class="mt-0.5 text-xs text-slate-400">{{ p.share_pct }}% {{ _('of total') }}</div>
+            </td>
+            <td class="td text-right font-semibold tabular-nums">{{ p.return_count }}</td>
+            <td class="td text-right tabular-nums">${{ "{:,.0f}".format(p.avg_fee or 0) }}</td>
+            <td class="td text-right tabular-nums">${{ "{:,.0f}".format(p.total_billed or 0) }}</td>
+            <td class="td text-right tabular-nums">{{ p.completed_count }}</td>
+            <td class="td text-right tabular-nums">{{ p.in_progress_count }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="td text-center text-slate-400 py-6">{{ _('No preparer data for this season.') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Section C: Return mix ─────────────────────────────────────────── -->
+  <section aria-labelledby="mix-heading">
+    <h2 id="mix-heading" class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">{{ _('Return Mix') }}</h2>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+      <!-- Status breakdown -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-4 py-3 border-b border-slate-100">
+          <h3 class="text-sm font-semibold text-slate-700">{{ _('By Status') }}</h3>
+        </div>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100">
+              <th class="th text-left">{{ _('Status') }}</th>
+              <th class="th text-right">{{ _('Count') }}</th>
+              <th class="th text-right">{{ _('% of Total') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for row in report.mix.by_status %}
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="td">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border
+                             {{ status_badge.get(row.client_status, 'bg-slate-100 text-slate-500 border-slate-200') }}">
+                  {{ row.client_status }}
+                </span>
+              </td>
+              <td class="td text-right font-semibold tabular-nums">{{ row.count }}</td>
+              <td class="td text-right tabular-nums text-slate-500">{{ row.pct }}%</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="3" class="td text-center text-slate-400 py-4">{{ _('No data.') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Fee range breakdown -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-4 py-3 border-b border-slate-100">
+          <h3 class="text-sm font-semibold text-slate-700">{{ _('By Fee Range') }}</h3>
+        </div>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-100">
+              <th class="th text-left">{{ _('Range') }}</th>
+              <th class="th text-right">{{ _('Count') }}</th>
+              <th class="th text-right">{{ _('Avg Fee') }}</th>
+              <th class="th text-right">{{ _('%') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for row in report.mix.by_fee_range %}
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="td font-medium text-slate-700">{{ row.fee_range }}</td>
+              <td class="td text-right tabular-nums font-semibold">{{ row.count }}</td>
+              <td class="td text-right tabular-nums text-slate-600">${{ "{:,.0f}".format(row.avg_fee or 0) }}</td>
+              <td class="td text-right tabular-nums text-slate-500">{{ row.pct }}%</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="4" class="td text-center text-slate-400 py-4">{{ _('No data.') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+
+    <!-- Year-over-year table -->
+    <div class="mt-4 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-100">
+        <h3 class="text-sm font-semibold text-slate-700">{{ _('Year-over-Year') }}</h3>
+      </div>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-100">
+            <th class="th text-left">{{ _('Year') }}</th>
+            <th class="th text-right">{{ _('Returns') }}</th>
+            <th class="th text-right">{{ _('Avg Fee') }}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for row in report.mix.yoy %}
+          <tr class="hover:bg-slate-50 transition-colors {% if row.tax_year == report_year %}bg-blue-50{% endif %}">
+            <td class="td font-semibold {{ 'text-blue-700' if row.tax_year == report_year else 'text-slate-700' }}">
+              {{ row.tax_year }}
+              {% if row.tax_year == report_year %}<span class="ml-1 text-xs font-normal text-blue-500">{{ _('current') }}</span>{% endif %}
+            </td>
+            <td class="td text-right tabular-nums font-semibold">{{ row.count }}</td>
+            <td class="td text-right tabular-nums text-slate-600">${{ "{:,.0f}".format(row.avg_fee or 0) }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="3" class="td text-center text-slate-400 py-4">{{ _('No data.') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+
+<style>
+  @media print {
+    header, nav, .print\:hidden { display: none !important; }
+    body { background: white; }
+    .rounded-xl { border-radius: 0; }
+    .shadow-sm { box-shadow: none; }
+  }
+</style>
+
+<script>
+(function () {
+  "use strict";
+
+  // ── Year picker: AJAX refresh without full page reload ────────────────
+  document.querySelectorAll('[id^="year-pill-"]').forEach(function (pill) {
+    pill.addEventListener("click", function (e) {
+      e.preventDefault();
+      var year = parseInt(pill.id.replace("year-pill-", ""), 10);
+      history.pushState({year: year}, "", "/reports?year=" + year);
+      _loadReportYear(year);
+    });
+  });
+
+  function _loadReportYear(year) {
+    fetch("/api/reports/data?year=" + year, {credentials: "same-origin"})
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        // Update year pill active state
+        document.querySelectorAll('[id^="year-pill-"]').forEach(function (p) {
+          var y = parseInt(p.id.replace("year-pill-", ""), 10);
+          p.classList.toggle("pill-active", y === year);
+          p.classList.toggle("pill-inactive", y !== year);
+        });
+        // Full page reload is acceptable for now since template drives layout.
+        // For a true no-reload update the whole page is re-rendered server-side.
+        window.location.href = "/reports?year=" + year;
+      })
+      .catch(function () {
+        window.location.href = "/reports?year=" + year;
+      });
+  }
+
+  // ── Preparer table sort ───────────────────────────────────────────────
+  (function () {
+    var table = document.getElementById("preparer-table");
+    if (!table) return;
+    var sortState = {col: -1, asc: true};
+
+    table.querySelectorAll("th.sortable").forEach(function (th) {
+      th.addEventListener("click", function () {
+        var col = parseInt(th.dataset.col, 10);
+        var type = th.dataset.type || "str";
+        if (sortState.col === col) {
+          sortState.asc = !sortState.asc;
+        } else {
+          sortState.col = col;
+          sortState.asc = true;
+        }
+        // Update arrows
+        table.querySelectorAll("th.sortable .sort-arrow").forEach(function (a) { a.textContent = ""; });
+        th.querySelector(".sort-arrow").textContent = sortState.asc ? " ▲" : " ▼";
+
+        var tbody = table.querySelector("tbody");
+        var rows = Array.from(tbody.querySelectorAll("tr"));
+        rows.sort(function (a, b) {
+          var ac = (a.cells[col] && a.cells[col].dataset && a.cells[col].dataset.val)
+            ? a.cells[col].dataset.val
+            : (a.cells[col] ? a.cells[col].textContent.replace(/[$,%]/g, "").trim() : "");
+          var bc = (b.cells[col] && b.cells[col].dataset && b.cells[col].dataset.val)
+            ? b.cells[col].dataset.val
+            : (b.cells[col] ? b.cells[col].textContent.replace(/[$,%]/g, "").trim() : "");
+          var cmp = type === "num"
+            ? (parseFloat(ac) || 0) - (parseFloat(bc) || 0)
+            : ac.localeCompare(bc);
+          return sortState.asc ? cmp : -cmp;
+        });
+        rows.forEach(function (r) { tbody.appendChild(r); });
+      });
+    });
+  }());
+}());
+</script>
+{% endblock %}

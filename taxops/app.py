@@ -17,6 +17,7 @@ from flask import (
 import json
 import io
 import logging
+import math
 import secrets
 import shutil
 import sqlite3
@@ -24,10 +25,13 @@ import tempfile
 import time
 from urllib.parse import urlencode
 
+import re as _re
+
 from config import (
     APP_ENV,
     DB_PATH,
     DRAKE_FOLDER_STRUCTURE_ENABLED,
+    INTAKE_AUTO_DISCOUNT,
     KNOWN_PROMOTIONAL_DOMAINS,
     MASS_MAILING_PREFIXES,
     MULTIYEAR_AGI_PERCENT_THRESHOLD,
@@ -89,12 +93,13 @@ app.config["TEMPLATES_AUTO_RELOAD"] = app.debug
 app.config["APP_VERSION"] = taxops_asset_cache_version()
 
 # SEC-3: session cookie hardening + lifetime.
-# SESSION_COOKIE_SECURE is intentionally left False here because the office LAN
-# does not currently terminate HTTPS in front of this server.  Enable it once a
-# reverse proxy or load balancer provides TLS (see issue SEC-3).
+# SESSION_COOKIE_SECURE is gated on TAXOPS_HTTPS_ENABLED because the office LAN
+# currently uses plain HTTP.  Set TAXOPS_HTTPS_ENABLED=true once a reverse proxy
+# or load balancer terminates TLS in front of this server.
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("TAXOPS_HTTPS_ENABLED", "false").lower() == "true",
     PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
 )
 
@@ -151,10 +156,12 @@ from routes.documents import documents_bp
 from routes.email_review import email_review_bp
 from routes.accounting import accounting_bp
 from routes.users import users_bp
+from routes.reports import reports_bp
 app.register_blueprint(documents_bp)
 app.register_blueprint(email_review_bp)
 app.register_blueprint(accounting_bp)
 app.register_blueprint(users_bp)
+app.register_blueprint(reports_bp)
 
 
 # REL-4: Flask g-based DB helper — lets routes use get_db() and have the connection
@@ -584,7 +591,9 @@ def _enrich(r: dict) -> dict:
     first = r.get("first_name") or ""
     last  = r.get("last_name")  or ""
     r["name_full"] = r.get("display_name") or (f"{last}, {first}".strip(", ") if first else last)
-    r["forms"]        = _form_badges(r)
+    r["forms"]         = _form_badges(r)
+    # Pre-compute preparer display label so the AJAX row renderer doesn't need a server roundtrip.
+    r["processor_label"] = preparer_list_label(r.get("processor") or "")
     intake_dt = _parse_iso_date(r.get("intake_date"))
     completion_dt = _parse_iso_date(r.get("logout_date")) or _parse_iso_date(r.get("ack_date"))
     r["cycle_days"] = (
@@ -740,11 +749,137 @@ def query_returns(filters: dict | None = None) -> list[dict]:
             params.extend([qp, qp, qp])
 
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-    sql   = f"{_SELECT} {where} ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END, CAST(r.log_number AS INTEGER), r.id"
+    order = "ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END, CAST(r.log_number AS INTEGER), r.id"
+    sql   = f"{_SELECT} {where} {order}"
 
     try:
         rows = conn.execute(sql, params).fetchall()
         return [_enrich(dict(r)) for r in rows]
+    finally:
+        conn.close()
+
+
+def query_returns_paginated(filters: dict | None = None, *, page: int = 1, per_page: int = 50) -> tuple[list[dict], int]:
+    """Return (rows_for_page, total_count) for dashboard pagination.
+
+    Runs two queries: a COUNT and a paginated SELECT.  Both share the same
+    WHERE clause built from *filters*, so the count always reflects the full
+    matching set regardless of the current page.
+    """
+    conn = get_connection()
+    f = filters or {}
+    clauses: list[str] = []
+    params:  list      = []
+
+    year = f.get("year") or date.today().year
+    clauses.append(
+        "(strftime('%Y', r.intake_date) = ? OR "
+        "(r.intake_date IS NULL AND r.tax_year = ?))"
+    )
+    params.append(str(year))
+    params.append(year - 1)
+
+    if f.get("status"):
+        statuses = f["status"] if isinstance(f["status"], list) else [f["status"]]
+        statuses = [s for s in statuses if s]
+        if statuses:
+            clauses.append(f"r.client_status IN ({','.join('?' for _ in statuses)})")
+            params.extend(statuses)
+
+    if f.get("processor"):
+        pvals = preparer_filter_match_values(f["processor"])
+        if pvals:
+            clauses.append("r.processor IN (" + ",".join("?" for _ in pvals) + ")")
+            params.extend(pvals)
+
+    if f.get("balance_due"):
+        clauses.append(
+            "(p.total_fee IS NOT NULL AND COALESCE(p.fee_paid,0) < p.total_fee)"
+        )
+    if f.get("late_intake"):
+        clauses.append(
+            "(r.intake_date IS NOT NULL AND ("
+            "CAST(substr(r.intake_date,6,2) AS INTEGER) > 4 OR "
+            "(CAST(substr(r.intake_date,6,2) AS INTEGER) = 4 AND CAST(substr(r.intake_date,9,2) AS INTEGER) >= 1)"
+            "))"
+        )
+    if f.get("slow_cycle"):
+        clauses.append(
+            "(r.intake_date IS NOT NULL AND "
+            "(r.logout_date IS NOT NULL OR r.ack_date IS NOT NULL) AND "
+            "(julianday(COALESCE(r.logout_date, r.ack_date)) - julianday(r.intake_date)) >= ?)"
+        )
+        params.append(SLOW_CYCLE_DAYS)
+
+    if f.get("form"):
+        form_col = f["form"]
+        allowed = {
+            "form_1040", "sched_a_d", "sched_c", "sched_e",
+            "form_1120", "form_1120s", "form_1065_llc",
+            "corp_officer", "business_owner", "form_990_1041",
+            "is_amended", "has_w7", "is_extension",
+        }
+        if form_col in allowed:
+            if form_col in ("is_amended", "has_w7", "is_extension"):
+                clauses.append(f"r.{form_col} = 1")
+            else:
+                clauses.append(f"rf.{form_col} = 1")
+
+    if f.get("reject_contact"):
+        st_raw = f.get("status")
+        st_list = st_raw if isinstance(st_raw, list) else ([st_raw] if st_raw else [])
+        if not (st_list and "REJECTED" not in st_list):
+            rc = (f["reject_contact"] or "").strip().lower()
+            clauses.append("r.client_status = 'REJECTED'")
+            if rc == "needs_followup":
+                clauses.append(
+                    "(r.contact_status IS NULL OR r.contact_status = '' OR "
+                    "r.contact_status IN ('not_contacted','follow_up_needed'))"
+                )
+            elif rc in CONTACT_STATUS_VALUES:
+                if rc == "not_contacted":
+                    clauses.append(
+                        "(r.contact_status IS NULL OR r.contact_status = '' OR r.contact_status = 'not_contacted')"
+                    )
+                else:
+                    clauses.append("r.contact_status = ?")
+                    params.append(rc)
+
+    if f.get("q"):
+        q = f["q"].strip()
+        if q.isdigit():
+            clauses.append("r.log_number = ?")
+            params.append(q)
+        else:
+            qp = f"%{q.lower()}%"
+            clauses.append(
+                "(lower(c.last_name) LIKE ? OR lower(c.first_name) LIKE ? OR lower(COALESCE(c.display_name,'')) LIKE ?)"
+            )
+            params.extend([qp, qp, qp])
+
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    order = "ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END, CAST(r.log_number AS INTEGER), r.id"
+
+    per_page = min(100, max(1, int(per_page)))
+    page     = max(1, int(page))
+    offset   = (page - 1) * per_page
+
+    # COUNT query — same WHERE, no ORDER/LIMIT
+    count_sql = (
+        "SELECT COUNT(*) n "
+        "FROM returns r "
+        "JOIN clients c ON c.id = r.client_id "
+        "LEFT JOIN payments p ON p.return_id = r.id "
+        "LEFT JOIN return_forms rf ON rf.return_id = r.id "
+        f"{where}"
+    )
+
+    paginated_sql = f"{_SELECT} {where} {order} LIMIT ? OFFSET ?"
+
+    try:
+        total_count = conn.execute(count_sql, params).fetchone()["n"]
+        rows = conn.execute(paginated_sql, params + [per_page, offset]).fetchall()
+        return [_enrich(dict(r)) for r in rows], total_count
     finally:
         conn.close()
 
@@ -895,6 +1030,7 @@ def get_totals(year: int) -> dict:
         FROM returns r
         LEFT JOIN payments p ON p.return_id = r.id
         WHERE (strftime('%Y', r.intake_date) = ? OR (r.intake_date IS NULL AND r.tax_year = ?))
+          AND UPPER(COALESCE(r.client_status,'')) != 'CANCELLED'
         """,
         (str(year), year - 1),
     ).fetchone()
@@ -1148,7 +1284,9 @@ def login():
         password = request.form.get("password") or ""
         user = _authenticate_user(username, password)
         if user is _AUTH_LOCKED:
-            # SEC-7: account locked — same UX string as bad-password to avoid info leak.
+            # SEC-7: constant-time failure — sleep before returning so a timing oracle
+            # cannot distinguish a lockout response from a bcrypt verification.
+            time.sleep(0.2)
             error = "Invalid username or password."
         elif user:
             session.permanent = True  # SEC-3: enforce PERMANENT_SESSION_LIFETIME (12 h)
@@ -1165,6 +1303,9 @@ def login():
             next_url = request.args.get("next") or url_for("dashboard")
             return redirect(next_url)
         else:
+            # SEC-7: constant-time failure — sleep before returning so a timing oracle
+            # cannot distinguish an unknown-user response from a bcrypt verification.
+            time.sleep(0.2)
             error = "Invalid username or password."
     return render_template("login.html", error=error)
 
@@ -1462,6 +1603,69 @@ def health():
     return jsonify(body), (200 if db_ok else 503)
 
 
+@app.get("/api/dashboard/returns")
+@login_required
+def api_dashboard_returns():
+    """Paginated dashboard returns for AJAX navigation (Section 3 — dashboard pagination).
+
+    Accepts the same filter query-string parameters as GET / plus `page` and `per_page`.
+    Returns JSON with the paginated row list and total-count metadata so the client
+    can update the tbody and pagination controls without a full page reload.
+    """
+    year     = int(request.args.get("year", date.today().year))
+    page     = max(1, int(request.args.get("page", 1)))
+    per_page = min(100, max(1, int(request.args.get("per_page", 50))))
+    filters  = {
+        "year":           year,
+        "status":         request.args.getlist("status") or None,
+        "processor":      request.args.get("processor"),
+        "balance_due":    request.args.get("balance_due"),
+        "late_intake":    request.args.get("late_intake"),
+        "slow_cycle":     request.args.get("slow_cycle"),
+        "form":           request.args.get("form"),
+        "reject_contact": request.args.get("reject_contact"),
+        "q":              request.args.get("q"),
+    }
+    rows, total_count = query_returns_paginated(filters, page=page, per_page=per_page)
+    total_pages = max(1, math.ceil(total_count / per_page))
+    return jsonify({
+        "returns":     rows,
+        "total_count": total_count,
+        "page":        page,
+        "per_page":    per_page,
+        "total_pages": total_pages,
+        "has_next":    page < total_pages,
+        "has_prev":    page > 1,
+    })
+
+
+@app.get("/api/notifications/unread-documents")
+@login_required
+def api_unread_documents():
+    """Section 4 — document arrival badge.
+
+    Returns the count of email-sourced documents that have not yet been typed
+    (doc_type = 'unknown') and have not been soft-deleted.  This is the lightweight
+    query that drives the amber badge on the Email Review nav item.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) n FROM return_documents "
+            "WHERE source = 'email' AND doc_type = 'unknown' AND is_deleted = 0"
+        ).fetchone()
+        unconfirmed = conn.execute(
+            "SELECT COUNT(*) n FROM return_documents "
+            "WHERE match_confirmed = 0 AND is_deleted = 0"
+        ).fetchone()
+        return jsonify({
+            "count": row["n"],
+            "unconfirmed_matches": unconfirmed["n"],
+        })
+    finally:
+        conn.close()
+
+
 # ── Saved dashboard filters (Epic #85, FILTER-1…FILTER-6) ─────────────────────
 
 
@@ -1671,6 +1875,10 @@ def dashboard():
             if _dashboard_saved_filter_meaningful(fd_clean):
                 return redirect("/?" + _dashboard_filter_query_string(fd_clean, year))
 
+    # Dashboard pagination — cap per_page at 100, default 50.
+    page     = max(1, int(request.args.get("page", 1)))
+    per_page = min(100, max(1, int(request.args.get("per_page", 50))))
+
     filters = {
         "year":        year,
         "status":      request.args.getlist("status") or None,
@@ -1682,13 +1890,20 @@ def dashboard():
         "reject_contact": request.args.get("reject_contact"),
         "q":           request.args.get("q"),
     }
-    returns = query_returns(filters)
+    returns, total_count = query_returns_paginated(filters, page=page, per_page=per_page)
+    total_pages = max(1, math.ceil(total_count / per_page))
     ctx = base_ctx(year)
     snap = _dashboard_filter_snapshot_from_current_request(year)
     ctx.update({
         "active_page":                         "dashboard",
         "returns":                             returns,
         "filters":                             filters,
+        "total_count":                         total_count,
+        "page":                                page,
+        "per_page":                            per_page,
+        "total_pages":                         total_pages,
+        "has_next":                            page < total_pages,
+        "has_prev":                            page > 1,
         "saved_dashboard_filters":             _saved_dashboard_filters_payload(uname, year),
         "can_publish_shared_dashboard_filters": can_publish_shared_dashboard_filters(),
         "dashboard_current_filter_snapshot":   snap,
@@ -1714,6 +1929,11 @@ def return_detail(return_id: int):
         "SELECT * FROM missing_docs WHERE return_id=? ORDER BY is_resolved, created_at",
         (return_id,)
     ).fetchall()
+    # DEP-1/DEP-3: load active dependents for return detail
+    dependents = conn.execute(
+        "SELECT * FROM dependents WHERE return_id=? AND is_deleted=0 ORDER BY id",
+        (return_id,)
+    ).fetchall()
     conn.close()
     notes_payload = [dict(n) for n in notes]
     if privacy_mode_enabled():
@@ -1728,6 +1948,7 @@ def return_detail(return_id: int):
         "notes":          notes_payload,
         "events":         [dict(e) for e in events],
         "missing_docs":   [dict(d) for d in missing_docs],
+        "dependents":     [dict(d) for d in dependents],
         "contact_labels": CONTACT_LABELS,
         "drake_enabled":  bool(DRAKE_FOLDER_STRUCTURE_ENABLED),
     })
@@ -2357,12 +2578,14 @@ def payments():
 @login_required
 def intake():
     if request.method == "GET":
+        from config import INTAKE_SUGGESTED_UPCHARGE_PCT as _upc
         ctx = base_ctx()
         ctx.update({
             "active_page": "intake",
             "today": date.today().isoformat(),
             "error": None,
             "habit_profile": None,
+            "intake_suggested_upcharge_pct": _upc,
         })
         return render_template("intake.html", **ctx)
 
@@ -2374,8 +2597,10 @@ def intake():
     last_name  = (f.get("last_name") or "").strip().upper()
     first_name = (f.get("first_name") or "").strip().upper()
     if not last_name:
+        from config import INTAKE_SUGGESTED_UPCHARGE_PCT as _upc
         ctx = base_ctx()
-        ctx.update({"active_page": "intake", "today": today_iso, "error": "Last name is required.", "prefill": {}})
+        ctx.update({"active_page": "intake", "today": today_iso, "error": "Last name is required.",
+                    "prefill": {}, "intake_suggested_upcharge_pct": _upc})
         return render_template("intake.html", **ctx), 400
 
     def _v(key):
@@ -2393,6 +2618,14 @@ def intake():
         val = f.get(key, "").strip()
         return int(val) if val.isdigit() else None
 
+    def _ssn_last4_from_full(field_name: str) -> str | None:
+        """Extract last 4 digits from a full SSN field (XXX-XX-XXXX). Never logged."""
+        raw = f.get(field_name, "").strip()
+        digits = _re.sub(r"\D", "", raw)
+        if len(digits) >= 4:
+            return digits[-4:]
+        return digits if digits else None
+
     conn = get_connection()
     try:
         tax_year = _i("tax_year") or date.today().year
@@ -2406,6 +2639,10 @@ def intake():
 
         # ── Client — insert new or update existing (re-intake) ────────────────
         existing_client_id = _i("client_id")
+        # INTAKE-2: derive ssn_last4 from full SSN field (never stored in full)
+        taxpayer_ssn_last4 = _ssn_last4_from_full("ssn_full")
+        spouse_ssn_last4   = _ssn_last4_from_full("spouse_ssn_full")
+
         if existing_client_id:
             conn.execute(
                 """
@@ -2422,7 +2659,7 @@ def intake():
                 WHERE id=?
                 """,
                 (
-                    last_name, first_name, _v("ssn_last4"),
+                    last_name, first_name, taxpayer_ssn_last4,
                     (_v("spouse_last_name") or "").upper() or None,
                     (_v("spouse_first_name") or "").upper() or None,
                     _v("taxpayer_dob"), _v("spouse_dob"),
@@ -2455,7 +2692,7 @@ def intake():
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
-                    last_name, first_name, _v("ssn_last4"),
+                    last_name, first_name, taxpayer_ssn_last4,
                     (_v("spouse_last_name") or "").upper() or None,
                     (_v("spouse_first_name") or "").upper() or None,
                     _v("taxpayer_dob"), _v("spouse_dob"),
@@ -2532,6 +2769,11 @@ def intake():
         )
 
         # ── Payment ───────────────────────────────────────────────────────────
+        # INTAKE-8: apply auto-discount for new clients (no prior return)
+        discount_val = _n("discount_amount")
+        if existing_client_id is None and discount_val is None:
+            discount_val = float(INTAKE_AUTO_DISCOUNT) if INTAKE_AUTO_DISCOUNT else None
+
         conn.execute(
             """
             INSERT INTO payments (
@@ -2545,7 +2787,7 @@ def intake():
                 _n("total_fee"), _n("fee_paid"),
                 _v("receipt_number"), _v("receipt2_number"),
                 _n("accounting_fee"), _n("w7_fee"), _n("form_1099_fee"), _n("license_fee"),
-                _n("reprocess_fee"), _n("discount_amount"), _n("special_discount"),
+                _n("reprocess_fee"), discount_val, _n("special_discount"),
                 _n("down_payment"),
             ),
         )
@@ -2559,8 +2801,8 @@ def intake():
             conn.execute(
                 """
                 INSERT INTO dependents
-                  (return_id, full_name, ssn_last4, relationship, date_of_birth, medi_cal, created_at)
-                VALUES (?,?,?,?,?,?,?)
+                  (return_id, full_name, ssn_last4, relationship, date_of_birth, medi_cal, on_medicare, created_at)
+                VALUES (?,?,?,?,?,?,?,?)
                 """,
                 (
                     return_id, name,
@@ -2568,6 +2810,7 @@ def intake():
                     _v(f"dep_rel_{i}"),
                     _v(f"dep_dob_{i}"),
                     1 if f.get(f"dep_medicaid_{i}") else 0,
+                    1 if f.get(f"dep_medicare_{i}") else 0,
                     ts,
                 ),
             )
@@ -2791,25 +3034,47 @@ def _import_row(conn, row_data: dict, tax_year: int, ts: str, today_iso: str, st
         )
         return  # do not create return — wait for staff to resolve
     else:
-        # No match — create new client
-        conn.execute(
-            """INSERT INTO clients (last_name, first_name, referral_flag, referred_by,
-                                    prior_year_log, is_new_client, created_at, updated_at)
-               VALUES (?,?,?,?,?,1,?,?)""",
-            (
-                last_name, first_name,
-                1 if g("clients", "referral_flag") else 0,
-                normalize_string(g("clients", "referred_by")),
-                normalize_string(g("clients", "prior_year_log")),
-                ts, ts,
-            ),
-        )
-        client_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        # Add to cache so subsequent rows for the same new client match
-        if _client_cache is not None:
-            _client_cache.append({"id": client_id, "ln": last_name.upper(), "fn": (first_name or "").upper()})
-        stats["created"] = stats.get("created", 0) + 1
-        match_method = "new"
+        # Fuzzy returned nothing — try an exact SQL lookup before inserting a new row.
+        # This prevents duplicates for business names (NULL first_name) and handles
+        # cases where the in-memory cache was not populated (e.g. first row of a session).
+        if first_name:
+            _exact = conn.execute(
+                "SELECT id FROM clients WHERE lower(last_name)=lower(?) AND lower(first_name)=lower(?) LIMIT 1",
+                (last_name, first_name),
+            ).fetchone()
+        else:
+            _exact = conn.execute(
+                "SELECT id FROM clients WHERE lower(last_name)=lower(?) AND (first_name IS NULL OR first_name='') LIMIT 1",
+                (last_name,),
+            ).fetchone()
+
+        if _exact:
+            client_id = _exact[0]
+            conn.execute("UPDATE clients SET updated_at=? WHERE id=?", (ts, client_id))
+            if _client_cache is not None and not any(c["id"] == client_id for c in _client_cache):
+                _client_cache.append({"id": client_id, "ln": last_name.upper(), "fn": (first_name or "").upper()})
+            stats["updated"] = stats.get("updated", 0) + 1
+            match_method = "exact_fallback"
+        else:
+            # Genuinely new client
+            conn.execute(
+                """INSERT INTO clients (last_name, first_name, referral_flag, referred_by,
+                                        prior_year_log, is_new_client, created_at, updated_at)
+                   VALUES (?,?,?,?,?,1,?,?)""",
+                (
+                    last_name, first_name,
+                    1 if g("clients", "referral_flag") else 0,
+                    normalize_string(g("clients", "referred_by")),
+                    normalize_string(g("clients", "prior_year_log")),
+                    ts, ts,
+                ),
+            )
+            client_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            # Add to cache so subsequent rows for the same new client match
+            if _client_cache is not None:
+                _client_cache.append({"id": client_id, "ln": last_name.upper(), "fn": (first_name or "").upper()})
+            stats["created"] = stats.get("created", 0) + 1
+            match_method = "new"
 
     # ── Match or create return ────────────────────────────────────────────────
     ret_year = tax_year
@@ -4009,6 +4274,75 @@ def api_returns_bulk_processor():
         conn.close()
 
 
+@app.post("/api/returns/bulk-update")
+@login_required
+def api_returns_bulk_update():
+    """Unified bulk update: set status and/or processor in one transaction.
+
+    Accepts JSON: {return_ids: [1,2,3], status: "PICKUP", processor: "Alice"}
+    At least one of status or processor must be supplied.
+    Maximum BULK_RETURN_IDS_CAP IDs per request.
+    Each changed return is audited individually.
+    Never returns ssn or identification fields.
+    """
+    payload     = _get_json_safe() or {}
+    raw_ids     = payload.get("return_ids")
+    new_status  = (payload.get("status") or "").strip().upper() or None
+    processor   = payload.get("processor")  # may be None to leave unchanged
+
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({"error": "return_ids required (non-empty list)"}), 400
+    if len(raw_ids) > BULK_RETURN_IDS_CAP:
+        return jsonify({"error": f"Too many returns (max {BULK_RETURN_IDS_CAP})"}), 400
+    try:
+        parsed_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        return jsonify({"error": "return_ids must be integers"}), 400
+
+    if new_status is None and processor is None:
+        return jsonify({"error": "At least one of status or processor must be provided"}), 400
+    if new_status is not None and new_status not in STATUS_FLOW:
+        return jsonify({"error": f"Invalid status. Allowed: {STATUS_FLOW}"}), 400
+
+    actor = (session.get("username") or "").strip() or "?"
+    conn  = get_connection()
+    try:
+        conn.execute("BEGIN")
+        errors: list[str] = []
+        updated_count = 0
+
+        if new_status is not None:
+            errs = bulk_apply_status_changes(
+                conn,
+                return_ids=parsed_ids,
+                new_status=new_status,
+                status_flow=tuple(STATUS_FLOW),
+                status_date_stamp=STATUS_DATE_STAMP,
+                actor_username=actor,
+            )
+            if errs:
+                conn.rollback()
+                return jsonify({"success": False, "errors": errs, "updated_count": 0}), 409
+            updated_count = len(parsed_ids)
+
+        if processor is not None:
+            perrs, rows_updated = bulk_apply_processor_changes(
+                conn,
+                return_ids=parsed_ids,
+                new_processor_raw=processor,
+                actor_username=actor,
+            )
+            if perrs:
+                conn.rollback()
+                return jsonify({"success": False, "errors": perrs, "updated_count": 0}), 409
+            updated_count = max(updated_count, rows_updated)
+
+        conn.commit()
+        return jsonify({"success": True, "updated_count": updated_count})
+    finally:
+        conn.close()
+
+
 def _validate_field(field: str, value) -> tuple[bool, str]:
     """REL-6: coerce and validate a value for a known editable field.
 
@@ -4274,6 +4608,411 @@ def api_missing_doc_delete(return_id: int, doc_id: int):
     conn.commit()
     conn.close()
     return jsonify({"success": True})
+
+
+# ── DEP-1: Remove dependent from return ──────────────────────────────────────
+
+@app.delete("/api/return/<int:return_id>/dependents/<int:dep_id>")
+@login_required
+def api_dependent_delete(return_id: int, dep_id: int):
+    user   = session.get("username")
+    ip     = request.remote_addr
+    ts     = now()
+    conn   = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id, full_name FROM dependents WHERE id=? AND return_id=? AND is_deleted=0",
+            (dep_id, return_id),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Dependent not found"}), 404
+        before = dict(row)
+        conn.execute(
+            "UPDATE dependents SET is_deleted=1 WHERE id=? AND return_id=?",
+            (dep_id, return_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    from audit_service import _enqueue_write
+    _enqueue_write(
+        user_id=user,
+        action="DEPENDENT_REMOVED",
+        entity_type="dependent",
+        entity_id=str(dep_id),
+        before=before,
+        after={"is_deleted": 1, "return_id": return_id},
+        ip_address=ip,
+        http_status=200,
+    )
+    return jsonify({"success": True})
+
+
+# ── LIFE-1: Cancel / uncancel return ─────────────────────────────────────────
+
+@app.post("/api/return/<int:return_id>/cancel")
+@login_required
+def api_cancel_return(return_id: int):
+    data   = _get_json_safe()
+    reason = (data.get("reason") or "").strip()
+    if not reason:
+        return jsonify({"error": "reason is required"}), 400
+    user = session.get("username")
+    ip   = request.remote_addr
+    ts   = now()
+    conn = get_connection()
+    try:
+        ret = conn.execute("SELECT client_status FROM returns WHERE id=?", (return_id,)).fetchone()
+        if not ret:
+            return jsonify({"error": "Return not found"}), 404
+        if (ret["client_status"] or "").upper() == "CANCELLED":
+            return jsonify({"error": "Already cancelled"}), 409
+        pmt = conn.execute(
+            "SELECT id, total_fee, fee_paid FROM payments WHERE return_id=?", (return_id,)
+        ).fetchone()
+        original_fee = float(pmt["total_fee"] or 0) if pmt else 0.0
+        if pmt:
+            conn.execute(
+                "UPDATE payments SET cancelled_fee=?, total_fee=0, fee_paid=0 WHERE return_id=?",
+                (original_fee, return_id),
+            )
+        conn.execute(
+            "UPDATE returns SET client_status='CANCELLED', cancelled_fee=?, "
+            "cancelled_reason=?, cancelled_at=?, updated_at=? WHERE id=?",
+            (original_fee, reason, ts, ts, return_id),
+        )
+        note_text = f"Return cancelled: {reason} — original fee was ${original_fee:,.2f}"
+        conn.execute(
+            "INSERT INTO notes (return_id, note_text, source, created_at) VALUES (?,?,'CANCEL',?)",
+            (return_id, note_text, ts),
+        )
+        conn.execute(
+            "INSERT INTO status_events (return_id, event_type, old_status, new_status, "
+            "event_timestamp, source_file, note) VALUES (?, 'STATUS_CHANGED', ?, 'CANCELLED', ?, 'APP', ?)",
+            (return_id, ret["client_status"], ts, reason),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    from audit_service import _enqueue_write
+    _enqueue_write(
+        user_id=user, action="RETURN_CANCELLED", entity_type="return",
+        entity_id=str(return_id), before={"client_status": ret["client_status"], "total_fee": original_fee},
+        after={"client_status": "CANCELLED", "total_fee": 0, "reason": reason},
+        ip_address=ip, http_status=200,
+    )
+    return jsonify({"success": True, "original_fee": original_fee})
+
+
+@app.post("/api/return/<int:return_id>/uncancel")
+@login_required
+def api_uncancel_return(return_id: int):
+    user = session.get("username")
+    ip   = request.remote_addr
+    ts   = now()
+    conn = get_connection()
+    try:
+        ret = conn.execute(
+            "SELECT client_status, cancelled_fee FROM returns WHERE id=?", (return_id,)
+        ).fetchone()
+        if not ret:
+            return jsonify({"error": "Return not found"}), 404
+        if (ret["client_status"] or "").upper() != "CANCELLED":
+            return jsonify({"error": "Return is not cancelled"}), 409
+        restored_fee = ret["cancelled_fee"] or 0.0
+        conn.execute(
+            "UPDATE returns SET client_status='PROCESSING', cancelled_fee=NULL, "
+            "cancelled_reason=NULL, cancelled_at=NULL, updated_at=? WHERE id=?",
+            (ts, return_id),
+        )
+        conn.execute(
+            "UPDATE payments SET total_fee=?, cancelled_fee=NULL WHERE return_id=?",
+            (restored_fee, return_id),
+        )
+        conn.execute(
+            "INSERT INTO notes (return_id, note_text, source, created_at) VALUES (?,?,'UNCANCEL',?)",
+            (return_id, f"Cancellation reversed — fee restored to ${restored_fee:,.2f}", ts),
+        )
+        conn.execute(
+            "INSERT INTO status_events (return_id, event_type, old_status, new_status, "
+            "event_timestamp, source_file, note) VALUES (?, 'STATUS_CHANGED', 'CANCELLED', 'PROCESSING', ?, 'APP', ?)",
+            (return_id, ts, "Cancellation reversed"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    from audit_service import _enqueue_write
+    _enqueue_write(
+        user_id=user, action="RETURN_UNCANCELLED", entity_type="return",
+        entity_id=str(return_id), before={"client_status": "CANCELLED"},
+        after={"client_status": "PROCESSING", "total_fee": restored_fee},
+        ip_address=ip, http_status=200,
+    )
+    return jsonify({"success": True, "restored_fee": restored_fee})
+
+
+# ── BANK-1: Routing number lookup (local JSON only) ───────────────────────────
+
+import json as _json_mod
+
+_ROUTING_DB: dict[str, str] | None = None
+
+def _load_routing_db() -> dict[str, str]:
+    global _ROUTING_DB
+    if _ROUTING_DB is None:
+        path = os.path.join(os.path.dirname(__file__), "data", "routing_numbers.json")
+        try:
+            with open(path, encoding="utf-8") as f:
+                _ROUTING_DB = _json_mod.load(f)
+        except Exception:
+            _ROUTING_DB = {}
+    return _ROUTING_DB
+
+
+@app.get("/api/routing-number/<string:routing_number>")
+@login_required
+def api_routing_number(routing_number: str):
+    if not routing_number.isdigit() or len(routing_number) != 9:
+        return jsonify({"error": "Routing number must be exactly 9 digits"}), 400
+    db = _load_routing_db()
+    bank_name = db.get(routing_number)
+    if bank_name:
+        return jsonify({"found": True, "bank_name": bank_name})
+    return jsonify({"found": False})
+
+
+# ── LIFE-2: Prior year fee for returning client intake ────────────────────────
+
+@app.get("/api/clients/<int:client_id>/prior-fee")
+@login_required
+def api_client_prior_fee(client_id: int):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT r.tax_year, p.total_fee
+            FROM returns r
+            LEFT JOIN payments p ON p.return_id = r.id
+            WHERE r.client_id = ?
+              AND r.tax_year = (
+                  SELECT MAX(tax_year) FROM returns
+                  WHERE client_id = ? AND UPPER(COALESCE(client_status,'')) != 'CANCELLED'
+              )
+              AND UPPER(COALESCE(r.client_status, '')) != 'CANCELLED'
+            LIMIT 1
+            """,
+            (client_id, client_id),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row or row["total_fee"] is None:
+        return jsonify({"found": False})
+    return jsonify({
+        "found": True,
+        "tax_year": row["tax_year"],
+        "total_fee": float(row["total_fee"]),
+    })
+
+
+# ── LIFE-3: Intake sheet PDF ──────────────────────────────────────────────────
+
+@app.get("/api/return/<int:return_id>/intake-sheet")
+@login_required
+def api_intake_sheet(return_id: int):
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable,
+    )
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    import io as _io
+
+    conn = get_connection()
+    try:
+        ret = conn.execute(
+            """
+            SELECT r.*, c.last_name, c.first_name, c.display_name,
+                   c.taxpayer_phone, c.taxpayer_cell, c.address,
+                   c.ssn_last4, c.taxpayer_email, c.spouse_last_name, c.spouse_first_name
+            FROM returns r JOIN clients c ON c.id = r.client_id
+            WHERE r.id = ?
+            """,
+            (return_id,),
+        ).fetchone()
+        if not ret:
+            conn.close()
+            return jsonify({"error": "Return not found"}), 404
+        r = dict(ret)
+
+        pmt = conn.execute(
+            "SELECT total_fee, discount_amount, special_discount FROM payments WHERE return_id=?",
+            (return_id,),
+        ).fetchone()
+
+        deps = conn.execute(
+            """
+            SELECT full_name, ssn_last4, relationship, date_of_birth, on_medicare
+            FROM dependents WHERE return_id=? AND is_deleted=0 ORDER BY id
+            """,
+            (return_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    # Privacy: mask SSN (always last4 only) and account number
+    acct_raw   = (r.get("bank_account") or "")
+    acct_masked = ("*" * (len(acct_raw) - 4) + acct_raw[-4:]) if len(acct_raw) > 4 else acct_raw
+
+    buf    = _io.BytesIO()
+    doc    = SimpleDocTemplate(buf, pagesize=letter, topMargin=0.75*inch, bottomMargin=0.75*inch,
+                                leftMargin=0.75*inch, rightMargin=0.75*inch)
+    styles = getSampleStyleSheet()
+    h1     = styles["Heading1"]
+    h2     = ParagraphStyle("h2", parent=styles["Heading2"], spaceAfter=4)
+    body   = styles["Normal"]
+    muted  = ParagraphStyle("muted", parent=styles["Normal"], textColor=colors.grey, fontSize=8)
+
+    client_name = (
+        r.get("display_name")
+        or f"{r.get('last_name','')}, {r.get('first_name','')}".strip(", ")
+    )
+    spouse_name = ""
+    if r.get("spouse_last_name") or r.get("spouse_first_name"):
+        spouse_name = f"{r.get('spouse_last_name','')}, {r.get('spouse_first_name','')}".strip(", ")
+
+    preparer_label = preparer_list_label(r.get("processor") or "")
+
+    elems = []
+    # Office header
+    elems.append(Paragraph("Xcel Financial Services, LLC", h1))
+    elems.append(Paragraph("Income Tax Client Intake Sheet", styles["Heading2"]))
+    elems.append(HRFlowable(width="100%", thickness=1, color=colors.black))
+    elems.append(Spacer(1, 0.1*inch))
+
+    # Return meta
+    meta_data = [
+        ["Tax Year:", str(r.get("tax_year") or ""), "Log #:", str(r.get("log_number") or "")],
+        ["Intake Date:", str(r.get("intake_date") or ""), "Preparer:", preparer_label],
+        ["Filing Status:", str(r.get("filing_status") or ""), "Return ID:", str(return_id)],
+    ]
+    meta_tbl = Table(meta_data, colWidths=[1.2*inch, 2.3*inch, 1.2*inch, 2.3*inch])
+    meta_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0,0), (-1,-1), "Helvetica"),
+        ("FONTSIZE", (0,0), (-1,-1), 9),
+        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
+        ("FONTNAME", (2,0), (2,-1), "Helvetica-Bold"),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+    ]))
+    elems.append(meta_tbl)
+    elems.append(Spacer(1, 0.1*inch))
+
+    # Client info
+    elems.append(Paragraph("Client Information", h2))
+    ci_data = [
+        ["Taxpayer:", client_name, "SSN Last 4:", str(r.get("ssn_last4") or "")],
+        ["Spouse:", spouse_name, "", ""],
+        ["Address:", str(r.get("address") or ""), "", ""],
+        ["Cell:", str(r.get("taxpayer_cell") or ""), "Home:", str(r.get("taxpayer_phone") or "")],
+        ["Email:", str(r.get("taxpayer_email") or ""), "", ""],
+    ]
+    ci_tbl = Table(ci_data, colWidths=[1.2*inch, 2.3*inch, 1.2*inch, 2.3*inch])
+    ci_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0,0), (-1,-1), "Helvetica"),
+        ("FONTSIZE", (0,0), (-1,-1), 9),
+        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
+        ("FONTNAME", (2,0), (2,-1), "Helvetica-Bold"),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+    ]))
+    elems.append(ci_tbl)
+    elems.append(Spacer(1, 0.1*inch))
+
+    # Dependents
+    if deps:
+        elems.append(Paragraph("Dependents", h2))
+        dep_header = [["Name", "DOB", "Relationship", "SSN Last 4", "Medicare"]]
+        dep_rows = dep_header + [
+            [
+                str(d["full_name"] or ""),
+                str(d["date_of_birth"] or ""),
+                str(d["relationship"] or ""),
+                str(d["ssn_last4"] or ""),
+                "Yes" if d["on_medicare"] else "No",
+            ]
+            for d in deps
+        ]
+        dep_tbl = Table(dep_rows, colWidths=[2*inch, 1*inch, 1.8*inch, 0.9*inch, 0.8*inch])
+        dep_tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#334155")),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTNAME", (0,1), (-1,-1), "Helvetica"),
+            ("FONTSIZE", (0,0), (-1,-1), 8),
+            ("TOPPADDING", (0,0), (-1,-1), 3),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+        ]))
+        elems.append(dep_tbl)
+        elems.append(Spacer(1, 0.1*inch))
+
+    # Banking
+    elems.append(Paragraph("Banking Information", h2))
+    bk_data = [
+        ["Bank Name:", str(r.get("bank_name") or ""), "Account Type:", str(r.get("bank_account_type") or "")],
+        ["Routing #:", str(r.get("bank_routing") or ""), "Account # (last 4):", acct_masked],
+    ]
+    bk_tbl = Table(bk_data, colWidths=[1.2*inch, 2.3*inch, 1.5*inch, 2.0*inch])
+    bk_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0,0), (-1,-1), "Helvetica"),
+        ("FONTSIZE", (0,0), (-1,-1), 9),
+        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
+        ("FONTNAME", (2,0), (2,-1), "Helvetica-Bold"),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+    ]))
+    elems.append(bk_tbl)
+    elems.append(Spacer(1, 0.1*inch))
+
+    # Fees
+    elems.append(Paragraph("Fees", h2))
+    total_fee = float(pmt["total_fee"] or 0) if pmt else 0.0
+    discount  = float(pmt["discount_amount"] or 0) if pmt else 0.0
+    sp_disc   = float(pmt["special_discount"] or 0) if pmt else 0.0
+    fee_data  = [
+        ["Total Fee:", f"${total_fee:,.2f}"],
+        ["Discount:", f"-${discount + sp_disc:,.2f}"],
+        ["Net Fee:", f"${max(0, total_fee - discount - sp_disc):,.2f}"],
+    ]
+    fee_tbl = Table(fee_data, colWidths=[1.5*inch, 1.5*inch])
+    fee_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0,0), (-1,-1), "Helvetica"),
+        ("FONTSIZE", (0,0), (-1,-1), 9),
+        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+    ]))
+    elems.append(fee_tbl)
+    elems.append(Spacer(1, 0.15*inch))
+
+    # Signature line
+    elems.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey))
+    elems.append(Spacer(1, 0.1*inch))
+    elems.append(Paragraph("Client signature: _______________________________   Date: _______________", body))
+    elems.append(Spacer(1, 0.05*inch))
+    elems.append(Paragraph("SSN not shown on this sheet for privacy protection.", muted))
+
+    doc.build(elems)
+    buf.seek(0)
+    return Response(
+        buf.read(),
+        mimetype="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="intake_{return_id}.pdf"',
+        },
+    )
 
 
 # ── Duplicate client detection & merge ───────────────────────────────────────
@@ -5585,6 +6324,155 @@ def register_workers(flask_app) -> None:
             _log.warning("Chat cache warmup skipped: %s", ex)
 
     threading.Thread(target=_warm_chat_cache, daemon=True, name="chat-cache-warm").start()
+
+
+@app.post("/api/admin/reset-and-reimport")
+@login_required
+def api_admin_reset_and_reimport():
+    """
+    Controlled DB deduplication + forced re-import of every CSV in data/incoming/.
+
+    Requirements:
+      - Admin role only
+      - Exact confirmation string "RESET AND REIMPORT" in request body
+      - Creates a timestamped DB backup before touching anything
+      - Runs _deduplicate_existing_records
+      - Re-runs every CSV through the upsert importer (no new files moved; upsert is safe)
+      - Audit-logs the action
+    """
+    if _resolve_current_role() != "admin":
+        return jsonify({"error": "Forbidden — admin only"}), 403
+
+    data = _get_json_safe() or {}
+    if data.get("confirm") != "RESET AND REIMPORT":
+        return jsonify({"error": "Confirmation required: send {\"confirm\": \"RESET AND REIMPORT\"}"}), 400
+
+    import shutil as _shutil
+    from datetime import datetime as _dt
+    from pathlib import Path as _Path
+    from db import _deduplicate_existing_records
+    import main as _main_mod
+    from config import INCOMING_DIR, DB_PATH as _DB_PATH
+
+    actor = _session_username() or "unknown"
+
+    # 1. Timestamped backup
+    backup_path = _DB_PATH + ".backup." + _dt.now().strftime("%Y%m%d_%H%M%S")
+    try:
+        _shutil.copy2(_DB_PATH, backup_path)
+        current_app.logger.info("reset-and-reimport: DB backup created: %s", backup_path)
+    except Exception as exc:
+        return jsonify({"error": f"Backup failed: {exc}"}), 500
+
+    result_summary: dict = {
+        "backup_file": backup_path,
+        "dedup_removed": 0,
+        "files_processed": [],
+        "totals": {
+            "clients_created": 0,
+            "clients_updated": 0,
+            "returns_created": 0,
+            "returns_updated": 0,
+            "rows_skipped": 0,
+            "errors": [],
+        },
+    }
+
+    conn = get_connection()
+    try:
+        # 2. Dedup existing records
+        conn.execute("BEGIN")
+        removed = _deduplicate_existing_records(conn)
+        conn.commit()
+        result_summary["dedup_removed"] = removed
+
+        # 3. Re-run every CSV in data/incoming/
+        from utils import ImportResult
+        from datetime import date as _date
+
+        for csv_file in sorted(_Path(INCOMING_DIR).glob("*.csv")):
+            from main import _drake_year as _dy
+            from drake_importer import process_drake_csv, _open_and_detect
+            from importer import process_csv
+
+            try:
+                from utils import hash_file
+                file_hash = hash_file(str(csv_file))
+                batch_id = _main_mod.create_batch(conn, csv_file.name, file_hash + "_reimport_" + actor)
+            except Exception:
+                batch_id = _main_mod.create_batch(conn, csv_file.name, str(csv_file.stat().st_mtime))
+
+            stats: ImportResult | None = None
+            try:
+                conn.execute("BEGIN")
+                drake_year = _dy(csv_file.name)
+                if drake_year is not None:
+                    stats = process_drake_csv(conn, str(csv_file), batch_id, csv_file.name, drake_year)
+                else:
+                    # Try Drake CSM detection first; fall back to manual-log importer
+                    _, fmt = _open_and_detect(str(csv_file))
+                    if fmt != "UNKNOWN":
+                        # CSM or TAX_OPS format — use current year - 1 as tax year
+                        ty = _date.today().year - 1
+                        stats = process_drake_csv(conn, str(csv_file), batch_id, csv_file.name, ty)
+                    else:
+                        stats = process_csv(conn, str(csv_file), batch_id, csv_file.name)
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                current_app.logger.exception("reset-and-reimport: error processing %s", csv_file.name)
+                result_summary["files_processed"].append({
+                    "filename": csv_file.name,
+                    "error": str(exc),
+                })
+                result_summary["totals"]["errors"].append(f"{csv_file.name}: {exc}")
+                continue
+
+            if stats:
+                result_summary["files_processed"].append({
+                    "filename":        csv_file.name,
+                    "source":          stats.source,
+                    "rows":            stats.row_count,
+                    "clients_created": stats.created_clients,
+                    "clients_updated": stats.updated_clients,
+                    "returns_created": stats.created_returns,
+                    "returns_updated": stats.updated_returns,
+                    "errors":          stats.errors,
+                    "duration_s":      round(stats.duration_seconds, 2),
+                })
+                t = result_summary["totals"]
+                t["clients_created"] += stats.created_clients
+                t["clients_updated"] += stats.updated_clients
+                t["returns_created"] += stats.created_returns
+                t["returns_updated"] += stats.updated_returns
+                t["errors"].extend(stats.errors)
+
+        # 4. Audit the action
+        try:
+            from audit_service import _enqueue_write
+            _enqueue_write(
+                user_id=actor,
+                action="ADMIN_RESET_AND_REIMPORT",
+                entity_type="system",
+                entity_id=None,
+                before_data=None,
+                after_data=result_summary,
+            )
+        except Exception:
+            pass
+
+    finally:
+        conn.close()
+
+    current_app.logger.info(
+        "reset-and-reimport by %s: dedup_removed=%s files=%s clients_created=%s returns_created=%s",
+        actor,
+        result_summary["dedup_removed"],
+        len(result_summary["files_processed"]),
+        result_summary["totals"]["clients_created"],
+        result_summary["totals"]["returns_created"],
+    )
+    return jsonify({"success": True, **result_summary}), 200
 
 
 if __name__ == "__main__":

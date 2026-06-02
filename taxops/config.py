@@ -281,10 +281,35 @@ IMAP_USER          = os.environ.get("IMAP_USER", "")
 IMAP_PASS          = os.environ.get("IMAP_PASS", "")
 IMAP_POLL_INTERVAL = int(os.environ.get("IMAP_POLL_INTERVAL", 120))
 IMAP_FOLDER        = os.environ.get("IMAP_FOLDER", "INBOX")
-# Set to true to log what would be marked as read without touching Gmail
+
+# Comma-separated list of folders to poll when USE_GMAIL_CATEGORIES is false.
+# Folder names with spaces are supported (e.g. "TAX DOCUMENTS FROM CLIENTS").
+IMAP_FOLDERS: list[str] = [
+    f.strip()
+    for f in os.environ.get("IMAP_FOLDERS", IMAP_FOLDER).split(",")
+    if f.strip()
+]
+
+# Domain(s) the office sends from — emails arriving from these are self-sent.
+# Auto-derived from IMAP_USER; extend with OWN_EMAIL_DOMAINS env var (comma-separated).
+_imap_own_domain   = IMAP_USER.split("@")[-1].lower() if "@" in IMAP_USER else ""
+_extra_own         = os.environ.get("OWN_EMAIL_DOMAINS", "")
+OWN_EMAIL_DOMAINS: frozenset = frozenset(
+    d.strip().lower()
+    for d in ([_imap_own_domain] + _extra_own.split(","))
+    if d.strip()
+)
+# Dry-run: log what the mail watcher would do without touching any IMAP state.
 IMAP_DRY_RUN: bool = os.environ.get("IMAP_DRY_RUN", "false").lower() == "true"
-# When false, mail watcher never adds \\Seen — emails stay unread in the mailbox (still processes).
+# POLICY: TaxOps never sets or clears \Seen on any message.  IMAP_MARK_AS_READ
+# and IMAP_PRESERVE_UNREAD are retained for config-file backward compatibility
+# but have no effect — _mark_read() is never called anywhere in the codebase.
 IMAP_MARK_AS_READ: bool = os.environ.get("IMAP_MARK_AS_READ", "true").lower() == "true"
+# Part 5: max consecutive retry attempts before an email is permanently skipped.
+IMAP_MAX_RETRIES: int = int(os.environ.get("IMAP_MAX_RETRIES", "3"))
+# Retained for backward compat — no longer gates any behavior.  DB log dedup
+# (email_processing_log) runs unconditionally on every poll.
+IMAP_PRESERVE_UNREAD: bool = os.environ.get("IMAP_PRESERVE_UNREAD", "false").lower() == "true"
 
 # Ollama HTTP timeout for mail-watcher LLM calls (name extraction, domain classify)
 MAIL_WATCHER_LLM_TIMEOUT = int(os.environ.get("MAIL_WATCHER_LLM_TIMEOUT", "45"))
@@ -292,6 +317,11 @@ MAIL_WATCHER_LLM_TIMEOUT = int(os.environ.get("MAIL_WATCHER_LLM_TIMEOUT", "45"))
 # Fuzzy client match minimum for routing email attachments (name_matcher ACCEPT_THRESHOLD is 88).
 # Lower values attach more aggressively — verify Office tolerance before lowering below ~80.
 MAIL_WATCHER_CLIENT_MATCH_MIN_SCORE = int(os.environ.get("MAIL_WATCHER_CLIENT_MATCH_MIN_SCORE", "82"))
+
+# When false (default): image files (.jpg, .jpeg, .png) skip the vision model entirely.
+# Images are saved to the return and staff tag them manually.
+# Set true only when Ollama has enough resources for concurrent vision requests.
+EXTRACTOR_VISION_ENABLED: bool = os.environ.get("EXTRACTOR_VISION_ENABLED", "false").lower() == "true"
 
 # EMAIL-7: matches with score >= MIN_SCORE but < LOW_CONF_THRESHOLD go to pending_review
 # instead of auto-attaching; staff confirms/rejects from Email Review → Pending Review.
@@ -425,6 +455,38 @@ PERSONAL_EMAIL_DOMAINS: frozenset = frozenset({
     "xcelfinancial.com",
 })
 
+# Client business domains — unique domains that belong to real clients and will
+# never appear in a generic spam training set.  Emails from these domains bypass
+# the ML classifier entirely and go straight to LLM evaluation.  After the first
+# successful attachment save, the domain is auto-boosted to cache so subsequent
+# emails hit the cache layer (Layer 5) and skip both ML and LLM.
+#
+# Populated via IMAP_CLIENT_HINT_DOMAINS env var (comma-separated).
+# Example: IMAP_CLIENT_HINT_DOMAINS=olavictory.org,coronabrosinstall.com,orealtyllc.com
+CLIENT_HINT_DOMAINS: frozenset = frozenset(
+    d.strip().lower()
+    for d in os.environ.get("IMAP_CLIENT_HINT_DOMAINS", "").split(",")
+    if d.strip()
+)
+
+# Asymmetric classifier confidence thresholds.
+# The penalty for a false-promotional classification (silently dropping a client
+# email) is much worse than a false-client classification (staff reviews an extra
+# email).  Promotional therefore requires higher confidence before being accepted.
+# Below either threshold the result is discarded and the email falls through to LLM.
+CLASSIFIER_PROMOTIONAL_THRESHOLD: float = float(
+    os.environ.get("CLASSIFIER_PROMOTIONAL_THRESHOLD", "0.80")
+)
+CLASSIFIER_CLIENT_THRESHOLD: float = float(
+    os.environ.get("CLASSIFIER_CLIENT_THRESHOLD", "0.65")
+)
+
+# ── INTAKE-8: Auto-discount for new client intakes ───────────────────────────
+# Dollar amount automatically applied as discount_amount on every new intake.
+# Set to 0 to disable. Configurable without a code change.
+INTAKE_AUTO_DISCOUNT: int = int(os.environ.get("INTAKE_AUTO_DISCOUNT", "20"))
+INTAKE_SUGGESTED_UPCHARGE_PCT: int = int(os.environ.get("INTAKE_SUGGESTED_UPCHARGE_PCT", "8"))
+
 # ── ACCOUNTING-2: Receipt OCR → QuickBooks categorization ────────────────────
 # Ollama vision model for receipt OCR (defaults to the existing extraction vision model).
 ACCOUNTING_VISION_MODEL: str = (
@@ -471,6 +533,11 @@ DRAKE_STATUS_MAP: dict[str, str] = {
     "EXTENSION":                    "PROCESSING",
     "EF REJECTED":                  "PROCESSING",
     "EF REJECT":                    "PROCESSING",
+    "EF PENDING":                   "PROCESSING",
+    # Prior-year carryforward — data rolled from prior season, needs work
+    "UPDATED FROM 2024":            "PROCESSING",
+    "UPDATED FROM 2023":            "PROCESSING",
+    "UPDATED FROM 2022":            "PROCESSING",
     # Drake "ready/printed" — prep done, client needs to sign before efiling
     "READY TO FILE":                "PICKUP",
     "READY TO PRINT":               "PICKUP",
