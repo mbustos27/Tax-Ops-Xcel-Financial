@@ -17,9 +17,14 @@ env/
 # Database files — allowed for now for portability
 # *.db
 
-# Sensitive data files
-taxops/data/incoming/*.csv
+# Sensitive data files — local env (TaxOps reads repo-root `.env` via config.py).
+.env
 
+taxops/data/incoming/*.csv
+taxops/data/backups/
+taxops/data/logs/
+taxops/data/ai_chat_staff_queries.jsonl
+restart_taxops.ps1
 # OS
 .DS_Store
 Thumbs.db
@@ -31,3 +36,7 @@ taxops/test_logs/
 .vscode/
 *.swp
 *.swo
+
+# Front-end build (Tailwind — `npm run build:tw` in taxops/ or scripts/build-tailwind.ps1)
+taxops/node_modules/
+taxops/.tailwind/

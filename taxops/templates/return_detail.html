@@ -2,81 +2,138 @@
 {% block title %}{% if ret.log_number %}#{{ ret.log_number }} {% endif %}{{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %} — TaxOps{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto space-y-4">
+<div class="max-w-5xl mx-auto space-y-5 pb-8">
 
-  <!-- ── Return header ──────────────────────────────────────────────────── -->
-  <div class="flex items-start justify-between gap-4">
-    <div class="flex items-center gap-3">
-      <a href="javascript:history.back()"
-         class="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded-lg hover:bg-slate-100">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-        </svg>
-      </a>
-      <div>
-        <div class="flex items-center gap-3 flex-wrap">
-          <span class="font-mono font-black text-3xl text-slate-800 tracking-tight">{{ ret.log_number or '—' }}</span>
-          <span class="text-slate-300 text-2xl select-none">·</span>
-          <span class="text-xl font-semibold text-slate-700">{{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %}</span>
-          <span class="text-xs bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-mono font-semibold">
-            TY{{ ret.tax_year }}
-          </span>
-
-          <!-- Clickable status dropdown (same as dashboard) -->
-          <div class="status-dropdown relative">
-            <button onclick="toggleStatusMenu(this)"
-                    class="status-badge flex items-center gap-1.5 {{ ret.badge_class }} cursor-pointer hover:opacity-90 transition-opacity">
-              {{ ret.client_status or 'NO STATUS' }}
-              <svg class="w-3 h-3 opacity-50 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
-              </svg>
-            </button>
-            <div class="status-menu hidden absolute left-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 min-w-[160px]">
-              {% for s in status_flow %}
-              <button onclick="setStatus({{ ret.id }}, '{{ s }}', this)"
-                      class="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors
-                             {% if s == ret.client_status %}font-bold text-slate-900 bg-slate-50{% else %}text-slate-700{% endif %}">
-                {{ s }}
-              </button>
-              {% endfor %}
+  {# ── Return header (closed container — was missing </div> so body bled into flex row) ── #}
+  <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden" aria-labelledby="return-detail-title">
+    <div class="p-4 lg:p-5">
+      <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div class="flex gap-3 min-w-0 flex-1">
+          <a href="javascript:history.back()"
+             class="shrink-0 text-slate-400 hover:text-slate-700 transition-colors p-1 rounded-lg hover:bg-slate-100 h-9 w-9 flex items-center justify-center"
+             title="{{ _('Back') }}">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+          </a>
+          <div class="min-w-0 space-y-3">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span class="font-mono font-black text-2xl sm:text-3xl text-slate-800 tracking-tight tabular-nums">
+                {{ ret.log_number or '—' }}
+              </span>
+              <span class="text-slate-300 hidden sm:inline" aria-hidden="true">·</span>
+              <h1 id="return-detail-title" class="text-lg sm:text-xl font-semibold text-slate-800 truncate max-w-full">
+                {{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %}
+              </h1>
+              <span class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-mono font-semibold shrink-0">
+                TY{{ ret.tax_year }}
+              </span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              {% if not view_only %}
+              <div id="return-status-control" class="status-dropdown relative inline-block">
+                <button type="button" onclick="toggleStatusMenu(this)"
+                        class="status-badge flex items-center gap-1.5 {{ ret.badge_class }} cursor-pointer hover:opacity-90 transition-opacity">
+                  {{ ret.client_status or 'NO STATUS' }}
+                  <svg class="w-3 h-3 opacity-50 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </button>
+                <div class="status-menu hidden absolute left-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 min-w-[160px]">
+                  {% for s in status_flow %}
+                  <button type="button" onclick="setStatus({{ ret.id }}, '{{ s }}', this)"
+                          class="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors
+                                 {% if s == ret.client_status %}font-bold text-slate-900 bg-slate-50{% else %}text-slate-700{% endif %}">
+                    {{ s }}
+                  </button>
+                  {% endfor %}
+                </div>
+              </div>
+              {% else %}
+              <span class="status-badge {{ ret.badge_class }} px-3 py-1">{{ ret.client_status or 'NO STATUS' }}</span>
+              {% endif %}
+              {% if ret.display_name %}
+              <span class="text-sm text-slate-500 truncate max-w-full sm:max-w-md">{{ ret.display_name }}</span>
+              {% endif %}
+              {% if ret.client_id %}
+              <a href="{{ url_for('client_profile', client_id=ret.client_id) }}"
+                 class="text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
+                {{ _('Client profile') }} →
+              </a>
+              {% endif %}
             </div>
           </div>
         </div>
-        {% if ret.display_name %}
-        <div class="text-sm text-slate-400 mt-0.5 ml-0.5">{{ ret.display_name }}</div>
-        {% endif %}
+        <nav class="flex flex-row flex-wrap lg:flex-col gap-2 lg:items-stretch lg:min-w-[10.5rem] shrink-0 border-t border-slate-100 lg:border-t-0 pt-4 lg:pt-0 lg:pl-6 lg:border-l" aria-label="Return actions">
+          {% if ret.client_status in ('PICKUP', 'EFILE READY') %}
+          <a href="/pickup/{{ ret.id }}"
+             class="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg px-3 py-2 transition-all">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+            </svg>
+            {{ _('Pickup workflow') }}
+          </a>
+          {% endif %}
+          <button type="button" onclick="printSticker()"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 transition-all">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+            </svg>
+            {{ _('Print sticker') }}
+          </button>
+          {# LIFE-3: Intake sheet PDF #}
+          <button type="button" onclick="window.open('/api/return/{{ ret.id }}/intake-sheet','_blank')"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 transition-all">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5l2 2v14a2 2 0 01-2 2h-1m4-14v3a2 2 0 002 2h3"/>
+            </svg>
+            {{ _('Print intake sheet') }}
+          </button>
+          {# LIFE-1: Cancel return — preparer+ only #}
+          {% if not view_only %}
+          {% if ret.client_status != 'CANCELLED' %}
+          <button type="button" id="cancel-return-btn" onclick="showCancelForm({{ ret.id }})"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-3 py-2 transition-all">
+            {{ _('Cancel return') }}
+          </button>
+          {% else %}
+          <button type="button" onclick="uncancelReturn({{ ret.id }})"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg px-3 py-2 transition-all">
+            {{ _('Reinstate return') }}
+          </button>
+          {% endif %}
+          {# Inline cancel reason form #}
+          <div id="cancel-reason-form" class="hidden w-full mt-1">
+            <input id="cancel-reason-input" type="text" placeholder="{{ _('Reason for cancellation…') }}"
+                   class="w-full text-xs border border-red-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300">
+            <div class="flex gap-2 mt-1">
+              <button type="button" onclick="confirmCancel({{ ret.id }})"
+                      class="text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg px-3 py-1.5 font-semibold transition-colors">
+                {{ _('Confirm cancel') }}
+              </button>
+              <button type="button" onclick="hideCancelForm()"
+                      class="text-xs text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg px-3 py-1.5 transition-colors">
+                {{ _('Dismiss') }}
+              </button>
+            </div>
+          </div>
+          {% endif %}
+        </nav>
       </div>
     </div>
+  </section>
 
-    <!-- Pickup workflow shortcut -->
-    {% if ret.client_status in ('PICKUP', 'EFILE READY') %}
-    <a href="/pickup/{{ ret.id }}"
-       class="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg px-3 py-2 transition-all">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
-      </svg>
-      Pickup Workflow
-    </a>
-    {% endif %}
-
-    <!-- Print sticker button -->
-    <button onclick="printSticker()"
-            class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
-      </svg>
-      Print Sticker
-    </button>
-  </div>
-
-  <!-- ── Quick flags bar ──────────────────────────────────────────────────── -->
-  <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 flex flex-wrap items-center gap-2">
-    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wide mr-1">Quick Flags</span>
-
+  <!-- ── Quick flags ────────────────────────────────────────────────────── -->
+  <div class="bg-white rounded-xl border border-slate-200 px-4 py-4 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+    <div class="flex flex-col gap-3 min-w-0 flex-1">
+      <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">{{ _('Quick flags') }}</span>
+      <div class="flex flex-wrap items-center gap-2">
     {% macro qflag(label, field, val, color='blue') %}
-    <button onclick="quickToggle({{ ret.id }}, '{{ field }}', this)"
+    {% if not view_only %}
+    <button type="button" onclick="quickToggle({{ ret.id }}, '{{ field }}', this)"
             data-field="{{ field }}"
             data-value="{{ '1' if val else '0' }}"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all select-none
@@ -88,46 +145,67 @@
       <span class="text-base leading-none">{% if val %}✓{% else %}○{% endif %}</span>
       {{ label }}
     </button>
+    {% else %}
+    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium select-none
+                 {% if val %}
+                   {% if color == 'green' %}bg-green-50 text-green-700 border-green-300{% elif color == 'amber' %}bg-amber-50 text-amber-700 border-amber-300{% elif color == 'red' %}bg-red-50 text-red-700 border-red-300{% else %}bg-blue-50 text-blue-700 border-blue-300{% endif %}
+                 {% else %}
+                   bg-slate-50 text-slate-400 border-slate-200
+                 {% endif %}">
+      <span class="text-base leading-none">{% if val %}✓{% else %}○{% endif %}</span>
+      {{ label }}
+    </span>
+    {% endif %}
     {% endmacro %}
 
-    {{ qflag('Verified',      'verified',           ret.verified,           'green') }}
-    {{ qflag('Transfer',      'transfer_flag',      ret.transfer_flag,      'amber') }}
-    {{ qflag('Amended',       'is_amended',         ret.is_amended,         'amber') }}
-    {{ qflag('Extension',     'is_extension',       ret.is_extension,       'amber') }}
+    {{ qflag(_('Verified'),      'verified',           ret.verified,           'green') }}
+    {{ qflag(_('Transfer'),      'transfer_flag',      ret.transfer_flag,      'amber') }}
+    {{ qflag(_('Amended'),       'is_amended',         ret.is_amended,         'amber') }}
+    {{ qflag(_('Extension'),     'is_extension',       ret.is_extension,       'amber') }}
     {{ qflag('W-7',           'has_w7',             ret.has_w7,             'blue') }}
-    {{ qflag('TY25 Transfer', 'transfer_2025_flag', ret.transfer_2025_flag, 'blue') }}
-    {{ qflag('TY26 Transfer', 'transfer_2026_flag', ret.transfer_2026_flag, 'blue') }}
-
-    <!-- E-file dates inline -->
-    <div class="ml-auto flex items-center gap-4 text-sm">
-      <div class="flex items-center gap-1.5">
-        <span class="text-slate-400 text-xs font-medium">E-Filed</span>
-        <span class="editable font-mono text-slate-700 font-semibold"
+    {{ qflag(_('TY25 Transfer'), 'transfer_2025_flag', ret.transfer_2025_flag, 'blue') }}
+    {{ qflag(_('TY26 Transfer'), 'transfer_2026_flag', ret.transfer_2026_flag, 'blue') }}
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm border-t border-slate-100 pt-3 xl:border-t-0 xl:border-l xl:pl-6 xl:pt-0 shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500 text-xs font-semibold uppercase tracking-wide">{{ _('E-filed') }}</span>
+        {% if not view_only %}
+        <span class="editable font-mono text-slate-800 font-semibold"
               data-return-id="{{ ret.id }}" data-field="efile_date"
               data-value="{{ ret.efile_date or '' }}" data-placeholder="YYYY-MM-DD">
           {{ ret.efile_date or '—' }}
         </span>
+        {% else %}
+        <span class="font-mono text-slate-800 font-semibold">{{ ret.efile_date or '—' }}</span>
+        {% endif %}
       </div>
-      <div class="flex items-center gap-1.5">
-        <span class="text-slate-400 text-xs font-medium">ACK</span>
-        <span class="editable font-mono text-slate-700 font-semibold"
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500 text-xs font-semibold uppercase tracking-wide">ACK</span>
+        {% if not view_only %}
+        <span class="editable font-mono text-slate-800 font-semibold"
               data-return-id="{{ ret.id }}" data-field="ack_date"
               data-value="{{ ret.ack_date or '' }}" data-placeholder="YYYY-MM-DD">
           {{ ret.ack_date or '—' }}
         </span>
+        {% else %}
+        <span class="font-mono text-slate-800 font-semibold">{{ ret.ack_date or '—' }}</span>
+        {% endif %}
       </div>
     </div>
   </div>
 
-  <!-- ── Status workflow bar ────────────────────────────────────────────── -->
-  <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
+  <!-- ── Status workflow ─────────────────────────────────────────────────── -->
+  <section class="bg-white rounded-xl border border-slate-200 px-4 py-3 sm:px-5 sm:py-4" aria-label="Workflow">
+    <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{{ _('Workflow') }}</p>
     <div class="flex items-center gap-1.5 overflow-x-auto">
       {% set current_idx = status_flow.index(ret.client_status) if ret.client_status in status_flow else -1 %}
       {% for s in status_flow %}
       {% set idx = loop.index0 %}
       {% set is_current = idx == current_idx %}
       {% set is_done    = idx < current_idx %}
-      <button onclick="setStatusDetail({{ ret.id }}, '{{ s }}')"
+      {% if not view_only %}
+      <button type="button" onclick="setStatusDetail({{ ret.id }}, '{{ s }}')"
               class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all
                      {% if is_current %}
                        {{ status_badge.get(s,'') }} border shadow-sm
@@ -147,6 +225,27 @@
         {% endif %}
         {{ s }}
       </button>
+      {% else %}
+      <span class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium whitespace-nowrap
+                   {% if is_current %}
+                     {{ status_badge.get(s,'') }} border shadow-sm
+                   {% elif is_done %}
+                     text-slate-400 border border-transparent
+                   {% else %}
+                     text-slate-500 border border-transparent
+                   {% endif %}">
+        {% if is_done %}
+        <svg class="w-3.5 h-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+        </svg>
+        {% elif is_current %}
+        <span class="w-2 h-2 rounded-full bg-current opacity-70 animate-pulse shrink-0"></span>
+        {% else %}
+        <span class="w-2 h-2 rounded-full bg-slate-300 shrink-0"></span>
+        {% endif %}
+        {{ s }}
+      </span>
+      {% endif %}
       {% if not loop.last %}
       <svg class="w-4 h-4 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
@@ -154,7 +253,7 @@
       {% endif %}
       {% endfor %}
     </div>
-  </div>
+  </section>
 
   {% if ret.client_status == 'REJECTED' %}
   {% set cc_cur = ret.contact_status or 'not_contacted' %}
@@ -164,16 +263,17 @@
     <div class="section-header flex flex-wrap items-center justify-between gap-2
          {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}bg-red-50 border-b border-red-200{% endif %}">
       <span class="flex items-center gap-2">
-        Client contact
+        {{ _('Client contact') }}
         {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}
-        <span class="text-xs font-bold uppercase tracking-wide text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-full">Needs client contact</span>
+        <span class="text-xs font-bold uppercase tracking-wide text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-full">{{ _('Needs client contact') }}</span>
         {% endif %}
       </span>
-      <a href="#notes-card" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold">Notes &rarr;</a>
+      <a href="#notes-card" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold">{{ _('Notes') }} &rarr;</a>
     </div>
     <div class="p-4 flex flex-wrap items-end gap-4">
+      {% if not view_only %}
       <label class="flex flex-col gap-1 text-sm">
-        <span class="text-slate-500 font-medium">Contact status</span>
+        <span class="text-slate-500 font-medium">{{ _('Contact status') }}</span>
         <select id="contact-status-sel" onchange="saveContactStatus({{ ret.id }})"
                 class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 min-w-[13rem] focus:outline-none focus:ring-2 focus:ring-indigo-400">
           {% for k, lab in contact_labels.items() %}
@@ -182,18 +282,28 @@
         </select>
       </label>
       <label class="flex flex-col gap-1 text-sm">
-        <span class="text-slate-500 font-medium">Last contacted</span>
+        <span class="text-slate-500 font-medium">{{ _('Last contacted') }}</span>
         <input type="date" id="contact-date-input" value="{{ ret.last_contacted_date[:10] if ret.last_contacted_date else '' }}"
                onchange="saveContactDate({{ ret.id }})"
                class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-400">
       </label>
       <p class="text-xs text-slate-500 max-w-md">Use <strong>Notes</strong> below for call details. Marking <em>Contacted</em> or <em>Follow-up needed</em> stamps today&apos;s date unless you pick another.</p>
+      {% else %}
+      <div class="flex flex-col gap-1 text-sm">
+        <span class="text-slate-500 font-medium">{{ _('Contact status') }}</span>
+        <span class="px-3 py-2 text-slate-800 font-medium">{{ contact_labels.get(cc_cur, cc_cur) }}</span>
+      </div>
+      <div class="flex flex-col gap-1 text-sm">
+        <span class="text-slate-500 font-medium">{{ _('Last contacted') }}</span>
+        <span class="px-3 py-2 text-slate-800 font-mono">{{ ret.last_contacted_date[:10] if ret.last_contacted_date else '—' }}</span>
+      </div>
+      {% endif %}
     </div>
   </div>
 
   <!-- ── AI draft email (rejected returns only) ────────────────────────── -->
   <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-    <div class="section-header">Draft follow-up email</div>
+    <div class="section-header">{{ _('Draft follow-up email') }}</div>
     <div class="p-4 flex flex-col gap-3">
       <div class="flex items-center gap-3">
         <button id="draft-email-btn"
@@ -233,20 +343,21 @@
   </div>
   {% endif %}
 
-  <!-- ── Two-column layout ──────────────────────────────────────────────── -->
-  <div class="grid grid-cols-3 gap-4">
+  <!-- ── Two-column layout (stacks on small screens for readability) ─────── -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5">
 
-    <!-- Left (2/3): Fields ──────────────────────────────────────────────── -->
-    <div class="col-span-2 space-y-4">
+    <!-- Left (≈2/3): Fields -->
+    <div class="lg:col-span-2 space-y-4 min-w-0">
 
       <!-- Return info -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div class="section-header">Return Info</div>
-        <div class="p-4 grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+        <div class="section-header">{{ _('Return Info') }}</div>
+        <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
 
           {% macro ef(label, field, val, typ='text', ph='') %}
           <div>
             <div class="field-label">{{ label }}</div>
+            {% if not view_only %}
             <span class="editable block font-medium text-slate-800"
                   data-return-id="{{ ret.id }}" data-field="{{ field }}"
                   data-value="{{ val or '' }}" data-type="{{ typ }}" data-placeholder="{{ ph }}">
@@ -256,6 +367,15 @@
                 {% if field == 'processor' %}{{ preparer_list_label(val) }}{% else %}{{ val or '—' }}{% endif %}
               {% endif %}
             </span>
+            {% else %}
+            <span class="block font-medium text-slate-800">
+              {% if typ == 'bool' %}
+                {% if val %}<span class="text-green-600 font-semibold">✓ Yes</span>{% else %}<span class="text-slate-300">No</span>{% endif %}
+              {% else %}
+                {% if field == 'processor' %}{{ preparer_list_label(val) }}{% else %}{{ val or '—' }}{% endif %}
+              {% endif %}
+            </span>
+            {% endif %}
           </div>
           {% endmacro %}
 
@@ -297,6 +417,35 @@
         {% endif %}
       </div>
 
+      <!-- DEP-1/DEP-3: Dependents -->
+      {% if dependents %}
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header">{{ _('Dependents') }}</div>
+        <div class="divide-y divide-slate-100">
+          {% for dep in dependents %}
+          <div id="dep-row-{{ dep.id }}" class="flex items-center gap-3 px-4 py-2.5 text-sm">
+            <span class="flex-1 font-medium text-slate-800">
+              {{ dep.full_name or '—' }}
+              {% if dep.on_medicare %}
+              <span class="ml-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full border
+                           bg-sky-50 text-sky-700 border-sky-200">Medicare</span>
+              {% endif %}
+            </span>
+            <span class="text-slate-500 text-xs">{{ dep.relationship or '' }}</span>
+            <span class="text-slate-400 text-xs font-mono">{{ dep.date_of_birth or '' }}</span>
+            {% if not view_only %}
+            <button type="button"
+                    onclick="removeDependent({{ ret.id }}, {{ dep.id }}, '{{ dep.full_name | replace("'","") }}')"
+                    class="text-slate-300 hover:text-red-400 transition-colors text-xs ml-2" title="{{ _('Remove') }}">
+              &#10005;
+            </button>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
       <!-- Missing Documents -->
       {% set open_docs   = missing_docs | selectattr('is_resolved', 'equalto', 0) | list %}
       {% set closed_docs = missing_docs | selectattr('is_resolved', 'equalto', 1) | list %}
@@ -306,10 +455,10 @@
         <div class="section-header flex items-center justify-between
                     {% if open_docs %}bg-orange-50 border-b border-orange-200{% endif %}">
           <span class="flex items-center gap-2">
-            Missing Documents
+            {{ _('Missing Documents') }}
             {% if open_docs %}
             <span class="text-xs font-bold bg-orange-500 text-white px-2 py-0.5 rounded-full">
-              {{ open_docs | length }} open
+              {{ open_docs | length }} {{ _('open') }}
             </span>
             {% elif missing_docs %}
             <span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
@@ -323,6 +472,7 @@
         </div>
 
         <!-- Add new item -->
+        {% if not view_only %}
         <div class="p-3 border-b border-slate-100 flex gap-2">
           <input id="missing-doc-input" type="text" placeholder="e.g. W-2, Prior year return, SSN card…"
                  class="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-300"
@@ -332,25 +482,35 @@
             + Add
           </button>
         </div>
+        {% endif %}
 
         <!-- Items list -->
         <div id="missing-docs-list" class="divide-y divide-slate-100 max-h-52 overflow-y-auto">
           {% for doc in missing_docs %}
           <div id="mdoc-{{ doc.id }}"
                class="flex items-center gap-3 px-4 py-2.5 {% if doc.is_resolved %}opacity-50{% endif %}">
+            {% if not view_only %}
             <button onclick="toggleMissingDoc({{ ret.id }}, {{ doc.id }}, this)"
                     title="{% if doc.is_resolved %}Mark open{% else %}Mark resolved{% endif %}"
                     class="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 transition-colors
                            {% if doc.is_resolved %}bg-green-100 border-green-400 text-green-600{% else %}border-slate-300 hover:border-orange-400{% endif %}">
               {% if doc.is_resolved %}<span class="text-xs font-bold">&#10003;</span>{% endif %}
             </button>
+            {% else %}
+            <span class="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0
+                         {% if doc.is_resolved %}bg-green-100 border-green-400 text-green-600{% else %}border-slate-200{% endif %}">
+              {% if doc.is_resolved %}<span class="text-xs font-bold">&#10003;</span>{% endif %}
+            </span>
+            {% endif %}
             <span class="flex-1 text-sm {% if doc.is_resolved %}line-through text-slate-400{% else %}text-slate-800{% endif %}">
               {{ doc.item_text }}
             </span>
+            {% if not view_only %}
             <button onclick="deleteMissingDoc({{ ret.id }}, {{ doc.id }})"
                     class="text-slate-300 hover:text-red-400 transition-colors text-xs" title="Remove">
               &#10005;
             </button>
+            {% endif %}
           </div>
           {% else %}
           <div id="missing-docs-empty" class="px-4 py-5 text-center text-sm text-slate-400">
@@ -362,8 +522,8 @@
 
       <!-- Forms -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div class="section-header">Return Forms</div>
-        <div class="p-4 grid grid-cols-3 gap-2">
+        <div class="section-header">{{ _('Return Forms') }}</div>
+        <div class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
           {% set form_list = [
             ('form_1040',    'Form 1040'),
             ('sched_a_d',    'Sch A & D'),
@@ -382,6 +542,7 @@
           ] %}
           {% for field, label in form_list %}
           {% set val = ret.get(field) %}
+          {% if not view_only %}
           <label class="flex items-center gap-2 cursor-pointer p-2.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all select-none">
             <input type="checkbox"
                    {% if val %}checked{% endif %}
@@ -389,6 +550,15 @@
                    class="rounded border-slate-300 text-blue-600 focus:ring-blue-400 focus:ring-offset-0">
             <span class="text-sm text-slate-700">{{ label }}</span>
           </label>
+          {% else %}
+          <span class="flex items-center gap-2 p-2.5 rounded-lg border border-transparent select-none">
+            <span class="w-4 h-4 rounded border flex items-center justify-center shrink-0
+                         {% if val %}border-blue-400 bg-blue-600 text-white{% else %}border-slate-300 bg-white{% endif %}">
+              {% if val %}<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>{% endif %}
+            </span>
+            <span class="text-sm {% if val %}text-slate-800 font-medium{% else %}text-slate-400{% endif %}">{{ label }}</span>
+          </span>
+          {% endif %}
           {% endfor %}
         </div>
       </div>
@@ -396,34 +566,40 @@
       <!-- Payment -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div class="section-header flex items-center justify-between">
-          <span>Payment</span>
+          <span>{{ _('Payment') }}</span>
           {% if ret.total_fee %}
             {% if ret.paid_in_full %}
-            <span class="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">PAID IN FULL</span>
+            <span class="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">{{ _('PAID IN FULL') }}</span>
             {% else %}
             <span class="text-xs font-bold text-red-500 bg-red-50 px-2.5 py-1 rounded-full">
-              BALANCE DUE ${{ "{:,.2f}".format(ret.balance) }}
+              {{ _('BALANCE DUE') }} ${{ "{:,.2f}".format(ret.balance) }}
             </span>
             {% endif %}
           {% endif %}
         </div>
-        <div class="p-4 grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+        <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
 
           {% macro pf(label, field, val, currency=False) %}
           <div>
             <div class="field-label">{{ label }}</div>
+            {% if not view_only %}
             <span class="editable block font-medium text-slate-800"
                   data-return-id="{{ ret.id }}" data-field="{{ field }}"
                   data-value="{{ val or '' }}" data-placeholder="{{ label }}">
               {% if currency and val %}${{ "{:,.2f}".format(val) }}{% else %}{{ val or '—' }}{% endif %}
             </span>
+            {% else %}
+            <span class="block font-medium text-slate-800">
+              {% if currency and val %}${{ "{:,.2f}".format(val) }}{% else %}{{ val or '—' }}{% endif %}
+            </span>
+            {% endif %}
           </div>
           {% endmacro %}
 
-          {{ pf('Total Fee',    'total_fee',          ret.total_fee,          True) }}
-          {{ pf('Fee Paid',     'fee_paid',           ret.fee_paid,           True) }}
-          {{ pf('CC Fee',       'cc_fee',             ret.cc_fee,             True) }}
-          {{ pf('Receipt #',    'receipt_number',     ret.receipt_number) }}
+          {{ pf(_('Total Fee'),    'total_fee',          ret.total_fee,          True) }}
+          {{ pf(_('Fee Paid'),     'fee_paid',           ret.fee_paid,           True) }}
+          {{ pf(_('CC Fee'),       'cc_fee',             ret.cc_fee,             True) }}
+          {{ pf(_('Receipt #'),    'receipt_number',     ret.receipt_number) }}
           {{ pf('Zelle / CK #', 'zelle_or_check_ref', ret.zelle_or_check_ref) }}
           {{ pf('Cash / QPay',  'cash_or_qpay_ref',  ret.cash_or_qpay_ref) }}
         </div>
@@ -431,16 +607,16 @@
 
       <!-- Documents -->
       <div id="documents" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
-        <div class="section-header">Documents</div>
+        <div class="section-header">{{ _('Documents') }}</div>
         <div class="p-4 space-y-4">
           <div class="flex flex-wrap items-end gap-3">
             <label class="flex flex-col gap-1 text-sm shrink-0">
-              <span class="text-slate-500 font-medium">File</span>
-              <input type="file" id="doc-file-input" accept="image/*,.pdf"
+              <span class="text-slate-500 font-medium">{{ _('File(s)') }}</span>
+              <input type="file" id="doc-file-input" accept="image/*,.pdf" multiple
                      class="text-sm text-slate-700 max-w-[14rem] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200">
             </label>
             <label class="flex flex-col gap-1 text-sm">
-              <span class="text-slate-500 font-medium">Type</span>
+              <span class="text-slate-500 font-medium">{{ _('Type') }}</span>
               <select id="doc-type-select"
                       class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 min-w-[11rem] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
                 <option value="W-2" selected>W-2</option>
@@ -452,7 +628,7 @@
             </label>
             <button type="button" id="doc-upload-btn"
                     class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
-              Upload document
+              {{ _('Upload') }}
             </button>
           </div>
           <p id="doc-upload-status" class="hidden text-xs font-medium"></p>
@@ -468,31 +644,33 @@
       </div>
 
       <div id="form-data-root" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
-        <div class="section-header">Document Data</div>
+        <div class="section-header">{{ _('Document Data') }}</div>
         <div id="form-data-empty" class="px-4 py-5 text-center text-sm text-slate-400">
-          No document data yet. Run <strong>Extract fields</strong> on a tagged document to populate this section.
+          {{ _('No document data yet. Run') }} <strong>{{ _('Extract fields') }}</strong> {{ _('on a tagged document to populate this section.') }}
         </div>
         <div id="form-data-groups" class="p-4 space-y-6 hidden"></div>
       </div>
 
     </div><!-- /left col -->
 
-    <!-- Right (1/3): Notes + History + Client ──────────────────────────── -->
-    <div class="space-y-4">
+    <!-- Right (≈1/3): Notes + History + Client -->
+    <div class="space-y-4 min-w-0 lg:max-h-none">
 
       <!-- Notes -->
       <div id="notes-card" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
-        <div class="section-header">Notes</div>
+        <div class="section-header">{{ _('Notes') }}</div>
+        {% if not view_only %}
         <div class="p-3 border-b border-slate-100">
-          <textarea id="note-input" rows="2" placeholder="Add a note… (Ctrl+Enter to save)"
+          <textarea id="note-input" rows="2" placeholder="{{ _('Add a note\u2026 (Ctrl+Enter to save)') }}"
                     class="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
                     onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();submitNote({{ ret.id }})}"></textarea>
           <button onclick="submitNote({{ ret.id }})"
                   class="mt-2 w-full text-xs bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg py-1.5 font-semibold transition-colors">
-            Save Note
+            {{ _('Save Note') }}
           </button>
         </div>
-        <div id="notes-list" class="divide-y divide-slate-100 max-h-56 overflow-y-auto">
+        {% endif %}
+        <div id="notes-list" class="divide-y divide-slate-100 max-h-56 overflow-y-auto" aria-live="polite" aria-label="{{ _('Notes') }}">
           {% for note in notes %}
           <div class="px-4 py-3">
             <p class="text-sm text-slate-800 leading-snug">{{ note.note_text }}</p>
@@ -506,7 +684,7 @@
 
       <!-- Status history -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div class="section-header">History</div>
+        <div class="section-header">{{ _('History') }}</div>
         <div class="divide-y divide-slate-100 max-h-64 overflow-y-auto">
           {% for event in events %}
           <div class="px-4 py-3">
@@ -523,14 +701,14 @@
             </p>
           </div>
           {% else %}
-          <div class="px-4 py-6 text-center text-sm text-slate-400">No history yet</div>
+          <div class="px-4 py-6 text-center text-sm text-slate-400">{{ _('No history yet') }}</div>
           {% endfor %}
         </div>
       </div>
 
       <!-- Client info -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div class="section-header">Client</div>
+        <div class="section-header">{{ _('Client') }}</div>
         <div class="p-4 space-y-3 text-sm">
           <div>
             <div class="field-label">Last name</div>
@@ -599,596 +777,1022 @@
 
 {% block scripts %}
 <script>
-// setStatus from app.js reloads on detail page since the whole header / workflow bar changes
-const _origSetStatus = window.setStatus;
-window.setStatus = async function(returnId, status, btn) {
-  const resp = await fetch(`/api/return/${returnId}/status`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
-  });
-  const data = await resp.json();
-  if (data.success) window.location.reload();
-};
+(function () {
 
-// Legacy alias used by old workflow bar buttons (now removed, kept for safety)
-async function setStatusDetail(returnId, status) {
-  window.setStatus(returnId, status, null);
-}
-
-async function saveContactStatus(returnId) {
-  const sel = document.getElementById('contact-status-sel');
-  const dIn = document.getElementById('contact-date-input');
-  if (!sel) return;
-  const body = { contact_status: sel.value };
-  if (sel.value === 'not_contacted') body.last_contacted_date = null;
-  const resp = await fetch(`/api/return/${returnId}/contact`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await resp.json();
-  if (data.error) { alert(data.error); return; }
-  if (!data.success) return;
-  if (data.last_contacted_date && dIn) dIn.value = data.last_contacted_date.slice(0, 10);
-  if ((data.contact_status === 'not_contacted') && dIn) dIn.value = '';
-  window.location.reload();
-}
-
-async function saveContactDate(returnId) {
-  const sel = document.getElementById('contact-status-sel');
-  const dIn = document.getElementById('contact-date-input');
-  if (!dIn || !sel) return;
-  const resp = await fetch(`/api/return/${returnId}/contact`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contact_status: sel.value,
-      last_contacted_date: dIn.value || null,
-    }),
-  });
-  const data = await resp.json();
-  if (data.error) { alert(data.error); return; }
-  if (!data.success) return;
-  window.location.reload();
-}
-
-async function saveField(returnId, field, value) {
-  await fetch(`/api/return/${returnId}/field`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ field, value }),
-  });
-}
-
-// ── Missing documents tracker ─────────────────────────────────────────────
-async function addMissingDoc(returnId) {
-  const input = document.getElementById('missing-doc-input');
-  const text  = (input.value || '').trim();
-  if (!text) return;
-  input.disabled = true;
-  try {
-    const resp = await fetch(`/api/return/${returnId}/missing-doc`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ text }),
-    });
-    const data = await resp.json();
-    if (!data.success) { input.disabled = false; return; }
-    input.value    = '';
-    input.disabled = false;
-    // Remove empty placeholder
-    document.getElementById('missing-docs-empty')?.remove();
-    // Append new row
-    const list = document.getElementById('missing-docs-list');
-    const div  = document.createElement('div');
-    div.id = `mdoc-${data.id}`;
-    div.className = 'flex items-center gap-3 px-4 py-2.5';
-    div.innerHTML = `
-      <button onclick="toggleMissingDoc(${returnId}, ${data.id}, this)" title="Mark resolved"
-              class="w-5 h-5 rounded border border-slate-300 hover:border-orange-400 flex items-center justify-center flex-shrink-0 transition-colors">
-      </button>
-      <span class="flex-1 text-sm text-slate-800">${data.text}</span>
-      <button onclick="deleteMissingDoc(${returnId}, ${data.id})"
-              class="text-slate-300 hover:text-red-400 transition-colors text-xs" title="Remove">&#10005;</button>`;
-    list.appendChild(div);
-    refreshDocsBadge(returnId);
-  } catch(e) { input.disabled = false; }
-}
-
-async function toggleMissingDoc(returnId, docId, btn) {
-  const resp = await fetch(`/api/return/${returnId}/missing-doc/${docId}/toggle`, { method: 'POST' });
-  const data = await resp.json();
-  if (!data.success) return;
-  const row  = document.getElementById(`mdoc-${docId}`);
-  const span = row.querySelector('span.flex-1');
-  if (data.is_resolved) {
-    btn.classList.replace('border-slate-300','border-green-400');
-    btn.classList.add('bg-green-100','text-green-600');
-    btn.innerHTML = '<span class="text-xs font-bold">&#10003;</span>';
-    btn.title = 'Mark open';
-    span.classList.add('line-through','text-slate-400');
-    span.classList.remove('text-slate-800');
-    row.classList.add('opacity-50');
-  } else {
-    btn.classList.replace('border-green-400','border-slate-300');
-    btn.classList.remove('bg-green-100','text-green-600');
-    btn.innerHTML = '';
-    btn.title = 'Mark resolved';
-    span.classList.remove('line-through','text-slate-400');
-    span.classList.add('text-slate-800');
-    row.classList.remove('opacity-50');
-  }
-  refreshDocsBadge(returnId);
-}
-
-async function deleteMissingDoc(returnId, docId) {
-  await fetch(`/api/return/${returnId}/missing-doc/${docId}`, { method: 'DELETE' });
-  document.getElementById(`mdoc-${docId}`)?.remove();
-  if (!document.querySelector('#missing-docs-list [id^="mdoc-"]')) {
-    const list = document.getElementById('missing-docs-list');
-    list.innerHTML = '<div id="missing-docs-empty" class="px-4 py-5 text-center text-sm text-slate-400">No missing documents tracked</div>';
-  }
-  refreshDocsBadge(returnId);
-}
-
-function refreshDocsBadge(returnId) {
-  const rows   = document.querySelectorAll('#missing-docs-list [id^="mdoc-"]');
-  const open   = [...rows].filter(r => !r.classList.contains('opacity-50')).length;
-  const card   = document.getElementById('missing-docs-card');
-  const header = card?.querySelector('.section-header');
-  // Update border color
-  if (card) {
-    card.classList.toggle('border-orange-300', open > 0);
-    card.classList.toggle('border-slate-200',  open === 0);
-  }
-  if (header) {
-    header.classList.toggle('bg-orange-50',         open > 0);
-    header.classList.toggle('border-b',             open > 0);
-    header.classList.toggle('border-orange-200',    open > 0);
-  }
-}
-
-async function quickToggle(returnId, field, btn) {
-  const current = btn.dataset.value === '1';
-  const newVal  = current ? 0 : 1;
-  try {
-    const resp = await fetch(`/api/return/${returnId}/field`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ field, value: newVal }),
-    });
-    const data = await resp.json();
-    if (!data.success) return;
-
-    btn.dataset.value = String(newVal);
-    const icon = btn.querySelector('span');
-    if (icon) icon.textContent = newVal ? '✓' : '○';
-
-    // Swap active / inactive styling
-    const onClasses  = btn.dataset.onClass  || 'bg-blue-50 text-blue-700 border-blue-300';
-    const offClasses = 'bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600';
-
-    if (newVal) {
-      offClasses.split(' ').forEach(c => btn.classList.remove(c));
-      // determine color from current button class
-      let on = onClasses;
-      if (btn.classList.contains('text-green-700') || btn.dataset.color === 'green') on = 'bg-green-50 text-green-700 border-green-300';
-      else if (btn.classList.contains('text-amber-700') || btn.dataset.color === 'amber') on = 'bg-amber-50 text-amber-700 border-amber-300';
-      on.split(' ').forEach(c => btn.classList.add(c));
-    } else {
-      ['bg-blue-50','text-blue-700','border-blue-300',
-       'bg-green-50','text-green-700','border-green-300',
-       'bg-amber-50','text-amber-700','border-amber-300',
-       'bg-red-50','text-red-700','border-red-300'].forEach(c => btn.classList.remove(c));
-      offClasses.split(' ').forEach(c => btn.classList.add(c));
-    }
-
-    // Flash feedback
-    if (window.flash) window.flash(btn);
-  } catch (e) { console.error(e); }
-}
-
-function printSticker() {
-  const content = document.getElementById('sticker-content').innerHTML;
-  const win = window.open('', '_blank', 'width=320,height=200');
-  win.document.write(`<html><body onload="window.print();window.close()">${content}</body></html>`);
-  win.document.close();
-}
-
-async function draftEmail(returnId) {
-  const btn      = document.getElementById('draft-email-btn');
-  const textarea = document.getElementById('draft-email-textarea');
-  const errSpan  = document.getElementById('draft-email-error');
-  const warning  = document.getElementById('draft-email-warning');
-  const copyBtn  = document.getElementById('draft-email-copy-btn');
-
-  btn.disabled    = true;
-  btn.textContent = 'Drafting…';
-  errSpan.classList.add('hidden');
-  errSpan.textContent = '';
-
-  try {
-    const resp = await fetch(`/ai/return/${returnId}/draft-email`, {
+  // setStatus from app.js reloads on detail page since the whole header / workflow bar changes
+  const _origSetStatus = window.setStatus;
+  window.setStatus = async function(returnId, status, btn) {
+    const resp = await _csrfFetch(`/api/return/${returnId}/status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
     });
     const data = await resp.json();
-
-    if (data.draft) {
-      textarea.value = data.draft;
-      textarea.classList.remove('hidden');
-      warning.classList.remove('hidden');
-      copyBtn.classList.remove('hidden');
-    } else {
-      errSpan.textContent = data.error || 'Failed to generate draft.';
-      errSpan.classList.remove('hidden');
-    }
-  } catch (e) {
-    errSpan.textContent = 'Could not reach server. Is Ollama running?';
-    errSpan.classList.remove('hidden');
-  } finally {
-    btn.disabled  = false;
-    btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg> Regenerate draft';
-  }
-}
-
-async function copyDraft() {
-  const textarea = document.getElementById('draft-email-textarea');
-  const copyBtn  = document.getElementById('draft-email-copy-btn');
-  if (!textarea || !textarea.value) return;
-  try {
-    await navigator.clipboard.writeText(textarea.value);
-    const orig = copyBtn.innerHTML;
-    copyBtn.textContent = '✓ Copied';
-    copyBtn.classList.add('text-green-700', 'border-green-300');
-    setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.classList.remove('text-green-700','border-green-300'); }, 2000);
-  } catch (e) {
-    textarea.select();
-    document.execCommand('copy');
-  }
-}
-
-// ── Return documents (upload / list / view / soft-delete) ───────────────────
-const RETURN_ID = {{ ret.id }};
-
-const FORM_FIELD_ORDER = {
-  "w2_records": [
-    "employer_name",
-    "employer_address",
-    "box1_wages_tips_other",
-    "box2_federal_income_tax_withheld",
-    "box3_social_security_wages",
-    "box4_social_security_tax_withheld",
-    "box5_medicare_wages_tips",
-    "box6_medicare_tax_withheld",
-    "box7_social_security_tips",
-    "box8_allocated_tips",
-    "box10_dependent_care_benefits",
-    "box11_nonqualified_plans",
-    "box12a_code",
-    "box12a_amount",
-    "box12b_code",
-    "box12b_amount",
-    "box12c_code",
-    "box12c_amount",
-    "box12d_code",
-    "box12d_amount",
-    "box13_statutory_employee",
-    "box13_retirement_plan",
-    "box13_third_party_sick_pay",
-    "box14_other",
-    "box15_state",
-    "box16_state_wages",
-    "box17_state_income_tax",
-    "box18_local_wages",
-    "box19_local_income_tax",
-    "box20_locality_name",
-    "box15b_state",
-    "box16b_state_wages",
-    "box17b_state_income_tax",
-    "box18b_local_wages",
-    "box19b_local_income_tax",
-    "box20b_locality_name",
-    "tax_year",
-    "wages_tips_other",
-    "federal_income_tax_withheld",
-    "state_wages",
-    "state_income_tax"
-  ],
-  "f1099_nec_records": [
-    "payer_name",
-    "payer_address",
-    "box1_nonemployee_compensation",
-    "box2_direct_sales_indicator",
-    "box4_federal_income_tax_withheld",
-    "box5_state_tax_withheld",
-    "box6_state",
-    "box7_state_income",
-    "tax_year",
-    "nonemployee_compensation",
-    "federal_income_tax_withheld"
-  ],
-  "f1099_misc_records": [
-    "payer_name",
-    "payer_address",
-    "box1_rents",
-    "box2_royalties",
-    "box3_other_income",
-    "box4_federal_income_tax_withheld",
-    "box5_fishing_boat_proceeds",
-    "box6_medical_health_care_payments",
-    "box7_direct_sales_indicator",
-    "box8_substitute_payments",
-    "box9_crop_insurance_proceeds",
-    "box10_gross_proceeds_attorney",
-    "box11_fish_purchased_resale",
-    "box12_section_409a_deferrals",
-    "box14_gross_proceeds_attorney",
-    "box15_section_409a_income",
-    "box16_state_tax_withheld",
-    "box17_state",
-    "box18_state_income",
-    "tax_year",
-    "rents",
-    "royalties",
-    "other_income",
-    "federal_income_tax_withheld"
-  ],
-  "f1099_int_records": [
-    "payer_name",
-    "payer_address",
-    "box1_interest_income",
-    "box2_early_withdrawal_penalty",
-    "box3_us_savings_bond_treasury_interest",
-    "box4_federal_income_tax_withheld",
-    "box5_investment_expenses",
-    "box6_foreign_tax_paid",
-    "box7_foreign_country",
-    "box8_tax_exempt_interest",
-    "box9_specified_private_activity_bond_interest",
-    "box10_market_discount",
-    "box11_bond_premium",
-    "box12_bond_premium_treasury_obligations",
-    "box13_bond_premium_tax_exempt_bond",
-    "box14_tax_exempt_bond_cusip",
-    "box15_state",
-    "box16_state_identification",
-    "box17_state_tax_withheld",
-    "tax_year",
-    "interest_income",
-    "early_withdrawal_penalty",
-    "us_savings_bond_interest",
-    "federal_income_tax_withheld"
-  ],
-  "f1099_div_records": [
-    "payer_name",
-    "payer_address",
-    "box1a_total_ordinary_dividends",
-    "box1b_qualified_dividends",
-    "box2a_total_capital_gain",
-    "box2b_unrecap_sec1250_gain",
-    "box2c_section_1202_gain",
-    "box2d_collectibles_gain",
-    "box2e_section_897_ordinary_dividends",
-    "box2f_section_897_capital_gain",
-    "box3_nondividend_distributions",
-    "box4_federal_income_tax_withheld",
-    "box5_section_199a_dividends",
-    "box6_investment_expenses",
-    "box7_foreign_tax_paid",
-    "box8_foreign_country",
-    "box9_cash_liquidation_distributions",
-    "box10_noncash_liquidation_distributions",
-    "box11_fatca_filing_requirement",
-    "box12_exempt_interest_dividends",
-    "box13_specified_private_activity_bond",
-    "box14_state",
-    "box15_state_identification",
-    "box16_state_tax_withheld",
-    "tax_year",
-    "total_ordinary_dividends",
-    "qualified_dividends",
-    "total_capital_gain",
-    "federal_income_tax_withheld"
-  ]
-};
-
-const FORM_GROUP_DEFS = [
-  { key: 'w2', sqlTable: 'w2_records', title: 'W-2' },
-  { key: 'f1099_nec', sqlTable: 'f1099_nec_records', title: '1099-NEC' },
-  { key: 'f1099_misc', sqlTable: 'f1099_misc_records', title: '1099-MISC' },
-  { key: 'f1099_int', sqlTable: 'f1099_int_records', title: '1099-INT' },
-  { key: 'f1099_div', sqlTable: 'f1099_div_records', title: '1099-DIV' },
-];
-
-function _formSavedToLabel(savedTo) {
-  const m = {
-    w2_records: 'W-2 records',
-    f1099_nec_records: '1099-NEC records',
-    f1099_misc_records: '1099-MISC records',
-    f1099_int_records: '1099-INT records',
-    f1099_div_records: '1099-DIV records',
+    if (data.success) window.location.reload();
   };
-  return m[savedTo] || savedTo;
-}
 
-function fdSourceBadgeEl(sourceRaw) {
-  const s = sourceRaw === 'manual' ? 'manual' : 'extracted';
-  const span = document.createElement('span');
-  span.className =
-    'inline-block text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ' +
-    (s === 'manual'
-      ? 'bg-slate-100 text-slate-600 border-slate-200'
-      : 'bg-blue-50 text-blue-700 border-blue-200');
-  span.textContent = s;
-  return span;
-}
-
-const FD_SKIP_KEYS = new Set([
-  'id',
-  'return_id',
-  'doc_id',
-  'source',
-  'created_at',
-  'updated_at',
-  'is_deleted',
-]);
-
-const FD_INTEGER_FIELDS = new Set([
-  'box13_statutory_employee',
-  'box13_retirement_plan',
-  'box13_third_party_sick_pay',
-  'box2_direct_sales_indicator',
-  'box7_direct_sales_indicator',
-  'box11_fatca_filing_requirement',
-]);
-
-const FD_LABEL_OVERRIDES = {
-  employer_name: 'Employer',
-  employer_address: 'Employer address',
-  payer_name: 'Payer',
-  payer_address: 'Payer address',
-  wages_tips_other: 'Wages / tips / other comp. (alternate column)',
-  nonemployee_compensation: 'Nonemployee compensation (alternate column)',
-  rents: 'Rents (alternate column)',
-  royalties: 'Royalties (alternate column)',
-  other_income: 'Other income (alternate column)',
-  interest_income: 'Interest income (alternate column)',
-  early_withdrawal_penalty: 'Early withdrawal penalty (alternate column)',
-  us_savings_bond_interest: 'U.S. savings bond interest (alternate column)',
-  total_ordinary_dividends: 'Total ordinary dividends (alternate column)',
-  qualified_dividends: 'Qualified dividends (alternate column)',
-  total_capital_gain: 'Total capital gain (alternate column)',
-  federal_income_tax_withheld: 'Federal income tax withheld',
-  state_wages: 'State wages (alternate column)',
-  state_income_tax: 'State income tax (alternate column)',
-};
-
-function fdTitleTail(restUnderscores) {
-  if (!restUnderscores) return '';
-  const small = new Set(['of', 'and', 'or', 'the', 'a', 'to', 'in', 'no', 'for']);
-  const s = restUnderscores.replace(/_/g, ' ');
-  return s
-    .split(' ')
-    .filter(Boolean)
-    .map(function titleMap(w, i) {
-      var lw = w.toLowerCase();
-      if (lw === 'ss') return 'SS';
-      if (lw === 'sec1250') return 'Section 1250';
-      if (lw === '1202') return '§1202';
-      if (lw === '897') return '§897';
-      if (lw === '199a') return '§199A';
-      if (lw === '409a') return '§409A';
-      if (lw === 'ssn') return 'SSN';
-      if (lw === 'irs') return 'Federal';
-      if (i > 0 && small.has(lw)) return lw;
-      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-    })
-    .join(' ');
-}
-
-function fdFieldLabel(field) {
-  if (!field) return '';
-  var ovr = FD_LABEL_OVERRIDES[field];
-  if (ovr) return ovr;
-  if (field === 'tax_year') return 'Tax year';
-  var parts = field.split('_');
-  if (!parts.length) return field;
-  if (parts[0].startsWith('box')) {
-    var bx = parts[0].slice(3);
-    var tail = parts.slice(1).join('_');
-    return 'Box ' + bx + ' — ' + fdTitleTail(tail);
+  // Legacy alias used by old workflow bar buttons (now removed, kept for safety)
+  async function setStatusDetail(returnId, status) {
+    window.setStatus(returnId, status, null);
   }
-  return fdTitleTail(field);
-}
 
-function fdRowHasValue(raw) {
-  if (raw === null || raw === undefined) return false;
-  if (typeof raw === 'boolean') return raw;
-  if (typeof raw === 'number') return !Number.isNaN(raw);
-  return String(raw).trim() !== '';
-}
-
-function fdNormalizeStored(field, raw) {
-  if (FD_INTEGER_FIELDS.has(field)) {
-    var n = typeof raw === 'number' ? raw : parseInt(String(raw).trim(), 10);
-    return n === 1 ? '1' : '0';
+  async function saveContactStatus(returnId) {
+    const sel = document.getElementById('contact-status-sel');
+    const dIn = document.getElementById('contact-date-input');
+    if (!sel) return;
+    const body = { contact_status: sel.value };
+    if (sel.value === 'not_contacted') body.last_contacted_date = null;
+    const resp = await _csrfFetch(`/api/return/${returnId}/contact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    if (!data.success) return;
+    if (data.last_contacted_date && dIn) dIn.value = data.last_contacted_date.slice(0, 10);
+    if ((data.contact_status === 'not_contacted') && dIn) dIn.value = '';
+    window.location.reload();
   }
-  return raw != null ? String(raw).trim() : '';
-}
 
-function nonzeroOrderedKeys(sqlTable, row) {
-  var order = FORM_FIELD_ORDER[sqlTable] || [];
-  var seen = new Set();
-  var out = [];
-  var i;
-  for (i = 0; i < order.length; i++) {
-    var k = order[i];
-    if (FD_SKIP_KEYS.has(k) || seen.has(k)) continue;
-    if (!Object.prototype.hasOwnProperty.call(row, k)) continue;
-    if (!fdRowHasValue(row[k])) continue;
-    out.push(k);
-    seen.add(k);
+  async function saveContactDate(returnId) {
+    const sel = document.getElementById('contact-status-sel');
+    const dIn = document.getElementById('contact-date-input');
+    if (!dIn || !sel) return;
+    const resp = await _csrfFetch(`/api/return/${returnId}/contact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contact_status: sel.value,
+        last_contacted_date: dIn.value || null,
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    if (!data.success) return;
+    window.location.reload();
   }
-  var extra = Object.keys(row).filter(function (k) {
-    return !FD_SKIP_KEYS.has(k) && !seen.has(k);
-  });
-  extra.sort();
-  for (i = 0; i < extra.length; i++) {
-    var ek = extra[i];
-    if (!fdRowHasValue(row[ek])) continue;
-    out.push(ek);
+
+  async function saveField(returnId, field, value) {
+    await _csrfFetch(`/api/return/${returnId}/field`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ field, value }),
+    });
   }
-  return out;
-}
 
-function fdCellDisplay(field, raw) {
-  if (!fdRowHasValue(raw)) return '—';
-  if (FD_INTEGER_FIELDS.has(field)) {
-    var n = typeof raw === 'number' ? raw : parseInt(String(raw).trim(), 10);
-    if (n === 1) return 'Yes';
-    if (n === 0) return 'No';
-    return '—';
+  // ── LIFE-1: Cancel / uncancel return ─────────────────────────────────────
+  function showCancelForm(returnId) {
+    const form = document.getElementById('cancel-reason-form');
+    const btn  = document.getElementById('cancel-return-btn');
+    if (!form) return;
+    form.classList.remove('hidden');
+    if (btn) btn.classList.add('hidden');
+    document.getElementById('cancel-reason-input')?.focus();
   }
-  var t = raw != null ? String(raw).trim() : '';
-  return t === '' ? '—' : t;
-}
 
-function bindFdEditableCell(td, sqlTable, recordId, field) {
-  td.classList.add('cursor-text', 'hover:bg-slate-50');
-  td.dataset.fdTable = sqlTable;
-  td.dataset.fdId = String(recordId);
-  td.dataset.fdField = field;
-  td.addEventListener('click', function fdCellClick() {
-    if (td.querySelector('input') || td.querySelector('select')) return;
-    var cur = td.dataset.fdOrig != null ? td.dataset.fdOrig : '';
-    var isInt = FD_INTEGER_FIELDS.has(field);
-    td.textContent = '';
+  function hideCancelForm() {
+    const form = document.getElementById('cancel-reason-form');
+    const btn  = document.getElementById('cancel-return-btn');
+    if (form) form.classList.add('hidden');
+    if (btn) btn.classList.remove('hidden');
+  }
 
-    if (isInt) {
-      var sel = document.createElement('select');
-      sel.className =
-        'w-full min-w-[6rem] text-sm border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400';
-      ;[
-        { v: '0', t: 'No' },
-        { v: '1', t: 'Yes' },
-      ].forEach(function (opt) {
-        var o = document.createElement('option');
-        o.value = opt.v;
-        o.textContent = opt.t;
-        sel.appendChild(o);
+  async function confirmCancel(returnId) {
+    const reason = (document.getElementById('cancel-reason-input')?.value || '').trim();
+    if (!reason) { alert('Please enter a reason for cancellation.'); return; }
+    const resp = await _csrfFetch(`/api/return/${returnId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    window.location.reload();
+  }
+
+  async function uncancelReturn(returnId) {
+    if (!confirm('Reinstate this return?')) return;
+    const resp = await _csrfFetch(`/api/return/${returnId}/uncancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    window.location.reload();
+  }
+
+  // ── DEP-1: Remove dependent from return ──────────────────────────────────
+  async function removeDependent(returnId, depId, name) {
+    const label = name || 'this dependent';
+    const row   = document.getElementById(`dep-row-${depId}`);
+    if (!row) return;
+    if (!row.dataset.confirming) {
+      row.dataset.confirming = '1';
+      const xBtn = row.querySelector('button[onclick*="removeDependent"]');
+      if (xBtn) {
+        xBtn.textContent = `Remove ${label}?`;
+        xBtn.className = 'text-red-500 text-xs font-semibold hover:text-red-700 ml-2';
+      }
+      return;
+    }
+    const resp = await _csrfFetch(`/api/return/${returnId}/dependents/${depId}`, {
+      method: 'DELETE',
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    row.remove();
+  }
+
+  // ── Missing documents tracker ─────────────────────────────────────────────
+  async function addMissingDoc(returnId) {
+    const input = document.getElementById('missing-doc-input');
+    const text  = (input.value || '').trim();
+    if (!text) return;
+    input.disabled = true;
+    try {
+      const resp = await _csrfFetch(`/api/return/${returnId}/missing-doc`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text }),
       });
-      sel.value = cur === '1' ? '1' : '0';
-      td.appendChild(sel);
-      sel.focus();
+      const data = await resp.json();
+      if (!data.success) { input.disabled = false; return; }
+      input.value    = '';
+      input.disabled = false;
+      // Remove empty placeholder
+      document.getElementById('missing-docs-empty')?.remove();
+      // Append new row
+      const list = document.getElementById('missing-docs-list');
+      const div  = document.createElement('div');
+      div.id = `mdoc-${data.id}`;
+      div.className = 'flex items-center gap-3 px-4 py-2.5';
+      div.innerHTML = `
+        <button onclick="toggleMissingDoc(${returnId}, ${data.id}, this)" title="Mark resolved"
+                class="w-5 h-5 rounded border border-slate-300 hover:border-orange-400 flex items-center justify-center flex-shrink-0 transition-colors">
+        </button>
+        <span class="flex-1 text-sm text-slate-800">${data.text}</span>
+        <button onclick="deleteMissingDoc(${returnId}, ${data.id})"
+                class="text-slate-300 hover:text-red-400 transition-colors text-xs" title="Remove">&#10005;</button>`;
+      list.appendChild(div);
+      refreshDocsBadge(returnId);
+    } catch(e) { input.disabled = false; }
+  }
 
-      function finishSel() {
-        var newVal = sel.value === '1' ? '1' : '0';
-        td.textContent = fdCellDisplay(field, parseInt(newVal, 10));
+  async function toggleMissingDoc(returnId, docId, btn) {
+    const resp = await _csrfFetch(`/api/return/${returnId}/missing-doc/${docId}/toggle`, { method: 'POST' });
+    const data = await resp.json();
+    if (!data.success) return;
+    const row  = document.getElementById(`mdoc-${docId}`);
+    const span = row.querySelector('span.flex-1');
+    if (data.is_resolved) {
+      btn.classList.replace('border-slate-300','border-green-400');
+      btn.classList.add('bg-green-100','text-green-600');
+      btn.innerHTML = '<span class="text-xs font-bold">&#10003;</span>';
+      btn.title = 'Mark open';
+      span.classList.add('line-through','text-slate-400');
+      span.classList.remove('text-slate-800');
+      row.classList.add('opacity-50');
+    } else {
+      btn.classList.replace('border-green-400','border-slate-300');
+      btn.classList.remove('bg-green-100','text-green-600');
+      btn.innerHTML = '';
+      btn.title = 'Mark resolved';
+      span.classList.remove('line-through','text-slate-400');
+      span.classList.add('text-slate-800');
+      row.classList.remove('opacity-50');
+    }
+    refreshDocsBadge(returnId);
+  }
+
+  async function deleteMissingDoc(returnId, docId) {
+    await _csrfFetch(`/api/return/${returnId}/missing-doc/${docId}`, { method: 'DELETE' });
+    document.getElementById(`mdoc-${docId}`)?.remove();
+    if (!document.querySelector('#missing-docs-list [id^="mdoc-"]')) {
+      const list = document.getElementById('missing-docs-list');
+      list.innerHTML = '<div id="missing-docs-empty" class="px-4 py-5 text-center text-sm text-slate-400">No missing documents tracked</div>';
+    }
+    refreshDocsBadge(returnId);
+  }
+
+  function refreshDocsBadge(returnId) {
+    const rows   = document.querySelectorAll('#missing-docs-list [id^="mdoc-"]');
+    const open   = [...rows].filter(r => !r.classList.contains('opacity-50')).length;
+    const card   = document.getElementById('missing-docs-card');
+    const header = card?.querySelector('.section-header');
+    // Update border color
+    if (card) {
+      card.classList.toggle('border-orange-300', open > 0);
+      card.classList.toggle('border-slate-200',  open === 0);
+    }
+    if (header) {
+      header.classList.toggle('bg-orange-50',         open > 0);
+      header.classList.toggle('border-b',             open > 0);
+      header.classList.toggle('border-orange-200',    open > 0);
+    }
+  }
+
+  async function quickToggle(returnId, field, btn) {
+    const current = btn.dataset.value === '1';
+    const newVal  = current ? 0 : 1;
+    try {
+      const resp = await _csrfFetch(`/api/return/${returnId}/field`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ field, value: newVal }),
+      });
+      const data = await resp.json();
+      if (!data.success) return;
+
+      btn.dataset.value = String(newVal);
+      const icon = btn.querySelector('span');
+      if (icon) icon.textContent = newVal ? '✓' : '○';
+
+      // Swap active / inactive styling
+      const onClasses  = btn.dataset.onClass  || 'bg-blue-50 text-blue-700 border-blue-300';
+      const offClasses = 'bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600';
+
+      if (newVal) {
+        offClasses.split(' ').forEach(c => btn.classList.remove(c));
+        // determine color from current button class
+        let on = onClasses;
+        if (btn.classList.contains('text-green-700') || btn.dataset.color === 'green') on = 'bg-green-50 text-green-700 border-green-300';
+        else if (btn.classList.contains('text-amber-700') || btn.dataset.color === 'amber') on = 'bg-amber-50 text-amber-700 border-amber-300';
+        on.split(' ').forEach(c => btn.classList.add(c));
+      } else {
+        ['bg-blue-50','text-blue-700','border-blue-300',
+         'bg-green-50','text-green-700','border-green-300',
+         'bg-amber-50','text-amber-700','border-amber-300',
+         'bg-red-50','text-red-700','border-red-300'].forEach(c => btn.classList.remove(c));
+        offClasses.split(' ').forEach(c => btn.classList.add(c));
+      }
+
+      // Flash feedback
+      if (window.flash) window.flash(btn);
+    } catch (e) { console.error(e); }
+  }
+
+  function printSticker() {
+    const content = document.getElementById('sticker-content').innerHTML;
+    const win = window.open('', '_blank', 'width=320,height=200');
+    win.document.write(`<html><body onload="window.print();window.close()">${content}</body></html>`);
+    win.document.close();
+  }
+
+  async function draftEmail(returnId) {
+    const btn      = document.getElementById('draft-email-btn');
+    const textarea = document.getElementById('draft-email-textarea');
+    const errSpan  = document.getElementById('draft-email-error');
+    const warning  = document.getElementById('draft-email-warning');
+    const copyBtn  = document.getElementById('draft-email-copy-btn');
+
+    btn.disabled    = true;
+    btn.textContent = 'Drafting…';
+    errSpan.classList.add('hidden');
+    errSpan.textContent = '';
+
+    try {
+      const resp = await _csrfFetch(`/ai/return/${returnId}/draft-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await resp.json();
+
+      if (data.draft) {
+        textarea.value = data.draft;
+        textarea.classList.remove('hidden');
+        warning.classList.remove('hidden');
+        copyBtn.classList.remove('hidden');
+      } else {
+        errSpan.textContent = data.error || 'Failed to generate draft.';
+        errSpan.classList.remove('hidden');
+      }
+    } catch (e) {
+      errSpan.textContent = 'Could not reach server. Is Ollama running?';
+      errSpan.classList.remove('hidden');
+    } finally {
+      btn.disabled  = false;
+      btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg> Regenerate draft';
+    }
+  }
+
+  async function copyDraft() {
+    const textarea = document.getElementById('draft-email-textarea');
+    const copyBtn  = document.getElementById('draft-email-copy-btn');
+    if (!textarea || !textarea.value) return;
+    try {
+      await navigator.clipboard.writeText(textarea.value);
+      const orig = copyBtn.innerHTML;
+      copyBtn.textContent = '✓ Copied';
+      copyBtn.classList.add('text-green-700', 'border-green-300');
+      setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.classList.remove('text-green-700','border-green-300'); }, 2000);
+    } catch (e) {
+      textarea.select();
+      document.execCommand('copy');
+    }
+  }
+
+  // ── Return documents (upload / list / view / soft-delete) ───────────────────
+  const RETURN_ID = {{ ret.id }};
+  const DRAKE_SYNC_ENABLED = {% if drake_enabled %}true{% else %}false{% endif %};
+
+  const FORM_FIELD_ORDER = {
+    "w2_records": [
+      "employer_name",
+      "employer_address",
+      "box1_wages_tips_other",
+      "box2_federal_income_tax_withheld",
+      "box3_social_security_wages",
+      "box4_social_security_tax_withheld",
+      "box5_medicare_wages_tips",
+      "box6_medicare_tax_withheld",
+      "box7_social_security_tips",
+      "box8_allocated_tips",
+      "box10_dependent_care_benefits",
+      "box11_nonqualified_plans",
+      "box12a_code",
+      "box12a_amount",
+      "box12b_code",
+      "box12b_amount",
+      "box12c_code",
+      "box12c_amount",
+      "box12d_code",
+      "box12d_amount",
+      "box13_statutory_employee",
+      "box13_retirement_plan",
+      "box13_third_party_sick_pay",
+      "box14_other",
+      "box15_state",
+      "box16_state_wages",
+      "box17_state_income_tax",
+      "box18_local_wages",
+      "box19_local_income_tax",
+      "box20_locality_name",
+      "box15b_state",
+      "box16b_state_wages",
+      "box17b_state_income_tax",
+      "box18b_local_wages",
+      "box19b_local_income_tax",
+      "box20b_locality_name",
+      "tax_year"
+    ],
+    "f1099_nec_records": [
+      "payer_name",
+      "payer_address",
+      "box1_nonemployee_compensation",
+      "box2_direct_sales_indicator",
+      "box4_federal_income_tax_withheld",
+      "box5_state_tax_withheld",
+      "box6_state",
+      "box7_state_income",
+      "tax_year"
+    ],
+    "f1099_misc_records": [
+      "payer_name",
+      "payer_address",
+      "box1_rents",
+      "box2_royalties",
+      "box3_other_income",
+      "box4_federal_income_tax_withheld",
+      "box5_fishing_boat_proceeds",
+      "box6_medical_health_care_payments",
+      "box7_direct_sales_indicator",
+      "box8_substitute_payments",
+      "box9_crop_insurance_proceeds",
+      "box10_gross_proceeds_attorney",
+      "box11_fish_purchased_resale",
+      "box12_section_409a_deferrals",
+      "box14_gross_proceeds_attorney",
+      "box15_section_409a_income",
+      "box16_state_tax_withheld",
+      "box17_state",
+      "box18_state_income",
+      "tax_year"
+    ],
+    "f1099_int_records": [
+      "payer_name",
+      "payer_address",
+      "box1_interest_income",
+      "box2_early_withdrawal_penalty",
+      "box3_us_savings_bond_treasury_interest",
+      "box4_federal_income_tax_withheld",
+      "box5_investment_expenses",
+      "box6_foreign_tax_paid",
+      "box7_foreign_country",
+      "box8_tax_exempt_interest",
+      "box9_specified_private_activity_bond_interest",
+      "box10_market_discount",
+      "box11_bond_premium",
+      "box12_bond_premium_treasury_obligations",
+      "box13_bond_premium_tax_exempt_bond",
+      "box14_tax_exempt_bond_cusip",
+      "box15_state",
+      "box16_state_identification",
+      "box17_state_tax_withheld",
+      "tax_year"
+    ],
+    "f1099_div_records": [
+      "payer_name",
+      "payer_address",
+      "box1a_total_ordinary_dividends",
+      "box1b_qualified_dividends",
+      "box2a_total_capital_gain",
+      "box2b_unrecap_sec1250_gain",
+      "box2c_section_1202_gain",
+      "box2d_collectibles_gain",
+      "box2e_section_897_ordinary_dividends",
+      "box2f_section_897_capital_gain",
+      "box3_nondividend_distributions",
+      "box4_federal_income_tax_withheld",
+      "box5_section_199a_dividends",
+      "box6_investment_expenses",
+      "box7_foreign_tax_paid",
+      "box8_foreign_country",
+      "box9_cash_liquidation_distributions",
+      "box10_noncash_liquidation_distributions",
+      "box11_fatca_filing_requirement",
+      "box12_exempt_interest_dividends",
+      "box13_specified_private_activity_bond",
+      "box14_state",
+      "box15_state_identification",
+      "box16_state_tax_withheld",
+      "tax_year"
+    ]
+  };
+
+  const FORM_GROUP_DEFS = [
+    { key: 'w2', sqlTable: 'w2_records', title: 'W-2' },
+    { key: 'f1099_nec', sqlTable: 'f1099_nec_records', title: '1099-NEC' },
+    { key: 'f1099_misc', sqlTable: 'f1099_misc_records', title: '1099-MISC' },
+    { key: 'f1099_int', sqlTable: 'f1099_int_records', title: '1099-INT' },
+    { key: 'f1099_div', sqlTable: 'f1099_div_records', title: '1099-DIV' },
+  ];
+
+  const FD_SQL_LABEL_GROUP = {
+    w2_records: 'w2',
+    f1099_nec_records: 'f1099_nec',
+    f1099_misc_records: 'f1099_misc',
+    f1099_int_records: 'f1099_int',
+    f1099_div_records: 'f1099_div',
+  };
+
+  const FORM_LABELS = {
+    w2: {
+      employer_name: 'Employer name',
+      employer_address: 'Employer address',
+      box1_wages_tips_other: 'Box 1 — Wages, tips, other compensation',
+      box2_federal_income_tax_withheld: 'Box 2 — Federal income tax withheld',
+      box3_social_security_wages: 'Box 3 — Social Security wages',
+      box4_social_security_tax_withheld: 'Box 4 — Social Security tax withheld',
+      box5_medicare_wages_tips: 'Box 5 — Medicare wages and tips',
+      box6_medicare_tax_withheld: 'Box 6 — Medicare tax withheld',
+      box7_social_security_tips: 'Box 7 — Social security tips',
+      box8_allocated_tips: 'Box 8 — Allocated tips',
+      box10_dependent_care_benefits: 'Box 10 — Dependent care benefits',
+      box11_nonqualified_plans: 'Box 11 — Nonqualified plans',
+      box12a_code: 'Box 12a — Code',
+      box12a_amount: 'Box 12a — Amount',
+      box12b_code: 'Box 12b — Code',
+      box12b_amount: 'Box 12b — Amount',
+      box12c_code: 'Box 12c — Code',
+      box12c_amount: 'Box 12c — Amount',
+      box12d_code: 'Box 12d — Code',
+      box12d_amount: 'Box 12d — Amount',
+      box13_statutory_employee: 'Box 13 — Statutory employee',
+      box13_retirement_plan: 'Box 13 — Retirement plan',
+      box13_third_party_sick_pay: 'Box 13 — Third-party sick pay',
+      box14_other: 'Box 14 — Other',
+      box15_state: 'Box 15 — State (Employer\'s state ID no.)',
+      box16_state_wages: 'Box 16 — State wages, tips, etc.',
+      box17_state_income_tax: 'Box 17 — State income tax',
+      box18_local_wages: 'Box 18 — Local wages, tips, etc.',
+      box19_local_income_tax: 'Box 19 — Local income tax',
+      box20_locality_name: 'Box 20 — Locality name',
+      box15b_state: 'Box 15 (second state) — State ID',
+      box16b_state_wages: 'Box 16 (second state) — State wages',
+      box17b_state_income_tax: 'Box 17 (second state) — State income tax',
+      box18b_local_wages: 'Box 18 (second locality) — Local wages',
+      box19b_local_income_tax: 'Box 19 (second locality) — Local income tax',
+      box20b_locality_name: 'Box 20 (second locality) — Locality name',
+      tax_year: 'Tax year',
+      source: 'Source',
+    },
+    f1099_nec: {
+      payer_name: 'Payer\'s name',
+      payer_address: 'Payer\'s address',
+      box1_nonemployee_compensation: 'Box 1 — Nonemployee compensation',
+      box2_direct_sales_indicator: 'Box 2 — Direct sales ($5,000+) indicator',
+      box4_federal_income_tax_withheld: 'Box 4 — Federal income tax withheld',
+      box5_state_tax_withheld: 'Box 5 — State/Payer\'s state no. tax withheld',
+      box6_state: 'Box 6 — State income',
+      box7_state_income: 'Box 7 — State income tax',
+      tax_year: 'Tax year',
+    },
+    f1099_misc: {
+      payer_name: 'Payer\'s name',
+      payer_address: 'Payer\'s address',
+      box1_rents: 'Box 1 — Rents',
+      box2_royalties: 'Box 2 — Royalties',
+      box3_other_income: 'Box 3 — Other income',
+      box4_federal_income_tax_withheld: 'Box 4 — Federal income tax withheld',
+      box5_fishing_boat_proceeds: 'Box 5 — Fishing boat proceeds',
+      box6_medical_health_care_payments: 'Box 6 — Medical and health care payments',
+      box7_direct_sales_indicator: 'Box 7 — Direct sales indicator',
+      box8_substitute_payments: 'Box 8 — Substitute payments',
+      box9_crop_insurance_proceeds: 'Box 9 — Crop insurance proceeds',
+      box10_gross_proceeds_attorney: 'Box 10 — Gross proceeds paid to attorney',
+      box11_fish_purchased_resale: 'Box 11 — Fish purchased for resale',
+      box12_section_409a_deferrals: 'Box 12 — Section 409A deferrals',
+      box14_gross_proceeds_attorney: 'Box 14 — Gross proceeds to attorney',
+      box15_section_409a_income: 'Box 15 — Section 409A income',
+      box16_state_tax_withheld: 'Box 16 — State tax withheld',
+      box17_state: 'Box 17 — State/Payer\'s state no.',
+      box18_state_income: 'Box 18 — State income',
+      tax_year: 'Tax year',
+    },
+    f1099_int: {
+      payer_name: 'Payer\'s name',
+      payer_address: 'Payer\'s address',
+      box1_interest_income: 'Box 1 — Interest income',
+      box2_early_withdrawal_penalty: 'Box 2 — Early withdrawal penalty',
+      box3_us_savings_bond_treasury_interest: 'Box 3 — Interest on U.S. Savings Bonds/Treasury',
+      box4_federal_income_tax_withheld: 'Box 4 — Federal income tax withheld',
+      box5_investment_expenses: 'Box 5 — Investment expenses',
+      box6_foreign_tax_paid: 'Box 6 — Foreign tax paid',
+      box7_foreign_country: 'Box 7 — Foreign country/US possession',
+      box8_tax_exempt_interest: 'Box 8 — Tax-exempt interest',
+      box9_specified_private_activity_bond_interest: 'Box 9 — Specified private activity bond interest',
+      box10_market_discount: 'Box 10 — Market discount',
+      box11_bond_premium: 'Box 11 — Bond premium',
+      box12_bond_premium_treasury_obligations: 'Box 12 — Bond premium on Treasury obligations',
+      box13_bond_premium_tax_exempt_bond: 'Box 13 — Bond premium on tax-exempt bond',
+      box14_tax_exempt_bond_cusip: 'Box 14 — Tax-exempt bond CUSIP no.',
+      box15_state: 'Box 15 — State',
+      box16_state_identification: 'Box 16 — State identification no.',
+      box17_state_tax_withheld: 'Box 17 — State tax withheld',
+      tax_year: 'Tax year',
+    },
+    f1099_div: {
+      payer_name: 'Payer\'s name',
+      payer_address: 'Payer\'s address',
+      box1a_total_ordinary_dividends: 'Box 1a — Total ordinary dividends',
+      box1b_qualified_dividends: 'Box 1b — Qualified dividends',
+      box2a_total_capital_gain: 'Box 2a — Total capital gain distributions',
+      box2b_unrecap_sec1250_gain: 'Box 2b — Unrecaptured Section 1250 gain',
+      box2c_section_1202_gain: 'Box 2c — Section 1202 gain',
+      box2d_collectibles_gain: 'Box 2d — Collectibles (28%) gain',
+      box2e_section_897_ordinary_dividends: 'Box 2e — Section 897 ordinary dividends',
+      box2f_section_897_capital_gain: 'Box 2f — Section 897 capital gain',
+      box3_nondividend_distributions: 'Box 3 — Nondividend distributions',
+      box4_federal_income_tax_withheld: 'Box 4 — Federal income tax withheld',
+      box5_section_199a_dividends: 'Box 5 — Section 199A dividends',
+      box6_investment_expenses: 'Box 6 — Investment expenses',
+      box7_foreign_tax_paid: 'Box 7 — Foreign tax paid',
+      box8_foreign_country: 'Box 8 — Foreign country/US possession',
+      box9_cash_liquidation_distributions: 'Box 9 — Cash liquidation distributions',
+      box10_noncash_liquidation_distributions: 'Box 10 — Noncash liquidation distributions',
+      box11_fatca_filing_requirement: 'Box 11 — FATCA filing requirement',
+      box12_exempt_interest_dividends: 'Box 12 — Exempt-interest dividends',
+      box13_specified_private_activity_bond: 'Box 13 — Specified private activity bond interest dividends',
+      box14_state: 'Box 14 — State',
+      box15_state_identification: 'Box 15 — State identification no.',
+      box16_state_tax_withheld: 'Box 16 — State distribution',
+      tax_year: 'Tax year',
+    },
+  };
+
+  /** Subsections within each extracted form card (Fed / FICA / State / Local patterns). */
+  const FD_SECTION_DEFS = {
+    w2_records: [
+      {
+        title: 'Employer & tax year',
+        keys: ['employer_name', 'employer_address', 'tax_year'],
+      },
+      {
+        title: 'Federal — wages & withholding',
+        keys: ['box1_wages_tips_other', 'box2_federal_income_tax_withheld'],
+      },
+      {
+        title: 'FICA — Social Security & Medicare',
+        keys: [
+          'box3_social_security_wages',
+          'box4_social_security_tax_withheld',
+          'box5_medicare_wages_tips',
+          'box6_medicare_tax_withheld',
+          'box7_social_security_tips',
+          'box8_allocated_tips',
+        ],
+      },
+      {
+        title: 'Other compensation & codes',
+        keys: [
+          'box10_dependent_care_benefits',
+          'box11_nonqualified_plans',
+          'box12a_code',
+          'box12a_amount',
+          'box12b_code',
+          'box12b_amount',
+          'box12c_code',
+          'box12c_amount',
+          'box12d_code',
+          'box12d_amount',
+          'box13_statutory_employee',
+          'box13_retirement_plan',
+          'box13_third_party_sick_pay',
+          'box14_other',
+        ],
+      },
+      {
+        title: 'State',
+        keys: ['box15_state', 'box16_state_wages', 'box17_state_income_tax'],
+      },
+      {
+        title: 'Local',
+        keys: ['box18_local_wages', 'box19_local_income_tax', 'box20_locality_name'],
+      },
+      {
+        title: 'Second state/locality',
+        keys: [
+          'box15b_state',
+          'box16b_state_wages',
+          'box17b_state_income_tax',
+          'box18b_local_wages',
+          'box19b_local_income_tax',
+          'box20b_locality_name',
+        ],
+      },
+    ],
+    f1099_nec_records: [
+      { title: 'Payer', keys: ['payer_name', 'payer_address', 'tax_year'] },
+      { title: 'Federal', keys: ['box1_nonemployee_compensation', 'box2_direct_sales_indicator', 'box4_federal_income_tax_withheld'] },
+      { title: 'State', keys: ['box5_state_tax_withheld', 'box6_state', 'box7_state_income'] },
+    ],
+    f1099_misc_records: [
+      { title: 'Payer', keys: ['payer_name', 'payer_address', 'tax_year'] },
+      {
+        title: 'Federal — gross income',
+        keys: [
+          'box1_rents',
+          'box2_royalties',
+          'box3_other_income',
+          'box4_federal_income_tax_withheld',
+          'box5_fishing_boat_proceeds',
+          'box6_medical_health_care_payments',
+          'box7_direct_sales_indicator',
+          'box8_substitute_payments',
+          'box9_crop_insurance_proceeds',
+          'box10_gross_proceeds_attorney',
+          'box11_fish_purchased_resale',
+          'box12_section_409a_deferrals',
+          'box14_gross_proceeds_attorney',
+          'box15_section_409a_income',
+        ],
+      },
+      { title: 'State', keys: ['box16_state_tax_withheld', 'box17_state', 'box18_state_income'] },
+    ],
+    f1099_int_records: [
+      { title: 'Payer', keys: ['payer_name', 'payer_address', 'tax_year'] },
+      {
+        title: 'Federal — interest & withholding',
+        keys: [
+          'box1_interest_income',
+          'box2_early_withdrawal_penalty',
+          'box3_us_savings_bond_treasury_interest',
+          'box4_federal_income_tax_withheld',
+        ],
+      },
+      {
+        title: 'Federal — other amounts',
+        keys: [
+          'box5_investment_expenses',
+          'box6_foreign_tax_paid',
+          'box7_foreign_country',
+          'box8_tax_exempt_interest',
+          'box9_specified_private_activity_bond_interest',
+          'box10_market_discount',
+          'box11_bond_premium',
+        ],
+      },
+      {
+        title: 'Bond identification',
+        keys: [
+          'box12_bond_premium_treasury_obligations',
+          'box13_bond_premium_tax_exempt_bond',
+          'box14_tax_exempt_bond_cusip',
+        ],
+      },
+      {
+        title: 'State',
+        keys: ['box15_state', 'box16_state_identification', 'box17_state_tax_withheld'],
+      },
+    ],
+    f1099_div_records: [
+      { title: 'Payer', keys: ['payer_name', 'payer_address', 'tax_year'] },
+      {
+        title: 'Federal — dividends & distributions',
+        keys: [
+          'box1a_total_ordinary_dividends',
+          'box1b_qualified_dividends',
+          'box2a_total_capital_gain',
+          'box2b_unrecap_sec1250_gain',
+          'box2c_section_1202_gain',
+          'box2d_collectibles_gain',
+          'box2e_section_897_ordinary_dividends',
+          'box2f_section_897_capital_gain',
+          'box3_nondividend_distributions',
+          'box4_federal_income_tax_withheld',
+        ],
+      },
+      {
+        title: 'Federal — other',
+        keys: [
+          'box5_section_199a_dividends',
+          'box6_investment_expenses',
+          'box7_foreign_tax_paid',
+          'box8_foreign_country',
+          'box9_cash_liquidation_distributions',
+          'box10_noncash_liquidation_distributions',
+          'box11_fatca_filing_requirement',
+          'box12_exempt_interest_dividends',
+          'box13_specified_private_activity_bond',
+        ],
+      },
+      { title: 'State', keys: ['box14_state', 'box15_state_identification', 'box16_state_tax_withheld'] },
+    ],
+  };
+
+
+  function _formSavedToLabel(savedTo) {
+    const m = {
+      w2_records: 'W-2 records',
+      f1099_nec_records: '1099-NEC records',
+      f1099_misc_records: '1099-MISC records',
+      f1099_int_records: '1099-INT records',
+      f1099_div_records: '1099-DIV records',
+    };
+    return m[savedTo] || savedTo;
+  }
+
+  function fdSourceBadgeEl(sourceRaw) {
+    const s = sourceRaw === 'manual' ? 'manual' : 'extracted';
+    const span = document.createElement('span');
+    span.className =
+      'inline-block text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ' +
+      (s === 'manual'
+        ? 'bg-slate-100 text-slate-600 border-slate-200'
+        : 'bg-blue-50 text-blue-700 border-blue-200');
+    span.textContent = s;
+    return span;
+  }
+
+  const FD_SKIP_KEYS = new Set([
+    'id',
+    'return_id',
+    'doc_id',
+    'source',
+    'created_at',
+    'updated_at',
+    'is_deleted',
+  ]);
+
+  const FD_INTEGER_FIELDS = new Set([
+    'box13_statutory_employee',
+    'box13_retirement_plan',
+    'box13_third_party_sick_pay',
+    'box2_direct_sales_indicator',
+    'box7_direct_sales_indicator',
+    'box11_fatca_filing_requirement',
+  ]);
+
+  const FD_LABEL_OVERRIDES = {};
+
+  function fdTitleTail(restUnderscores) {
+    if (!restUnderscores) return '';
+    const small = new Set(['of', 'and', 'or', 'the', 'a', 'to', 'in', 'no', 'for']);
+    const s = restUnderscores.replace(/_/g, ' ');
+    return s
+      .split(' ')
+      .filter(Boolean)
+      .map(function titleMap(w, i) {
+        var lw = w.toLowerCase();
+        if (lw === 'ss') return 'SS';
+        if (lw === 'sec1250') return 'Section 1250';
+        if (lw === '1202') return 'Section 1202';
+        if (lw === '897') return 'Section 897';
+        if (lw === '199a') return 'Section 199A';
+        if (lw === '409a') return 'Section 409A';
+        if (lw === 'ssn') return 'SSN';
+        if (lw === 'irs') return 'Federal';
+        if (i > 0 && small.has(lw)) return lw;
+        return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+      })
+      .join(' ');
+  }
+
+  function fdFieldLabel(field, sqlTable) {
+    if (!field) return '';
+    var grp = sqlTable ? FD_SQL_LABEL_GROUP[sqlTable] : null;
+    if (grp && FORM_LABELS[grp] && FORM_LABELS[grp][field]) {
+      return FORM_LABELS[grp][field];
+    }
+    var ovr = FD_LABEL_OVERRIDES[field];
+    if (ovr) return ovr;
+    if (field === 'tax_year') return 'Tax year';
+    var parts = field.split('_');
+    if (!parts.length) return '';
+    if (parts[0].startsWith('box')) {
+      var bx = parts[0].slice(3);
+      var tail = parts.slice(1).join('_');
+      return 'Box ' + bx + ' — ' + fdTitleTail(tail);
+    }
+    return fdTitleTail(field);
+  }
+
+  function fdRowHasValue(raw, fieldKey) {
+    if (raw === null || raw === undefined) return false;
+    if (typeof raw === 'boolean') return raw;
+    if (typeof raw === 'number') {
+      if (Number.isNaN(raw)) return false;
+      if (raw === 0 && fieldKey && !FD_INTEGER_FIELDS.has(fieldKey)) return false;
+      return true;
+    }
+    var s = String(raw).trim();
+    if (s === '') return false;
+    var sl = s.toLowerCase();
+    if (s === '0' || sl === 'false') return false;
+    return true;
+  }
+
+  function fdNormalizeStored(field, raw) {
+    if (FD_INTEGER_FIELDS.has(field)) {
+      var n = typeof raw === 'number' ? raw : parseInt(String(raw).trim(), 10);
+      return n === 1 ? '1' : '0';
+    }
+    return raw != null ? String(raw).trim() : '';
+  }
+
+  function nonzeroOrderedKeys(sqlTable, row) {
+    var order = FORM_FIELD_ORDER[sqlTable] || [];
+    var seen = new Set();
+    var out = [];
+    var i;
+    for (i = 0; i < order.length; i++) {
+      var k = order[i];
+      if (FD_SKIP_KEYS.has(k) || seen.has(k)) continue;
+      if (!Object.prototype.hasOwnProperty.call(row, k)) continue;
+      if (!fdRowHasValue(row[k], k)) continue;
+      out.push(k);
+      seen.add(k);
+    }
+    var extra = Object.keys(row).filter(function (k) {
+      return !FD_SKIP_KEYS.has(k) && !seen.has(k);
+    });
+    extra.sort();
+    for (i = 0; i < extra.length; i++) {
+      var ek = extra[i];
+      if (!fdRowHasValue(row[ek], ek)) continue;
+      out.push(ek);
+    }
+    return out;
+  }
+
+  /** Split ordered keys into Fed / FICA / State / Local-style subsections for display. */
+  function fdPartitionKeys(sqlTable, orderedKeys) {
+    var defs = FD_SECTION_DEFS[sqlTable];
+    if (!defs || !defs.length) {
+      return [{ title: '', keys: orderedKeys }];
+    }
+    var used = {};
+    var out = [];
+    var ki, k, si, sj, chunk;
+    for (si = 0; si < defs.length; si++) {
+      chunk = [];
+      for (ki = 0; ki < orderedKeys.length; ki++) {
+        k = orderedKeys[ki];
+        if (used[k]) continue;
+        for (sj = 0; sj < defs[si].keys.length; sj++) {
+          if (defs[si].keys[sj] === k) {
+            chunk.push(k);
+            used[k] = true;
+            break;
+          }
+        }
+      }
+      if (chunk.length) {
+        out.push({ title: defs[si].title, keys: chunk });
+      }
+    }
+    var rest = [];
+    for (ki = 0; ki < orderedKeys.length; ki++) {
+      k = orderedKeys[ki];
+      if (!used[k]) rest.push(k);
+    }
+    if (rest.length) {
+      out.push({ title: 'Additional fields', keys: rest });
+    }
+    return out;
+  }
+
+  function fdCellDisplay(field, raw) {
+    if (!fdRowHasValue(raw, field)) return '—';
+    if (FD_INTEGER_FIELDS.has(field)) {
+      var n = typeof raw === 'number' ? raw : parseInt(String(raw).trim(), 10);
+      if (n === 1) return 'Yes';
+      if (n === 0) return 'No';
+      return '—';
+    }
+    var t = raw != null ? String(raw).trim() : '';
+    return t === '' ? '—' : t;
+  }
+
+  function bindFdEditableCell(td, sqlTable, recordId, field) {
+    td.classList.add('cursor-text', 'hover:bg-slate-50');
+    td.dataset.fdTable = sqlTable;
+    td.dataset.fdId = String(recordId);
+    td.dataset.fdField = field;
+    td.addEventListener('click', function fdCellClick() {
+      if (td.querySelector('input') || td.querySelector('select')) return;
+      var cur = td.dataset.fdOrig != null ? td.dataset.fdOrig : '';
+      var isInt = FD_INTEGER_FIELDS.has(field);
+      td.textContent = '';
+
+      if (isInt) {
+        var sel = document.createElement('select');
+        sel.className =
+          'w-full min-w-[6rem] text-sm border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400';
+        ;[
+          { v: '0', t: 'No' },
+          { v: '1', t: 'Yes' },
+        ].forEach(function (opt) {
+          var o = document.createElement('option');
+          o.value = opt.v;
+          o.textContent = opt.t;
+          sel.appendChild(o);
+        });
+        sel.value = cur === '1' ? '1' : '0';
+        td.appendChild(sel);
+        sel.focus();
+
+        function finishSel() {
+          var newVal = sel.value === '1' ? '1' : '0';
+          td.textContent = fdCellDisplay(field, parseInt(newVal, 10));
+          td.dataset.fdOrig = newVal;
+          if (cur === newVal) return;
+          _csrfFetch(
+            '/return/' +
+              RETURN_ID +
+              '/form-data/' +
+              sqlTable +
+              '/' +
+              recordId +
+              '/update',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ field: field, value: parseInt(newVal, 10) }),
+            }
+          )
+            .then(function (r) {
+              return r.json().then(function (d) {
+                return { r: r, d: d };
+              });
+            })
+            .then(function (o) {
+              if (o.r.ok && o.d.success) loadFormData();
+            })
+            .catch(function () {});
+        }
+
+        sel.addEventListener('blur', finishSel);
+        sel.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            sel.blur();
+          }
+          if (ev.key === 'Escape') {
+            sel.value = cur === '1' ? '1' : '0';
+            sel.blur();
+          }
+        });
+        return;
+      }
+
+      var inp = document.createElement('input');
+      inp.type = 'text';
+      inp.value = cur;
+      inp.className =
+        'w-full min-w-[6rem] text-sm border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400';
+      td.appendChild(inp);
+      inp.focus();
+      inp.select();
+
+      function finish() {
+        var newVal = (inp.value || '').trim();
+        td.textContent = fdCellDisplay(field, newVal);
         td.dataset.fdOrig = newVal;
-        if (cur === newVal) return;
-        fetch(
+        if ((cur || '') === newVal) return;
+        _csrfFetch(
           '/return/' +
             RETURN_ID +
             '/form-data/' +
@@ -1199,7 +1803,7 @@ function bindFdEditableCell(td, sqlTable, recordId, field) {
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ field: field, value: parseInt(newVal, 10) }),
+            body: JSON.stringify({ field: field, value: newVal }),
           }
         )
           .then(function (r) {
@@ -1213,827 +1817,937 @@ function bindFdEditableCell(td, sqlTable, recordId, field) {
           .catch(function () {});
       }
 
-      sel.addEventListener('blur', finishSel);
-      sel.addEventListener('keydown', function (ev) {
+      inp.addEventListener('blur', finish);
+      inp.addEventListener('keydown', function (ev) {
         if (ev.key === 'Enter') {
           ev.preventDefault();
-          sel.blur();
+          inp.blur();
         }
         if (ev.key === 'Escape') {
-          sel.value = cur === '1' ? '1' : '0';
-          sel.blur();
+          inp.value = cur;
+          inp.blur();
         }
       });
-      return;
-    }
+    });
+  }
 
-    var inp = document.createElement('input');
-    inp.type = 'text';
-    inp.value = cur;
-    inp.className =
-      'w-full min-w-[6rem] text-sm border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400';
-    td.appendChild(inp);
-    inp.focus();
-    inp.select();
+  function deleteFormRecord(sqlTable, recordId) {
+    if (!confirm('Remove this row from document data?')) return;
+    _csrfFetch('/return/' + RETURN_ID + '/form-data/' + sqlTable + '/' + recordId, {
+      method: 'DELETE',
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) loadFormData();
+      })
+      .catch(() => {});
+  }
 
-    function finish() {
-      var newVal = (inp.value || '').trim();
-      td.textContent = fdCellDisplay(field, newVal);
-      td.dataset.fdOrig = newVal;
-      if ((cur || '') === newVal) return;
-      fetch(
-        '/return/' +
-          RETURN_ID +
-          '/form-data/' +
-          sqlTable +
-          '/' +
-          recordId +
-          '/update',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ field: field, value: newVal }),
-        }
-      )
-        .then(function (r) {
-          return r.json().then(function (d) {
-            return { r: r, d: d };
+  function renderFormDataSection(data) {
+    const wrap = document.getElementById('form-data-groups');
+    const empty = document.getElementById('form-data-empty');
+    if (!wrap || !empty) return;
+    wrap.innerHTML = '';
+    let total = 0;
+    FORM_GROUP_DEFS.forEach((def) => {
+      const rows = data[def.key] || [];
+      total += rows.length;
+      if (!rows.length) return;
+
+      const block = document.createElement('div');
+      block.className = 'space-y-4';
+
+      const h = document.createElement('h4');
+      h.className = 'text-xs font-bold uppercase tracking-wide text-slate-500';
+      h.textContent = def.title;
+      block.appendChild(h);
+
+      rows.forEach((row) => {
+        const keys = nonzeroOrderedKeys(def.sqlTable, row);
+        if (!keys.length) return;
+
+        const outer = document.createElement('div');
+        outer.className = 'rounded-lg border border-slate-200 overflow-hidden bg-white';
+
+        const tableShell = document.createElement('div');
+        tableShell.className = 'overflow-x-auto';
+        const tbl = document.createElement('table');
+        tbl.className = 'min-w-full text-sm';
+        const tbody = document.createElement('tbody');
+        tbody.className = 'divide-y divide-slate-100';
+
+        const sections = fdPartitionKeys(def.sqlTable, keys);
+
+        sections.forEach((sec, secIdx) => {
+          if (sec.title) {
+            const htr = document.createElement('tr');
+            const htd = document.createElement('td');
+            htd.colSpan = 2;
+            let hCls =
+              'px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-slate-100';
+            if (secIdx > 0) {
+              hCls += ' border-t border-slate-200';
+            }
+            htd.className = hCls;
+            htd.textContent = sec.title;
+            htr.appendChild(htd);
+            tbody.appendChild(htr);
+          }
+
+          sec.keys.forEach((fieldKey) => {
+            const raw = row[fieldKey];
+            const tr = document.createElement('tr');
+            tr.className = 'align-top';
+
+            const tdLab = document.createElement('td');
+            tdLab.className =
+              'px-3 py-2 whitespace-nowrap text-[11px] font-semibold text-slate-500 bg-slate-50 w-[40%] max-w-xs';
+            tdLab.textContent = fdFieldLabel(fieldKey, def.sqlTable);
+            tr.appendChild(tdLab);
+
+            const tdVal = document.createElement('td');
+            tdVal.className = 'px-3 py-2 text-slate-800 font-medium';
+            tdVal.dataset.fdOrig = fdNormalizeStored(fieldKey, raw);
+            tdVal.textContent = fdCellDisplay(fieldKey, raw);
+            bindFdEditableCell(tdVal, def.sqlTable, row.id, fieldKey);
+            tr.appendChild(tdVal);
+
+            tbody.appendChild(tr);
           });
-        })
-        .then(function (o) {
-          if (o.r.ok && o.d.success) loadFormData();
-        })
-        .catch(function () {});
-    }
+        });
 
-    inp.addEventListener('blur', finish);
-    inp.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Enter') {
-        ev.preventDefault();
-        inp.blur();
-      }
-      if (ev.key === 'Escape') {
-        inp.value = cur;
-        inp.blur();
-      }
-    });
-  });
-}
+        const footTr = document.createElement('tr');
+        footTr.className = 'bg-slate-50 border-t border-slate-200';
+        const tdFoot = document.createElement('td');
+        tdFoot.colSpan = 2;
+        tdFoot.className = 'px-3 py-2';
+        const footInner = document.createElement('div');
+        footInner.className = 'flex items-center justify-between gap-4';
+        const left = document.createElement('div');
+        left.className = 'flex items-center gap-2';
+        left.appendChild(fdSourceBadgeEl(row.source || 'extracted'));
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'text-xs font-semibold text-red-600 hover:text-red-800';
+        del.textContent = 'Delete';
+        del.onclick = () => deleteFormRecord(def.sqlTable, row.id);
+        footInner.appendChild(left);
+        footInner.appendChild(del);
+        tdFoot.appendChild(footInner);
+        footTr.appendChild(tdFoot);
+        tbody.appendChild(footTr);
 
-function deleteFormRecord(sqlTable, recordId) {
-  if (!confirm('Remove this row from document data?')) return;
-  fetch('/return/' + RETURN_ID + '/form-data/' + sqlTable + '/' + recordId, {
-    method: 'DELETE',
-  })
-    .then((r) => r.json())
-    .then((d) => {
-      if (d.success) loadFormData();
-    })
-    .catch(() => {});
-}
-
-function renderFormDataSection(data) {
-  const wrap = document.getElementById('form-data-groups');
-  const empty = document.getElementById('form-data-empty');
-  if (!wrap || !empty) return;
-  wrap.innerHTML = '';
-  let total = 0;
-  FORM_GROUP_DEFS.forEach((def) => {
-    const rows = data[def.key] || [];
-    total += rows.length;
-    if (!rows.length) return;
-
-    const block = document.createElement('div');
-    block.className = 'space-y-4';
-
-    const h = document.createElement('h4');
-    h.className = 'text-xs font-bold uppercase tracking-wide text-slate-500';
-    h.textContent = def.title;
-    block.appendChild(h);
-
-    rows.forEach((row) => {
-      const keys = nonzeroOrderedKeys(def.sqlTable, row);
-      if (!keys.length) return;
-
-      const outer = document.createElement('div');
-      outer.className = 'rounded-lg border border-slate-200 overflow-hidden bg-white';
-
-      const tableShell = document.createElement('div');
-      tableShell.className = 'overflow-x-auto';
-      const tbl = document.createElement('table');
-      tbl.className = 'min-w-full text-sm';
-      const tbody = document.createElement('tbody');
-      tbody.className = 'divide-y divide-slate-100';
-
-      keys.forEach((fieldKey) => {
-        const raw = row[fieldKey];
-        const tr = document.createElement('tr');
-        tr.className = 'align-top';
-
-        const tdLab = document.createElement('td');
-        tdLab.className =
-          'px-3 py-2 whitespace-nowrap text-[11px] font-semibold text-slate-500 bg-slate-50 w-[40%] max-w-xs';
-        tdLab.textContent = fdFieldLabel(fieldKey);
-        tr.appendChild(tdLab);
-
-        const tdVal = document.createElement('td');
-        tdVal.className = 'px-3 py-2 text-slate-800 font-medium';
-        tdVal.dataset.fdOrig = fdNormalizeStored(fieldKey, raw);
-        tdVal.textContent = fdCellDisplay(fieldKey, raw);
-        bindFdEditableCell(tdVal, def.sqlTable, row.id, fieldKey);
-        tr.appendChild(tdVal);
-
-        tbody.appendChild(tr);
+        tbl.appendChild(tbody);
+        tableShell.appendChild(tbl);
+        outer.appendChild(tableShell);
+        block.appendChild(outer);
       });
 
-      const footTr = document.createElement('tr');
-      footTr.className = 'bg-slate-50 border-t border-slate-200';
-      const tdFoot = document.createElement('td');
-      tdFoot.colSpan = 2;
-      tdFoot.className = 'px-3 py-2';
-      const footInner = document.createElement('div');
-      footInner.className = 'flex items-center justify-between gap-4';
-      const left = document.createElement('div');
-      left.className = 'flex items-center gap-2';
-      left.appendChild(fdSourceBadgeEl(row.source || 'extracted'));
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'text-xs font-semibold text-red-600 hover:text-red-800';
-      del.textContent = 'Delete';
-      del.onclick = () => deleteFormRecord(def.sqlTable, row.id);
-      footInner.appendChild(left);
-      footInner.appendChild(del);
-      tdFoot.appendChild(footInner);
-      footTr.appendChild(tdFoot);
-      tbody.appendChild(footTr);
-
-      tbl.appendChild(tbody);
-      tableShell.appendChild(tbl);
-      outer.appendChild(tableShell);
-      block.appendChild(outer);
+      wrap.appendChild(block);
     });
 
-    wrap.appendChild(block);
-  });
-
-  if (total === 0) {
-    empty.classList.remove('hidden');
-    wrap.classList.add('hidden');
-  } else {
-    empty.classList.add('hidden');
-    wrap.classList.remove('hidden');
+    if (total === 0) {
+      empty.classList.remove('hidden');
+      wrap.classList.add('hidden');
+    } else {
+      empty.classList.add('hidden');
+      wrap.classList.remove('hidden');
+    }
   }
-}
 
-function loadFormData() {
-  fetch('/return/' + RETURN_ID + '/form-data')
-    .then((r) => r.json())
-    .then((data) => {
-      if (data && data.error) return;
-      renderFormDataSection(data);
+  function loadFormData() {
+    _csrfFetch('/return/' + RETURN_ID + '/form-data')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.error) return;
+        renderFormDataSection(data);
+      })
+      .catch(() => {});
+  }
+
+  function _escapeHtml(s) {
+    if (s == null || s === '') return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function _docSourceLabel(src) {
+    if (src === 'walk_in') return 'Walk-in';
+    if (src === 'email') return 'Email';
+    return src ? _escapeHtml(String(src)) : '—';
+  }
+
+  function buildDocTypeDropdown(docId, currentType) {
+    const allowed = ['unknown', 'W-2', '1099', 'prior_return', 'government_id', 'misc'];
+    const ct = allowed.includes(currentType) ? currentType : 'unknown';
+    const options = [
+      { value: 'unknown', label: 'Unknown' },
+      { value: 'W-2', label: 'W-2' },
+      { value: '1099', label: '1099' },
+      { value: 'prior_return', label: 'Prior Return' },
+      { value: 'government_id', label: 'Government ID' },
+      { value: 'misc', label: 'Misc' },
+    ];
+    const selClass =
+      'doc-type-select border border-slate-200 rounded-lg px-3 py-2 text-slate-800 min-w-[11rem] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400';
+    let select =
+      '<select data-doc-id="' +
+      docId +
+      '" data-previous-value="' +
+      ct +
+      '" class="' +
+      selClass +
+      '" onchange="updateDocType(this)">';
+    options.forEach((opt) => {
+      const selected = opt.value === ct ? ' selected' : '';
+      select += '<option value="' + opt.value + '"' + selected + '>' + opt.label + '</option>';
+    });
+    select += '</select>';
+    return select;
+  }
+
+  function extractFields(docId, btn) {
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    document.getElementById('extract-error-' + docId)?.remove();
+    const existingPanel = document.getElementById('extract-panel-' + docId);
+    if (existingPanel) existingPanel.remove();
+
+    const abortMs = 125000;
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), abortMs);
+
+    // ── Live progress feedback ────────────────────────────────────────────────
+    const STAGES = [
+      [0,   '🔍 Reading document…'],
+      [5,   '📄 Sending to vision model…'],
+      [15,  '⚙️  Model processing…'],
+      [35,  '⚙️  Still processing… (large PDF)'],
+      [65,  '⏳ Almost there…'],
+      [95,  '⏳ Finalizing…'],
+    ];
+    const startTs = Date.now();
+    let stageIdx = 0;
+    let progressEl = document.getElementById('extract-progress-' + docId);
+    if (!progressEl) {
+      progressEl = document.createElement('span');
+      progressEl.id = 'extract-progress-' + docId;
+      progressEl.className = 'text-xs text-indigo-500 font-medium ml-2';
+      btn.parentNode.insertBefore(progressEl, btn.nextSibling);
+    }
+
+    function updateProgress() {
+      const elapsed = Math.floor((Date.now() - startTs) / 1000);
+      // Advance stage if we've passed its threshold
+      while (stageIdx < STAGES.length - 1 && elapsed >= STAGES[stageIdx + 1][0]) stageIdx++;
+      const label = STAGES[stageIdx][1];
+      btn.textContent = `Extracting… ${elapsed}s`;
+      progressEl.textContent = label;
+    }
+
+    updateProgress();
+    const progressTimer = setInterval(updateProgress, 1000);
+
+    function insertErr(msg) {
+      const err = document.createElement('span');
+      err.className = 'text-xs text-red-600 font-medium ml-2 whitespace-nowrap';
+      err.textContent = msg;
+      err.id = 'extract-error-' + docId;
+      btn.parentNode.insertBefore(err, btn.nextSibling);
+      setTimeout(() => err.remove(), 12000);
+    }
+
+    _csrfFetch('/ai/documents/' + docId + '/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
     })
-    .catch(() => {});
-}
-
-function _escapeHtml(s) {
-  if (s == null || s === '') return '';
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-function _docSourceLabel(src) {
-  if (src === 'walk_in') return 'Walk-in';
-  if (src === 'email') return 'Email';
-  return src ? _escapeHtml(String(src)) : '—';
-}
-
-function buildDocTypeDropdown(docId, currentType) {
-  const allowed = ['unknown', 'W-2', '1099', 'prior_return', 'government_id', 'misc'];
-  const ct = allowed.includes(currentType) ? currentType : 'unknown';
-  const options = [
-    { value: 'unknown', label: 'Unknown' },
-    { value: 'W-2', label: 'W-2' },
-    { value: '1099', label: '1099' },
-    { value: 'prior_return', label: 'Prior Return' },
-    { value: 'government_id', label: 'Government ID' },
-    { value: 'misc', label: 'Misc' },
-  ];
-  const selClass =
-    'doc-type-select border border-slate-200 rounded-lg px-3 py-2 text-slate-800 min-w-[11rem] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400';
-  let select =
-    '<select data-doc-id="' +
-    docId +
-    '" data-previous-value="' +
-    ct +
-    '" class="' +
-    selClass +
-    '" onchange="updateDocType(this)">';
-  options.forEach((opt) => {
-    const selected = opt.value === ct ? ' selected' : '';
-    select += '<option value="' + opt.value + '"' + selected + '>' + opt.label + '</option>';
-  });
-  select += '</select>';
-  return select;
-}
-
-function extractFields(docId, btn) {
-  const originalText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = 'Extracting…';
-  btn.title = 'Vision model can take up to ~2 minutes for large PDFs.';
-  document.getElementById('extract-error-' + docId)?.remove();
-  const existingPanel = document.getElementById('extract-panel-' + docId);
-  if (existingPanel) existingPanel.remove();
-
-  const abortMs = 125000;
-  const controller = new AbortController();
-  const abortTimer = setTimeout(() => controller.abort(), abortMs);
-
-  function insertErr(msg) {
-    const err = document.createElement('span');
-    err.className = 'text-xs text-red-600 font-medium ml-2 whitespace-nowrap';
-    err.textContent = msg;
-    err.id = 'extract-error-' + docId;
-    btn.parentNode.insertBefore(err, btn.nextSibling);
-    setTimeout(() => err.remove(), 8000);
-  }
-
-  fetch('/ai/documents/' + docId + '/extract', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal: controller.signal,
-  })
-    .then((r) =>
-      r.json().then(
-        (data) => ({ r, data }),
-        () => ({ r, data: {} })
+      .then((r) =>
+        r.json().then(
+          (data) => ({ r, data }),
+          () => ({ r, data: {} })
+        )
       )
-    )
-    .then(({ r, data }) => {
-      if (!r.ok || data.error) {
-        insertErr(data.error || 'Extraction failed');
-        return;
-      }
-      if (data.fields) {
-        const panel = document.createElement('div');
-        panel.id = 'extract-panel-' + docId;
-        panel.className =
-          'mt-2 mb-2 mx-3 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2';
-        const f = data.fields;
-        panel.dataset.extractRefEmployer =
-          f.employer_name != null ? String(f.employer_name).trim() : '';
-        panel.dataset.extractRefWages =
-          f.total_wages != null ? String(f.total_wages).trim() : '';
-        panel.dataset.extractRefTaxYear =
-          f.tax_year != null ? String(f.tax_year).trim() : '';
-        panel.appendChild(buildExtractPanel(docId, data.fields, data.saved_to));
-        const row = btn.closest('[data-doc-row]');
-        if (row) row.insertAdjacentElement('afterend', panel);
-      }
-    })
-    .catch((err) => {
-      if (err && err.name === 'AbortError') {
-        insertErr('Timed out — check Ollama / network or try a smaller PDF.');
-      } else {
-        insertErr('Extraction failed — check Ollama');
-      }
-    })
-    .finally(() => {
-      clearTimeout(abortTimer);
-      btn.disabled = false;
-      btn.textContent = originalText;
-      btn.title = '';
-    });
-}
-
-function _extractAppendRefLine(container, label, value) {
-  const v = (value || '').trim();
-  if (!v) return;
-  const row = document.createElement('div');
-  const k = document.createElement('span');
-  k.className = 'font-medium text-slate-500';
-  k.textContent = label + ': ';
-  row.appendChild(k);
-  row.appendChild(document.createTextNode(v));
-  container.appendChild(row);
-}
-
-/** Always show label (use em dash when empty) — for post-apply summary. */
-function _extractAppendRefLineAlways(container, label, value) {
-  const v = (value || '').trim() || '—';
-  const row = document.createElement('div');
-  const k = document.createElement('span');
-  k.className = 'font-medium text-slate-500';
-  k.textContent = label + ': ';
-  row.appendChild(k);
-  row.appendChild(document.createTextNode(v));
-  container.appendChild(row);
-}
-
-function buildExtractPanel(docId, fields, savedTo) {
-  const wrap = document.createElement('div');
-  wrap.className = 'space-y-2';
-
-  if (savedTo) {
-    const savedLine = document.createElement('div');
-    savedLine.className =
-      'rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800 font-semibold';
-    const label = _formSavedToLabel(savedTo);
-    savedLine.textContent =
-      '✓ Data saved to ' + label + ' — view in Document Data section below';
-    wrap.appendChild(savedLine);
+      .then(({ r, data }) => {
+        if (!r.ok || data.error) {
+          insertErr(data.error || 'Extraction failed');
+          return;
+        }
+        if (data.fields) {
+          const panel = document.createElement('div');
+          panel.id = 'extract-panel-' + docId;
+          panel.className =
+            'mt-2 mb-2 mx-3 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2';
+          const f = data.fields;
+          panel.dataset.extractRefEmployer =
+            f.employer_name != null ? String(f.employer_name).trim() : '';
+          panel.dataset.extractRefWages =
+            f.total_wages != null ? String(f.total_wages).trim() : '';
+          panel.dataset.extractRefTaxYear =
+            f.tax_year != null ? String(f.tax_year).trim() : '';
+          panel.appendChild(buildExtractPanel(docId, data.fields, data.saved_to));
+          const row = btn.closest('[data-doc-row]');
+          if (row) row.insertAdjacentElement('afterend', panel);
+        }
+      })
+      .catch((err) => {
+        const elapsed = Math.floor((Date.now() - startTs) / 1000);
+        if (err && err.name === 'AbortError') {
+          insertErr(`Timed out after ${elapsed}s — Ollama may be busy or the PDF is too large. Try again.`);
+        } else {
+          insertErr('Extraction failed — check Ollama is running');
+        }
+      })
+      .finally(() => {
+        clearTimeout(abortTimer);
+        clearInterval(progressTimer);
+        progressEl.remove();
+        btn.disabled = false;
+        btn.textContent = originalText;
+        btn.title = '';
+      });
   }
 
-  const banner = document.createElement('div');
-  banner.className =
-    'flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 font-medium';
-  banner.textContent =
-    'Review before applying — nothing saves automatically until you click each updated cell and finish editing (blur or Enter). Employer and wages are reference only.';
-  wrap.appendChild(banner);
+  function _extractAppendRefLine(container, label, value) {
+    const v = (value || '').trim();
+    if (!v) return;
+    const row = document.createElement('div');
+    const k = document.createElement('span');
+    k.className = 'font-medium text-slate-500';
+    k.textContent = label + ': ';
+    row.appendChild(k);
+    row.appendChild(document.createTextNode(v));
+    container.appendChild(row);
+  }
 
-  const emp = fields.employer_name != null ? String(fields.employer_name).trim() : '';
-  const wag = fields.total_wages != null ? String(fields.total_wages).trim() : '';
-  const yrRef = fields.tax_year != null ? String(fields.tax_year).trim() : '';
-  if (emp || wag || yrRef) {
-    const refOuter = document.createElement('div');
-    refOuter.className =
+  /** Always show label (use em dash when empty) — for post-apply summary. */
+  function _extractAppendRefLineAlways(container, label, value) {
+    const v = (value || '').trim() || '—';
+    const row = document.createElement('div');
+    const k = document.createElement('span');
+    k.className = 'font-medium text-slate-500';
+    k.textContent = label + ': ';
+    row.appendChild(k);
+    row.appendChild(document.createTextNode(v));
+    container.appendChild(row);
+  }
+
+  function buildExtractPanel(docId, fields, savedTo) {
+    const wrap = document.createElement('div');
+    wrap.className = 'space-y-2';
+
+    if (savedTo) {
+      const savedLine = document.createElement('div');
+      savedLine.className =
+        'rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800 font-semibold';
+      const label = _formSavedToLabel(savedTo);
+      savedLine.textContent =
+        '✓ Data saved to ' + label + ' — view in Document Data section below';
+      wrap.appendChild(savedLine);
+    }
+
+    const banner = document.createElement('div');
+    banner.className =
+      'flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 font-medium';
+    banner.textContent =
+      'Review before applying — nothing saves automatically until you click each updated cell and finish editing (blur or Enter). Employer and wages are reference only.';
+    wrap.appendChild(banner);
+
+    const emp = fields.employer_name != null ? String(fields.employer_name).trim() : '';
+    const wag = fields.total_wages != null ? String(fields.total_wages).trim() : '';
+    const yrRef = fields.tax_year != null ? String(fields.tax_year).trim() : '';
+    if (emp || wag || yrRef) {
+      const refOuter = document.createElement('div');
+      refOuter.className =
+        'rounded-lg border border-slate-200 bg-white px-3 py-2 space-y-1 text-xs text-slate-600';
+      const refTitle = document.createElement('div');
+      refTitle.className = 'font-semibold text-slate-700';
+      refTitle.textContent = '✓ Extracted from document — for reference:';
+      refOuter.appendChild(refTitle);
+      _extractAppendRefLine(refOuter, 'Employer', emp);
+      _extractAppendRefLine(refOuter, 'Total wages', wag);
+      _extractAppendRefLine(refOuter, 'Tax year', yrRef);
+      wrap.appendChild(refOuter);
+    }
+
+    const editableHint = document.createElement('div');
+    editableHint.className = 'text-[11px] text-slate-500 font-medium';
+    editableHint.textContent =
+      'Apply to return (editable) — Total fee / payment fields are never changed.';
+    wrap.appendChild(editableHint);
+
+    const container = document.createElement('div');
+    container.className = 'space-y-2';
+
+    const fieldDefs = [
+      { key: 'last_name', label: 'Last name' },
+      { key: 'first_name', label: 'First name' },
+      { key: 'tax_year', label: 'Tax year' },
+    ];
+
+    fieldDefs.forEach((def) => {
+      const raw = fields[def.key];
+      const val = raw != null ? String(raw).trim() : '';
+      if (!val) return;
+      const row = document.createElement('div');
+      row.className = 'flex flex-col gap-1';
+      const lab = document.createElement('span');
+      lab.className = 'text-xs text-slate-500 font-medium';
+      lab.textContent = def.label + ' → return form';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = val;
+      input.id = 'extracted-' + def.key + '-' + docId;
+      input.className =
+        'w-full text-sm border border-slate-200 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400';
+      row.appendChild(lab);
+      row.appendChild(input);
+      container.appendChild(row);
+    });
+    wrap.appendChild(container);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'flex flex-wrap gap-2 pt-1';
+
+    const applyBtn = document.createElement('button');
+    applyBtn.type = 'button';
+    applyBtn.textContent = 'Apply to return';
+    applyBtn.className =
+      'shrink-0 flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 py-2 transition-all';
+    applyBtn.onclick = () => applyExtracted(docId);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Dismiss';
+    cancelBtn.className =
+      'shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all';
+    cancelBtn.onclick = () => document.getElementById('extract-panel-' + docId)?.remove();
+
+    btnRow.appendChild(applyBtn);
+    btnRow.appendChild(cancelBtn);
+    wrap.appendChild(btnRow);
+
+    return wrap;
+  }
+
+  function applyExtracted(docId) {
+    /*
+     * Return detail uses spans with class "editable", not numeric ids. Targets:
+     *   data-field="last_name", "first_name" (Client card)
+     *   data-field="tax_year" (Return Info — macro ef produces no id attribute)
+     *
+     * Explicitly NEVER map: employer_name, total_wages, total_fee,
+     * fee_paid, cc_fee, receipt_number, zelle_or_check_ref, cash_or_qpay_ref
+     */
+    const editableTarget = (dataField) =>
+      document.querySelector(
+        '.editable[data-return-id="' + RETURN_ID + '"][data-field="' + dataField + '"]'
+      );
+
+    const fieldMap = {
+      last_name: 'last_name',
+      first_name: 'first_name',
+      tax_year: 'tax_year',
+    };
+
+    const labelByKey = {
+      last_name: 'Last name',
+      first_name: 'First name',
+      tax_year: 'Tax year',
+    };
+
+    const appliedLabels = [];
+    Object.entries(fieldMap).forEach(([extractKey, dataField]) => {
+      const extractedInput = document.getElementById('extracted-' + extractKey + '-' + docId);
+      const target = editableTarget(dataField);
+      if (!extractedInput || !target || !extractedInput.value.trim()) return;
+      const v = extractedInput.value.trim();
+      target.textContent = v;
+      target.dataset.value = v;
+      appliedLabels.push(labelByKey[extractKey]);
+    });
+
+    const panel = document.getElementById('extract-panel-' + docId);
+    if (!panel) return;
+
+    const refEmp = panel.dataset.extractRefEmployer || '';
+    const refWag = panel.dataset.extractRefWages || '';
+    const refYr = panel.dataset.extractRefTaxYear || '';
+
+    panel.innerHTML = '';
+
+    const refBlock = document.createElement('div');
+    refBlock.className =
       'rounded-lg border border-slate-200 bg-white px-3 py-2 space-y-1 text-xs text-slate-600';
     const refTitle = document.createElement('div');
     refTitle.className = 'font-semibold text-slate-700';
     refTitle.textContent = '✓ Extracted from document — for reference:';
-    refOuter.appendChild(refTitle);
-    _extractAppendRefLine(refOuter, 'Employer', emp);
-    _extractAppendRefLine(refOuter, 'Total wages', wag);
-    _extractAppendRefLine(refOuter, 'Tax year', yrRef);
-    wrap.appendChild(refOuter);
-  }
+    refBlock.appendChild(refTitle);
+    _extractAppendRefLineAlways(refBlock, 'Employer', refEmp);
+    _extractAppendRefLineAlways(refBlock, 'Total wages', refWag);
+    _extractAppendRefLineAlways(refBlock, 'Tax year', refYr);
+    panel.appendChild(refBlock);
 
-  const editableHint = document.createElement('div');
-  editableHint.className = 'text-[11px] text-slate-500 font-medium';
-  editableHint.textContent =
-    'Apply to return (editable) — Total fee / payment fields are never changed.';
-  wrap.appendChild(editableHint);
-
-  const container = document.createElement('div');
-  container.className = 'space-y-2';
-
-  const fieldDefs = [
-    { key: 'last_name', label: 'Last name' },
-    { key: 'first_name', label: 'First name' },
-    { key: 'tax_year', label: 'Tax year' },
-  ];
-
-  fieldDefs.forEach((def) => {
-    const raw = fields[def.key];
-    const val = raw != null ? String(raw).trim() : '';
-    if (!val) return;
-    const row = document.createElement('div');
-    row.className = 'flex flex-col gap-1';
-    const lab = document.createElement('span');
-    lab.className = 'text-xs text-slate-500 font-medium';
-    lab.textContent = def.label + ' → return form';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = val;
-    input.id = 'extracted-' + def.key + '-' + docId;
-    input.className =
-      'w-full text-sm border border-slate-200 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400';
-    row.appendChild(lab);
-    row.appendChild(input);
-    container.appendChild(row);
-  });
-  wrap.appendChild(container);
-
-  const btnRow = document.createElement('div');
-  btnRow.className = 'flex flex-wrap gap-2 pt-1';
-
-  const applyBtn = document.createElement('button');
-  applyBtn.type = 'button';
-  applyBtn.textContent = 'Apply to return';
-  applyBtn.className =
-    'shrink-0 flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 py-2 transition-all';
-  applyBtn.onclick = () => applyExtracted(docId);
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.textContent = 'Dismiss';
-  cancelBtn.className =
-    'shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all';
-  cancelBtn.onclick = () => document.getElementById('extract-panel-' + docId)?.remove();
-
-  btnRow.appendChild(applyBtn);
-  btnRow.appendChild(cancelBtn);
-  wrap.appendChild(btnRow);
-
-  return wrap;
-}
-
-function applyExtracted(docId) {
-  /*
-   * Return detail uses spans with class "editable", not numeric ids. Targets:
-   *   data-field="last_name", "first_name" (Client card)
-   *   data-field="tax_year" (Return Info — macro ef produces no id attribute)
-   *
-   * Explicitly NEVER map: employer_name, total_wages, total_fee,
-   * fee_paid, cc_fee, receipt_number, zelle_or_check_ref, cash_or_qpay_ref
-   */
-  const editableTarget = (dataField) =>
-    document.querySelector(
-      '.editable[data-return-id="' + RETURN_ID + '"][data-field="' + dataField + '"]'
-    );
-
-  const fieldMap = {
-    last_name: 'last_name',
-    first_name: 'first_name',
-    tax_year: 'tax_year',
-  };
-
-  const labelByKey = {
-    last_name: 'Last name',
-    first_name: 'First name',
-    tax_year: 'Tax year',
-  };
-
-  const appliedLabels = [];
-  Object.entries(fieldMap).forEach(([extractKey, dataField]) => {
-    const extractedInput = document.getElementById('extracted-' + extractKey + '-' + docId);
-    const target = editableTarget(dataField);
-    if (!extractedInput || !target || !extractedInput.value.trim()) return;
-    const v = extractedInput.value.trim();
-    target.textContent = v;
-    target.dataset.value = v;
-    appliedLabels.push(labelByKey[extractKey]);
-  });
-
-  const panel = document.getElementById('extract-panel-' + docId);
-  if (!panel) return;
-
-  const refEmp = panel.dataset.extractRefEmployer || '';
-  const refWag = panel.dataset.extractRefWages || '';
-  const refYr = panel.dataset.extractRefTaxYear || '';
-
-  panel.innerHTML = '';
-
-  const refBlock = document.createElement('div');
-  refBlock.className =
-    'rounded-lg border border-slate-200 bg-white px-3 py-2 space-y-1 text-xs text-slate-600';
-  const refTitle = document.createElement('div');
-  refTitle.className = 'font-semibold text-slate-700';
-  refTitle.textContent = '✓ Extracted from document — for reference:';
-  refBlock.appendChild(refTitle);
-  _extractAppendRefLineAlways(refBlock, 'Employer', refEmp);
-  _extractAppendRefLineAlways(refBlock, 'Total wages', refWag);
-  _extractAppendRefLineAlways(refBlock, 'Tax year', refYr);
-  panel.appendChild(refBlock);
-
-  if (appliedLabels.length > 0) {
-    const ok = document.createElement('div');
-    ok.className = 'text-xs text-green-600 font-medium';
-    ok.textContent =
-      'Fields applied to return: ' +
-      appliedLabels.join(', ') +
-      '. Click each updated cell and blur (or Enter) to save. Total fee and all payment fields were not changed.';
-    panel.appendChild(ok);
-  } else {
-    const info = document.createElement('div');
-    info.className = 'text-xs text-slate-600 font-medium';
-    info.textContent =
-      'No return fields applied (no editable name/year values above). Employer / wages remain reference only.';
-    panel.appendChild(info);
-  }
-
-  setTimeout(() => panel.remove(), 5000);
-}
-
-function updateDocType(selectEl) {
-  const docId = selectEl.dataset.docId;
-  const newType = selectEl.value;
-  const previous = selectEl.dataset.previousValue || 'unknown';
-
-  fetch('/return/' + RETURN_ID + '/documents/' + docId + '/tag', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ doc_type: newType }),
-  })
-    .then((r) => r.json().then((data) => ({ r, data })))
-    .then(({ r, data }) => {
-      if (r.ok && data.success) {
-        const did = Number(docId);
-        const doc = _lastDocs.find((x) => x.id === did);
-        if (doc) doc.doc_type = data.doc_type;
-        selectEl.dataset.previousValue = data.doc_type;
-        _updateDocIndicator(_lastDocs);
-        const visible = _docFilterActive
-          ? _lastDocs.filter((d) => _docNeedsAttention(d))
-          : _lastDocs;
-        _renderDocList(visible);
-        const refreshed = document.querySelector('select.doc-type-select[data-doc-id="' + did + '"]');
-        if (refreshed) {
-          refreshed.style.borderColor = '#22c55e';
-          setTimeout(() => {
-            refreshed.style.borderColor = '';
-          }, 1500);
-        }
-      } else {
-        selectEl.value = previous;
-      }
-    })
-    .catch(() => {
-      selectEl.value = previous;
-    });
-}
-
-let _lastDocs = [];
-let _docFilterActive = false;
-
-function _docNeedsAttention(d) {
-  return (
-    (d.source === 'email' && (d.doc_type === 'unknown' || !d.doc_type)) ||
-    d.extraction_status === 'needs_review'
-  );
-}
-
-function _renderDocList(docs) {
-  const listEl = document.getElementById('doc-list');
-  if (!listEl) return;
-  if (!docs || docs.length === 0) {
-    const msg = _docFilterActive ? 'No matching documents (untagged or extraction review).' : 'No documents uploaded yet.';
-    listEl.innerHTML = `<p class="text-sm text-slate-400">${msg}</p>`;
-    return;
-  }
-  const rows = docs.map(doc => {
-    const kb = Math.round((doc.file_size_bytes || 0) / 1024);
-    const when = (doc.uploaded_at || '').slice(0, 16) || '—';
-    const who = doc.uploaded_by ? _escapeHtml(doc.uploaded_by) : '—';
-    const fn = _escapeHtml(doc.filename || '');
-    const viewHref = `/return/${RETURN_ID}/documents/${doc.id}/view`;
-    const curDt =
-      doc.doc_type == null || doc.doc_type === '' ? 'unknown' : String(doc.doc_type);
-    const needsEx = doc.extraction_status === 'needs_review';
-    const reviewUi = needsEx
-      ? `<button type="button" onclick="toggleExtractionReview(${doc.id})"
-           class="shrink-0 text-xs font-semibold text-amber-900 bg-amber-100 border border-amber-300 rounded-lg px-2 py-1">
-           Review extraction</button>
-        <span class="text-[10px] font-bold uppercase tracking-wide text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Needs review</span>`
-      : '';
-    return `<div data-doc-row data-doc-id="${doc.id}" class="flex flex-col gap-1 px-3 py-2.5 border-b border-slate-100 last:border-b-0 text-sm">
-      <div class="flex flex-wrap items-center gap-3">
-        <div class="flex-1 min-w-0 flex flex-wrap items-center gap-2">
-          <span class="font-medium text-slate-800 truncate">${fn}</span>
-          ${reviewUi}
-        </div>
-        <span class="shrink-0">${buildDocTypeDropdown(doc.id, curDt)}</span>
-        <span class="text-slate-500 text-xs whitespace-nowrap">${_docSourceLabel(doc.source)}</span>
-        <span class="text-slate-500 text-xs whitespace-nowrap">${who}</span>
-        <span class="text-slate-400 text-xs font-mono whitespace-nowrap">${when}</span>
-        <span class="text-slate-500 text-xs whitespace-nowrap">${kb} KB</span>
-        <a href="${viewHref}" target="_blank" rel="noopener"
-           class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs whitespace-nowrap">View</a>
-        <button type="button" onclick="extractFields(${doc.id}, this)"
-                class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs whitespace-nowrap">Extract fields</button>
-        <button type="button" onclick="deleteDocument(${doc.id})"
-                class="text-slate-300 hover:text-red-400 transition-colors text-xs whitespace-nowrap" title="Remove from list">Delete</button>
-      </div>
-      <div id="ext-review-panel-${doc.id}" class="hidden w-full max-w-2xl"></div>
-    </div>`;
-  }).join('');
-  listEl.innerHTML = `<div class="rounded-lg border border-slate-200 divide-y divide-slate-100 overflow-hidden">${rows}</div>`;
-}
-
-function _updateDocIndicator(docs) {
-  const untagged = docs.filter(d => d.source === 'email' && d.doc_type === 'unknown');
-  const extRev = docs.filter(d => d.extraction_status === 'needs_review');
-  const indicator = document.getElementById('doc-email-indicator');
-  const countEl   = document.getElementById('doc-email-count');
-  const filterBtn = document.getElementById('doc-filter-btn');
-  if (!indicator || !countEl) return;
-  if (untagged.length > 0 || extRev.length > 0) {
-    const parts = [];
-    if (untagged.length > 0) {
-      const n = untagged.length;
-      parts.push(
-        `${n} email document${n === 1 ? '' : 's'} need${n === 1 ? 's' : ''} tagging`
-      );
+    if (appliedLabels.length > 0) {
+      const ok = document.createElement('div');
+      ok.className = 'text-xs text-green-600 font-medium';
+      ok.textContent =
+        'Fields applied to return: ' +
+        appliedLabels.join(', ') +
+        '. Click each updated cell and blur (or Enter) to save. Total fee and all payment fields were not changed.';
+      panel.appendChild(ok);
+    } else {
+      const info = document.createElement('div');
+      info.className = 'text-xs text-slate-600 font-medium';
+      info.textContent =
+        'No return fields applied (no editable name/year values above). Employer / wages remain reference only.';
+      panel.appendChild(info);
     }
-    if (extRev.length > 0) {
-      const e = extRev.length;
-      parts.push(
-        `${e} extraction${e === 1 ? '' : 's'} need${e === 1 ? 's' : ''} review`
-      );
-    }
-    countEl.textContent = parts.join(' · ') + ' — see list below';
-    indicator.classList.remove('hidden');
-    indicator.classList.add('flex');
-  } else {
-    indicator.classList.add('hidden');
-    indicator.classList.remove('flex');
-    _docFilterActive = false;
-  }
-  if (filterBtn) filterBtn.textContent = _docFilterActive ? 'Show all' : 'Show untagged only';
-}
 
-function toggleDocFilter() {
-  _docFilterActive = !_docFilterActive;
-  const filterBtn = document.getElementById('doc-filter-btn');
-  if (filterBtn) filterBtn.textContent = _docFilterActive ? 'Show all' : 'Show untagged only';
-  const visible = _docFilterActive
-    ? _lastDocs.filter(d => _docNeedsAttention(d))
-    : _lastDocs;
-  _renderDocList(visible);
-}
-
-function loadDocuments() {
-  const listEl = document.getElementById('doc-list');
-  if (!listEl) return;
-  fetch(`/return/${RETURN_ID}/documents`)
-    .then(r => r.json())
-    .then(data => {
-      _lastDocs = data.documents || [];
-      _updateDocIndicator(_lastDocs);
-      const visible = _docFilterActive
-        ? _lastDocs.filter(d => _docNeedsAttention(d))
-        : _lastDocs;
-      _renderDocList(visible);
-    })
-    .catch(() => {
-      listEl.innerHTML = '<p class="text-sm text-slate-400">Could not load documents.</p>';
-    });
-}
-
-function deleteDocument(docId) {
-  if (!confirm('Remove this document from the return? The file will be kept on disk.')) return;
-  fetch(`/return/${RETURN_ID}/documents/${docId}/delete`, { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-      if (data.success) loadDocuments();
-    });
-}
-
-function toggleExtractionReview(docId) {
-  const panel = document.getElementById('ext-review-panel-' + docId);
-  if (!panel) return;
-  if (!panel.classList.contains('hidden')) {
-    panel.classList.add('hidden');
-    return;
-  }
-  const doc = _lastDocs.find((d) => d.id === docId);
-  const fields = (doc && doc.extracted_fields) || {};
-  const rows = Object.keys(fields)
-    .map(
-      (k) =>
-        `<div class="flex flex-wrap gap-2 text-xs border-b border-amber-100 pb-1 last:border-0">
-           <span class="font-semibold text-slate-600 shrink-0">${_escapeHtml(k)}</span>
-           <span class="text-slate-800 break-all">${_escapeHtml(String(fields[k] ?? ''))}</span>
-         </div>`
-    )
-    .join('');
-  panel.innerHTML = `
-    <div class="rounded-lg border border-amber-300 bg-amber-50/90 p-3 space-y-2">
-      <p class="text-xs font-bold text-amber-900 uppercase tracking-wide">Review extraction</p>
-      <div class="max-h-48 overflow-y-auto space-y-1">${rows || '<p class="text-xs text-slate-500">No fields stored.</p>'}</div>
-      <div class="flex flex-wrap gap-2 pt-1">
-        <button type="button" onclick="confirmExtraction(${docId})"
-          class="text-xs font-semibold text-white bg-amber-700 hover:bg-amber-800 rounded-lg px-3 py-1.5">
-          Confirm &amp; save to return
-        </button>
-        <button type="button" onclick="toggleExtractionReview(${docId})"
-          class="text-xs text-slate-600 border border-slate-200 rounded-lg px-2 py-1">
-          Close
-        </button>
-      </div>
-    </div>`;
-  panel.classList.remove('hidden');
-}
-
-function confirmExtraction(docId) {
-  fetch('/return/' + RETURN_ID + '/documents/' + docId + '/confirm-extraction', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  })
-    .then((r) => r.json().then((data) => ({ r, data })))
-    .then(({ r, data }) => {
-      if (r.ok && data.success) {
-        const p = document.getElementById('ext-review-panel-' + docId);
-        if (p) {
-          p.classList.add('hidden');
-          p.innerHTML = '';
-        }
-        loadDocuments();
-        loadFormData();
-        return;
-      }
-      alert(data.error || 'Could not confirm extraction');
-    })
-    .catch(() => {
-      alert('Could not confirm extraction');
-    });
-}
-
-(function initDocUpload() {
-  const btn = document.getElementById('doc-upload-btn');
-  const input = document.getElementById('doc-file-input');
-  const statusEl = document.getElementById('doc-upload-status');
-  if (!btn || !input || !statusEl) return;
-
-  function showStatus(msg, isError) {
-    statusEl.textContent = msg || '';
-    statusEl.classList.remove('hidden', 'text-red-600', 'text-green-600');
-    if (!msg) {
-      statusEl.classList.add('hidden');
-      return;
-    }
-    statusEl.classList.add(isError ? 'text-red-600' : 'text-green-600');
+    setTimeout(() => panel.remove(), 5000);
   }
 
-  btn.addEventListener('click', function() {
-    const file = input.files[0];
-    if (!file) {
-      showStatus('Please select a file first.', true);
-      return;
-    }
-    const formData = new FormData();
-    formData.append('document', file);
-    formData.append('doc_type', document.getElementById('doc-type-select').value);
+  function updateDocType(selectEl) {
+    const docId = selectEl.dataset.docId;
+    const newType = selectEl.value;
+    const previous = selectEl.dataset.previousValue || 'unknown';
 
-    btn.disabled = true;
-    showStatus('Uploading…', false);
-    statusEl.classList.remove('text-green-600');
-    statusEl.classList.add('text-slate-600');
-
-    fetch(`/return/${RETURN_ID}/documents/upload`, {
+    _csrfFetch('/return/' + RETURN_ID + '/documents/' + docId + '/tag', {
       method: 'POST',
-      body: formData,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_type: newType }),
     })
+      .then((r) => r.json().then((data) => ({ r, data })))
+      .then(({ r, data }) => {
+        if (r.ok && data.success) {
+          const did = Number(docId);
+          const doc = _lastDocs.find((x) => x.id === did);
+          if (doc) doc.doc_type = data.doc_type;
+          selectEl.dataset.previousValue = data.doc_type;
+          _updateDocIndicator(_lastDocs);
+          const visible = _docFilterActive
+            ? _lastDocs.filter((d) => _docNeedsAttention(d))
+            : _lastDocs;
+          _renderDocList(visible);
+          const refreshed = document.querySelector('select.doc-type-select[data-doc-id="' + did + '"]');
+          if (refreshed) {
+            refreshed.style.borderColor = '#22c55e';
+            setTimeout(() => {
+              refreshed.style.borderColor = '';
+            }, 1500);
+          }
+        } else {
+          selectEl.value = previous;
+        }
+      })
+      .catch(() => {
+        selectEl.value = previous;
+      });
+  }
+
+  let _lastDocs = [];
+  let _docFilterActive = false;
+
+  function _docNeedsAttention(d) {
+    return (
+      (d.source === 'email' && (d.doc_type === 'unknown' || !d.doc_type)) ||
+      d.extraction_status === 'needs_review'
+    );
+  }
+
+  function _renderDocList(docs) {
+    const listEl = document.getElementById('doc-list');
+    if (!listEl) return;
+    if (!docs || docs.length === 0) {
+      const msg = _docFilterActive ? 'No matching documents (untagged or extraction review).' : 'No documents uploaded yet.';
+      listEl.innerHTML = `<p class="text-sm text-slate-400">${msg}</p>`;
+      return;
+    }
+    const rows = docs.map(doc => {
+      const kb = Math.round((doc.file_size_bytes || 0) / 1024);
+      const when = (doc.uploaded_at || '').slice(0, 16) || '—';
+      const who = doc.uploaded_by ? _escapeHtml(doc.uploaded_by) : '—';
+      const fn = _escapeHtml(doc.filename || '');
+      const viewHref = `/return/${RETURN_ID}/documents/${doc.id}/view`;
+      const curDt =
+        doc.doc_type == null || doc.doc_type === '' ? 'unknown' : String(doc.doc_type);
+      const needsEx = doc.extraction_status === 'needs_review';
+      const reviewUi = needsEx
+        ? `<button type="button" onclick="toggleExtractionReview(${doc.id})"
+             class="shrink-0 text-xs font-semibold text-amber-900 bg-amber-100 border border-amber-300 rounded-lg px-2 py-1">
+             Review extraction</button>
+          <span class="text-[10px] font-bold uppercase tracking-wide text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Needs review</span>`
+        : '';
+      return `<div data-doc-row data-doc-id="${doc.id}" class="flex flex-col gap-1 px-3 py-2.5 border-b border-slate-100 last:border-b-0 text-sm">
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex-1 min-w-0 flex flex-wrap items-center gap-2">
+            <span class="font-medium text-slate-800 truncate">${fn}</span>
+            ${reviewUi}
+          </div>
+          <span class="shrink-0">${buildDocTypeDropdown(doc.id, curDt)}</span>
+          <span class="text-slate-500 text-xs whitespace-nowrap">${_docSourceLabel(doc.source)}</span>
+          <span class="text-slate-500 text-xs whitespace-nowrap">${who}</span>
+          <span class="text-slate-400 text-xs font-mono whitespace-nowrap">${when}</span>
+          <span class="text-slate-500 text-xs whitespace-nowrap">${kb} KB</span>
+          <a href="${viewHref}" target="_blank" rel="noopener"
+             class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs whitespace-nowrap">View</a>
+          ${DRAKE_SYNC_ENABLED
+            ? `<button type="button" onclick="syncDocToDrake(${doc.id}, this)"
+               class="text-emerald-700 hover:text-emerald-900 font-semibold text-xs whitespace-nowrap border border-emerald-200 rounded-lg px-2 py-1">
+               Sync to Drake</button>`
+            : ''}
+          <button type="button" onclick="extractFields(${doc.id}, this)"
+                  class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs whitespace-nowrap">Extract fields</button>
+          <button type="button" onclick="deleteDocument(${doc.id})"
+                  class="text-slate-300 hover:text-red-400 transition-colors text-xs whitespace-nowrap" title="Remove from list">Delete</button>
+        </div>
+        <div id="ext-review-panel-${doc.id}" class="hidden w-full max-w-2xl"></div>
+      </div>`;
+    }).join('');
+    listEl.innerHTML = `<div class="rounded-lg border border-slate-200 divide-y divide-slate-100 overflow-hidden">${rows}</div>`;
+  }
+
+  function _updateDocIndicator(docs) {
+    const untagged = docs.filter(d => d.source === 'email' && d.doc_type === 'unknown');
+    const extRev = docs.filter(d => d.extraction_status === 'needs_review');
+    const indicator = document.getElementById('doc-email-indicator');
+    const countEl   = document.getElementById('doc-email-count');
+    const filterBtn = document.getElementById('doc-filter-btn');
+    if (!indicator || !countEl) return;
+    if (untagged.length > 0 || extRev.length > 0) {
+      const parts = [];
+      if (untagged.length > 0) {
+        const n = untagged.length;
+        const noun = n === 1 ? 'document' : 'documents';
+        const verb = n === 1 ? 'needs' : 'need';
+        parts.push(
+          '<a href="#documents" class="text-amber-900 underline font-semibold">' +
+            `${n} email ${noun} ${verb} tagging` +
+            '</a>'
+        );
+      }
+      if (extRev.length > 0) {
+        const e = extRev.length;
+        parts.push(
+          `${e} extraction${e === 1 ? '' : 's'} need${e === 1 ? 's' : ''} review`
+        );
+      }
+      countEl.innerHTML = parts.join(' · ') + ' — see list below';
+      indicator.classList.remove('hidden');
+      indicator.classList.add('flex');
+    } else {
+      indicator.classList.add('hidden');
+      indicator.classList.remove('flex');
+      _docFilterActive = false;
+    }
+    if (filterBtn) filterBtn.textContent = _docFilterActive ? 'Show all' : 'Show untagged only';
+  }
+
+  function toggleDocFilter() {
+    _docFilterActive = !_docFilterActive;
+    const filterBtn = document.getElementById('doc-filter-btn');
+    if (filterBtn) filterBtn.textContent = _docFilterActive ? 'Show all' : 'Show untagged only';
+    const visible = _docFilterActive
+      ? _lastDocs.filter(d => _docNeedsAttention(d))
+      : _lastDocs;
+    _renderDocList(visible);
+  }
+
+  function loadDocuments() {
+    const listEl = document.getElementById('doc-list');
+    if (!listEl) return;
+    _csrfFetch(`/return/${RETURN_ID}/documents`)
       .then(r => r.json())
       .then(data => {
-        if (data.success) {
-          showStatus('Uploaded.', false);
-          statusEl.classList.remove('text-slate-600');
-          statusEl.classList.add('text-green-600');
-          input.value = '';
-          window._pendingClassifyFlashDocId = data.doc_id;
-          loadDocuments();
+        _lastDocs = data.documents || [];
+        _updateDocIndicator(_lastDocs);
+        const visible = _docFilterActive
+          ? _lastDocs.filter(d => _docNeedsAttention(d))
+          : _lastDocs;
+        _renderDocList(visible);
+      })
+      .catch(() => {
+        listEl.innerHTML = '<p class="text-sm text-slate-400">Could not load documents.</p>';
+      });
+  }
+
+  function deleteDocument(docId) {
+    if (!confirm('Remove this document from the return? The file will be kept on disk.')) return;
+    _csrfFetch(`/return/${RETURN_ID}/documents/${docId}/delete`, { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) loadDocuments();
+      });
+  }
+
+  function syncDocToDrake(docId, btn) {
+    if (!DRAKE_SYNC_ENABLED) return;
+    const orig = btn.textContent;
+    btn.disabled = true;
+    _csrfFetch(`/return/${RETURN_ID}/documents/${docId}/sync-drake`, { method: 'POST' })
+      .then(r => r.json().then(d => ({ r, d })))
+      .then(({ r, d }) => {
+        if (r.ok && d.success) {
+          btn.textContent = '✓ Synced';
           setTimeout(() => {
-            const pendingId = window._pendingClassifyFlashDocId;
-            fetch(`/return/${RETURN_ID}/documents`)
-              .then((r) => r.json())
-              .then((data2) => {
-                _lastDocs = data2.documents || [];
-                _updateDocIndicator(_lastDocs);
-                const visible = _docFilterActive
-                  ? _lastDocs.filter((d) => _docNeedsAttention(d))
-                  : _lastDocs;
-                _renderDocList(visible);
-                if (pendingId != null) {
-                  const d = _lastDocs.find((x) => x.id === pendingId);
-                  const dt =
-                    d && d.doc_type
-                      ? String(d.doc_type).toLowerCase()
-                      : 'unknown';
-                  if (d && dt !== 'unknown') {
-                    const rowEl = document.querySelector(
-                      `[data-doc-row][data-doc-id="${pendingId}"]`
-                    );
-                    if (rowEl) {
-                      rowEl.classList.add(
-                        'ring-2',
-                        'ring-amber-400',
-                        'ring-offset-1',
-                        'rounded-lg'
+            btn.textContent = orig;
+            btn.disabled = false;
+          }, 2000);
+        } else {
+          btn.disabled = false;
+        }
+      })
+      .catch(() => {
+        btn.disabled = false;
+      });
+  }
+
+  function toggleExtractionReview(docId) {
+    const panel = document.getElementById('ext-review-panel-' + docId);
+    if (!panel) return;
+    if (!panel.classList.contains('hidden')) {
+      panel.classList.add('hidden');
+      return;
+    }
+    const doc = _lastDocs.find((d) => d.id === docId);
+    const fields = (doc && doc.extracted_fields) || {};
+    const rows = Object.keys(fields)
+      .map(
+        (k) =>
+          `<div class="flex flex-wrap gap-2 text-xs border-b border-amber-100 pb-1 last:border-0">
+             <span class="font-semibold text-slate-600 shrink-0">${_escapeHtml(k)}</span>
+             <span class="text-slate-800 break-all">${_escapeHtml(String(fields[k] ?? ''))}</span>
+           </div>`
+      )
+      .join('');
+    panel.innerHTML = `
+      <div class="rounded-lg border border-amber-300 bg-amber-50/90 p-3 space-y-2">
+        <p class="text-xs font-bold text-amber-900 uppercase tracking-wide">Review extraction</p>
+        <div class="max-h-48 overflow-y-auto space-y-1">${rows || '<p class="text-xs text-slate-500">No fields stored.</p>'}</div>
+        <div class="flex flex-wrap gap-2 pt-1">
+          <button type="button" onclick="confirmExtraction(${docId})"
+            class="text-xs font-semibold text-white bg-amber-700 hover:bg-amber-800 rounded-lg px-3 py-1.5">
+            Confirm &amp; save to return
+          </button>
+          <button type="button" onclick="toggleExtractionReview(${docId})"
+            class="text-xs text-slate-600 border border-slate-200 rounded-lg px-2 py-1">
+            Close
+          </button>
+        </div>
+      </div>`;
+    panel.classList.remove('hidden');
+  }
+
+  function confirmExtraction(docId) {
+    _csrfFetch('/return/' + RETURN_ID + '/documents/' + docId + '/confirm-extraction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+      .then((r) => r.json().then((data) => ({ r, data })))
+      .then(({ r, data }) => {
+        if (r.ok && data.success) {
+          const p = document.getElementById('ext-review-panel-' + docId);
+          if (p) {
+            p.classList.add('hidden');
+            p.innerHTML = '';
+          }
+          loadDocuments();
+          loadFormData();
+          return;
+        }
+        alert(data.error || 'Could not confirm extraction');
+      })
+      .catch(() => {
+        alert('Could not confirm extraction');
+      });
+  }
+
+  (function initDocUpload() {
+    const btn = document.getElementById('doc-upload-btn');
+    const input = document.getElementById('doc-file-input');
+    const statusEl = document.getElementById('doc-upload-status');
+    if (!btn || !input || !statusEl) return;
+
+    function showStatus(msg, isError) {
+      statusEl.textContent = msg || '';
+      statusEl.classList.remove('hidden', 'text-red-600', 'text-green-600');
+      if (!msg) {
+        statusEl.classList.add('hidden');
+        return;
+      }
+      statusEl.classList.add(isError ? 'text-red-600' : 'text-green-600');
+    }
+
+    btn.addEventListener('click', function() {
+      const files = input.files;
+      if (!files || files.length === 0) {
+        showStatus('Please select a file first.', true);
+        return;
+      }
+      const docType = document.getElementById('doc-type-select').value;
+      btn.disabled = true;
+
+      // DOC-HARD-7: use bulk-upload for multiple files, single-upload for one file.
+      if (files.length === 1) {
+        const formData = new FormData();
+        formData.append('document', files[0]);
+        formData.append('doc_type', docType);
+        showStatus('Uploading…', false);
+        statusEl.classList.remove('text-green-600');
+        statusEl.classList.add('text-slate-600');
+        _csrfFetch(`/return/${RETURN_ID}/documents/upload`, { method: 'POST', body: formData })
+          .then(r => r.json())
+          .then(data => {
+            if (data.success) {
+              const warn = data.duplicate_warning ? (' ⚠ ' + data.duplicate_warning) : '';
+              showStatus('Uploaded.' + warn, !!data.duplicate_warning);
+              if (!data.duplicate_warning) {
+                statusEl.classList.remove('text-slate-600');
+                statusEl.classList.add('text-green-600');
+              }
+              input.value = '';
+              window._pendingClassifyFlashDocId = data.doc_id;
+              loadDocuments();
+            } else {
+              showStatus(data.error || 'Upload failed.', true);
+            }
+            btn.disabled = false;
+          })
+          .catch(() => { showStatus('Network error.', true); btn.disabled = false; });
+        return;
+      }
+
+      // Multiple files — bulk upload
+      showStatus(`Uploading ${files.length} files…`, false);
+      statusEl.classList.remove('text-green-600');
+      statusEl.classList.add('text-slate-600');
+      const formData = new FormData();
+      for (const f of files) { formData.append('documents', f); }
+      formData.append('doc_type', docType);
+      _csrfFetch(`/return/${RETURN_ID}/documents/bulk-upload`, { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+          const results = data.results || [];
+          const ok = results.filter(r => r.success).length;
+          const fail = results.filter(r => !r.success).length;
+          const warns = results.filter(r => r.duplicate_warning).length;
+          let msg = `${ok} uploaded`;
+          if (warns) msg += `, ${warns} duplicate${warns > 1 ? 's' : ''} warned`;
+          if (fail) msg += `, ${fail} failed`;
+          showStatus(msg + '.', fail > 0 || warns > 0);
+          if (ok > 0) {
+            statusEl.classList.remove('text-slate-600');
+            statusEl.classList.add(fail > 0 ? 'text-amber-600' : 'text-green-600');
+            input.value = '';
+            loadDocuments();
+          }
+          btn.disabled = false;
+        })
+        .catch(() => { showStatus('Network error.', true); btn.disabled = false; });
+    });
+
+    // ── legacy single-upload path (kept for reference; dead code after refactor above) ──
+    function _legacySingleUpload_UNUSED() {
+      const file = input.files[0];
+      const formData = new FormData();
+      formData.append('document', file);
+      formData.append('doc_type', document.getElementById('doc-type-select').value);
+      _csrfFetch(`/return/${RETURN_ID}/documents/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            showStatus('Uploaded.', false);
+            statusEl.classList.remove('text-slate-600');
+            statusEl.classList.add('text-green-600');
+            input.value = '';
+            window._pendingClassifyFlashDocId = data.doc_id;
+            loadDocuments();
+            setTimeout(() => {
+              const pendingId = window._pendingClassifyFlashDocId;
+              _csrfFetch(`/return/${RETURN_ID}/documents`)
+                .then((r) => r.json())
+                .then((data2) => {
+                  _lastDocs = data2.documents || [];
+                  _updateDocIndicator(_lastDocs);
+                  const visible = _docFilterActive
+                    ? _lastDocs.filter((d) => _docNeedsAttention(d))
+                    : _lastDocs;
+                  _renderDocList(visible);
+                  if (pendingId != null) {
+                    const d = _lastDocs.find((x) => x.id === pendingId);
+                    const dt =
+                      d && d.doc_type
+                        ? String(d.doc_type).toLowerCase()
+                        : 'unknown';
+                    if (d && dt !== 'unknown') {
+                      const rowEl = document.querySelector(
+                        `[data-doc-row][data-doc-id="${pendingId}"]`
                       );
-                      setTimeout(() => {
-                        rowEl.classList.remove(
+                      if (rowEl) {
+                        rowEl.classList.add(
                           'ring-2',
                           'ring-amber-400',
                           'ring-offset-1',
                           'rounded-lg'
                         );
-                      }, 2500);
+                        setTimeout(() => {
+                          rowEl.classList.remove(
+                            'ring-2',
+                            'ring-amber-400',
+                            'ring-offset-1',
+                            'rounded-lg'
+                          );
+                        }, 2500);
+                      }
                     }
+                    window._pendingClassifyFlashDocId = null;
                   }
+                })
+                .catch(() => {
                   window._pendingClassifyFlashDocId = null;
-                }
-              })
-              .catch(() => {
-                window._pendingClassifyFlashDocId = null;
-              });
-          }, 10000);
-        } else {
-          showStatus(data.error || 'Upload failed.', true);
-        }
-      })
-      .catch(() => {
-        showStatus('Could not upload — try again.', true);
-      })
-      .finally(() => {
-        btn.disabled = false;
-      });
-  });
+                });
+            }, 10000);
+          } else {
+            showStatus(data.error || 'Upload failed.', true);
+          }
+        })
+        .catch(() => {
+          showStatus('Could not upload — try again.', true);
+        })
+        .finally(() => {
+          btn.disabled = false;
+        });
+    } // end _legacySingleUpload_UNUSED
 
-  loadDocuments();
-  loadFormData();
+    loadDocuments();
+    loadFormData();
+  })();
+
+  window.confirmExtraction = confirmExtraction;
+  window.deleteDocument = deleteDocument;
+  window.extractFields = extractFields;
+  window.printSticker = printSticker;
+  window.syncDocToDrake = syncDocToDrake;
+  window.toggleDocFilter = toggleDocFilter;
+  window.toggleExtractionReview = toggleExtractionReview;
+  window.updateDocType = updateDocType;
+  window.addMissingDoc = addMissingDoc;
+  window.copyDraft = copyDraft;
+  window.deleteMissingDoc = deleteMissingDoc;
+  window.draftEmail = draftEmail;
+  window.quickToggle = quickToggle;
+  window.saveContactDate = saveContactDate;
+  window.saveContactStatus = saveContactStatus;
+  window.saveField = saveField;
+  window.setStatusDetail = setStatusDetail;
+  window.submitNote = submitNote;
+  window.toggleMissingDoc = toggleMissingDoc;
+  window.toggleStatusMenu = toggleStatusMenu;
 })();
 </script>
 {% endblock %}

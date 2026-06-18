@@ -144,74 +144,81 @@
 
 {% block scripts %}
 <script>
-async function resolve(queueId, action, clientId = null) {
-  const row = document.getElementById('row-' + queueId);
-  row.style.opacity = '0.4';
-  row.style.pointerEvents = 'none';
+(function () {
 
-  const body = { queue_id: queueId, action };
-  if (clientId) body.client_id = clientId;
+  async function resolve(queueId, action, clientId = null) {
+    const row = document.getElementById('row-' + queueId);
+    row.style.opacity = '0.4';
+    row.style.pointerEvents = 'none';
 
-  const res  = await fetch('/review/resolve', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
+    const body = { queue_id: queueId, action };
+    if (clientId) body.client_id = clientId;
 
-  if (data.error) {
-    alert('Error: ' + data.error);
-    row.style.opacity = '';
-    row.style.pointerEvents = '';
-    return;
-  }
-
-  row.remove();
-
-  const badge = document.getElementById('pending-badge');
-  if (badge) badge.textContent = data.remaining + ' pending';
-
-  // If no more rows, show empty state
-  const tbody = document.getElementById('review-tbody');
-  if (tbody && tbody.querySelectorAll('tr').length === 0) {
-    tbody.closest('.bg-white').outerHTML = `
-      <div class="bg-white rounded-xl border border-slate-200 px-6 py-16 text-center">
-        <div class="text-5xl mb-3">✅</div>
-        <div class="font-semibold text-slate-600 text-base">All caught up — no pending reviews.</div>
-      </div>`;
-  }
-}
-
-function showLinkSearch(queueId) {
-  document.getElementById('link-search-' + queueId).classList.remove('hidden');
-}
-function hideLinkSearch(queueId) {
-  document.getElementById('link-search-' + queueId).classList.add('hidden');
-  document.getElementById('link-results-' + queueId).classList.add('hidden');
-}
-
-let _searchTimer = null;
-function searchClients(input, queueId) {
-  clearTimeout(_searchTimer);
-  _searchTimer = setTimeout(async () => {
-    const q = input.value.trim();
-    if (q.length < 2) return;
-    const res  = await fetch('/api/clients/search?q=' + encodeURIComponent(q));
+    const res  = await _csrfFetch('/review/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
     const data = await res.json();
-    const box  = document.getElementById('link-results-' + queueId);
-    if (!data.length) {
-      box.innerHTML = '<div class="px-3 py-2 text-xs text-slate-400">No matches</div>';
-    } else {
-      box.innerHTML = data.map(c =>
-        `<button onclick="resolve(${queueId}, 'link', ${c.id})"
-                 class="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 border-b border-slate-100 last:border-0">
-           <span class="font-semibold text-slate-800">${c.last_name}${c.first_name ? ', ' + c.first_name : ''}</span>
-           <span class="text-slate-400 ml-2">#${c.id}</span>
-         </button>`
-      ).join('');
+
+    if (data.error) {
+      alert('Error: ' + data.error);
+      row.style.opacity = '';
+      row.style.pointerEvents = '';
+      return;
     }
-    box.classList.remove('hidden');
-  }, 250);
-}
+
+    row.remove();
+
+    const badge = document.getElementById('pending-badge');
+    if (badge) badge.textContent = data.remaining + ' pending';
+
+    // If no more rows, show empty state
+    const tbody = document.getElementById('review-tbody');
+    if (tbody && tbody.querySelectorAll('tr').length === 0) {
+      tbody.closest('.bg-white').outerHTML = `
+        <div class="bg-white rounded-xl border border-slate-200 px-6 py-16 text-center">
+          <div class="text-5xl mb-3">✅</div>
+          <div class="font-semibold text-slate-600 text-base">All caught up — no pending reviews.</div>
+        </div>`;
+    }
+  }
+
+  function showLinkSearch(queueId) {
+    document.getElementById('link-search-' + queueId).classList.remove('hidden');
+  }
+  function hideLinkSearch(queueId) {
+    document.getElementById('link-search-' + queueId).classList.add('hidden');
+    document.getElementById('link-results-' + queueId).classList.add('hidden');
+  }
+
+  let _reviewSearchTimer = null;
+  function searchClients(input, queueId) {
+    clearTimeout(_reviewSearchTimer);
+    _reviewSearchTimer = setTimeout(async () => {
+      const q = input.value.trim();
+      if (q.length < 2) return;
+      const res  = await _csrfFetch('/api/clients/search?q=' + encodeURIComponent(q));
+      const data = await res.json();
+      const box  = document.getElementById('link-results-' + queueId);
+      if (!data.length) {
+        box.innerHTML = '<div class="px-3 py-2 text-xs text-slate-400">No matches</div>';
+      } else {
+        box.innerHTML = data.map(c =>
+          `<button onclick="resolve(${queueId}, 'link', ${c.id})"
+                   class="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 border-b border-slate-100 last:border-0">
+             <span class="font-semibold text-slate-800">${c.last_name}${c.first_name ? ', ' + c.first_name : ''}</span>
+             <span class="text-slate-400 ml-2">#${c.id}</span>
+           </button>`
+        ).join('');
+      }
+      box.classList.remove('hidden');
+    }, 250);
+  }
+
+  window.hideLinkSearch = hideLinkSearch;
+  window.searchClients = searchClients;
+  window.showLinkSearch = showLinkSearch;
+})();
 </script>
 {% endblock %}

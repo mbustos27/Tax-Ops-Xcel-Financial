@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Ops Runbook — TaxOps{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-6 pb-24">
+
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">Operations Runbook</h1>
+      <p class="text-sm text-slate-500 mt-1">
+        Server management procedures for staff and administrators.
+      </p>
+    </div>
+    <a href="/admin/runbook/raw"
+       class="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors">
+      View raw
+    </a>
+  </div>
+
+  <!-- Rendered markdown -->
+  <div id="runbook-body"
+       class="prose prose-slate prose-sm max-w-none
+              prose-headings:font-bold prose-headings:text-slate-800
+              prose-h1:text-2xl prose-h2:text-lg prose-h2:mt-8
+              prose-code:bg-slate-100 prose-code:text-violet-700 prose-code:rounded prose-code:px-1
+              prose-pre:bg-slate-800 prose-pre:text-slate-100 prose-pre:rounded-xl
+              prose-table:text-sm prose-th:bg-slate-50
+              prose-a:text-blue-600 hover:prose-a:underline
+              bg-white rounded-xl border border-slate-200 shadow-sm p-6 sm:p-8">
+    <noscript>
+      <pre class="text-sm font-mono whitespace-pre-wrap break-words text-slate-700">{{ raw_md }}</pre>
+    </noscript>
+    <div id="md-target" class="hidden"></div>
+    <pre id="md-fallback" class="text-sm font-mono whitespace-pre-wrap break-words text-slate-700">{{ raw_md }}</pre>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  const raw    = document.getElementById('md-fallback');
+  const target = document.getElementById('md-target');
+  const src    = {{ raw_md | tojson }};
+
+  // Try to load marked.js for rendered HTML; fall back gracefully to <pre>.
+  const script = document.createElement('script');
+  script.src   = 'https://cdn.jsdelivr.net/npm/marked@9/marked.min.js';
+  script.onload = function () {
+    try {
+      target.innerHTML = marked.parse(src);
+      target.classList.remove('hidden');
+      raw.classList.add('hidden');
+    } catch (e) {
+      // marked loaded but failed to parse — pre fallback stays visible
+    }
+  };
+  // If CDN is offline (no internet access), the <pre> stays visible — no error
+  script.onerror = function () {};
+  document.head.appendChild(script);
+})();
+</script>
+{% endblock %}

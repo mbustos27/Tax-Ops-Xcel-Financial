@@ -37,6 +37,47 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
   outline-offset: 2px;
 }
 
+/* Header global search — layout/color here so it survives Tailwind purge
+   (`static/tw.min.css` only includes utilities seen at build time; many classes
+   in templates such as `pl-14`, `py-0`, arbitrary `leading-[3rem]` are absent,
+   which made search styling appear to “never change”). */
+#search-wrap {
+  min-height: 3rem;
+}
+#global-search {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 3rem;
+  margin: 0;
+  padding: 0 1rem 0 4rem;
+  font-size: 1.125rem;
+  font-weight: 400;
+  line-height: 3rem;
+  letter-spacing: 0.025em;
+  color: #fff;
+  background-color: rgb(51 65 85);
+  border: 1px solid rgba(71 85 105 0.8);
+  border-radius: 0.5rem;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.22);
+}
+
+#global-search::placeholder {
+  color: rgb(203 213 225);
+}
+
+#global-search:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.55);
+  box-shadow:
+    inset 0 1px 2px rgba(15, 23, 42, 0.22),
+    0 0 0 2px rgb(96 165 250);
+}
+
+#global-search:focus::placeholder {
+  color: rgb(148 163 184);
+}
+
 /* ── Tools dropdown items ───────────────────────────────────────────────── */
 .tools-item {
   display: block;
@@ -56,7 +97,7 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
 .status-badge {
   display: inline-flex;
   align-items: center;
-  padding: 0.3rem 0.8rem;
+  padding: 0.5rem 0.9rem;
   border-radius: 9999px;
   font-size: 0.8125rem;     /* 13 px */
   font-weight: 700;
@@ -66,7 +107,7 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
   transition: box-shadow 0.12s;
   user-select: none;
   letter-spacing: 0.02em;
-  min-height: 2rem;
+  min-height: 2.75rem;      /* WCAG 2.5.5 — 44 px touch target */
 }
 .status-badge:hover        { box-shadow: 0 0 0 3px rgba(0,0,0,0.10); }
 .status-badge:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
@@ -86,12 +127,22 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
 .dot-hold   { background: #f97316; }  /* HOLD      — orange   */
 .dot-indigo { background: #6366f1; }
 .dot-teal   { background: #0d9488; }
+.dot-violet { background: #7c3aed; }
 .dot-slate  { background: #64748b; }
 .dot-red    { background: #dc2626; }  /* REJECTED   — red     */
 
-/* ── Filter pills ─────────────────────────────────────────────────────── */
+/* Dashboard filter bar: horizontal pill rows use overflow-x-auto; clipping the x-axis
+   at rounded corners hides scrollbar/residual paint that reads as a stray dot/wedge.
+   overflow-y stays visible so vertical focus-outline spacing is less affected than with
+   overflow: hidden on both axes. */
+#filter-bar {
+  position: relative;
+  z-index: 1;
+  overflow-x: hidden;
+}
+
 .pill {
-  padding: 0.3rem 0.8rem;
+  padding: 0.5rem 0.9rem;
   border-radius: 9999px;
   font-size: 0.875rem;      /* 14 px */
   font-weight: 500;
@@ -99,7 +150,7 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
   border: 1px solid;
   transition: all 0.12s;
   white-space: nowrap;
-  min-height: 2rem;
+  min-height: 2.75rem;      /* WCAG 2.5.5 — 44 px touch target */
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -211,7 +262,7 @@ thead.sticky tr th {
   transition: all 0.12s;
   border: none;
   cursor: pointer;
-  min-height: 2.25rem;
+  min-height: 2.75rem;      /* WCAG 2.5.5 — 44 px touch target */
 }
 .action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .action-btn:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
@@ -240,6 +291,39 @@ thead.sticky tr th {
 :focus-visible {
   outline: 2px solid #3b82f6;
   outline-offset: 2px;
+}
+
+/* ── WCAG 2.4.11: Focus Not Obscured — rows below sticky header remain visible ── */
+.data-table tbody tr {
+  scroll-margin-top: 6rem;   /* header (~88px) + filter-bar buffer */
+}
+
+/* ── WCAG 1.4.3: helper/hint text — slate-500 (#64748b) on white = 4.6:1 ── */
+/* Replaces the failing slate-400 (#94a3b8 = 2.85:1) used in hints */
+.hint-text {
+  color: #64748b;            /* slate-500 — WCAG AA compliant */
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+/* ── WCAG 2.5.5: minimum 44×44 px touch targets for small interactive elements ── */
+.touch-target {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Inline validation messages (Section 5) ────────────────────────────── */
+.field-error {
+  color: #dc2626;            /* red-600 — 5.74:1 on white — WCAG AA */
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  display: none;
+}
+.field-error.visible {
+  display: block;
 }
 
 /* ── Flash animation ──────────────────────────────────────────────────── */

@@ -24,68 +24,121 @@ from flask import (
 import db_tools
 
 from config import (
-    CHAT_ROUTER_CONFIDENCE_MIN,
-    CHAT_ROUTER_TRANSPORT_FAIL_AGGREGATES,
-    CHAT_ANSWER_ON_ROUTER_TIMEOUT_SKIP_LLM,
     CHAT_TRAINING_LOG_CACHE_HITS,
     CHAT_TRAINING_LOG_ENABLE,
     CHAT_TRAINING_LOG_PATH,
     OLLAMA_BASE_URL,
     OLLAMA_CHAT_ANSWER_TIMEOUT_SEC,
     OLLAMA_CHAT_MODEL,
-    OLLAMA_CHAT_ROUTER_TIMEOUT_SEC,
     OLLAMA_EXTRACT_MODEL_TEXT,
     OLLAMA_EXTRACT_MODEL_VISION,
     OLLAMA_MODEL,
-    OLLAMA_ROUTER_MODEL,
 )
 from db import get_connection
 from db_tools import lookup_rejection_code
 from form_schema import FORM_INTEGER_COLUMNS, FORM_TABLE_INSERT_COLUMNS
 from llm import chat, extract_json
-from utils import now, scrub_ssn_from_dict
+from utils import normalize_staff_question_key, now, scrub_ssn_from_dict
 from chat_cache import (
     CHAT_ALLOWED_STATUSES,
-    apply_row_tool_grounding_guard,
-    chronological_superlative_chat_payload,
-    classify_intent,
-    dataplane_digest_freshness_banner,
     ensure_chat_cache_for_year,
-    format_season_rejection_breakdown_for_chat,
+    ensure_structured_cache_for_year,
+    get_all_processor_counts,
+    get_all_status_counts,
     get_cached_answer,
-    normalize_chat_router_payload,
-    normalize_question,
-    prefers_narrative_list_answer,
+    get_cache_age_seconds,
+    get_cache_year,
+    get_data_plane_text,
+    get_financial_stats,
+    get_returns_for_status,
+    get_status_count,
+    is_cache_warm,
     set_cached_answer,
     snapshot_office_brief_digest,
-    try_deterministic_response,
-    use_narrative_return_rows,
-    wants_qualitative_return_answer,
-    wants_rejection_reason_breakdown,
-    wants_tool_row_aggregate,
-    _extract_processor_guess,
-    _extract_status_from_question,
-    _resolve_processor_match,
 )
-from chat_scope_classifier import should_block_tool_router_llm
 from chat_training_log import append_staff_ai_chat_question
 
 ai = Blueprint("ai", __name__, url_prefix="/ai")
+
+# Substring phrases (lowercase) → canonical workflow label for structured-chat cache lookups.
+# Longest phrases first via sort — see _STRUCTURED_TRY_CACHE_STATUS_PHRASES.
+_STRUCTURED_TRY_CACHE_STATUS_PHRASES_RAW: tuple[tuple[str, str], ...] = (
+    ("e-file ready", "EFILE READY"),
+    ("efile ready", "EFILE READY"),
+    ("picked up", "LOG OUT"),
+    ("checked out", "LOG OUT"),
+    ("logged out", "LOG OUT"),
+    ("logging out", "LOG OUT"),
+    ("logout", "LOG OUT"),
+    ("log out", "LOG OUT"),
+    ("finalize", "FINALIZE"),
+    ("finaliz", "FINALIZE"),
+    ("pick up", "PICKUP"),
+    ("processing", "PROCESSING"),
+    ("efile", "EFILE READY"),
+    ("e-file", "EFILE READY"),
+    ("pickup", "PICKUP"),
+    ("cancelled", "CANCELLED"),
+    ("canceled", "CANCELLED"),
+    ("rejection", "REJECTED"),
+    ("rejected", "REJECTED"),
+    ("hold", "HOLD"),
+)
+_STRUCTURED_TRY_CACHE_STATUS_PHRASES: tuple[tuple[str, str], ...] = tuple(
+    sorted(set(_STRUCTURED_TRY_CACHE_STATUS_PHRASES_RAW), key=lambda x: (-len(x[0]), x[0]))
+)
+
+
+def _get_json_safe() -> dict | None:
+    """SEC-1: safe JSON body parser — mirrors the helper in app.py."""
+    ct = (request.content_type or "").lower()
+    if "application/json" in ct:
+        return request.get_json(silent=True)
+    if request.data:
+        return request.get_json(force=True, silent=True)
+    return None
+
+
+def _extract_chat_status_phrase(question: str) -> str | None:
+    """Match workflow status only as a whole phrase (prevents hidden substring matches)."""
+    for st in sorted(CHAT_ALLOWED_STATUSES, key=len, reverse=True):
+        parts = st.split()
+        if len(parts) == 1:
+            pat = r"\b" + re.escape(parts[0]) + r"\b"
+        else:
+            pat = r"\b" + r"\s+".join(re.escape(p) for p in parts) + r"\b"
+        if re.search(pat, question, flags=re.I):
+            return st
+    return None
+
+
+def _canonical_status_from_structured_try_cache_question(ql: str, question: str) -> str | None:
+    """Map natural wording to workflow status label for structured cache fast paths."""
+    for phrase, canonical in _STRUCTURED_TRY_CACHE_STATUS_PHRASES:
+        if phrase in ql:
+            return canonical
+    return _extract_chat_status_phrase(question)
+
 
 CHAT_TOOLS = [
     {
         "name": "get_returns_by_status",
         "description": (
-            "Get returns by **workflow queue/status** only: PROCESSING, HOLD, FINALIZE, PICKUP, "
-            "EFILE READY, LOG OUT, REJECTED, CANCELLED (exact labels stored on the return). "
-            "Never use invented statuses such as UNPAID, **EFILE**, or EFILING—those are not stored labels. "
-            "For unpaid fees / who owes money / ranking balances use get_balance_due_returns instead. "
-            "For \"e-file finished and logged out\" / clerical logout volume, use status **LOG OUT** (completed), "
-            "not **EFILE READY** (transmit queue). "
+            "Get returns with a specific workflow status. "
+            "Use for PROCESSING, HOLD, FINALIZE, PICKUP, EFILE READY, LOG OUT, REJECTED, or CANCELLED. "
+            "LOG OUT means the client/folder has picked up or been checked out (completed in-office logout). "
+            "Examples: 'how many in PROCESSING', 'show me HOLD returns', 'who was logged out last', "
+            "'last person to pick up their return'. "
+            "Never use invented statuses such as UNPAID or EFILER for workflow queue. "
+            "For unpaid fee balances use get_balance_due_returns instead. "
+            "For clerical logout / finished-and-picked-up use **LOG OUT**, not **EFILE READY** (transmit queue)."
         ),
         "args": {
-            "status": "one of: PROCESSING, HOLD, FINALIZE, PICKUP, EFILE READY, LOG OUT, REJECTED, CANCELLED",
-            "year": "4-digit tax year integer e.g. 2025",
+            "status": (
+                "one of: PROCESSING, HOLD, FINALIZE, PICKUP, "
+                "EFILE READY, LOG OUT, REJECTED, CANCELLED"
+            ),
+            "year": "4-digit tax year integer e.g. 2026",
         },
     },
     {
@@ -125,18 +178,10 @@ CHAT_TOOLS = [
 
 CHAT_TOOL_ALLOWLIST = {t["name"] for t in CHAT_TOOLS}
 
-# Embed the same live roll-up in router + answer prompts: all status counts + preparer tallies
-# (staff names from `returns.processor`, not client taxpayer PII—see get_system_context docstring).
+# KPI / dataplane prompt caps (staff names come from `returns.processor` aggregates only).
 _AI_CHAT_PREP_ROLLUP_CAP = 240
-
-# JSON shard length caps — office dataplane (counts only); keep router prompt slim.
-_AI_ROUTER_DATAPLANE_JSON_CAP = 880
 _AI_CHAT_DATAPLANE_JSON_COMPACT_CAP = 1100
-# Markdown office dataplane injected on **every** LLM routed turn (router + aggregate answers).
-_AI_ROUTER_UNIVERSAL_DIGEST_CAP = 5200
-_AI_CHAT_NULL_TOOL_BRIEF_CAP = 11800
-# When router Ollama fails and we skip the answer LLM, cap digest pasted into the reply (UI / payload size).
-_AI_CHAT_DEGRADED_SKIP_LLM_DIGEST_CAP = 6200
+_AI_CHAT_DATAPLANE_MARKDOWN_CAP = 11800
 
 
 def _shard_dataplane_json(dc: object, max_chars: int) -> str:
@@ -258,7 +303,10 @@ def _format_ai_chat_system_context(ctx: dict) -> str:
 
 
 def _prepend_ai_chat_system_context(
-    body: str, ctx: dict, *, office_brief_addon: str | None = None
+    body: str,
+    ctx: dict,
+    *,
+    office_brief_addon: str | None = None,
 ) -> str:
     head = _format_ai_chat_system_context(ctx).rstrip()
     if office_brief_addon:
@@ -270,74 +318,94 @@ def _prepend_ai_chat_system_context(
     return head + "\n\n---\n\n" + body
 
 
-def _format_router_compact_system_context(ctx: dict) -> str:
-    """Compact aggregates for router LLM (minimal tokens → reliable JSON tool selection)."""
-    td = str(ctx.get("today_local_iso") or "")
-    yr = ctx.get("season_year", "")
-    sc = dict(ctx.get("status_counts") or {})
-    pmap = dict(ctx.get("processor_return_counts") or {})
-    bal = int(ctx.get("balance_due_season_total") or 0)
-    total = sum(int(v) for v in sc.values())
-    st_bits = "; ".join(f"{k}={sc[k]}" for k in sorted(sc.keys(), key=lambda s: str(s).casefold()))
-    cap = _AI_CHAT_PREP_ROLLUP_CAP
-    prep_ordered = sorted(pmap.items(), key=lambda kv: str(kv[0]).casefold())
-    prep_items = prep_ordered[:cap]
-    prep_bits = "; ".join(f"{name}:{int(c)}" for name, c in prep_items)
-    more_prep = ""
-    if len(prep_ordered) > cap:
-        more_prep = f" (+{len(prep_ordered) - cap} preparers truncated in ROUTER CONTEXT for length)."
-    head = (
-        "### ROUTER CONTEXT — trusted aggregates (no taxpayer PII)\n"
-        f"{_OFFICE_SUMMARY_SENTENCE}\n"
-        f"Server date **{td}**; season_year selector **{yr}**.\n"
-        f"Statuses → count: {st_bits or '(none)'}.\n"
-        f"Preparer → return_count: {prep_bits or '(none)'}{more_prep}\n"
-        f"Unpaid_balance_season_tally=**{bal}**; sum_of_status_badges≈**{total}**."
+_SIMPLE_OFF_TOPIC_RE = re.compile(
+    r"\b(?:weather|forecast|temperature|recipe|recipes|cook(?:ing)?|sport|NBA|NFL|MLB|scores?|NASDAQ|NYSE|"
+    r"bitcoin|ethereum|crypto(?:currency)?|\bjoke\b|\bmovies?\b)\b",
+    re.I,
+)
+
+_NEEDS_LOOKUP_LINE = re.compile(
+    r"(?im)^\s*NEEDS_LOOKUP:\s*([a-zA-Z0-9_]+)\s*:\s*(.*?)\s*$",
+)
+
+_LOOKUP_TOOL_NAMES = frozenset(
+    {
+        "search_clients",
+        "get_missing_docs",
+        "get_returns_by_status",
+        "get_returns_by_processor",
+        "get_client_returns",
+        "get_balance_due_returns",
+    }
+)
+
+
+def _simple_off_topic_gate(question: str) -> bool:
+    q = question.strip()
+    return bool(q and _SIMPLE_OFF_TOPIC_RE.search(q))
+
+
+def _is_chat_countish_question(question: str) -> bool:
+    ql = question.strip().lower()
+    if any(kw in ql for kw in ("how many", "total number", "number of")):
+        return True
+    return bool(re.search(r"\bcount\b", ql))
+
+
+def _chat_wants_volume_aggregate(question: str) -> bool:
+    if _is_chat_countish_question(question):
+        return True
+    ql = question.strip().lower()
+    return bool(
+        re.search(
+            r"\breturns?\b.{1,48}\b(do\s+we\s+have|have\s+we|we\s+have|we'?ve\s+got|got)\b"
+            r"|\b(do\s+we\s+have|have\s+we|we\s+have|how\s+much\b).{1,52}\breturns?\b",
+            ql,
+        )
     )
-    dp_shard = _shard_dataplane_json(dict(ctx.get("dataplane_compact") or {}), _AI_ROUTER_DATAPLANE_JSON_CAP)
-    if dp_shard:
-        head += f"\nDataplane KPIs_JSON= {dp_shard}"
-    return head
 
 
-def _prepend_router_system_context(body: str, ctx: dict) -> str:
-    return _format_router_compact_system_context(ctx).rstrip() + "\n\n---\n\n" + body
+def _first_needs_lookup(answer: str) -> tuple[str, str] | None:
+    m = _NEEDS_LOOKUP_LINE.search(answer or "")
+    if not m:
+        return None
+    return m.group(1).strip(), m.group(2).strip()
 
 
-def _chat_arg_int(raw, fallback: int) -> int:
-    try:
-        if raw is None:
-            return fallback
-        return int(float(str(raw).strip()))
-    except (TypeError, ValueError):
-        return fallback
-
-
-def _normalized_chat_tool_args(tool_name: str, raw_args: object, fallback_year: int) -> dict:
-    """Normalize LLM JSON args so db_tools call signatures match."""
-    args = raw_args if isinstance(raw_args, dict) else {}
-    low = {(str(k).strip().lower() if k is not None else ""): v for k, v in args.items()}
-    low = {k: v for k, v in low.items() if k}
-
-    if tool_name == "get_returns_by_status":
-        return {
-            "status": str(low.get("status") or "").strip(),
-            "year": _chat_arg_int(low.get("year"), fallback_year),
-        }
-    if tool_name == "get_returns_by_processor":
-        return {
-            "processor": str(low.get("processor") or "").strip(),
-            "year": _chat_arg_int(low.get("year"), fallback_year),
-        }
-    if tool_name == "get_client_returns":
-        return {"client_id": _chat_arg_int(low.get("client_id"), 0)}
-    if tool_name == "get_balance_due_returns":
-        return {"year": _chat_arg_int(low.get("year"), fallback_year)}
-    if tool_name == "get_missing_docs":
-        return {"return_id": _chat_arg_int(low.get("return_id"), 0)}
-    if tool_name == "search_clients":
-        return {"query": str(low.get("query") or "").strip()}
-    return {}
+def _run_needs_lookup_tool(conn, tool: str, arg: str, year: int) -> object:
+    tn = tool.strip().lower()
+    if tn == "search_clients":
+        query = arg.strip().strip("\"'")
+        if not query:
+            return []
+        return db_tools.search_clients(conn, query)
+    if tn == "get_missing_docs":
+        rid = int(str(arg).strip())
+        return db_tools.get_missing_docs(conn, rid)
+    if tn == "get_returns_by_status":
+        raw_u = arg.strip().upper().replace("-", " ")
+        status = None
+        for lab in CHAT_ALLOWED_STATUSES:
+            if lab.upper().replace(" ", "") == raw_u.replace(" ", ""):
+                status = lab
+                break
+            if lab.upper() == raw_u:
+                status = lab
+                break
+        if not status:
+            return {"error": f"Unknown workflow status {arg!r}"}
+        return db_tools.get_returns_by_status(conn, status, year)
+    if tn == "get_returns_by_processor":
+        proc = arg.strip().strip("\"'")
+        if not proc:
+            return []
+        return db_tools.get_returns_by_processor(conn, proc, year)
+    if tn == "get_client_returns":
+        cid = int(str(arg).strip())
+        return db_tools.get_client_returns(conn, cid)
+    if tn == "get_balance_due_returns":
+        return db_tools.get_balance_due_returns(conn, year)
+    return {"error": f"Unsupported NEEDS_LOOKUP tool {tool!r}"}
 
 
 _ALLOWED_FORM_TABLES = frozenset(
@@ -349,6 +417,49 @@ _ALLOWED_FORM_TABLES = frozenset(
         "f1099_div_records",
     }
 )
+
+
+def _extract_field_truthy(fields: dict, key: str) -> bool:
+    v = fields.get(key)
+    if v is None:
+        return False
+    if isinstance(v, bool):
+        return v
+    return bool(str(v).strip())
+
+
+def _likely_paystub_overtime_ytd(fields: dict) -> bool:
+    """Heuristic: YTD + overtime on a check stub, without W-2 box fields filled."""
+    if _extract_field_truthy(fields, "box1_wages_tips_other") or _extract_field_truthy(
+        fields, "box3_social_security_wages"
+    ):
+        return False
+    ytd = any(
+        _extract_field_truthy(fields, k)
+        for k in (
+            "ytd_gross",
+            "ytd_net",
+            "ytd_federal_tax",
+            "ytd_state_tax",
+            "ytd_social_security",
+            "ytd_medicare",
+        )
+    )
+    ot = (
+        fields.get("has_overtime") is True
+        or _extract_field_truthy(fields, "overtime_hours")
+        or _extract_field_truthy(fields, "overtime_pay")
+    )
+    who = _extract_field_truthy(fields, "employer_name") or _extract_field_truthy(
+        fields, "employee_name"
+    )
+    stub_ctx = (
+        _extract_field_truthy(fields, "pay_date")
+        or _extract_field_truthy(fields, "pay_period_start")
+        or _extract_field_truthy(fields, "gross_pay_this_period")
+        or _extract_field_truthy(fields, "net_pay_this_period")
+    )
+    return bool(ytd and ot and who and stub_ctx)
 
 
 def _detect_form_type(doc_type: str | None, fields: dict) -> str | None:
@@ -364,6 +475,9 @@ def _detect_form_type(doc_type: str | None, fields: dict) -> str | None:
         return None
 
     form_type_raw = str(fields.get("form_type", "") or "").upper().strip()
+    ft_compact = form_type_raw.replace("-", "").replace(" ", "").replace("/", "")
+    if ft_compact in ("PAYSTUB", "CHECKSTUB"):
+        return "paystub"
     form_type_map = {
         "W-2": "w2_records",
         "W2": "w2_records",
@@ -382,9 +496,13 @@ def _detect_form_type(doc_type: str | None, fields: dict) -> str | None:
     doc_type_map = {
         "W-2": "w2_records",
         "1099": "f1099_nec_records",
+        "paystub": "paystub",
     }
     if dt in doc_type_map:
         return doc_type_map[dt]
+
+    if _likely_paystub_overtime_ytd(fields):
+        return "paystub"
 
     if fields.get("box1_wages_tips_other") or fields.get("box3_social_security_wages"):
         return "w2_records"
@@ -416,7 +534,7 @@ def _detect_form_type(doc_type: str | None, fields: dict) -> str | None:
 
 
 _ALLOWED_CLASSIFY_DOC_TYPES = frozenset(
-    {"W-2", "1099", "prior_return", "government_id", "misc", "unknown"}
+    {"W-2", "1099", "prior_return", "government_id", "misc", "paystub", "unknown"}
 )
 
 _CLASSIFY_SUPPORTED_EXTS = frozenset({".pdf", ".jpg", ".jpeg", ".png"})
@@ -431,7 +549,34 @@ def _form_table_to_doc_type(table_name: str | None) -> str:
         "f1099_misc_records": "1099",
         "f1099_int_records": "1099",
         "f1099_div_records": "1099",
+        "paystub": "paystub",
     }.get(table_name, "unknown")
+
+
+def _apply_extraction_doc_tag(
+    conn,
+    *,
+    doc_id: int,
+    return_id: int,
+    doc_tag: str,
+) -> int:
+    """After a successful typed form save — set doc_type only when unset or unknown. Returns rows updated."""
+    if doc_tag == "unknown":
+        return 0
+    cur = conn.execute(
+        """
+        UPDATE return_documents
+        SET doc_type = ?
+        WHERE id = ? AND return_id = ? AND is_deleted = 0
+          AND (
+               doc_type IS NULL
+               OR TRIM(doc_type) = ''
+               OR LOWER(TRIM(doc_type)) = 'unknown'
+          )
+        """,
+        (doc_tag, doc_id, return_id),
+    )
+    return int(cur.rowcount or 0)
 
 
 def _classify_document_using_row(
@@ -558,6 +703,9 @@ def _save_form_data(conn, table_name: str, return_id: int, doc_id: int, fields: 
     Never stores SSN or identification-number fields.
     Text amounts stay TEXT; checkbox-style fields are INTEGER 0/1.
     Never raises — logs errors and returns False on failure.
+
+    FORMS-3: INSERT uses only FORM_TABLE_INSERT_COLUMNS (canonical IRS box_* names).
+    Legacy mirrored DDL columns on DOC-7 form tables remain NULL for newly extracted rows.
     """
     if table_name not in _ALLOWED_FORM_TABLES:
         return False
@@ -623,29 +771,60 @@ def _save_form_data(conn, table_name: str, return_id: int, doc_id: int, fields: 
 
 def _extract_pdf_text(file_path: str) -> str | None:
     """
-    Extract text from a generated PDF using pdfplumber.
-    Returns extracted text string or None if PDF has no text layer.
-    Never raises — returns None on any failure.
+    Extract text from a PDF for the **text-first** LLM path (DOC-4).
+
+    Order:
+
+    1. **pdfplumber** — good on many generated tax forms.
+    2. **PyMuPDF** ``get_text`` — often still finds a text layer when (1) is empty or poor.
+
+    If both fail or the best result is shorter than ``min_chars``, returns ``None``
+    and the extractor falls back to the **vision** model (rasterized first page).
+
+    Never raises.
     """
+    max_chars = 3000
+    min_chars = 50
+    log = logging.getLogger(__name__)
+    candidates: list[str] = []
+
     try:
         import pdfplumber
 
         with pdfplumber.open(file_path) as pdf:
-            text_parts = []
+            text_parts: list[str] = []
             for page in pdf.pages[:3]:
                 text = page.extract_text()
                 if text:
                     text_parts.append(text.strip())
-            full_text = "\n".join(text_parts)
-            if len(full_text.strip()) < 50:
-                return None
-            return full_text[:3000]
+            joined = "\n".join(text_parts).strip()
+            if joined:
+                candidates.append(joined)
     except Exception as e:
-        try:
-            current_app.logger.info(f"PDF text extraction failed: {e}")
-        except RuntimeError:
-            logging.getLogger(__name__).info("PDF text extraction failed: %s", e)
+        log.info("pdfplumber PDF text extraction failed: %s", e)
+
+    try:
+        import fitz
+
+        with fitz.open(file_path) as doc:
+            text_parts = []
+            for i in range(min(3, doc.page_count)):
+                t = doc.load_page(i).get_text()
+                if t:
+                    text_parts.append(t.strip())
+            joined = "\n".join(text_parts).strip()
+            if joined:
+                candidates.append(joined)
+    except Exception as e:
+        log.info("PyMuPDF PDF text extraction failed: %s", e)
+
+    if not candidates:
         return None
+
+    best = max(candidates, key=len).strip()
+    if len(best) < min_chars:
+        return None
+    return best[:max_chars]
 
 
 def _pdf_to_image_b64(file_path: str) -> str:
@@ -743,7 +922,7 @@ def _login_required(f):
 @_login_required
 def ai_status():
     """Ping Ollama and report whether it is reachable.
-    Also reports fastText classifier status.
+    Also reports trained email classifier (sklearn) disk + training counters.
     Always returns HTTP 200 — callers check the 'ok' field.
     """
     # ── Ollama status ──────────────────────────────────────────────────────────
@@ -792,9 +971,7 @@ def ai_status():
         "chat_tools": list(CHAT_TOOL_ALLOWLIST),
         "ollama_chat": {
             "default_model": OLLAMA_MODEL,
-            "router_model": OLLAMA_ROUTER_MODEL,
             "answer_model": OLLAMA_CHAT_MODEL,
-            "router_timeout_sec": OLLAMA_CHAT_ROUTER_TIMEOUT_SEC,
             "answer_timeout_sec": OLLAMA_CHAT_ANSWER_TIMEOUT_SEC,
         },
         "ollama_extraction": {
@@ -816,6 +993,30 @@ def ai_status():
         }
     if ollama_err:
         response["error"] = ollama_err
+
+    try:
+        from chat_cache import (
+            get_all_processor_counts,
+            get_all_status_counts,
+            get_cache_age_seconds,
+            get_cache_year,
+            get_financial_stats,
+            is_cache_warm,
+        )
+
+        response["cache"] = {
+            "warm": is_cache_warm(),
+            "age_seconds": (
+                round(get_cache_age_seconds()) if is_cache_warm() else None
+            ),
+            "year": get_cache_year(),
+            "status_counts": get_all_status_counts(),
+            "processor_counts": get_all_processor_counts(),
+            "financial_stats": get_financial_stats(),
+        }
+    except Exception:
+        response["cache"] = {"warm": False}
+
     return jsonify(response)
 
 
@@ -838,7 +1039,16 @@ def ai_chat_page():
 @ai.post("/chat")
 @_login_required
 def ai_chat():
-    """LLM-6 — tool router: LLM picks an allowlisted db_tools function; results are scrubbed."""
+    """Staff chat: structured cache fast paths, KPI + dataplane LLM, optional NEEDS_LOOKUP second pass.
+
+    REL-1 SLA: this is the only route that can hold a Waitress worker for more than a few seconds.
+    The Ollama HTTP call is bounded by OLLAMA_CHAT_ANSWER_TIMEOUT_SEC (default 120 s; see config.py).
+    All document extraction LLM calls go through extraction_queue and never block a request worker.
+
+    A full 202+poll refactor (async queue + client polling) would eliminate the blocking entirely and
+    is tracked as a future improvement in REL-1.  For now the hard timeout on the requests call
+    (OLLAMA_CHAT_ANSWER_TIMEOUT_SEC) is the enforced upper bound per request.
+    """
     try:
         return _ai_chat_submit()
     except Exception:
@@ -853,29 +1063,221 @@ def ai_chat():
         ), 500
 
 
+def _fin_struct_cache_payload(answer: str, stat_key: str | None, year: int, age: float) -> dict:
+    au: dict = {"year": year}
+    if stat_key:
+        au["stat"] = stat_key
+    return {
+        "answer": answer,
+        "tool_used": "cache",
+        "args_used": au,
+        "result_count": 1,
+        "source": "cache",
+        "cache_age_seconds": int(age),
+        "fast": True,
+    }
+
+
+def _try_cache_response(question: str, year: int) -> dict | None:
+    """
+    Fast-path answers from CHAT-1 structured indexes (no LLM, no sqlite round-trip beyond cache build).
+    Never includes client identification beyond display names elsewhere in chat layers.
+    """
+    from chat_cache import (
+        get_cache_age_seconds,
+        get_cache_year,
+        get_financial_stats,
+        get_returns_for_status,
+        get_status_count,
+        is_cache_warm,
+    )
+
+    if not is_cache_warm() or get_cache_year() != int(year):
+        return None
+
+    age = round(get_cache_age_seconds())
+    ql = question.strip().lower()
+    stats = get_financial_stats()
+
+    st = _canonical_status_from_structured_try_cache_question(ql, question)
+    chrono_q = ("last" in ql) or ("most recent" in ql) or ("latest" in ql)
+    list_triggers = (
+        "who",
+        "show me",
+        "list",
+        "which returns",
+        "what returns",
+    )
+    is_list_q = any(t in ql for t in list_triggers)
+
+    def _struct_cache_payload(answer: str, args_used: dict, result_count: int) -> dict:
+        return {
+            "answer": answer,
+            "tool_used": "cache",
+            "args_used": args_used,
+            "result_count": result_count,
+            "source": "cache",
+            "cache_age_seconds": age,
+            "fast": True,
+        }
+
+    def _recency_sort_returns(retlist: list[dict]) -> list[dict]:
+        def _rk(r: dict) -> tuple:
+            primary = str(r.get("logout_date") or "").strip()
+            primary = primary or str(r.get("intake_date") or "").strip()
+            try:
+                ln = int(float(str(r.get("log_number") or "").strip() or "0"))
+            except (ValueError, TypeError):
+                ln = 0
+            rid = int(r.get("id") or 0)
+            return (primary, ln, rid)
+
+        return sorted(retlist, key=_rk, reverse=True)
+
+    if chrono_q and st:
+        returns = get_returns_for_status(st)
+        if not returns:
+            return _struct_cache_payload(
+                f"No returns in {st} status for {year}.",
+                {"status": st, "year": year},
+                0,
+            )
+        sorted_r = _recency_sort_returns(returns)
+        latest = sorted_r[0]
+        name = str(latest.get("display_name") or "Unknown").strip() or "Unknown"
+        logout_d = str(latest.get("logout_date") or "").strip()
+        intake_d = str(latest.get("intake_date") or "").strip()
+        date_disp = logout_d if logout_d else (intake_d if intake_d else "unknown date")
+        processor = str(latest.get("processor") or "unknown preparer").strip() or "unknown preparer"
+        return _struct_cache_payload(
+            f"The most recent return in {st} status is {name}, processed by "
+            f"{processor} on {date_disp}.",
+            {"status": st, "year": year},
+            1,
+        )
+
+    if is_list_q and st:
+        returns = get_returns_for_status(st)
+        if not returns:
+            return _struct_cache_payload(
+                f"There are no returns in {st} status for {year}.",
+                {"status": st, "year": year},
+                0,
+            )
+        top = _recency_sort_returns(returns)[:10]
+        names = [str(r["display_name"]).strip() for r in top if r.get("display_name")]
+        count = len(returns)
+        name_list = ", ".join(names[:5])
+        more = f" and {count - 5} more" if count > 5 else ""
+        suffix = f" Clients include: {name_list}{more}." if name_list else ""
+        return _struct_cache_payload(
+            f"There are {count} returns in {st} status for {year}.{suffix}",
+            {"status": st, "year": year},
+            count,
+        )
+
+    countish = _is_chat_countish_question(question) or _chat_wants_volume_aggregate(question)
+
+    if countish:
+        stc = st
+        if not stc:
+            if "efile ready" in ql.replace("-", " ") or "e file ready" in ql:
+                stc = "EFILE READY"
+            elif "how many" in ql and "log out" in ql.replace("-", ""):
+                stc = "LOG OUT"
+        if stc:
+            n = get_status_count(stc)
+            return _struct_cache_payload(
+                f"There are {n} returns in {stc} status for {year}.",
+                {"status": stc, "year": year},
+                n,
+            )
+
+    if stats:
+        if (
+            any(
+                w in ql
+                for w in (
+                    "balance due",
+                    "with a balance due",
+                    "with balance due",
+                    "outstanding balance",
+                )
+            )
+            and ("how many" in ql or "number" in ql or "count" in ql or "total" in ql)
+        ):
+            c = int(stats.get("balance_due_count", 0))
+            return {
+                "answer": f"There are {c} returns with an outstanding balance for {year}.",
+                "tool_used": "cache",
+                "args_used": {"year": year},
+                "result_count": c,
+                "source": "cache",
+                "cache_age_seconds": age,
+                "fast": True,
+            }
+
+        if ("how much have we collected" in ql or "total collected" in ql) or (
+            "collected" in ql
+            and (
+                "how much" in ql
+                or "have we" in ql
+                or "total" in ql
+            )
+        ):
+            v = float(stats.get("total_collected", 0))
+            return _fin_struct_cache_payload(
+                f"The total collected for {year} is ${v:,.2f}.",
+                "total_collected",
+                year,
+                age,
+            )
+
+        if "total billed" in ql or (
+            "billed" in ql and ("how much" in ql or "what" in ql and "total" in ql)
+        ):
+            v = float(stats.get("total_billed", 0))
+            return _fin_struct_cache_payload(
+                f"The total billed for {year} is ${v:,.2f}.",
+                "total_billed",
+                year,
+                age,
+            )
+
+        if "total outstanding" in ql or ("outstanding" in ql and "total" in ql):
+            v = float(stats.get("total_outstanding", 0))
+            return _fin_struct_cache_payload(
+                f"The total outstanding for {year} is ${v:,.2f}.",
+                "total_outstanding",
+                year,
+                age,
+            )
+
+    return None
+
+
 def _ai_chat_submit():
     data = request.get_json(silent=True) or {}
     question = (data.get("question") or "").strip()
-    year = data.get("year", 2025)
+    year_raw = data.get("year", 2025)
 
     if not question:
         return jsonify({"error": "No question provided"}), 400
 
     try:
-        year = int(year)
+        year = int(year_raw)
     except (TypeError, ValueError):
         year = 2025
 
-    nq = normalize_question(question)
+    nq = normalize_staff_question_key(question)
     hit = get_cached_answer(nq, year)
-    intent_log, _ = classify_intent(question)
     if hit:
         append_staff_ai_chat_question(
             question=question,
             normalized=nq,
             year=year,
             response_payload=dict(hit),
-            classified_intent=intent_log,
+            classified_intent="answer_cache_ttl",
             scope_classifier_blocked=False,
             from_answer_cache_hit=True,
             log_enable=CHAT_TRAINING_LOG_ENABLE,
@@ -886,123 +1288,59 @@ def _ai_chat_submit():
         return jsonify(hit), 200
 
     ensure_chat_cache_for_year(year)
-    intent, ents = classify_intent(question)
+    ensure_structured_cache_for_year(year)
 
-    router_office_digest = snapshot_office_brief_digest(year, max_chars=_AI_ROUTER_UNIVERSAL_DIGEST_CAP)
-    null_answer_office_digest = snapshot_office_brief_digest(
-        year, max_chars=_AI_CHAT_NULL_TOOL_BRIEF_CAP
-    )
+    log_ctx: dict = {}
 
-    conn_fc = get_connection()
-    try:
-        live_ctx = db_tools.get_system_context(conn_fc, year)
-        fast_resp = try_deterministic_response(
-            conn_fc,
-            intent,
-            ents,
-            question,
-            year,
-            office_ctx_live=live_ctx,
-        )
-    finally:
-        conn_fc.close()
-
-    log_chat_ctx: dict = {"scope_blocked": False, "telemetry": {}}
-
-    def _chat_finalize(payload: dict):
+    def _finalize(intent_tag: str, payload: dict) -> tuple:
         body = dict(payload)
-        if "cached" not in body and body.get("answer") is not None:
+        scope_excl = body.get("source") == "scope_gate"
+        if (
+            not scope_excl
+            and body.get("answer") is not None
+            and not body.get("error")
+            and isinstance(body.get("answer"), str)
+            and body["answer"].strip()
+        ):
             set_cached_answer(nq, year, body)
-        telem = {
-            str(k): v
-            for k, v in (log_chat_ctx.get("telemetry") or {}).items()
-            if v is not None and str(k)
-        }
         append_staff_ai_chat_question(
             question=question,
             normalized=nq,
             year=year,
             response_payload=body,
-            classified_intent=intent,
-            scope_classifier_blocked=log_chat_ctx["scope_blocked"],
-            from_answer_cache_hit=body.get("cached") is True,
+            classified_intent=intent_tag,
+            scope_classifier_blocked=False,
+            from_answer_cache_hit=bool(body.get("cached")),
             log_enable=CHAT_TRAINING_LOG_ENABLE,
             log_include_cache_hits=CHAT_TRAINING_LOG_CACHE_HITS,
             log_path=CHAT_TRAINING_LOG_PATH,
-            telemetry=telem,
+            telemetry=dict(log_ctx),
         )
         return jsonify(body), 200
 
-    if fast_resp is not None:
-        return _chat_finalize(fast_resp)
+    struct_early = _try_cache_response(question, year)
+    if struct_early is not None:
+        return _finalize("structured_cache_hit", dict(struct_early))
 
-    if should_block_tool_router_llm(question):
-        current_app.logger.info("Chat scope classifier blocked LLM tool router")
-        log_chat_ctx["scope_blocked"] = True
-        return _chat_finalize(
+    if _simple_off_topic_gate(question):
+        log_ctx.clear()
+        return _finalize(
+            "scope_gate_regex",
             {
                 "answer": (
                     "I can only answer questions about returns, clients, balances, "
-                    "and missing documents in TaxOps. Try asking about a specific status, preparer, or client."
+                    "and preparers in TaxOps."
                 ),
                 "tool_used": None,
                 "args_used": None,
-            }
+                "result_count": 0,
+                "source": "scope_gate",
+            },
         )
 
-    tools_description = "\n".join(
-        [f"- {t['name']}: {t['description']} Args: {t['args']}" for t in CHAT_TOOLS]
-    )
-
-    llm_office_ctx_cache: dict | None = None
-
-    def live_office_llm_context() -> dict:
-        nonlocal llm_office_ctx_cache
-        if llm_office_ctx_cache is None:
-            cx = get_connection()
-            try:
-                llm_office_ctx_cache = db_tools.get_system_context(cx, year)
-            finally:
-                cx.close()
-        return llm_office_ctx_cache
-
-    selection_prompt = (
-        "You are a planner + tool router for TaxOps tax-office workflow software.\n"
-        f'Staff question: "{question}"\n'
-        f"Current tax year: {year}\n"
-        f"Deterministic classifier tag: `{intent}` (regex + heuristics—when **`fallback`** the question "
-        "was not classified; aggregates-first is safer).\n\n"
-        "**Modes:** `aggregates` = answer from KPI roll-up / dataplane markdown only (**tool** must be **`null`**). "
-        "`need_rows` = one structured tool with concrete parameters is unmistakably required. "
-        "`clarify` = wording is ambiguous; set **tool** **`null`** and put a short clarification in "
-        "**`clarify_prompt`**.\n\n"
-        f"Available tools (only valid when **`mode`**=`need_rows`):\n{tools_description}\n\n"
-        f"Confidence: set **`confidence`** 0–1 for how certain you are; below **{CHAT_ROUTER_CONFIDENCE_MIN:g}** "
-        "alongside **`need_rows`** the server will drop the tool and answer from aggregates instead.\n\n"
-        'Respond with JSON only — no markdown, no explanation:\n'
-        "{\n"
-        '  "mode": "aggregates" | "need_rows" | "clarify",\n'
-        '  "confidence": 0.0,\n'
-        '  "tool": null,\n'
-        '  "args": {},\n'
-        '  "clarify_prompt": null\n'
-        "}\n\n"
-        "Rules:\n"
-        "- **`mode`**=`aggregates` whenever office-wide counts / histograms / composite markdown can answer.\n"
-        '- Use **`mode`**=`aggregates` when ROUTER CONTEXT already lists the exact status totals needed '
-        "(read Statuses → count).\n"
-        "- Use **`mode`**=`need_rows` only for explicit per-return / per-client row pulls (IDs, named search, "
-        "missing-doc for a specific return id, balance rank lists, preparer roster with a real name in the text).\n"
-        "- **Never** invent workflow status strings; never chain multiple statuses into one `status` arg.\n"
-        "- If the question asks about **kinds / types** of returns (form mix—not PROCESSING/HOLD workflow), "
-        "**`mode`**=`aggregates` unless per-return rows are clearly required.\n"
-        f"- For year args use {year} unless another year is explicit in the question.\n"
-        "- Never include ssn or ssn_last4 in args.\n"
-        "- Tool names must come from the list above when **`mode`**=`need_rows`."
-    )
-
+    conn_ctx = get_connection()
     try:
-        router_ctx = live_office_llm_context()
+        live_ctx = db_tools.get_system_context(conn_ctx, year)
     except Exception as exc_ctx:
         current_app.logger.exception("Chat office context query failed")
         return jsonify(
@@ -1011,587 +1349,139 @@ def _ai_chat_submit():
                 "detail": str(exc_ctx)[:240],
             }
         ), 500
+    finally:
+        conn_ctx.close()
 
-    freshness_banner_md = dataplane_digest_freshness_banner(year, router_ctx)
+    digest = snapshot_office_brief_digest(year, max_chars=_AI_CHAT_DATAPLANE_MARKDOWN_CAP).strip()
+    dp_plain = (get_data_plane_text() or "").strip()
+    dataplane_md = dp_plain if dp_plain else digest
+    td_iso = str(live_ctx.get("today_local_iso") or "").strip()
+    freshness = (
+        f"_Dataplane snapshot for season **{year}** "
+        f"(server local date **{td_iso or '?'}**) — KPIs omit taxpayer identifiers unless "
+        "a NEEDS_LOOKUP tool fetched explicit rows._"
+    )
 
-    selection_for_router = selection_prompt + "\n\n" + freshness_banner_md
-    digest_md = router_office_digest.strip() if router_office_digest.strip() else ""
-    if digest_md:
-        selection_for_router += (
-            "### Office dataplane composite (trusted season-wide KPIs—not taxpayer identifiers)\n\n"
-            + digest_md
-            + "\n"
-        )
-    if intent == "fallback":
-        selection_for_router += (
-            "\n### Fallback-intent stress\n"
-            "Classifier `fallback`: set **`mode`**=`aggregates` unless the text clearly names workflow "
-            "statuses, a preparer, a return/client id, or unmistakable balance-rank language.\n"
-        )
+    nl_allowed = "\n".join(f"- NEEDS_LOOKUP:{n}:<argument>" for n in sorted(_LOOKUP_TOOL_NAMES))
 
-    degraded_router_transport = False
+    instruct = (
+        "You help Xcel TaxOps staff interpret office workflow data.\n"
+        f'- Staff question (verbatim): "{question}"\n'
+        f"- Season year selector: **{year}**\n\n"
+        "Ground every factual claim ONLY in SYSTEM CONTEXT KPI block and dataplane markdown below. "
+        "Do NOT invent statuses, balances, counts, dates, preparer totals, client names, or return IDs.\n\n"
+        "Prefer office-wide KPI aggregates from the KPI block whenever they fully answer.\n\n"
+        "When KPIs/dataplane are insufficient and structured DB rows are required, emit **exactly one** "
+        "`NEEDS_LOOKUP:tool_name:argument` line somewhere in your reply (whole-line match):\n"
+        "- tool_name must be one of: "
+        + ", ".join(sorted(_LOOKUP_TOOL_NAMES))
+        + ".\n"
+        "- Leave argument empty **only** for `get_balance_due_returns`; otherwise supply a concise "
+        "argument (client name substring, numeric return id, workflow status literal, processor name substring).\n"
+        "Examples:\n"
+        + nl_allowed
+        + "\n\n"
+        "Otherwise reply in Markdown. Do NOT paste this instructions block verbatim."
+    )
+
+    first_body = freshness + "\n\n" + instruct
+    dataplane_blob = dataplane_md.strip() + ("\n\n" if dataplane_md.strip() else "")
+    sys_ctx = (
+        first_body
+        + "\n\n### Dataplane snapshot (trusted aggregates)\n\n"
+        + dataplane_blob
+    )
+
     try:
-        tool_selection = extract_json(
-            _prepend_router_system_context(selection_for_router, router_ctx),
-            model=OLLAMA_ROUTER_MODEL,
-            timeout=OLLAMA_CHAT_ROUTER_TIMEOUT_SEC,
-        )
-    except json.JSONDecodeError as je:
-        current_app.logger.warning("Chat tool-router model returned invalid JSON: %s", je)
-        tool_selection = normalize_chat_router_payload({"tool": None, "args": {}, "confidence": None})
-    except requests.HTTPError as he:
-        ollama_body = ""
-        if he.response is not None:
-            ollama_body = (he.response.text or "").strip()[:480]
-        current_app.logger.error(
-            "Ollama HTTP error during tool routing status=%s: %s",
-            he.response.status_code if he.response else "?",
-            ollama_body or he,
-        )
-        payload = {
-            "error": "Ollama HTTP error during tool routing—check router model name on the inference host.",
-            "ollama_base_url": OLLAMA_BASE_URL,
-            "router_model": OLLAMA_ROUTER_MODEL,
-            "hint": (
-                "On the machine running TaxOps verify OLLAMA_BASE_URL points at the GPU host; "
-                "on that host run `ollama pull " + str(OLLAMA_ROUTER_MODEL) + "` "
-                "if the tag is missing."
-            ),
-        }
-        if ollama_body:
-            payload["ollama_response"] = ollama_body
-        return jsonify(payload), 503
-    except requests.RequestException as rexc:
-        detail = str(rexc)[:320]
-        low = detail.lower()
-        url_s = str(OLLAMA_BASE_URL or "")
-        ul = url_s.lower()
-        is_loopback = (
-            "localhost" in ul
-            or "127.0.0.1" in ul
-            or ul.startswith("http://[::1]")
-        )
-        ts = int(OLLAMA_CHAT_ROUTER_TIMEOUT_SEC)
-        rm = str(OLLAMA_ROUTER_MODEL or "")
-
-        if "read timed out" in low or "read time out" in low:
-            if is_loopback:
-                hint = (
-                    "Ollama hit a read timeout on loopback. If `.env` points at a GPU host, "
-                    "fix `OLLAMA_BASE_URL` in NSSM (process env overrides `.env`) and restart the service."
-                )
-            else:
-                hint = (
-                    f"Ollama at {url_s} connected but the tool-router request did not finish within {ts}s. "
-                    "Typical on LAN: model cold-start, GPU busy, or a heavy router tag. "
-                    f"Add to NSSM AppEnvironmentExtra (and restart TaxOps): +OLLAMA_CHAT_ROUTER_TIMEOUT=120 "
-                    f"(or 180), or use a faster/smaller OLLAMA_ROUTER_MODEL. On {url_s} run once: "
-                    f"`ollama run {rm}` to warm the model. Quick check from this machine: "
-                    f"`curl {url_s}/api/tags` or `Invoke-WebRequest {url_s}/api/tags -TimeoutSec 10`."
-                )
-        elif any(
-            x in low
-            for x in (
-                "connection refused",
-                "failed to establish",
-                "name or service not known",
-                "getaddrinfo failed",
-                "network is unreachable",
-                "no route to host",
-            )
-        ):
-            hint = (
-                f"Cannot open a TCP connection to {url_s}. On the Ollama host ensure the service is running, "
-                "port 11434 is allowed by firewall, and Ollama listens on the LAN (not only 127.0.0.1). "
-                "From this TaxOps machine test: `Test-NetConnection 192.168.1.141 -Port 11434` (adjust IP)."
-            )
-        elif is_loopback:
-            hint = (
-                "If TaxOps should use a remote Ollama, set `OLLAMA_BASE_URL` in NSSM to that host "
-                "(process env overrides `.env`) and restart TaxOpsService."
-            )
-        else:
-            hint = (
-                f"Check Ollama on {url_s}, firewall paths, and VPN. "
-                f"Current tool-router read timeout is {ts}s (OLLAMA_CHAT_ROUTER_TIMEOUT)."
-            )
-
-        if CHAT_ROUTER_TRANSPORT_FAIL_AGGREGATES:
-            degraded_router_transport = True
-            current_app.logger.warning(
-                "Chat router Ollama transport failed — continuing aggregate-first without JSON router (%s)",
-                detail,
-            )
-            log_chat_ctx["telemetry"]["router_transport_degraded"] = True
-            log_chat_ctx["telemetry"]["router_transport_hint"] = hint[:500]
-            log_chat_ctx["telemetry"]["router_transport_detail"] = detail[:400]
-            tool_selection = normalize_chat_router_payload(
-                {"mode": "aggregates", "confidence": 1.0, "tool": None, "args": {}}
-            )
-        else:
-            current_app.logger.error(
-                "Ollama unreachable during tool routing (OLLAMA_BASE_URL=%s): %s",
-                OLLAMA_BASE_URL,
-                rexc,
-            )
-            return jsonify(
-                {
-                    "error": "Cannot reach Ollama for tool routing (network/connect timeout).",
-                    "ollama_base_url": OLLAMA_BASE_URL,
-                    "router_model": OLLAMA_ROUTER_MODEL,
-                    "router_timeout_sec": ts,
-                    "hint": hint,
-                    "detail": detail,
-                }
-            ), 503
-    except (KeyError, TypeError, ValueError) as oresp:
-        current_app.logger.error("Unexpected Ollama response shape during routing: %s", oresp)
-        return jsonify(
-            {
-                "error": "Ollama response could not be read for tool routing.",
-                "ollama_base_url": OLLAMA_BASE_URL,
-                "router_model": OLLAMA_ROUTER_MODEL,
-                "detail": str(oresp)[:240],
-            }
-        ), 503
-
-    if not isinstance(tool_selection, dict):
-        current_app.logger.warning("LLM tool selection was not a JSON object")
-        return _chat_finalize(
+        ans1 = chat(
+            _prepend_ai_chat_system_context(sys_ctx.strip(), live_ctx),
+            model=OLLAMA_CHAT_MODEL,
+            timeout=OLLAMA_CHAT_ANSWER_TIMEOUT_SEC,
+        ).strip()
+    except Exception as exc1:
+        current_app.logger.warning("Primary chat LLM failed: %s", exc1)
+        log_ctx.clear()
+        log_ctx["llm_primary_error"] = True
+        return _finalize(
+            "llm_primary_error",
             {
                 "answer": (
-                    "I can only answer questions about returns, clients, balances, "
-                    "and missing documents in TaxOps. Try asking about a specific status, preparer, or client."
+                    "I could not reach the chat model — check OLLAMA_BASE_URL "
+                    "and that OLLAMA_CHAT_MODEL is pulled on that host."
                 ),
                 "tool_used": None,
                 "args_used": None,
-            }
+                "detail": str(exc1)[:240],
+            },
         )
 
+    lk = _first_needs_lookup(ans1)
+    if lk is None:
+        log_ctx.clear()
+        out = {"answer": ans1, "tool_used": None, "args_used": None, "result_count": 0}
+        return _finalize("llm_primary", out)
 
-    tool_selection = normalize_chat_router_payload(tool_selection)
-    rm = str(tool_selection.get("router_mode") or "aggregates")
-    rc = float(tool_selection.get("router_confidence") or 0.0)
-    log_chat_ctx["telemetry"]["router_mode"] = rm
-    log_chat_ctx["telemetry"]["router_confidence"] = round(rc, 4)
+    tool_key_raw, raw_arg = lk
+    tn_key = tool_key_raw.strip().lower()
+    log_ctx.clear()
+    log_ctx["needs_lookup_followup"] = True
+    log_ctx["needs_lookup_tool"] = tn_key
 
-    clarify_txt = tool_selection.get("clarify_prompt")
-    cq = clarify_txt.strip() if isinstance(clarify_txt, str) else ""
-
-    if rm == "clarify":
-        answer_txt = cq or (
-            "I need something more concrete—mention a workflow status name, client/search text, numeric "
-            "return id, client id, preparer first name for workload, or say if you mean unpaid balances."
-        )
-        log_chat_ctx["telemetry"]["router_clarify_fallback"] = not bool(cq)
-        return _chat_finalize({"answer": answer_txt, "tool_used": None, "args_used": None})
-
-    if rm == "need_rows" and rc < CHAT_ROUTER_CONFIDENCE_MIN:
-        log_chat_ctx["telemetry"]["confidence_abstain"] = True
-        tool_selection["tool"] = None
-        tool_selection["args"] = {}
-        tool_selection = normalize_chat_router_payload(tool_selection)
-
-    tool_name_raw = tool_selection.get("tool")
-    tool_args_raw = tool_selection.get("args", {})
-    if not isinstance(tool_args_raw, dict):
-        tool_args_raw = {}
-
-    prior_pick = ""
-    if isinstance(tool_name_raw, str):
-        prior_pick = tool_name_raw.strip()
-    elif tool_name_raw is not None:
-        prior_pick = str(tool_name_raw).strip()
-
-    guarded_tool, tool_args_raw = apply_row_tool_grounding_guard(
-        question, intent, ents, tool_name_raw, tool_args_raw
-    )
-    if (
-        prior_pick
-        and prior_pick.lower() not in ("null", "none")
-        and guarded_tool is None
-    ):
-        log_chat_ctx["telemetry"]["row_tool_guard_dropped"] = prior_pick
-        current_app.logger.info(
-            "Chat: row grounding guard dropped tool=%s intent=%s",
-            prior_pick,
-            intent,
-        )
-
-    tool_name_eff = guarded_tool
-    tn = ""
-    if isinstance(tool_name_eff, str):
-        tn = tool_name_eff.strip()
-    elif tool_name_eff is not None:
-        tn = str(tool_name_eff).strip()
-
-    tn_lower = tn.strip().lower()
-    if not tn or tn_lower in ("null", "none"):
-        ctxx = router_ctx
-        cq_vol = wants_tool_row_aggregate(question) and not (
-            prefers_narrative_list_answer(question) or wants_qualitative_return_answer(question)
-        )
-        if cq_vol and intent == "count_by_status":
-            sta = (ents.get("status") or _extract_status_from_question(question) or "").strip()
-            nc = (
-                _status_count_lookup(dict(ctxx.get("status_counts") or {}), sta)
-                if sta
-                else None
-            )
-            if sta and nc is not None:
-                return _chat_finalize(
-                    {
-                        "answer": f"There are {nc} returns in {sta} status for {year}.",
-                        "tool_used": None,
-                        "args_used": None,
-                        "result_count": nc,
-                        "fast": True,
-                    }
-                )
-        if cq_vol and intent == "count_by_processor":
-            hint_p = (
-                str(ents.get("processor") or "").strip()
-                or str(_extract_processor_guess(question) or "").strip()
-            )
-            pmap = dict(ctxx.get("processor_return_counts") or {})
-            pname, ptot = (
-                _resolve_processor_match(hint_p, pmap) if hint_p and pmap else ("", 0)
-            )
-            if pname:
-                return _chat_finalize(
-                    {
-                        "answer": f"{pname} has {ptot} return(s) for {year}.",
-                        "tool_used": None,
-                        "args_used": None,
-                        "result_count": ptot,
-                        "fast": True,
-                    }
-                )
-        if cq_vol and intent == "balance_due":
-            bd = int(ctxx.get("balance_due_season_total") or 0)
-            return _chat_finalize(
-                {
-                    "answer": (
-                        f"There are {bd} return(s) with an unpaid balance tracked for season "
-                        f"{year} (fee billed exceeds recorded payments)."
-                    ),
-                    "tool_used": None,
-                    "args_used": None,
-                    "result_count": bd,
-                    "fast": True,
-                }
-            )
-
-        nl_inner = (
-            "Tool router emitted null (or aggregates-only path).\n"
-            f'Staff question: "{question}"\n\n'
-            "Answer succinctly quoting ONLY aggregates from SYSTEM CONTEXT "
-            "(status totals, preparer workload, unpaid balance tally) "
-            "and especially the Expanded office dataplane composite block when present "
-            "(form mix, missing-doc rollups, e-file import pipeline, extraction queue, payments, …). "
-            "Never invent statuses; never cite taxpayer identifiers."
-        )
-        if CHAT_ANSWER_ON_ROUTER_TIMEOUT_SKIP_LLM and degraded_router_transport:
-            log_chat_ctx["telemetry"]["answer_llm_skipped_router_transport"] = True
-            dig_deg = null_answer_office_digest.strip()
-            cap_d = _AI_CHAT_DEGRADED_SKIP_LLM_DIGEST_CAP
-            if len(dig_deg) > cap_d:
-                dig_deg = (
-                    dig_deg[:cap_d].rstrip()
-                    + "\n\n_(Office dataplane digest truncated—router timed out or was unreachable.)_"
-                )
-            degraded_note = (
-                "**Note:** The tool-router LLM timed out or was unreachable; TaxOps skipped a second LLM "
-                "pass and returned KPI aggregates below only.\n"
-            )
-            parts_deg = [
-                degraded_note.rstrip(),
-                freshness_banner_md.rstrip(),
-                _format_ai_chat_system_compact(ctxx),
-            ]
-            if dig_deg:
-                parts_deg.append(
-                    "### Expanded office dataplane composite (trusted aggregates)\n\n" + dig_deg
-                )
-            ans_nl = "\n\n".join(p for p in parts_deg if p)
-        else:
-            try:
-                addon_parts = [freshness_banner_md.rstrip()]
-                nd = null_answer_office_digest.strip()
-                if nd:
-                    addon_parts.append(nd)
-                brief_addon = "\n\n".join(p for p in addon_parts if p).strip()
-                brief_addon = brief_addon or None
-                ans_nl = chat(
-                    _prepend_ai_chat_system_context(
-                        nl_inner, ctxx, office_brief_addon=brief_addon
-                    ),
-                    model=OLLAMA_CHAT_MODEL,
-                    timeout=OLLAMA_CHAT_ANSWER_TIMEOUT_SEC,
-                )
-            except Exception as exc_nl:
-                current_app.logger.error(f"LLM answer (null-tool contextual) failed: {exc_nl}")
-                ans_nl = (
-                    "I only see workflow-wide totals in context—narrow the question "
-                    "or rely on structured tools."
-                )
-        return _chat_finalize(
-            {
-                "answer": ans_nl.strip(),
-                "tool_used": None,
-                "args_used": None,
-            }
-        )
-
-    tool_name = tn
-
-    if tool_name not in CHAT_TOOL_ALLOWLIST:
-        current_app.logger.warning(f"LLM requested invalid tool: {tool_name}")
-        return _chat_finalize(
-            {
-                "answer": "I wasn't able to find the right tool to answer that question.",
-                "tool_used": None,
-                "args_used": None,
-            }
-        )
-
-    tool_call_kw = _normalized_chat_tool_args(tool_name, tool_args_raw, year)
-
-    if tool_name == "get_returns_by_status":
-        raw_original = str(tool_call_kw.get("status") or "").strip()
-        raw_st = raw_original.lower()
-
-        canon: str | None = None
-        for lab in CHAT_ALLOWED_STATUSES:
-            if lab.upper() == raw_original.upper():
-                canon = lab
-                break
-
-        if raw_st in ("", "none", "null", "unknown", "n/a"):
-            conn_rescue = get_connection()
-            try:
-                rescue = try_deterministic_response(
-                    conn_rescue,
-                    "dataplane_slice",
-                    {"slice": "form_leader"},
-                    question,
-                    year,
-                    office_ctx_live=live_office_llm_context(),
-                )
-            finally:
-                conn_rescue.close()
-            if rescue is not None:
-                current_app.logger.info(
-                    "Chat: routed get_returns_by_status(empty status) -> form_leader dataplane"
-                )
-                return _chat_finalize(rescue)
-
-        if canon is not None:
-            tool_call_kw["status"] = canon
-        elif canon is None and (
-            any(ch in raw_original for ch in (",", ";", "|", "/", "&"))
-            or len(raw_original) > 80
-        ):
-            conn_rescue = get_connection()
-            try:
-                rescue = try_deterministic_response(
-                    conn_rescue,
-                    "season_totals",
-                    {},
-                    question,
-                    year,
-                    office_ctx_live=live_office_llm_context(),
-                )
-            finally:
-                conn_rescue.close()
-            if rescue is not None:
-                current_app.logger.info(
-                    "Chat: get_returns_by_status invalid/multi status -> season_totals "
-                    "(raw=%s)",
-                    raw_original[:140],
-                )
-                return _chat_finalize(rescue)
-
-    conn = get_connection()
+    conn_tool = get_connection()
     try:
         try:
-            tool_func = getattr(db_tools, tool_name)
-            result = tool_func(conn, **tool_call_kw)
-        except TypeError as e:
-            current_app.logger.error(f"Tool call failed {tool_name} {tool_call_kw}: {e}")
-            return _chat_finalize(
-                {
-                    "answer": "I found the right tool but couldn't run it with those parameters.",
-                    "tool_used": tool_name,
-                    "args_used": tool_call_kw,
-                }
-            )
-        except Exception as e:
-            current_app.logger.error(f"Tool execution error {tool_name}: {e}")
-            return _chat_finalize(
-                {
-                    "answer": "I ran into an error retrieving that data.",
-                    "tool_used": tool_name,
-                    "args_used": tool_call_kw,
-                }
-            )
-    finally:
-        conn.close()
+            raw_result = _run_needs_lookup_tool(conn_tool, tn_key, raw_arg, year)
+        except Exception:
+            current_app.logger.exception("NEEDS_LOOKUP tool exec failed (%s)", tn_key)
+            raw_result = {"error": "Tool execution failed — see server logs."}
 
-    if isinstance(result, list):
-        safe_result = [
-            scrub_ssn_from_dict(r) if isinstance(r, dict) else r for r in result
-        ]
-    elif isinstance(result, dict):
-        safe_result = scrub_ssn_from_dict(result)
-    else:
-        safe_result = result
-
-    actual_count = (
-        len(safe_result)
-        if isinstance(safe_result, list)
-        else (1 if safe_result else 0)
-    )
-
-    if isinstance(safe_result, list) and safe_result:
-        year_arg_early = tool_call_kw.get("year", year)
-        chrono_resp = chronological_superlative_chat_payload(
-            tool_name,
-            tool_call_kw,
-            safe_result,
-            question,
-            actual_count,
-            year_arg_early,
-        )
-        if chrono_resp is not None:
-            return _chat_finalize(chrono_resp)
-
-    if isinstance(safe_result, list) and len(safe_result) > 20:
-        safe_result = safe_result[:20]
-        truncated = True
-    else:
-        truncated = False
-
-    result_text = str(safe_result) if safe_result else "No results found."
-    truncation_note = (
-        f" (showing first 20 of {actual_count} total results)"
-        if truncated
-        else f" ({actual_count} total results)"
-    )
-
-    year_arg = tool_call_kw.get("year", year)
-    narrative_rows = use_narrative_return_rows(question)
-
-    if isinstance(safe_result, list):
-        if tool_name == "get_returns_by_status":
-            sta = str(tool_call_kw.get("status") or "").strip()
-            if sta and not narrative_rows:
-                if sta.upper() == "REJECTED" and wants_rejection_reason_breakdown(question):
-                    cx = get_connection()
-                    try:
-                        summ = db_tools.summarize_season_rejections_for_chat(cx, year_arg)
-                        ttl = int(summ.get("total") or actual_count)
-                        verb = "is" if ttl == 1 else "are"
-                        subj = "return" if ttl == 1 else "returns"
-                        body = format_season_rejection_breakdown_for_chat(summ, year_arg)
-                        head = f"There {verb} **{ttl}** {subj} in {sta} status for {year_arg}."
-                        answ = head if not (body or "").strip() else f"{head}\n\n{body}"
-                        return _chat_finalize(
-                            {
-                                "answer": answ,
-                                "tool_used": tool_name,
-                                "args_used": tool_call_kw,
-                                "result_count": ttl,
-                                "fast": True,
-                            }
-                        )
-                    finally:
-                        cx.close()
-                return _chat_finalize(
-                    {
-                        "answer": (
-                            f"There are {actual_count} returns in {sta} status for {year_arg}."
-                        ),
-                        "tool_used": tool_name,
-                        "args_used": tool_call_kw,
-                        "result_count": actual_count,
-                        "fast": True,
-                    }
-                )
-        if tool_name == "get_returns_by_processor":
-            proc = str(tool_call_kw.get("processor") or "").strip()
-            if proc and not narrative_rows:
-                return _chat_finalize(
-                    {
-                        "answer": (
-                            f"{proc} has {actual_count} returns for {year_arg}."
-                        ),
-                        "tool_used": tool_name,
-                        "args_used": tool_call_kw,
-                        "result_count": actual_count,
-                        "fast": True,
-                    }
-                )
-
-    wants_aggregate = wants_tool_row_aggregate(question) and not use_narrative_return_rows(
-        question
-    )
-
-    if wants_aggregate and isinstance(safe_result, list):
-        status_arg = tool_call_kw.get("status", "")
-        processor_arg = tool_call_kw.get("processor", "")
-
-        if status_arg:
-            direct_answer = (
-                f"There are {actual_count} returns in {status_arg} status for {year_arg}."
-            )
-        elif processor_arg:
-            direct_answer = (
-                f"{processor_arg} has {actual_count} returns for {year_arg}."
-            )
+        if isinstance(raw_result, list):
+            safe_result = [
+                scrub_ssn_from_dict(r) if isinstance(r, dict) else r for r in raw_result
+            ]
+        elif isinstance(raw_result, dict):
+            safe_result = scrub_ssn_from_dict(raw_result)
         else:
-            direct_answer = f"Found {actual_count} results for {year_arg}."
+            safe_result = raw_result
 
-        return _chat_finalize(
-            {
-                "answer": direct_answer,
-                "tool_used": tool_name,
-                "args_used": tool_call_kw,
-                "result_count": actual_count,
-                "fast": True,
-            }
+        preview = json.loads(json.dumps(safe_result, default=str))
+
+        if isinstance(safe_result, list):
+            cnt = len(safe_result)
+        elif isinstance(safe_result, dict) and safe_result.get("error"):
+            cnt = 0
+        elif isinstance(safe_result, dict):
+            cnt = 1
+        else:
+            cnt = 0 if safe_result is None else 1
+
+        second_body = (
+            "First-pass reply (verbatim):\n"
+            + ans1
+            + "\n\n### Tool result (privacy-scrubbed JSON)\n```json\n"
+            + json.dumps(preview, ensure_ascii=False, default=str)[:12000]
+            + "\n```\n\n"
+            + "Produce the final Markdown reply for staff. Quote facts only from KPI context and this JSON "
+            "(no hallucinated identifiers). Omit internal tool jargon unless briefly helpful."
         )
 
-    answer_prompt = (
-        "You are a helpful assistant for a tax preparation office called Xcel Financial.\n"
-        f'A staff member asked: "{question}"\n\n'
-        f"The system returned {actual_count} result(s){truncation_note}.\n"
-        f"Here is the data:\n{result_text}\n\n"
-        "Answer the staff member's question in plain English. "
-        f"When reporting totals always use the exact number {actual_count} — do not count rows yourself. "
-        "Ground every date and client name ONLY in fields shown above "
-        "(e.g. display_name, log_number, intake_date, pickup_date, logout_date, ack_date). "
-        "If a date field is empty or missing, say it is not recorded — do NOT invent calendar dates. "
-        "Be concise. Do not mention function names or internal tool names."
-    )
-
-    try:
-        answer_text = chat(
-            _prepend_ai_chat_system_context(answer_prompt, live_office_llm_context()),
+        ans2 = chat(
+            _prepend_ai_chat_system_context(second_body.strip(), live_ctx),
             model=OLLAMA_CHAT_MODEL,
             timeout=OLLAMA_CHAT_ANSWER_TIMEOUT_SEC,
-        )
-    except Exception as e:
-        current_app.logger.error(f"LLM answer generation failed: {e}")
-        answer_text = f"Found {actual_count} result(s)."
+        ).strip()
+    finally:
+        conn_tool.close()
 
-    return _chat_finalize(
+    return _finalize(
+        f"lookup_{tn_key}",
         {
-            "answer": answer_text.strip(),
-            "tool_used": tool_name,
-            "args_used": tool_call_kw,
-            "result_count": actual_count,
-        }
+            "answer": ans2,
+            "tool_used": tn_key,
+            "args_used": raw_arg.strip() if isinstance(raw_arg, str) else raw_arg,
+            "result_count": cnt,
+            "needs_lookup_followup": True,
+        },
     )
 
 
@@ -1726,7 +1616,7 @@ def ai_rejection_code_lookup():
     Falls back to LLM only for unrecognized codes.
     No DB reads or writes. No ssn_last4 anywhere.
     """
-    data = request.get_json(force=True) or {}
+    data = _get_json_safe() or {}
     raw  = (data.get("code") or "").strip()
     if not raw:
         return jsonify({"error": "No code provided"}), 400
@@ -1846,21 +1736,27 @@ def ai_document_extract(doc_id: int):
                 {"error": "LLM returned malformed response — try again"}
             ), 502
         clean, extraction_method = tup[0], tup[1] or "vision"
-    
+
         saved_to_table = None
         table_name = _detect_form_type(doc_type_val, clean)
         if table_name:
-            if _save_form_data(conn, table_name, return_id_doc, doc_id, clean):
+            if table_name == "paystub":
+                doc_tag = _form_table_to_doc_type(table_name)
+                if doc_tag != "unknown":
+                    _apply_extraction_doc_tag(
+                        conn, doc_id=doc_id, return_id=return_id_doc, doc_tag=doc_tag
+                    )
+                saved_to_table = "paystub"
+                current_app.logger.info(
+                    "DOC-7: paystub fields extracted (doc_type tag only) for return %s",
+                    return_id_doc,
+                )
+            elif _save_form_data(conn, table_name, return_id_doc, doc_id, clean):
                 saved_to_table = table_name
                 doc_tag = _form_table_to_doc_type(table_name)
                 if doc_tag != "unknown":
-                    conn.execute(
-                        """
-                        UPDATE return_documents
-                        SET doc_type = ?
-                        WHERE id = ? AND return_id = ? AND is_deleted = 0
-                        """,
-                        (doc_tag, doc_id, return_id_doc),
+                    _apply_extraction_doc_tag(
+                        conn, doc_id=doc_id, return_id=return_id_doc, doc_tag=doc_tag
                     )
                 current_app.logger.info(
                     "DOC-7: saved extracted data to %s for return %s",
@@ -1869,11 +1765,13 @@ def ai_document_extract(doc_id: int):
                 )
         conn.commit()
         return jsonify(
-            {
-                "fields": clean,
-                "method": extraction_method or "vision",
-                "saved_to": saved_to_table,
-            }
+            scrub_ssn_from_dict(
+                {
+                    "fields": clean,
+                    "method": extraction_method or "vision",
+                    "saved_to": saved_to_table,
+                }
+            )
         ), 200
     finally:
         conn.close()

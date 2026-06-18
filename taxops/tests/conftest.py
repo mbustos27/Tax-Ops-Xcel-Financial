@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +10,9 @@ from pathlib import Path
 import pytest
 
 from tests.proof_registry import PROOF_BY_TEST_NAME
+
+# Default pytest to relaxed env validation unless TAXOPS_ENV is already pinned (NSSM-heavy CI imports).
+os.environ.setdefault("TAXOPS_ENV", "test")
 
 # Application lives in parent of tests/ (flat modules: db, config, app, …)
 _TAXOPS_ROOT = Path(__file__).resolve().parent.parent
@@ -41,6 +45,10 @@ def app(taxops_db_path: str):
     import app as app_module
 
     app_module.app.config["TESTING"] = True
+    # SEC-1: disable CSRF enforcement in the test client so existing integration
+    # tests that POST without a token continue to work.  The CSRF test itself
+    # temporarily re-enables enforcement via its own fixture.
+    app_module.app.config["WTF_CSRF_ENABLED"] = False
     return app_module.app
 
 
@@ -50,12 +58,28 @@ def client(app):
 
 
 @pytest.fixture
-def client_logged_in(client, app, monkeypatch: pytest.MonkeyPatch):
-    # app reads login env-vars at import time; patch the module globals for tests.
+def client_logged_in(client, app, monkeypatch: pytest.MonkeyPatch, taxops_db_path: str):
+    """Log in via the auth_users table (SEC-2 path) using a test-specific hashed credential."""
     import app as mod
+    from db import get_connection
+    from werkzeug.security import generate_password_hash
 
+    # Keep legacy globals patched for any code that still inspects them (e.g. admin guards).
     monkeypatch.setattr(mod, "_LOGIN_USER", "__test_user__")
     monkeypatch.setattr(mod, "_LOGIN_PASS", "__test_pass__")
+
+    # Seed a real hashed user so the auth_users path is exercised.
+    conn = get_connection(taxops_db_path)
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO auth_users (username, password_hash, display_name, role, is_active, created_at)
+        VALUES (?, ?, ?, 'admin', 1, '2025-01-01T00:00:00Z')
+        """,
+        ("__test_user__", generate_password_hash("__test_pass__"), "Test User"),
+    )
+    conn.commit()
+    conn.close()
+
     client.post(
         "/login",
         data={"username": "__test_user__", "password": "__test_pass__"},

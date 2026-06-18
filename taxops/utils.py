@@ -42,9 +42,51 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def normalize_staff_question_key(question: str) -> str:
+    """Normalize for answer-cache keys (lowercase, collapse whitespace, light contractions)."""
+    q = (question or "").lower().strip()
+    q = q.replace("how's", "how is")
+    q = q.replace("what's", "what is")
+    q = q.replace("who's", "who is")
+    q = q.replace("don't", "do not")
+    q = q.replace("haven't", "have not")
+    q = q.replace("hasn't", "has not")
+    q = re.sub(r"\s+", " ", q)
+    return q
+
+
 def get_return_documents_path(return_id: int) -> str:
     from config import DOCUMENTS_BASE_PATH
     folder = os.path.join(DOCUMENTS_BASE_PATH, "returns", str(return_id))
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def get_drake_documents_path(
+    return_id: int, client_last_name: str, tax_year: str
+) -> str | None:
+    """
+    Get or create the Drake-compatible folder path for a return's documents.
+    Returns None if DRAKE_DOCUMENTS_BASE is not configured or
+    DRAKE_FOLDER_STRUCTURE_ENABLED is False.
+
+    Drake organizes by: TaxYear / LastName_ReturnID /
+    This mirrors that structure so future sync is trivial.
+
+    Never includes SSN, EIN, or identification numbers in path.
+    """
+    from config import DRAKE_DOCUMENTS_BASE, DRAKE_FOLDER_STRUCTURE_ENABLED
+
+    if not DRAKE_FOLDER_STRUCTURE_ENABLED or not DRAKE_DOCUMENTS_BASE:
+        return None
+
+    # Sanitize last name for folder name — no special chars
+    safe_last = re.sub(r"[^A-Za-z0-9]", "_", (client_last_name or "UNKNOWN").upper())
+    safe_last = safe_last[:30]
+
+    yr = str(tax_year).strip() if tax_year not in (None, "") else "unknown_year"
+    base = os.path.abspath(DRAKE_DOCUMENTS_BASE)
+    folder = os.path.join(base, yr, f"{safe_last}_{return_id}")
     os.makedirs(folder, exist_ok=True)
     return folder
 
@@ -145,6 +187,12 @@ def _enqueue_extraction(doc_id: int, return_id: int) -> None:
             cq.commit()
         finally:
             cq.close()
+        # REL-5: wake the extraction worker immediately instead of waiting POLL_INTERVAL.
+        try:
+            from extractor import _notify_extraction_worker
+            _notify_extraction_worker()
+        except Exception:
+            pass
     except Exception as e:
         log.error("Failed to enqueue doc %s: %s", doc_id, e)
 

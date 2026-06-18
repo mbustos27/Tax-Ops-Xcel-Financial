@@ -1,17 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ 'es' if current_locale == 'es_MX' else 'en' }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}TaxOps {{ current_year }}{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='tw.min.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='tw.min.css') }}?v={{ config.APP_VERSION }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ config.APP_VERSION }}">
 </head>
 <body class="bg-slate-50 text-slate-800 h-screen overflow-hidden flex flex-col" data-year="{{ current_year }}">
 
   <!-- ── Header ─────────────────────────────────────────────────────────── -->
   <header id="site-header" class="bg-slate-800 shadow-lg sticky top-0 z-30">
-    <div class="max-w-screen-2xl mx-auto px-4 py-3 flex items-center gap-4">
+    <div class="max-w-screen-2xl mx-auto px-4 py-3 flex flex-nowrap items-center gap-4 min-w-0">
 
       <!-- Brand -->
       <a href="/" class="flex items-center gap-2 shrink-0">
@@ -21,9 +22,9 @@
       </a>
 
       <!-- Global Search -->
-      <div class="relative flex-1 max-w-sm transition-all duration-200" id="search-wrap">
-        <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div class="relative flex-1 min-w-0" id="search-wrap">
+        <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none z-10">
+          <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
         </div>
@@ -33,99 +34,187 @@
           placeholder="Log # or name… (press /)"
           autocomplete="off"
           spellcheck="false"
-          class="w-full bg-slate-700 text-white placeholder-slate-400 rounded-lg pl-9 pr-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all duration-200"
-          onfocus="document.getElementById('search-wrap').style.maxWidth='36rem'"
-          onblur="if(!this.value)document.getElementById('search-wrap').style.maxWidth=''"
+          class="block w-full min-w-0"
         >
         <div id="search-results"
-             class="hidden absolute top-full left-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50 max-h-80 overflow-y-auto min-w-[26rem]">
+             class="hidden absolute top-full left-0 right-0 mt-1 w-full bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50 max-h-80 overflow-y-auto min-w-[min(100%,28rem)]">
         </div>
       </div>
 
-      <!-- Nav links -->
-      <nav class="flex items-center gap-1">
+      <!-- Nav + bell + session -->
+      <div class="flex items-center gap-3 shrink-0 flex-nowrap">
+      <nav class="flex items-center gap-1 shrink-0 flex-nowrap" aria-label="{{ _('Main navigation') }}">
         <a href="/?year={{ current_year }}" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">
-          Dashboard
-        </a>
-        <a href="/logout-queue?year={{ current_year }}" class="nav-link {% if active_page == 'logout' %}active{% endif %}">
-          Pickup Queue
-          {% set pc = status_counts.get('PICKUP', 0) %}
-          {% if pc > 0 %}
-          <span class="ml-1 bg-teal-500 text-white text-sm font-bold rounded-full px-2 py-0.5">{{ pc }}</span>
-          {% endif %}
-        </a>
-        <a href="/efile-queue?year={{ current_year }}" class="nav-link {% if active_page == 'efile' %}active{% endif %}">
-          E-File Queue
-          {% set ec = status_counts.get('EFILE READY', 0) %}
-          {% if ec > 0 %}
-          <span class="ml-1 bg-indigo-500 text-white text-sm font-bold rounded-full px-2 py-0.5">{{ ec }}</span>
-          {% endif %}
-        </a>
-        <a href="/payments?year={{ current_year }}" class="nav-link {% if active_page == 'payments' %}active{% endif %}">
-          Payments
-        </a>
-        <a href="/review" class="nav-link {% if active_page == 'review' %}active{% endif %}">
-          Review
-          {% if pending_review_count and pending_review_count > 0 %}
-          <span class="ml-1 bg-amber-500 text-white text-sm font-bold rounded-full px-2 py-0.5">{{ pending_review_count }}</span>
-          {% endif %}
+          {{ _('Dashboard') }}
         </a>
 
-        <a href="/ai/chat?year={{ current_year }}" class="nav-link {% if active_page == 'ai_chat' %}active{% endif %}">
-          AI Assistant
+        <a href="/reports?year={{ current_year }}" class="nav-link {% if active_page == 'reports' %}active{% endif %}">
+          {{ _('Reports') }}
         </a>
 
-        <a href="/email-review" class="nav-link {% if request.path.startswith('/email-review') %}active{% endif %}">
-          Email Review
-        </a>
-
-        <!-- Tools dropdown -->
-        {% set tools_active = active_page in ('upload','source_compare','import_audit','merge','efile_batch') %}
+        <!-- Tools dropdown (queues & utility pages consolidated to free header space for search) -->
+        {% set _role = session.get('role', 'staff') %}
+        {% set _is_preparer = _role in ('preparer', 'admin') %}
+        {% set _is_admin = _role == 'admin' %}
+        {% set tools_active =
+            active_page in ('upload','source_compare','import_audit','merge','efile_batch','audit_log',
+                            'logout','efile','payments','review','ai_chat','season_rollover','backup_admin','failed_docs','admin_users')
+            or request.path.startswith('/email-review')
+        %}
+        {% if _is_preparer %}
         <div class="relative" id="tools-menu-wrap">
           <button id="tools-btn"
-                  onclick="toggleToolsMenu()"
+                  type="button"
+                  aria-expanded="false"
+                  aria-haspopup="true"
+                  aria-controls="tools-dropdown"
                   class="nav-link flex items-center gap-1 {% if tools_active %}active{% endif %}">
-            Tools
+            {{ _('Tools') }}
             <svg class="w-3 h-3 mt-0.5 transition-transform" id="tools-chevron"
                  fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
             </svg>
           </button>
           <div id="tools-dropdown"
-               class="hidden absolute left-0 top-full mt-1 w-52 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+               class="hidden absolute left-0 top-full mt-1 min-w-[16rem] w-max max-w-[min(calc(100vw-2rem),22rem)] bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+            <a href="/logout-queue?year={{ current_year }}"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'logout' %}tools-item-active{% endif %}">
+              <span>{{ _('Pickup Queue') }}</span>
+              {% set pc = status_counts.get('PICKUP', 0) %}
+              {% if pc > 0 %}
+              <span class="shrink-0 bg-teal-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ pc }}</span>
+              {% endif %}
+            </a>
+            <a href="/efile-queue?year={{ current_year }}"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'efile' %}tools-item-active{% endif %}">
+              <span>{{ _('E-File Queue') }}</span>
+              {% set ec = status_counts.get('EFILE READY', 0) %}
+              {% if ec > 0 %}
+              <span class="shrink-0 bg-indigo-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ ec }}</span>
+              {% endif %}
+            </a>
+            <a href="/payments?year={{ current_year }}"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'payments' %}tools-item-active{% endif %}">
+              <span>{{ _('Payments') }}</span>
+            </a>
+            {% if _is_admin %}
+            <a href="/review"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'review' %}tools-item-active{% endif %}">
+              <span>{{ _('Review') }}</span>
+              {% if pending_review_count and pending_review_count > 0 %}
+              <span class="shrink-0 bg-amber-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ pending_review_count }}</span>
+              {% endif %}
+            </a>
+            {% endif %}
+            <a href="/ai/chat?year={{ current_year }}"
+               class="tools-item {% if active_page == 'ai_chat' %}tools-item-active{% endif %}">
+              {{ _('AI Assistant') }}
+            </a>
+            <a href="/email-review"
+               class="tools-item {% if request.path.startswith('/email-review') %}tools-item-active{% endif %} flex items-center justify-between gap-3">
+              <span>{{ _('Email Review') }}</span>
+              {# Section 4: unread email-doc badge — count populated by JS polling below #}
+              <span id="email-unread-badge"
+                    class="hidden shrink-0 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-amber-500 text-white rounded-full leading-none">
+              </span>
+            </a>
+
+            {% if _is_admin %}
+            <div class="my-1 border-t border-slate-100"></div>
+
             <a href="/efile-batch"
                class="tools-item {% if active_page == 'efile_batch' %}tools-item-active{% endif %}">
-              E-file Batches
+              {{ _('E-file Batches') }}
             </a>
-            <div class="my-1 border-t border-slate-100"></div>
             <a href="/upload"
                class="tools-item {% if active_page == 'upload' %}tools-item-active{% endif %}">
-              Import CSV
+              {{ _('Import CSV') }}
             </a>
             <a href="/source-compare?year={{ current_year }}"
                class="tools-item {% if active_page == 'source_compare' %}tools-item-active{% endif %}">
-              Source Compare
+              {{ _('Source Compare') }}
             </a>
             <a href="/import-audit"
                class="tools-item {% if active_page == 'import_audit' %}tools-item-active{% endif %}">
-              Import Audit
+              {{ _('Import Audit') }}
             </a>
+            <a href="{{ url_for('accounting.receipt_queue_list') }}"
+               class="tools-item {% if active_page == 'receipt_queue' %}tools-item-active{% endif %} relative">
+              {{ _('Receipt Queue') }}
+              {% if receipt_review_count and receipt_review_count > 0 %}
+              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-amber-500 text-white rounded-full leading-none">
+                {{ receipt_review_count }}
+              </span>
+              {% endif %}
+            </a>
+            <a href="{{ url_for('accounting.accounting_settings') }}"
+               class="tools-item {% if active_page == 'accounting_settings' %}tools-item-active{% endif %}">
+              {{ _('QB Settings') }}
+            </a>
+            <a href="{{ url_for('users.admin_users') }}"
+               class="tools-item {% if active_page == 'admin_users' %}tools-item-active{% endif %}">
+              {{ _('Staff Accounts') }}
+            </a>
+            <a href="{{ url_for('audit_log_admin') }}"
+               class="tools-item {% if active_page == 'audit_log' %}tools-item-active{% endif %}">
+              {{ _('Audit log') }}
+            </a>
+            <a href="{{ url_for('backup_admin') }}"
+               class="tools-item {% if active_page == 'backup_admin' %}tools-item-active{% endif %}">
+              {{ _('Backup') }}
+            </a>
+            <a href="{{ url_for('failed_docs_admin') }}"
+               class="tools-item {% if active_page == 'failed_docs' %}tools-item-active{% endif %} relative">
+              {{ _('Failed Docs') }}
+              {% if failed_doc_count and failed_doc_count > 0 %}
+              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-red-500 text-white rounded-full leading-none">
+                {{ failed_doc_count }}
+              </span>
+              {% endif %}
+            </a>
+            {% if can_run_season_rollover %}
+            <a href="{{ url_for('season_rollover_admin') }}"
+               class="tools-item {% if active_page == 'season_rollover' %}tools-item-active{% endif %}">
+              {{ _('Season rollover') }}
+            </a>
+            {% endif %}
             <a href="/merge-clients"
                class="tools-item {% if active_page == 'merge' %}tools-item-active{% endif %}">
-              Merge Dupes
+              {{ _('Merge Dupes') }}
             </a>
+            {% endif %}
           </div>
         </div>
+        {% endif %}
 
         <a href="/intake" class="nav-link {% if active_page == 'intake' %}active{% endif %}">
-          + New Intake
+          {{ _('+ New Intake') }}
         </a>
       </nav>
 
+      <!-- ── TOUR-3: Help / relaunch tour icon ──────────────────────────── -->
+      <button id="tour-help-btn"
+              aria-label="Relaunch onboarding tour"
+              title="Relaunch tour (resets completion so auto-launch fires again on next dashboard visit)"
+              class="flex items-center justify-center w-10 h-10 rounded-full
+                     hover:bg-slate-700 transition-colors shrink-0 focus-visible:outline
+                     focus-visible:outline-2 focus-visible:outline-blue-400">
+        <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </button>
+
       <!-- ── Reject alert bell ────────────────────────────────────────────── -->
-      <div class="relative ml-auto" id="reject-bell-wrap">
+      <div class="relative shrink-0" id="reject-bell-wrap">
         <button id="reject-bell"
                 aria-label="Rejected returns"
+                aria-expanded="false"
+                aria-haspopup="true"
+                aria-controls="reject-dropdown"
                 title="Rejected returns"
                 class="relative flex items-center justify-center w-10 h-10 rounded-full
                        hover:bg-slate-700 transition-colors focus-visible:outline
@@ -205,17 +294,17 @@
       </div>
 
       <!-- Year picker + logout -->
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 shrink-0 flex-nowrap border-l border-slate-700/60 pl-3 ml-1">
         <button id="privacy-toggle"
                 type="button"
                 data-enabled="{{ '1' if privacy_mode else '0' }}"
-                class="text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.25rem]
+                class="text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.75rem] whitespace-nowrap
                        {% if privacy_mode %}
                        bg-red-50 text-red-700 border-red-300 hover:bg-red-100
                        {% else %}
                        bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600
                        {% endif %}">
-          {% if privacy_mode %}Privacy: ON{% else %}Privacy: OFF{% endif %}
+          {% if privacy_mode %}{{ _('Privacy: ON') }}{% else %}{{ _('Privacy: OFF') }}{% endif %}
         </button>
 
         <div class="flex items-center gap-1.5">
@@ -227,8 +316,27 @@
           </select>
         </div>
 
+        <!-- I18N-6: language toggle pill -->
+        <button id="lang-toggle"
+                type="button"
+                data-locale="{{ current_locale }}"
+                title="{{ 'Switch to English' if current_locale == 'es_MX' else 'Cambiar a Español' }}"
+                aria-label="{{ 'Switch to English' if current_locale == 'es_MX' else 'Cambiar a Español' }}"
+                class="text-xs font-bold rounded-full px-2.5 py-1 border transition-colors whitespace-nowrap
+                       bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600 min-h-[2.75rem]">
+          {{ 'EN' if current_locale == 'es_MX' else 'ES' }}
+        </button>
+
+        <!-- ONBOARD-3: current user + role badge + sign-out -->
         <div class="flex items-center gap-2 text-sm text-slate-300">
-          <span class="hidden sm:inline font-medium">{{ session.get('username', '') }}</span>
+          {% if current_user_name %}
+          <span class="hidden md:inline font-medium text-slate-200">{{ current_user_name }}</span>
+          {% if current_user_role == 'admin' %}
+          <span class="hidden md:inline text-[10px] font-bold bg-violet-500/30 text-violet-200 border border-violet-500/40 rounded-full px-2 py-0.5">{{ _('Admin') }}</span>
+          {% else %}
+          <span class="hidden md:inline text-[10px] font-bold bg-slate-600 text-slate-300 border border-slate-500 rounded-full px-2 py-0.5">{{ _('Staff') }}</span>
+          {% endif %}
+          {% endif %}
           <a href="/logout"
              class="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors px-2.5 py-2 rounded-lg hover:bg-slate-700 min-h-[2.25rem]"
              title="Sign out">
@@ -236,9 +344,10 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"/>
             </svg>
-            <span class="hidden sm:inline">Sign out</span>
+            <span class="hidden sm:inline">{{ _('Sign out') }}</span>
           </a>
         </div>
+      </div>
       </div>
     </div>
 
@@ -247,10 +356,11 @@
       <div class="max-w-screen-2xl mx-auto px-4 py-2 flex items-center gap-5 overflow-x-auto text-sm">
         {% for s in status_flow %}
         <a href="/?status={{ s }}&year={{ current_year }}"
-           class="flex items-center gap-2 whitespace-nowrap hover:opacity-90 transition-opacity group">
-          <span class="status-dot {{ status_dot.get(s, 'dot-slate') }}"></span>
+           class="flex items-center gap-2 whitespace-nowrap hover:opacity-90 transition-opacity group"
+           aria-label="{{ s }}: {{ status_counts.get(s, 0) }} {{ _('returns') }}">
+          <span class="status-dot {{ status_dot.get(s, 'dot-slate') }}" aria-hidden="true"></span>
           <span class="text-slate-300 group-hover:text-white transition-colors">{{ s }}</span>
-          <span class="font-bold text-white tabular-nums text-base">{{ status_counts.get(s, 0) }}</span>
+          <span class="font-bold text-white tabular-nums text-base" aria-hidden="true">{{ status_counts.get(s, 0) }}</span>
         </a>
         {% endfor %}
 
@@ -277,6 +387,32 @@
       </div>
     </div>
   </header>
+
+  <!-- ── PROD-6 client error boundary ─────────────────────────────────── -->
+  <div id="client-error-boundary"
+       class="hidden fixed bottom-6 right-6 left-6 sm:left-auto z-[60] max-w-lg"
+       role="alert"
+       aria-live="assertive">
+    <div class="rounded-xl border border-amber-300 bg-amber-50 shadow-2xl px-4 py-3 flex flex-col gap-3 pointer-events-auto">
+      <div class="flex gap-3">
+        <div class="mt-0.5 shrink-0 w-9 h-9 rounded-lg bg-amber-200 flex items-center justify-center text-amber-900 font-bold select-none">!</div>
+        <div class="min-w-0 flex-1">
+          <p class="font-bold text-amber-950 text-sm">Something went wrong in the browser</p>
+          <p id="client-error-boundary-detail" class="text-xs text-amber-900 mt-1 leading-snug"></p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 justify-end">
+        <button type="button" id="client-error-boundary-dismiss"
+                class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-amber-400 text-amber-900 hover:bg-amber-100">
+          Dismiss
+        </button>
+        <button type="button" id="client-error-boundary-reload"
+                class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 border border-amber-700">
+          Reload page
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- ── Demo banner ────────────────────────────────────────────────────── -->
   {% if app_env == 'demo' %}
@@ -305,8 +441,13 @@
       {% block content %}{% endblock %}
     </div>
     <footer class="mt-auto shrink-0 border-t border-slate-200 bg-slate-100/90 py-2 px-4">
-      <div class="max-w-screen-2xl mx-auto text-center text-[11px] text-slate-500 select-none">
+      <div class="max-w-screen-2xl mx-auto text-center text-[11px] text-slate-500 select-none space-x-3">
         <span title="TaxOps">&copy; {{ current_year }} Moises Bustos</span>
+        <span aria-hidden="true">·</span>
+        <a href="{{ url_for('admin_runbook') }}"
+           class="hover:text-slate-700 hover:underline transition-colors">
+          {{ _('Ops Runbook') }}
+        </a>
       </div>
     </footer>
   </main>
@@ -328,94 +469,100 @@
     </svg>
   </button>
 
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}?v={{ config.APP_VERSION }}"></script>
   <script>
-    /** Fetch with timeout — avoids perpetual “Loading…” if the server hangs.
-     *  When the timer fires, `fetch` rejects with AbortError whose message is often
-     *  “signal is aborted without reason” (no AbortSignal reason). Flag timeouts so callers get a clear error. */
-    function _fetchWithTimeout(url, options, timeoutMs) {
-      var ms = timeoutMs || 45000;
-      var ctrl = new AbortController();
-      var timedOut = false;
-      var tid = setTimeout(function () {
-        timedOut = true;
-        try {
-          ctrl.abort(new DOMException('Request exceeded ' + Math.round(ms / 1000) + 's.', 'TimeoutError'));
-        } catch (ignored) {
-          ctrl.abort();
+(function () {
+
+      /** Fetch with timeout — avoids perpetual “Loading…” if the server hangs.
+       *  When the timer fires, `fetch` rejects with AbortError whose message is often
+       *  “signal is aborted without reason” (no AbortSignal reason). Flag timeouts so callers get a clear error. */
+      function _fetchWithTimeout(url, options, timeoutMs) {
+        var ms = timeoutMs || 45000;
+        var ctrl = new AbortController();
+        var timedOut = false;
+        var tid = setTimeout(function () {
+          timedOut = true;
+          try {
+            ctrl.abort(new DOMException('Request exceeded ' + Math.round(ms / 1000) + 's.', 'TimeoutError'));
+          } catch (ignored) {
+            ctrl.abort();
+          }
+        }, ms);
+        var opts = Object.assign({}, options || {}, { signal: ctrl.signal });
+        return _csrfFetch(url, opts)
+          .finally(function () { clearTimeout(tid); })
+          .catch(function (err) {
+            if (timedOut) {
+              throw new Error(
+                'Request timed out after ' +
+                  Math.round(ms / 1000) +
+                  's. Slow LLM calls may need longer — try again or bump the AI chat fetch timeout.'
+              );
+            }
+            throw err;
+          });
+      }
+
+      /** API calls return 401 JSON when the session expired (not an HTML redirect). */
+      function _authJson(r) {
+        if (r.status === 401) {
+          window.location.href =
+            '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+          return Promise.reject(new Error('Unauthorized'));
         }
-      }, ms);
-      var opts = Object.assign({}, options || {}, { signal: ctrl.signal });
-      return fetch(url, opts)
-        .finally(function () { clearTimeout(tid); })
-        .catch(function (err) {
-          if (timedOut) {
+        var ct = (r.headers.get('Content-Type') || '').toLowerCase();
+        return r.text().then(function (raw) {
+          var s = typeof raw === 'string' ? raw.trim() : '';
+          if (!s) {
+            if (!r.ok) throw new Error('HTTP ' + r.status + ' — empty response');
+            return {};
+          }
+          var first = s.charAt(0);
+          if (first === '<' || (ct.indexOf('text/html') !== -1)) {
             throw new Error(
-              'Request timed out after ' +
-                Math.round(ms / 1000) +
-                's. Slow LLM calls may need longer — try again or bump the AI chat fetch timeout.'
+              'Server returned a web page instead of JSON (HTTP ' + r.status + '). ' +
+              'Open DevTools → Network, click the failing request; if HTML is from TaxOps login, refresh and sign in again. ' +
+              'If it persists, check the server/process log — the POST /ai/chat handler may have errored.'
             );
           }
-          throw err;
-        });
-    }
-
-    /** API calls return 401 JSON when the session expired (not an HTML redirect). */
-    function _authJson(r) {
-      if (r.status === 401) {
-        window.location.href =
-          '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
-        return Promise.reject(new Error('Unauthorized'));
-      }
-      var ct = (r.headers.get('Content-Type') || '').toLowerCase();
-      return r.text().then(function (raw) {
-        var s = typeof raw === 'string' ? raw.trim() : '';
-        if (!s) {
-          if (!r.ok) throw new Error('HTTP ' + r.status + ' — empty response');
-          return {};
-        }
-        var first = s.charAt(0);
-        if (first === '<' || (ct.indexOf('text/html') !== -1)) {
-          throw new Error(
-            'Server returned a web page instead of JSON (HTTP ' + r.status + '). ' +
-            'Open DevTools → Network, click the failing request; if HTML is from TaxOps login, refresh and sign in again. ' +
-            'If it persists, check the server/process log — the POST /ai/chat handler may have errored.'
-          );
-        }
-        var body;
-        try {
-          body = JSON.parse(s);
-        } catch (ignored) {
-          throw new Error(
-            'Unexpected token in response — not valid JSON (HTTP ' +
-              r.status +
-              '): ' +
-              s.slice(0, 160)
-          );
-        }
-        if (!r.ok) {
-          var msg =
-            body && (body.error || body.message)
-              ? String(body.error || body.message)
-              : ('HTTP ' + r.status);
-          if (body && body.hint && String(body.hint).trim()) {
-            msg += ' — ' + String(body.hint).trim();
+          var body;
+          try {
+            body = JSON.parse(s);
+          } catch (ignored) {
+            throw new Error(
+              'Unexpected token in response — not valid JSON (HTTP ' +
+                r.status +
+                '): ' +
+                s.slice(0, 160)
+            );
           }
-          if (body && body.detail && String(body.detail).trim()) {
-            var det = String(body.detail).trim();
-            if (det && det !== msg && msg.indexOf(det) === -1) {
-              msg += ' (' + det.slice(0, 240) + (det.length > 240 ? '…' : '') + ')';
+          if (!r.ok) {
+            var msg =
+              body && (body.error || body.message)
+                ? String(body.error || body.message)
+                : ('HTTP ' + r.status);
+            if (body && body.hint && String(body.hint).trim()) {
+              msg += ' — ' + String(body.hint).trim();
             }
+            if (body && body.detail && String(body.detail).trim()) {
+              var det = String(body.detail).trim();
+              if (det && det !== msg && msg.indexOf(det) === -1) {
+                msg += ' (' + det.slice(0, 240) + (det.length > 240 ? '…' : '') + ')';
+              }
+            }
+            if (r.status === 503 && body && body.ollama_base_url) {
+              msg += ' [Ollama: ' + String(body.ollama_base_url).trim() + ']';
+            }
+            throw new Error(msg);
           }
-          if (r.status === 503 && body && body.ollama_base_url) {
-            msg += ' [Ollama: ' + String(body.ollama_base_url).trim() + ']';
-          }
-          throw new Error(msg);
-        }
-        return body;
-      });
-    }
-  </script>
+          return body;
+        });
+      }
+
+      window._fetchWithTimeout = _fetchWithTimeout;
+      window._authJson = _authJson;
+})();
+</script>
   <script>
     (function () {
       const btn = document.getElementById('back-to-top');
@@ -434,14 +581,14 @@
         btn.dataset.enabled = enabled ? '1' : '0';
         btn.textContent = enabled ? 'Privacy: ON' : 'Privacy: OFF';
         btn.className = enabled
-          ? 'text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.25rem] bg-red-50 text-red-700 border-red-300 hover:bg-red-100'
-          : 'text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.25rem] bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600';
+          ? 'text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.75rem] whitespace-nowrap bg-red-50 text-red-700 border-red-300 hover:bg-red-100'
+          : 'text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.75rem] whitespace-nowrap bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600';
       }
 
       btn.addEventListener('click', async () => {
         const current = btn.dataset.enabled === '1';
         try {
-          const resp = await fetch('/api/privacy-mode', {
+          const resp = await _csrfFetch('/api/privacy-mode', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled: !current }),
@@ -466,26 +613,36 @@
       const wrap     = document.getElementById('reject-bell-wrap');
       if (!bell || !dropdown) return;
 
+      function openRejectDropdown() {
+        dropdown.classList.remove('hidden');
+        bell.setAttribute('aria-expanded', 'true');
+        dropdown.style.opacity = '0';
+        dropdown.style.transform = 'translateY(-6px)';
+        requestAnimationFrame(() => {
+          dropdown.style.transition = 'opacity 150ms ease, transform 150ms ease';
+          dropdown.style.opacity = '1';
+          dropdown.style.transform = 'translateY(0)';
+        });
+      }
+      function closeRejectDropdown() {
+        dropdown.classList.add('hidden');
+        bell.setAttribute('aria-expanded', 'false');
+      }
+
       bell.addEventListener('click', (e) => {
         e.stopPropagation();
         const open = !dropdown.classList.contains('hidden');
-        dropdown.classList.toggle('hidden', open);
-        // Subtle entrance animation
-        if (!open) {
-          dropdown.style.opacity = '0';
-          dropdown.style.transform = 'translateY(-6px)';
-          requestAnimationFrame(() => {
-            dropdown.style.transition = 'opacity 150ms ease, transform 150ms ease';
-            dropdown.style.opacity = '1';
-            dropdown.style.transform = 'translateY(0)';
-          });
-        }
+        if (open) closeRejectDropdown(); else openRejectDropdown();
       });
 
-      // Close when clicking outside
+      // Close when clicking outside or pressing Escape
       document.addEventListener('click', (e) => {
-        if (!wrap.contains(e.target)) {
-          dropdown.classList.add('hidden');
+        if (!wrap.contains(e.target)) closeRejectDropdown();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
+          closeRejectDropdown();
+          bell.focus();
         }
       });
     })();
@@ -498,27 +655,85 @@
       const chevron  = document.getElementById('tools-chevron');
       if (!btn || !dropdown) return;
 
+      function openToolsDropdown() {
+        dropdown.classList.remove('hidden');
+        btn.setAttribute('aria-expanded', 'true');
+        chevron.style.transform = 'rotate(180deg)';
+        dropdown.style.opacity = '0';
+        dropdown.style.transform = 'translateY(-6px)';
+        requestAnimationFrame(() => {
+          dropdown.style.transition = 'opacity 140ms ease, transform 140ms ease';
+          dropdown.style.opacity = '1';
+          dropdown.style.transform = 'translateY(0)';
+        });
+      }
+      function closeToolsDropdown() {
+        dropdown.classList.add('hidden');
+        btn.setAttribute('aria-expanded', 'false');
+        chevron.style.transform = '';
+      }
+
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const opening = dropdown.classList.contains('hidden');
-        dropdown.classList.toggle('hidden', !opening);
-        chevron.style.transform = opening ? 'rotate(180deg)' : '';
-        if (opening) {
-          dropdown.style.opacity = '0';
-          dropdown.style.transform = 'translateY(-6px)';
-          requestAnimationFrame(() => {
-            dropdown.style.transition = 'opacity 140ms ease, transform 140ms ease';
-            dropdown.style.opacity = '1';
-            dropdown.style.transform = 'translateY(0)';
-          });
-        }
+        if (opening) openToolsDropdown(); else closeToolsDropdown();
       });
 
       document.addEventListener('click', (e) => {
-        if (!wrap.contains(e.target)) {
-          dropdown.classList.add('hidden');
-          chevron.style.transform = '';
+        if (!wrap.contains(e.target)) closeToolsDropdown();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
+          closeToolsDropdown();
+          btn.focus();
         }
+      });
+    })();
+  </script>
+  <!-- Section 4: email unread-document badge polling (60 s interval, logged-in users only) -->
+  {% if current_user_name %}
+  <script>
+  (function () {
+    var badge = document.getElementById('email-unread-badge');
+    if (!badge) return;
+    function _updateBadge() {
+      fetch('/api/notifications/unread-documents', { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : { count: 0 }; })
+        .then(function (d) {
+          var n = (d && d.count) ? parseInt(d.count, 10) : 0;
+          if (n > 0) {
+            badge.textContent = n > 99 ? '99+' : String(n);
+            badge.classList.remove('hidden');
+          } else {
+            badge.classList.add('hidden');
+          }
+        })
+        .catch(function () { /* fail silently */ });
+    }
+    _updateBadge();
+    setInterval(_updateBadge, 60000);
+  })();
+  </script>
+  {% endif %}
+
+  <!-- I18N-6: language toggle handler -->
+  <script>
+    (function () {
+      var btn = document.getElementById('lang-toggle');
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        var current = btn.getAttribute('data-locale') || 'en';
+        var next = current === 'es_MX' ? 'en' : 'es_MX';
+        _csrfFetch('/set-language', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({locale: next})
+        }).then(function () {
+          window.location.reload();
+        }).catch(function (err) {
+          console.error('Language switch failed:', err);
+        });
       });
     })();
   </script>

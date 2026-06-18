@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from chat_cache import normalize_question
+from utils import normalize_staff_question_key
 
 
 def read_jsonl_latest_by_normalized_question(path: Path) -> dict[str, dict]:
@@ -25,7 +25,7 @@ def read_jsonl_latest_by_normalized_question(path: Path) -> dict[str, dict]:
             q = sanitized_question_text(row.get("question") or "")
             if not q:
                 continue
-            out[normalize_question(q)] = row
+            out[normalize_staff_question_key(q)] = row
     return out
 
 
@@ -35,7 +35,7 @@ def infer_scope_training_label(row: dict) -> tuple[str | None, str]:
         return "out_of_scope", ""
     ci = str(row.get("classified_intent") or "").strip()
     tu = row.get("tool_used")
-    if ci == "fallback" and not (tu and str(tu).strip()):
+    if ci in ("fallback", "unknown") and not (tu and str(tu).strip()):
         return None, "classifier_fallback_no_tool"
     if tu and str(tu).strip():
         return "in_scope", ""
@@ -65,7 +65,7 @@ def load_existing_example_norms(tsv_path: Path) -> set[str]:
                 continue
             q = sanitized_question_text(qrest)
             if q:
-                known.add(normalize_question(q))
+                known.add(normalize_staff_question_key(q))
     return known
 
 
@@ -88,7 +88,7 @@ def tsv_appends_for_log(
         q = sanitized_question_text(row.get("question") or "")
         if not q:
             continue
-        nn = normalize_question(q)
+        nn = normalize_staff_question_key(q)
         if nn in existing_norms:
             continue
         label, reason = infer_scope_training_label(row)

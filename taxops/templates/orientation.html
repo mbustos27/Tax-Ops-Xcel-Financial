@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Welcome — TaxOps</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='tw.min.css') }}?v={{ config.APP_VERSION }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ config.APP_VERSION }}">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+</head>
+<body class="h-full bg-slate-50 flex items-center justify-center">
+  <div class="w-full max-w-md px-4">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
+
+      <div>
+        <h1 class="text-xl font-bold text-slate-900">Welcome to TaxOps</h1>
+        <p class="text-sm text-slate-500 mt-1">Here is where everything lives:</p>
+      </div>
+
+      <ul class="space-y-3 text-sm text-slate-700">
+        <li class="flex gap-3">
+          <span class="font-semibold text-slate-900 w-32 shrink-0">Dashboard</span>
+          <span class="text-slate-500">All clients and returns — search, filter, and track status.</span>
+        </li>
+        <li class="flex gap-3">
+          <span class="font-semibold text-slate-900 w-32 shrink-0">Return detail</span>
+          <span class="text-slate-500">Click any client to see their documents, notes, and status history.</span>
+        </li>
+        <li class="flex gap-3">
+          <span class="font-semibold text-slate-900 w-32 shrink-0">Email Review</span>
+          <span class="text-slate-500">Incoming client emails and attachments from the mail watcher.</span>
+        </li>
+        <li class="flex gap-3">
+          <span class="font-semibold text-slate-900 w-32 shrink-0">Review Queue</span>
+          <span class="text-slate-500">Documents flagged by AI extraction that need your attention.</span>
+        </li>
+        <li class="flex gap-3">
+          <span class="font-semibold text-slate-900 w-32 shrink-0">Payments</span>
+          <span class="text-slate-500">Fee collection and balance tracking by return.</span>
+        </li>
+      </ul>
+
+      <p class="text-xs text-slate-400">
+        This screen appears only once. You can always reach the runbook under <em>Ops Runbook</em> in the footer.
+      </p>
+
+      <button id="dismiss-btn" type="button"
+              class="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors">
+        Got it, take me to the dashboard
+      </button>
+
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    document.getElementById('dismiss-btn').addEventListener('click', async function () {
+      this.disabled = true;
+      this.textContent = 'Loading…';
+      const token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+      try {
+        const r = await fetch('/orientation/dismiss', {
+          method: 'POST',
+          headers: { 'X-CSRFToken': token, 'Content-Type': 'application/json' },
+        });
+        if (r.redirected) { location.href = r.url; return; }
+        location.href = '/';
+      } catch (_) {
+        location.href = '/';
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

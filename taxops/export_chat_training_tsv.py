@@ -14,7 +14,7 @@ Dedupes by normalized question text (latest log row wins).
 Usage:
   cd taxops
   python export_chat_training_tsv.py > proposed_scope_rows.tsv
-  python export_chat_training_tsv.py --intent-fallback-summary   # refine classify_intent patterns
+  python export_chat_training_tsv.py --intent-fallback-summary   # mine fallback rows from classifier + log
 
 For hands-off pipeline see: python automerge_chat_scope_from_log.py --apply
 """
@@ -31,7 +31,7 @@ _PKG = Path(__file__).resolve().parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
 
-from chat_cache import normalize_question  # noqa: E402
+from utils import normalize_staff_question_key  # noqa: E402
 from chat_training_io import (  # noqa: E402
     infer_scope_training_label,
     read_jsonl_latest_by_normalized_question,
@@ -41,7 +41,7 @@ from config import CHAT_TRAINING_LOG_PATH  # noqa: E402
 
 
 def _print_fallback_intent_summary(log_path: Path) -> None:
-    """Grouped staff questions logged with classified_intent=fallback — newest wording kept per norm key."""
+    """Grouped rows where classified_intent is fallback or unknown — newest wording per norm key."""
     occ: Counter[str] = Counter()
     last_q_by_norm: dict[str, str] = {}
     with log_path.open(encoding="utf-8") as fh:
@@ -54,23 +54,23 @@ def _print_fallback_intent_summary(log_path: Path) -> None:
             except json.JSONDecodeError:
                 continue
             ci = str(row.get("classified_intent") or "").strip()
-            if ci != "fallback":
+            if ci not in ("fallback", "unknown"):
                 continue
             q = sanitized_question_text(row.get("question") or "")
             if not q:
                 continue
-            kn = normalize_question(q)
+            kn = normalize_staff_question_key(q)
             occ[kn] += 1
             last_q_by_norm[kn] = q
     lines = sorted(occ.items(), key=lambda kv: (-kv[1], kv[0].lower()))
-    print("# classified_intent=fallback — tally / latest wording (prioritize repeats for new intents)\n")
+    print("# classified_intent=fallback|unknown — tally / latest wording (prioritize repeats for new intents)\n")
     print("# count\tquestion\n")
     for _nk, cnt in lines:
         print(f"{cnt}\t{last_q_by_norm[_nk]}")
     if not lines:
         print("(no fallback-labeled rows in this log)")
     print(
-        "\n# Add patterns in classify_intent / classify_dataplane_slice based on repeats above.",
+        "\n# Add patterns / labels in dataplane prompts or NEEDS_LOOKUP flow based on repeats above.",
         file=sys.stderr,
     )
 

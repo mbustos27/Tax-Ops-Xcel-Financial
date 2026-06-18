@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import email
 import email.header
+import hashlib
 import imaplib
 import logging
 import os
 import threading
 import time
+from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
@@ -28,16 +30,55 @@ _ALLOWED_ATTACHMENT_EXTS = frozenset({".pdf", ".jpg", ".jpeg", ".png"})
 
 # Prevents two poll cycles from running concurrently when LLM calls are slow
 _poll_lock = threading.Lock()
+_poll_skip_count = 0          # EMAIL-4: incremented each time a cycle is skipped
 
 # Prevents start_mail_watcher from launching a second poll thread on Flask
 # dev-server reloads (which re-execute module-level code in the child process).
 _watcher_started = False
+_watcher_thread: "threading.Thread | None" = None  # HEALTH-2: tracked for is_alive() check
 
-# UIDs processed this session — keyed by (folder, uid_str).
-# Prevents the same IMAP message from being processed twice within a session
-# without touching Gmail's read/unread state.  Lost on restart, but the
-# _record_classification 24-hour dedup guard prevents duplicate DB rows.
-_processed_uids: set = set()
+# DEBT-7: LRU-capped duplicate-suppression memo.
+# Keyed by (folder, uid_str); value is True (sentinel — only the key matters).
+# Oldest entries are evicted when the cap is reached so memory is bounded across
+# long-lived processes (was an unbounded set before this fix).
+_PROCESSED_UIDS_CAP = int(os.environ.get("MAIL_PROCESSED_UIDS_CAP", "10000"))
+_processed_uids: OrderedDict[tuple[str, str], None] = OrderedDict()
+
+# Serializes memo checks / claims so concurrent callers cannot duplicate-claim one UID.
+_processed_uids_lock = threading.Lock()
+
+# ── Processing outcome constants ──────────────────────────────────────────────
+# Every message processing path returns exactly one of these.
+# The mark-as-read decision is made ONLY at one location in _poll_once_inner,
+# never inline.
+#
+# READ-STATUS POLICY (absolute — no exceptions):
+#   1. BODY.PEEK[] is used for all FETCH calls so the IMAP server never
+#      auto-sets \\Seen as a side-effect of downloading the message body.
+#   2. _mark_read is NEVER called — read/unread state is never modified.
+#   3. email_processing_log is the restart-safe dedup layer (checked every
+#      poll regardless of any config flag).
+#   4. OUTCOME_RETRY leaves the message unread so the next poll retries it.
+#   5. OUTCOME_DRY_RUN never touches IMAP state.
+OUTCOME_SUCCESS = "success"   # fully processed (terminal)
+OUTCOME_SKIP    = "skip"      # intentionally skipped — promo, known rule, no match (terminal)
+OUTCOME_RETRY   = "retry"     # transient failure — leave unread for next poll cycle
+OUTCOME_DRY_RUN = "dry_run"   # dry-run mode — no IMAP state changes
+
+
+def _mark_uid_processed(folder: str, uid: str) -> bool:
+    """DEBT-7: claim a (folder, uid) pair; return True if newly claimed, False if already seen.
+
+    Evicts the oldest entry when the cap is reached (O(1) — OrderedDict).
+    """
+    key = (folder, uid)
+    with _processed_uids_lock:
+        if key in _processed_uids:
+            return False
+        _processed_uids[key] = None
+        if len(_processed_uids) > _PROCESSED_UIDS_CAP:
+            _processed_uids.popitem(last=False)  # evict oldest
+        return True
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -45,7 +86,7 @@ _processed_uids: set = set()
 def start_mail_watcher(app) -> None:
     """Start the background IMAP poll thread. No-op if IMAP_HOST is not configured.
     Safe to call multiple times — only the first call launches the thread."""
-    global _watcher_started
+    global _watcher_started, _watcher_thread
     if _watcher_started:
         logger.info("Mail watcher already started — ignoring duplicate start call")
         return
@@ -60,8 +101,21 @@ def start_mail_watcher(app) -> None:
         daemon=True,
         name="mail-watcher",
     )
+    _watcher_thread = thread
     thread.start()
     logger.info("Mail watcher started")
+
+
+def mail_watcher_status() -> dict:
+    """HEALTH-2 / EMAIL-4: return thread liveness and config status for /health endpoint."""
+    from config import IMAP_HOST
+    base: dict = {"poll_skipped": _poll_skip_count}
+    if not IMAP_HOST:
+        return {**base, "started": False, "running": False, "configured": False}
+    thread = _watcher_thread
+    if thread is None:
+        return {**base, "started": False, "running": False, "configured": True}
+    return {**base, "started": True, "running": thread.is_alive(), "configured": True}
 
 
 # ── Poll loop ─────────────────────────────────────────────────────────────────
@@ -89,14 +143,18 @@ def _poll_once(app) -> None:
     One full poll cycle:
     1. Connect + login (credentials never logged)
     2. Select folder
-    3. Search UNSEEN
-    4. Process each message — mark READ regardless of success
+    3. Search UNSEEN — fetch with BODY.PEEK[] so \\Seen is never auto-set
+    4. Process each message — read/unread state is NEVER modified
     5. Logout
 
     Skips entirely if a previous cycle is still running (LLM calls can be slow).
     """
     if not _poll_lock.acquire(blocking=False):
-        logger.info("Previous poll cycle still running — skipping this cycle")
+        global _poll_skip_count
+        _poll_skip_count += 1
+        logger.info(
+            f"Previous poll cycle still running — skipping (skip #{_poll_skip_count})"
+        )
         return
     try:
         _poll_once_inner(app)
@@ -149,9 +207,14 @@ def _safe_select(imap, folder: str) -> bool:
     Safely select an IMAP folder.
     Returns True if selected OK, False if folder does not exist or errors.
     Never raises.
+
+    Folder names containing spaces must be double-quoted per RFC 3501.
+    imaplib does not add quotes automatically, so we add them here when needed.
     """
     try:
-        resp = imap.select(folder)
+        # RFC 3501: mailbox names with special characters / spaces must be quoted.
+        imap_folder = f'"{folder}"' if " " in folder and not folder.startswith('"') else folder
+        resp = imap.select(imap_folder)
         if not isinstance(resp, tuple) or len(resp) < 2:
             logger.info(f"Folder {folder!r} not selectable — malformed response: {resp!r}")
             return False
@@ -166,24 +229,19 @@ def _safe_select(imap, folder: str) -> bool:
         return False
 
 
-def _mark_read(imap, uid, reason: str) -> None:
+def _mark_read(imap, uid, reason: str) -> None:  # noqa: ARG001
     """
-    Mark a message as read via UID STORE.
-    Respects IMAP_MARK_AS_READ — when False, leaves messages unread (still processed).
-    Respects IMAP_DRY_RUN — logs only, does not touch Gmail when enabled.
-    Never raises.
+    DISABLED — TaxOps never modifies the read/unread state of any email.
+
+    Read-status policy (enforced at three layers):
+      1. BODY.PEEK[] fetch — IMAP server never auto-sets \\Seen on download.
+      2. This function is never called from anywhere in the codebase.
+      3. No -FLAGS \\Seen STORE call exists anywhere.
+
+    Kept as a tombstone so git history explains why it was removed and so a
+    future developer cannot accidentally re-introduce the call without seeing
+    this comment.
     """
-    from config import IMAP_DRY_RUN, IMAP_MARK_AS_READ
-    if not IMAP_MARK_AS_READ:
-        return
-    if IMAP_DRY_RUN:
-        logger.info(f"DRY RUN — would mark read: uid={uid!r} reason={reason}")
-        return
-    try:
-        imap.uid("STORE", uid, "+FLAGS", "\\Seen")
-        logger.debug(f"Marked read: uid={uid!r} reason={reason}")
-    except Exception as e:
-        logger.error(f"Failed to mark read uid={uid!r}: {e}")
 
 
 def _fetch_message_data(imap, uid) -> dict | None:
@@ -193,7 +251,10 @@ def _fetch_message_data(imap, uid) -> dict | None:
     or None if the message cannot be fetched.
     Body text is extracted here for LLM use — never stored beyond this function.
     """
-    resp = imap.uid("FETCH", uid, "(RFC822)")
+    # BODY.PEEK[] is identical to RFC822 but never sets \Seen on the server.
+    # Gmail (and any RFC-2060 server) marks a message as read the moment you
+    # fetch it with RFC822; PEEK suppresses that side-effect entirely.
+    resp = imap.uid("FETCH", uid, "(BODY.PEEK[])")
     if not isinstance(resp, tuple) or len(resp) < 2:
         logger.error(f"Unexpected IMAP UID FETCH response for uid={uid!r}: {resp!r}")
         return None
@@ -227,16 +288,32 @@ def _fetch_message_data(imap, uid) -> dict | None:
     }
 
 
-def _dispatch_classified_message(app, msg: dict) -> None:
-    """
-    Execute the appropriate action for a message whose classification is known.
-    Handles: hard-skip, promotional, unknown, client_document/inquiry.
-    source_layer controls whether the result is recorded in email_classifications.
+def _dispatch_classified_message(app, msg: dict) -> str:
+    """Execute the appropriate action for a message whose classification is known.
 
-    Does NOT touch IMAP state — Gmail read/unread is left unchanged.
-    Re-processing within a session is prevented by _processed_uids in the
-    poll loop, and across restarts by the 24-hour dedup guard in
-    _record_classification.
+    Returns one of the OUTCOME_* constants.  This function never touches IMAP
+    state.  The caller (_poll_once_inner) logs the outcome but also never
+    modifies read/unread status — see READ-STATUS POLICY in _poll_once_inner.
+
+    Outcome semantics:
+      OUTCOME_SUCCESS — new documents or note saved; email left unread.
+      OUTCOME_SKIP    — intentionally skipped (promo, known rule, no client
+                        match, or all-duplicate attachments); email left unread.
+      OUTCOME_RETRY   — processing failed; email left unread for next poll.
+
+    EMAIL-1 — UID deduplication contract
+    ─────────────────────────────────────
+    Every caller MUST claim the UID via ``_mark_uid_processed()`` *before* calling
+    this function (done in ``_poll_once_inner``).  This function never registers UIDs
+    itself because it is agnostic to folders and IMAP state.
+
+    EMAIL-2 — Early-return audit
+    ─────────────────────────────
+    Every code path ends in one of:
+      1. return OUTCOME_SKIP  — hard-skip / promotional / no client match.
+      2. return OUTCOME_SUCCESS — documents attached or note added.
+    Exceptions bubble up to the caller which catches them and returns OUTCOME_RETRY.
+    No path can produce a duplicate dispatch.
     """
     classification = msg["classification"]
     source_layer   = msg["source_layer"]
@@ -250,7 +327,7 @@ def _dispatch_classified_message(app, msg: dict) -> None:
     # Layer 1 hard skip — no DB writes at all
     if source_layer == "known_rule":
         logger.info(f"Hard skip: {sender_domain} — known sender rule")
-        return
+        return OUTCOME_SKIP
 
     # ── Recording policy ─────────────────────────────────────────────────────
     # Record in email_classifications for heuristic / ML / LLM outcomes staff may correct.
@@ -275,17 +352,39 @@ def _dispatch_classified_message(app, msg: dict) -> None:
             )
         if should_update_cache:
             _update_domain_cache(sender_domain, "promotional")
-        return
+        return OUTCOME_SKIP
 
     if classification == "unknown":
         _log_unmatched(app, sender, subject)
-        return
+        return OUTCOME_SKIP
 
     # client_document or client_inquiry ──────────────────────────────────────
+    from config import MAIL_LOW_CONF_THRESHOLD
+    from name_matcher import ACCEPT_THRESHOLD as _ACCEPT_THRESHOLD
+
+    # Resolve the client match upfront so we have the score for recording
+    name = _extract_client_name(subject, body_text)
+    # body_text is discarded after this point — never passed further or stored
+    client = _match_client(app, name) if name else None
+    match_score: int | None = client["match_score"] if client else None
+    matched_client_id: int | None = client["id"] if client else None
+
+    # EMAIL-7: borderline match → hold for staff review instead of auto-attaching
+    is_low_confidence = (
+        client is not None
+        and match_score is not None
+        and match_score < MAIL_LOW_CONF_THRESHOLD
+    )
+    match_status = "pending_review" if is_low_confidence else "auto"
+
     ec_id: int | None = None
     if should_record:
         ec_id = _record_classification(
-            sender_email, sender_domain, subject, classification, source="auto"
+            sender_email, sender_domain, subject, classification,
+            source="auto",
+            match_score=match_score,
+            matched_client_id=matched_client_id,
+            match_status=match_status,
         )
     if should_update_cache:
         _update_domain_cache(sender_domain, classification)
@@ -293,35 +392,179 @@ def _dispatch_classified_message(app, msg: dict) -> None:
     # Drive share — add a note, skip attachment saving
     if _is_drive_share(subject, body_text):
         logger.info(f"Drive share from {sender_domain} — adding note")
-        name = _extract_client_name(subject, body_text)
-        if name:
-            client = _match_client(app, name)
-            if client:
-                ret = _find_current_return(app, client["id"])
-                if ret:
-                    if _add_note(app, ret["id"], sender, subject, 0, drive_share=True):
-                        if ec_id is not None:
-                            _mark_email_routed_ok(ec_id)
-        return
-
-    # Normal attachment + note flow
-    name = _extract_client_name(subject, body_text)
-    # body_text is discarded after this point — never passed further or stored
-    if name:
-        client = _match_client(app, name)
-        if client:
+        if name and client and not is_low_confidence:
             ret = _find_current_return(app, client["id"])
             if ret:
-                count = _save_attachments(app, message, ret["id"])
-                _add_note(app, ret["id"], sender, subject, count)
-                if ec_id is not None and count > 0:
-                    _mark_email_routed_ok(ec_id)
-            else:
-                _log_unmatched(app, sender, subject)
-        else:
-            _log_unmatched(app, sender, subject)
-    else:
+                if _add_note(app, ret["id"], sender, subject, 0, drive_share=True):
+                    if ec_id is not None:
+                        _mark_email_routed_ok(ec_id)
+                    return OUTCOME_SUCCESS
+            # no open return for this client
+            _log_unmatched(app, sender, subject)  # EMAIL-2: no open return
+            return OUTCOME_SKIP
+        if name and client and is_low_confidence:
+            logger.info(
+                f"Drive share low-confidence match score={match_score} "
+                f"for {name!r} — queued for review (ec_id={ec_id})"
+            )
+            return OUTCOME_SKIP
+        # no name or no client match
+        _log_unmatched(app, sender, subject)  # EMAIL-2: client not found / name not extracted
+        return OUTCOME_SKIP
+
+    # Normal attachment + note flow
+    if not name:
         _log_unmatched(app, sender, subject)
+        return OUTCOME_SKIP
+
+    if not client:
+        _log_unmatched(app, sender, subject)
+        return OUTCOME_SKIP
+
+    if is_low_confidence:
+        # EMAIL-7: low-confidence — save attachments but mark as pending_review
+        # so staff can confirm/reject before documents are considered authoritative.
+        ret = _find_current_return(app, client["id"])
+        if not ret:
+            _log_unmatched(app, sender, subject)
+            return OUTCOME_SKIP
+        # Normalize name_matcher score (0–100 int) to 0.0–1.0 for storage
+        _score_norm = round(match_score / 100.0, 4) if match_score is not None else None
+        count = _save_attachments(
+            app, message, ret["id"], source="mail_pending_review",
+            match_score=_score_norm, match_method="fuzzy",
+        )
+        logger.info(
+            f"Low-confidence match score={match_score} for {name!r} "
+            f"({client['first_name']} {client['last_name']}) — "
+            f"saved {count} doc(s) as pending_review (ec_id={ec_id})"
+        )
+        if count > 0:
+            # Boost so future emails from this domain skip the classifier entirely
+            _update_domain_cache(sender_domain, "client_document", boost=True)
+        # count=0 means every attachment was a duplicate — nothing new landed.
+        return OUTCOME_SUCCESS if count > 0 else OUTCOME_SKIP
+
+    # High-confidence client match — attach documents and add note
+    ret = _find_current_return(app, client["id"])
+    if not ret:
+        _log_unmatched(app, sender, subject)
+        return OUTCOME_SKIP
+    _score_norm = round(match_score / 100.0, 4) if match_score is not None else None
+    count = _save_attachments(
+        app, message, ret["id"],
+        match_score=_score_norm, match_method="fuzzy",
+    )
+    _add_note(app, ret["id"], sender, subject, count)
+    if ec_id is not None and count > 0:
+        _mark_email_routed_ok(ec_id)
+    if count > 0:
+        # Boost domain confidence to graduation threshold immediately — one successful
+        # attachment save is enough evidence that this is a real client domain.
+        _update_domain_cache(sender_domain, "client_document", boost=True)
+    # count=0 means every attachment was a duplicate — nothing new landed.
+    return OUTCOME_SUCCESS if count > 0 else OUTCOME_SKIP
+
+
+def _upsert_processing_log(
+    uid_str: str,
+    folder: str,
+    sender_domain: str,
+    subject_snippet: str,
+    outcome: str,
+    error_message: str | None = None,
+    doc_id: int | None = None,
+    return_id: int | None = None,
+) -> None:
+    """Part 4: upsert a row in email_processing_log after each message is processed.
+
+    Natural key: (message_uid, imap_folder).
+    On first attempt: INSERT.  On repeat: UPDATE attempt_count + 1.
+    Subject and error are truncated — never store email body, SSN, or addresses.
+    """
+    from db import get_connection
+    from utils import now
+    try:
+        conn = get_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO email_processing_log
+                    (message_uid, imap_folder, sender_domain, subject_snippet,
+                     outcome, attempt_count, last_attempt_at, error_message,
+                     doc_id, return_id)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                ON CONFLICT(message_uid, imap_folder) DO UPDATE SET
+                    attempt_count    = attempt_count + 1,
+                    last_attempt_at  = excluded.last_attempt_at,
+                    outcome          = excluded.outcome,
+                    error_message    = excluded.error_message
+                """,
+                (
+                    uid_str[:64],
+                    folder[:128],
+                    (sender_domain or "")[:128],
+                    (subject_snippet or "")[:100],
+                    outcome,
+                    now(),
+                    (error_message or "")[:200] or None,
+                    doc_id,
+                    return_id,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        logger.error("email_processing_log upsert failed uid=%s: %s", uid_str, exc)
+
+
+def _retry_cap_exceeded(uid_str: str, folder: str) -> bool:
+    """Part 5: return True when attempt_count >= IMAP_MAX_RETRIES for this (uid, folder) pair."""
+    from config import IMAP_MAX_RETRIES
+    from db import get_connection
+    try:
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT attempt_count FROM email_processing_log "
+                "WHERE message_uid = ? AND imap_folder = ?",
+                (uid_str[:64], folder[:128]),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row and row["attempt_count"] >= IMAP_MAX_RETRIES:
+            return True
+    except Exception as exc:
+        logger.error("retry cap check failed uid=%s: %s", uid_str, exc)
+    return False
+
+
+def _already_processed_in_log(uid_str: str, folder: str) -> bool:
+    """Return True when email_processing_log shows a terminal outcome (success/skip)
+    for this (uid, folder) pair.
+
+    Used by IMAP_PRESERVE_UNREAD mode: emails are never marked \\Seen, so the
+    in-process _processed_uids cache can't survive a restart.  This DB check
+    provides restart-safe dedup without relying on IMAP read status.
+    Only success and skip are terminal — retry must be re-attempted.
+    """
+    from db import get_connection
+    try:
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT outcome FROM email_processing_log "
+                "WHERE message_uid = ? AND imap_folder = ?",
+                (uid_str[:64], folder[:128]),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row and row["outcome"] in (OUTCOME_SUCCESS, OUTCOME_SKIP):
+            return True
+    except Exception as exc:
+        logger.error("already_processed check failed uid=%s: %s", uid_str, exc)
+    return False
 
 
 def _poll_once_inner(app) -> None:
@@ -339,11 +582,11 @@ def _poll_once_inner(app) -> None:
     """
     from config import (
         IMAP_HOST, IMAP_PORT, IMAP_USER, IMAP_PASS,
-        IMAP_FOLDER, GMAIL_CATEGORY_FOLDERS, USE_GMAIL_CATEGORIES,
+        IMAP_FOLDERS, GMAIL_CATEGORY_FOLDERS, USE_GMAIL_CATEGORIES,
     )
 
     folders_to_check = GMAIL_CATEGORY_FOLDERS if USE_GMAIL_CATEGORIES else {
-        IMAP_FOLDER: "full_processing"
+        folder: "full_processing" for folder in IMAP_FOLDERS
     }
 
     imap = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
@@ -383,48 +626,66 @@ def _poll_once_inner(app) -> None:
 
             raw_uids = data[0].split()
             if not raw_uids:
+                logger.info(f"No unseen messages in {folder!r}")
                 continue
 
-            # Filter UIDs already handled this session
-            new_uids = [
-                uid for uid in raw_uids
-                if (folder, uid.decode("ascii", errors="replace"))
-                not in _processed_uids
-            ]
+            from config import IMAP_PRESERVE_UNREAD
+            total_unseen = len(raw_uids)
+            claimed_uids: list[bytes] = []
+            for uid in raw_uids:
+                uid_str = uid.decode("ascii", errors="replace")
+                if not _mark_uid_processed(folder, uid_str):
+                    logger.debug(f"UID {uid_str} in {folder} already processed (in-process cache) — skipping")
+                    continue
+                # Emails are never marked \Seen, so the in-process cache is lost on
+                # restart.  The DB log is the restart-safe dedup layer — always checked.
+                if _already_processed_in_log(uid_str, folder):
+                    logger.debug(f"UID {uid_str} in {folder} already in processing log — skipping")
+                    continue
+                claimed_uids.append(uid)
 
+            already_seen = total_unseen - len(claimed_uids)
+            # EMAIL-3: diagnostic counter — shows full funnel per poll cycle
             logger.info(
-                f"Folder {folder!r}: {len(new_uids)} new unseen "
-                f"(handling={handling}, {len(raw_uids)-len(new_uids)} already seen this session)"
+                f"Folder {folder}: {len(claimed_uids)} new"
+                f" of {total_unseen} unseen"
+                f" ({already_seen} already seen)"
             )
 
-            if not new_uids:
+            if not claimed_uids:
                 continue
 
             if handling == "skip":
-                for uid in new_uids:
-                    _processed_uids.add((folder, uid.decode("ascii", errors="replace")))
-                    _mark_read(imap, uid, f"folder={folder} auto-skip")
-                logger.info(f"Auto-skipped {len(new_uids)} message(s) from {folder!r}")
+                for uid in claimed_uids:
+                    uid_str = uid.decode("ascii", errors="replace") if isinstance(uid, bytes) else str(uid)
+                    # READ-STATUS POLICY: never mark as read — log only.
+                    _upsert_processing_log(uid_str, folder, "", "", OUTCOME_SKIP)
+                logger.info(f"Auto-skipped {len(claimed_uids)} message(s) from {folder!r}")
             else:
                 # full_processing — fetch and collect for classification
-                for uid in new_uids:
-                    uid_str = uid.decode("ascii", errors="replace")
+                for uid in claimed_uids:
                     try:
                         md = _fetch_message_data(imap, uid)
                         if md:
-                            messages.append({
-                                **md,
-                                "uid":            uid,
-                                "folder":         folder,
-                                "classification": None,
-                                "source_layer":   None,
-                            })
-                            _processed_uids.add((folder, uid_str))
+                            messages.append(
+                                {
+                                    **md,
+                                    "uid": uid,
+                                    "folder": folder,
+                                    "classification": None,
+                                    "source_layer": None,
+                                }
+                            )
                         else:
-                            _processed_uids.add((folder, uid_str))
+                            # Fetch returned None — leave unread for retry
+                            uid_str = uid.decode("ascii", errors="replace") if isinstance(uid, bytes) else str(uid)
+                            logger.warning(f"Fetch returned no data uid={uid_str!r} in {folder!r} — leaving unread for retry")
+                            _upsert_processing_log(uid_str, folder, "", "", OUTCOME_RETRY, "fetch returned no data")
                     except Exception as e:
-                        logger.error(f"Fetch failed uid={uid!r} in {folder!r}: {e}")
-                        _mark_read(imap, uid, "fetch-error")
+                        uid_str = uid.decode("ascii", errors="replace") if isinstance(uid, bytes) else str(uid)
+                        logger.error(f"Fetch failed uid={uid_str!r} in {folder!r}: {e}")
+                        # Part 3: leave unread — fetch failure is retriable
+                        _upsert_processing_log(uid_str, folder, "", "", OUTCOME_RETRY, str(e)[:200])
 
         if not messages:
             return
@@ -440,12 +701,51 @@ def _poll_once_inner(app) -> None:
             msg["source_layer"]   = layer
 
         # ── Phase 3: dispatch each message ────────────────────────────────────
+        # Part 3: _mark_read is called ONLY here, based on the returned outcome.
+        # _dispatch_classified_message never touches IMAP state directly.
         for msg in messages:
-            try:
-                _dispatch_classified_message(app, msg)
-            except Exception as e:
-                logger.error(
-                    f"Dispatch failed for {msg.get('sender_domain')}: {e}"
+            uid      = msg.get("uid")
+            uid_str  = uid.decode("ascii", errors="replace") if isinstance(uid, bytes) else str(uid or "")
+            folder   = msg.get("folder", "INBOX")
+            domain   = msg.get("sender_domain") or ""
+            subject  = (msg.get("subject") or "")[:100]
+            err_msg: str | None = None
+
+            # Part 5: max retry cap — prevent permanently broken emails from
+            # blocking an unread slot indefinitely.
+            if _retry_cap_exceeded(uid_str, folder):
+                logger.warning(
+                    f"Max retries exceeded uid={uid_str!r} domain={domain!r} "
+                    f"— marking as read and skipping permanently"
+                )
+                outcome = OUTCOME_SKIP
+            else:
+                try:
+                    outcome = _dispatch_classified_message(app, msg)
+                except Exception as e:
+                    err_msg = str(e)[:200]
+                    logger.error(
+                        f"Dispatch failed uid={uid_str!r} domain={domain!r} "
+                        f"subject={subject!r}: {e}"
+                    )
+                    outcome = OUTCOME_RETRY
+
+            # Part 4: log every outcome regardless of success or failure
+            _upsert_processing_log(uid_str, folder, domain, subject, outcome, err_msg)
+
+            # READ-STATUS POLICY: TaxOps NEVER marks emails as read.
+            # - BODY.PEEK[] on fetch prevents the IMAP server auto-setting \Seen.
+            # - _mark_read is never called here; staff review all mail in Gmail.
+            # - Dedup is handled by email_processing_log + in-process UID cache.
+            if outcome == OUTCOME_RETRY:
+                logger.warning(
+                    f"Message left unread for retry uid={uid_str!r} domain={domain!r}"
+                )
+            elif outcome == OUTCOME_DRY_RUN:
+                logger.info(f"DRY RUN uid={uid_str!r} — no IMAP state changed")
+            else:
+                logger.info(
+                    f"Processed uid={uid_str!r} outcome={outcome} — left unread"
                 )
 
     finally:
@@ -528,7 +828,7 @@ def _is_drive_share(subject: str, body_text: str) -> bool:
 
 _ALLOWED_CLASSES = frozenset({"client_document", "client_inquiry", "promotional", "unknown"})
 
-# rule_type values in email_sender_rules → classification
+# rule_type values in known_sender_rules → classification
 _RULE_TYPE_MAP = {
     "always_promotional": "promotional",
     "always_client":      "client_document",
@@ -537,11 +837,11 @@ _RULE_TYPE_MAP = {
 
 def _check_known_sender_rule(sender_domain: str) -> str | None:
     """
-    Check whether sender_domain has a row in email_sender_rules.
+    Check whether sender_domain has a row in known_sender_rules.
     Returns the mapped classification string if a rule exists, None otherwise.
     Never raises.
 
-    Exact column name: rule_type  (see db.py email_sender_rules table)
+    Exact column name: rule_type  (see db.py known_sender_rules table)
     Exact rule_type values: 'always_promotional', 'always_client'
     """
     from db import get_connection
@@ -549,7 +849,7 @@ def _check_known_sender_rule(sender_domain: str) -> str | None:
         conn = get_connection()
         try:
             row = conn.execute(
-                "SELECT rule_type FROM email_sender_rules WHERE domain = ? COLLATE NOCASE",
+                "SELECT rule_type FROM known_sender_rules WHERE domain = ? COLLATE NOCASE",
                 (sender_domain,),
             ).fetchone()
             if row:
@@ -573,10 +873,14 @@ def _record_classification(
     subject: str,
     classification: str,
     source: str = "auto",
+    match_score: int | None = None,
+    matched_client_id: int | None = None,
+    match_status: str = "auto",
 ) -> int | None:
-    """
-    Insert one row into email_classifications.
+    """Insert one row into email_classifications.
+
     source is 'auto' (LLM) or 'staff' (confirmed by staff).
+    match_score / matched_client_id / match_status support EMAIL-6/7.
     Never raises — logs errors; returns None on failure.
     Body is never stored here.
 
@@ -611,10 +915,14 @@ def _record_classification(
             conn.execute(
                 """
                 INSERT INTO email_classifications
-                    (sender_email, sender_domain, subject_snippet, classification, source, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (sender_email, sender_domain, subject_snippet, classification,
+                     source, created_at, match_score, matched_client_id, match_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (sender_email, sender_domain, subject_snippet, classification, source, now()),
+                (
+                    sender_email, sender_domain, subject_snippet, classification,
+                    source, now(), match_score, matched_client_id, match_status,
+                ),
             )
             conn.commit()
             new_id_row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
@@ -795,6 +1103,7 @@ def _classify_email(domain: str, subject: str, body_text: str = "") -> tuple:
         return cls, "keyword"
 
     # Layer 5: domain_classifications cache (any confidence)
+    # Boosted client domains land here after their first successful attachment save.
     cached = _get_cached_domain(domain)
     if cached:
         logger.info(
@@ -803,13 +1112,41 @@ def _classify_email(domain: str, subject: str, body_text: str = "") -> tuple:
         )
         return cached["classification"], "cache"
 
-    # Layer 5.5: sklearn classifier (trained on confirmed staff data)
+    # Layer 5.3: client hint domains — unique business domains that will never appear
+    # in a generic spam training set.  Bypass the ML classifier and go straight to LLM.
+    # After the first successful save the domain is boosted into cache (Layer 5).
+    from config import CLIENT_HINT_DOMAINS
+    if CLIENT_HINT_DOMAINS:
+        _hint_base = ".".join(domain.split(".")[-2:]) if len(domain.split(".")) >= 2 else domain
+        if _hint_base in CLIENT_HINT_DOMAINS or domain in CLIENT_HINT_DOMAINS:
+            logger.info(f"Client hint domain {domain!r} — skipping ML classifier, routing to LLM")
+            cls = _classify_domain_llm(domain, [subject])
+            _update_domain_cache(domain, cls)
+            return cls, "llm"
+
+    # Layer 5.5: sklearn classifier with asymmetric confidence thresholds.
+    # classify_raw() returns label+confidence without applying any internal threshold
+    # so we can apply different bars for promotional vs client classifications.
+    # Promotional requires higher confidence because a false-positive silently drops
+    # a client email; a false-positive client classification only costs a staff review.
     try:
-        from classifier import classify as _ml_classify
-        ml_cls, _ml_conf = _ml_classify(subject, domain, body_text[:200])
+        from classifier import classify_raw as _ml_classify_raw
+        from config import CLASSIFIER_CLIENT_THRESHOLD, CLASSIFIER_PROMOTIONAL_THRESHOLD
+        ml_cls, ml_conf = _ml_classify_raw(subject, domain, body_text[:200])
         if ml_cls is not None:
-            _update_domain_cache(domain, ml_cls)
-            return ml_cls, "ml"
+            if ml_cls == "promotional" and ml_conf >= CLASSIFIER_PROMOTIONAL_THRESHOLD:
+                logger.info(f"Classifier: {domain!r} → {ml_cls} ({ml_conf:.2f})")
+                _update_domain_cache(domain, ml_cls)
+                return ml_cls, "ml"
+            elif ml_cls in ("client_document", "client_inquiry") and ml_conf >= CLASSIFIER_CLIENT_THRESHOLD:
+                logger.info(f"Classifier: {domain!r} → {ml_cls} ({ml_conf:.2f})")
+                _update_domain_cache(domain, ml_cls)
+                return ml_cls, "ml"
+            else:
+                logger.info(
+                    f"Classifier {ml_cls} at {ml_conf:.2f} below asymmetric threshold "
+                    f"for {domain!r} — falling through to LLM"
+                )
     except Exception as _ml_err:
         logger.debug(f"ML layer skipped for {domain}: {_ml_err}")
 
@@ -831,10 +1168,16 @@ def _get_domain_classification(
     return _classify_email(domain, subject, body_preview)
 
 
-def _update_domain_cache(domain: str, classification: str) -> None:
+def _update_domain_cache(domain: str, classification: str, boost: bool = False) -> None:
     """
     Upsert domain_classifications — increment confidence if same classification,
     reset to 1 if classification changed.
+
+    boost=True: set confidence_count to the graduation threshold (3) immediately
+    rather than incrementing by 1.  Used after a confirmed client attachment save
+    so the domain graduates to a rule suggestion after a single successful email.
+    If the domain already has count >= 3, boost is a no-op on count.
+
     After updating, check whether this domain qualifies for graduation.
     Never raises.
     """
@@ -851,27 +1194,39 @@ def _update_domain_cache(domain: str, classification: str) -> None:
                 (domain,),
             ).fetchone()
 
+            # Graduation threshold — must match _check_graduation_trigger
+            _GRAD_THRESHOLD = 3
+
             if existing:
                 if existing["classification"] == classification:
-                    conn.execute(
-                        "UPDATE domain_classifications "
-                        "SET confidence_count = confidence_count + 1, last_seen = ? "
-                        "WHERE domain = ? COLLATE NOCASE",
-                        (now(), domain),
-                    )
+                    if boost:
+                        conn.execute(
+                            "UPDATE domain_classifications "
+                            "SET confidence_count = MAX(confidence_count, ?), last_seen = ? "
+                            "WHERE domain = ? COLLATE NOCASE",
+                            (_GRAD_THRESHOLD, now(), domain),
+                        )
+                    else:
+                        conn.execute(
+                            "UPDATE domain_classifications "
+                            "SET confidence_count = confidence_count + 1, last_seen = ? "
+                            "WHERE domain = ? COLLATE NOCASE",
+                            (now(), domain),
+                        )
                 else:
+                    # Classification changed — reset count (boost still jumps to threshold)
                     conn.execute(
                         "UPDATE domain_classifications "
-                        "SET classification = ?, confidence_count = 1, last_seen = ? "
+                        "SET classification = ?, confidence_count = ?, last_seen = ? "
                         "WHERE domain = ? COLLATE NOCASE",
-                        (classification, now(), domain),
+                        (classification, _GRAD_THRESHOLD if boost else 1, now(), domain),
                     )
             else:
                 conn.execute(
                     "INSERT INTO domain_classifications "
                     "(domain, classification, confidence_count, last_seen) "
-                    "VALUES (?, ?, 1, ?)",
-                    (domain, classification, now()),
+                    "VALUES (?, ?, ?, ?)",
+                    (domain, classification, _GRAD_THRESHOLD if boost else 1, now()),
                 )
             conn.commit()
         finally:
@@ -880,7 +1235,8 @@ def _update_domain_cache(domain: str, classification: str) -> None:
         logger.error(f"_update_domain_cache failed for {domain}: {e}")
         return
 
-    # Trigger graduation check in the same call (fast — just DB reads/writes)
+    # Trigger graduation check — always synchronous (pure DB reads/writes, fast).
+    # boost=True guarantees count >= threshold so graduation fires immediately.
     _check_graduation_trigger(None, domain)
 
 
@@ -919,7 +1275,7 @@ def _check_graduation_trigger(app, domain: str) -> None:
 
             # No existing rule for this domain
             if conn.execute(
-                "SELECT id FROM email_sender_rules WHERE domain = ? COLLATE NOCASE",
+                "SELECT id FROM known_sender_rules WHERE domain = ? COLLATE NOCASE",
                 (domain,),
             ).fetchone():
                 return
@@ -998,7 +1354,7 @@ def _analyze_patterns(app) -> int:
     from llm import extract_json
     from utils import now
 
-    # Map from classification value to rule_type value in email_sender_rules
+    # Map from classification value to rule_type value in known_sender_rules
     _CLASS_TO_RULE = {
         "promotional":    "always_promotional",
         "client_document": "always_client",
@@ -1029,7 +1385,7 @@ def _analyze_patterns(app) -> int:
                 # Domains already covered by a known sender rule
                 known_domains = {
                     r["domain"]
-                    for r in conn.execute("SELECT domain FROM email_sender_rules").fetchall()
+                    for r in conn.execute("SELECT domain FROM known_sender_rules").fetchall()
                 }
                 # Domains that already have a pending suggestion
                 pending_domains = {
@@ -1387,7 +1743,13 @@ def _match_client(app, name: str) -> dict | None:
         ).fetchone()
         if row is None:
             return None
-        return {"id": row["id"], "last_name": row["last_name"], "first_name": row["first_name"]}
+        # EMAIL-6: include match_score so dispatch can store it and route low-confidence
+        return {
+            "id": row["id"],
+            "last_name": row["last_name"],
+            "first_name": row["first_name"],
+            "match_score": best_score,
+        }
     finally:
         conn.close()
 
@@ -1426,16 +1788,25 @@ def _find_current_return(app, client_id: int) -> dict | None:
 
 # ── Attachment saving ─────────────────────────────────────────────────────────
 
-def _save_attachments(app, message, return_id: int) -> int:
-    """
-    Walk MIME parts, save allowed attachments (pdf/jpg/jpeg/png) to disk,
+def _save_attachments(
+    app, message, return_id: int, source: str = "email",
+    match_score: float | None = None,
+    match_method: str | None = None,
+) -> int:
+    """Walk MIME parts, save allowed attachments (pdf/jpg/jpeg/png) to disk,
     and record each in return_documents.
 
     Files are stored as-is — there is no OCR or automated text extraction on
     ingest (native PDFs remain PDFs; scanned images remain images).  Staff use
     the UI / separate tooling if extraction is needed.
 
-    - source is always 'email'
+    Dedupes before writing disk: same return_id + is_deleted=0 and either
+    matching SHA-256 of payload (file_hash) or same sanitized MIME filename +
+    byte size as an existing row (cheap path for legacy rows without hash).
+
+    EMAIL-7: pass source='mail_pending_review' for low-confidence matches so
+    staff can identify and confirm/reject them from the email review queue.
+
     - doc_type is always 'unknown' — staff tags later
     - uploaded_by is always 'mail_watcher'
     - file_path is stored in DB but never returned to any caller
@@ -1494,8 +1865,38 @@ def _save_attachments(app, message, return_id: int) -> int:
                 continue
 
             try:
-                folder = get_return_documents_path(return_id)
+                payload = part.get_payload(decode=True)
+                if not payload:
+                    logger.warning(f"Empty payload for attachment: {raw_filename!r}")
+                    continue
+
                 sanitized = sanitize_filename(raw_filename)
+                file_size_bytes = len(payload)
+                file_hash_hex = hashlib.sha256(payload).hexdigest()
+
+                dup = conn.execute(
+                    """
+                    SELECT 1 FROM return_documents
+                    WHERE return_id = ? AND is_deleted = 0
+                      AND (
+                        (file_hash IS NOT NULL AND file_hash = ?)
+                        OR (filename = ? AND file_size_bytes = ?)
+                      )
+                    LIMIT 1
+                    """,
+                    (return_id, file_hash_hex, sanitized, file_size_bytes),
+                ).fetchone()
+                if dup:
+                    hp = file_hash_hex[:16]
+                    logger.info(
+                        "Skipping duplicate attachment return_id=%s filename=%s hash_prefix=%s",
+                        return_id,
+                        sanitized,
+                        hp,
+                    )
+                    continue
+
+                folder = get_return_documents_path(return_id)
                 stem, ext_part = os.path.splitext(sanitized)
                 candidate = sanitized
                 counter = 1
@@ -1505,15 +1906,9 @@ def _save_attachments(app, message, return_id: int) -> int:
 
                 full_path = os.path.abspath(os.path.join(folder, candidate))
 
-                payload = part.get_payload(decode=True)
-                if not payload:
-                    logger.warning(f"Empty payload for attachment: {raw_filename!r}")
-                    continue
-
                 with open(full_path, "wb") as fh:
                     fh.write(payload)
 
-                file_size_bytes = os.path.getsize(full_path)
                 uploaded_at = now()
 
                 # Scrub any SSN patterns that may be embedded in user-supplied strings
@@ -1526,20 +1921,25 @@ def _save_attachments(app, message, return_id: int) -> int:
                     """
                     INSERT INTO return_documents (
                         return_id, filename, original_filename, doc_type, source,
-                        file_path, file_size_bytes, uploaded_by, uploaded_at, notes, is_deleted
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                        file_path, file_size_bytes, file_hash, uploaded_by, uploaded_at, notes, is_deleted,
+                        match_confirmed, match_score, match_method
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
                     """,
                     (
                         return_id,
                         safe["filename"],
                         safe["original_filename"],
                         "unknown",
-                        "email",
+                        source,             # EMAIL-7: 'email' or 'mail_pending_review'
                         full_path,          # stored server-side only
                         file_size_bytes,
+                        file_hash_hex,
                         "mail_watcher",
                         uploaded_at,
                         None,
+                        # match_confirmed=0: all email matches need staff confirmation
+                        match_score,
+                        match_method,
                     ),
                 )
                 new_doc_id = cur.lastrowid

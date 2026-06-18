@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Review Receipt #{{ receipt.id }} — TaxOps{% endblock %}
+
+{% block content %}
+<div class="max-w-screen-xl mx-auto px-4 py-6 pb-24">
+
+  <!-- Breadcrumb -->
+  <nav class="text-sm text-slate-500 mb-5 flex items-center gap-1.5">
+    <a href="{{ url_for('accounting.receipt_queue_list') }}" class="hover:text-slate-700">Receipt Queue</a>
+    <span>›</span>
+    <span class="text-slate-700 font-medium">Receipt #{{ receipt.id }}</span>
+    <span class="ml-2 px-2 py-0.5 rounded-full text-xs font-semibold
+      {% if receipt.status == 'review' %}bg-amber-100 text-amber-700
+      {% elif receipt.status == 'approved' %}bg-emerald-100 text-emerald-700
+      {% elif receipt.status == 'rejected' %}bg-red-100 text-red-700
+      {% elif receipt.status == 'exported' %}bg-blue-100 text-blue-700
+      {% elif receipt.status == 'failed' %}bg-red-200 text-red-800
+      {% else %}bg-slate-100 text-slate-600{% endif %}">{{ receipt.status }}</span>
+  </nav>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <!-- Left: Image -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+        <h2 class="font-semibold text-slate-800">Receipt image</h2>
+        {% if receipt.original_filename %}
+        <span class="text-xs text-slate-400 truncate max-w-xs" title="{{ receipt.original_filename }}">
+          {{ receipt.original_filename }}
+        </span>
+        {% endif %}
+      </div>
+      {% if has_image %}
+      <div class="p-4 flex justify-center bg-slate-50">
+        <img src="{{ url_for('accounting.receipt_image', receipt_id=receipt.id) }}"
+             alt="Receipt image"
+             class="max-h-[600px] max-w-full object-contain rounded-lg border border-slate-200 shadow">
+      </div>
+      {% else %}
+      <div class="px-5 py-12 text-center text-slate-400">
+        <svg class="w-12 h-12 mx-auto mb-2 text-slate-200" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        Image file not found
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Right: Extracted data + review form -->
+    <div class="flex flex-col gap-5">
+
+      <!-- Extracted fields -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+        <div class="px-5 py-3 border-b border-slate-100">
+          <h2 class="font-semibold text-slate-800">OCR results</h2>
+        </div>
+        <div class="px-5 py-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Vendor</p>
+            <p class="font-medium text-slate-800">{{ receipt.vendor or '—' }}</p>
+          </div>
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Date</p>
+            <p class="font-medium text-slate-800">{{ receipt.receipt_date or '—' }}</p>
+          </div>
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Total</p>
+            <p class="font-medium text-slate-800">
+              {% if receipt.total_amount is not none %}${{ '%.2f'|format(receipt.total_amount) }}{% else %}—{% endif %}
+            </p>
+          </div>
+          <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Payment</p>
+            <p class="font-medium text-slate-800">{{ receipt.payment_method or '—' }}</p>
+          </div>
+        </div>
+
+        {% if receipt.line_items_list %}
+        <div class="px-5 pb-4">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Line items</p>
+          <table class="w-full text-xs">
+            <thead class="bg-slate-50 rounded">
+              <tr>
+                <th class="text-left px-2 py-1 text-slate-500">Description</th>
+                <th class="text-right px-2 py-1 text-slate-500">Amount</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              {% for item in receipt.line_items_list %}
+              <tr>
+                <td class="px-2 py-1 text-slate-700">{{ item.description or '—' }}</td>
+                <td class="px-2 py-1 text-right text-slate-700 font-mono">
+                  {% if item.amount is not none %}${{ '%.2f'|format(item.amount) }}{% else %}—{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- COA suggestions -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm">
+        <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="font-semibold text-slate-800">Category suggestion</h2>
+          {% if receipt.confidence %}
+          <span class="text-xs px-2 py-0.5 rounded-full font-semibold
+            {% if receipt.confidence == 'high' %}bg-emerald-100 text-emerald-700
+            {% elif receipt.confidence == 'medium' %}bg-amber-100 text-amber-700
+            {% else %}bg-slate-100 text-slate-600{% endif %}">
+            {{ receipt.confidence }} confidence
+          </span>
+          {% endif %}
+        </div>
+        <div class="px-5 py-4">
+          <!-- Review / approve form (shown when status is review) -->
+          {% if receipt.status in ('review', 'approved') %}
+          <div id="review-form" class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Account / Category</label>
+              <input id="category-input" type="text"
+                     value="{{ receipt.approved_category or receipt.suggested_category or '' }}"
+                     placeholder="e.g. Office Supplies"
+                     class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Account code (optional)</label>
+              <input id="account-input" type="text"
+                     value="{{ receipt.approved_account or receipt.suggested_account or '' }}"
+                     placeholder="e.g. 6100"
+                     class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
+            </div>
+            {% if receipt.candidates_list %}
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Top suggestions</label>
+              <div class="flex flex-wrap gap-1.5">
+                {% for c in receipt.candidates_list[:5] %}
+                <button type="button"
+                        onclick="document.getElementById('category-input').value='{{ c.account_name }}';document.getElementById('account-input').value='{{ c.account_code }}';"
+                        class="px-2.5 py-1 text-xs rounded-lg border border-slate-200 hover:border-violet-400 hover:text-violet-700 bg-slate-50 text-slate-600 transition-colors">
+                  {{ c.account_name }}{% if c.account_code %} ({{ c.account_code }}){% endif %}
+                  <span class="text-slate-400 ml-1">{{ '%.0f'|format(c.score * 100) }}%</span>
+                </button>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">Notes (optional)</label>
+              <input id="notes-input" type="text"
+                     value="{{ receipt.review_notes or '' }}"
+                     placeholder="Any memo for QB export"
+                     class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400">
+            </div>
+            <div id="action-msg" class="hidden text-sm font-medium px-3 py-2 rounded-lg"></div>
+            <div class="flex gap-2 pt-1">
+              <button id="approve-btn"
+                      class="flex-1 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors">
+                ✓ Approve
+              </button>
+              <button id="reject-btn"
+                      class="px-4 py-2 rounded-lg border border-red-200 hover:bg-red-50 text-red-600 text-sm font-semibold transition-colors">
+                ✗ Reject
+              </button>
+            </div>
+          </div>
+          {% elif receipt.status == 'rejected' %}
+          <p class="text-sm text-slate-500">
+            <strong class="text-red-600">Rejected</strong>
+            {% if receipt.review_notes %} — {{ receipt.review_notes }}{% endif %}
+            {% if receipt.reviewed_by %} by {{ receipt.reviewed_by }}{% endif %}
+          </p>
+          {% elif receipt.status == 'exported' %}
+          <p class="text-sm text-emerald-700 font-medium">
+            ✓ Exported to QB as <strong>{{ receipt.approved_category }}</strong>
+          </p>
+          {% elif receipt.status in ('pending', 'processing') %}
+          <p class="text-sm text-slate-400">OCR in progress — check back shortly.</p>
+          {% elif receipt.status == 'failed' %}
+          <p class="text-sm text-red-600 font-medium">
+            OCR failed: {{ receipt.error_message or 'unknown error' }}
+          </p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Linked return -->
+      {% if receipt.log_number %}
+      <div class="bg-slate-50 rounded-xl border border-slate-200 px-5 py-3 text-sm flex items-center gap-2">
+        <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+        </svg>
+        <span class="text-slate-500">Linked to return</span>
+        <a href="/return/{{ receipt.return_id }}" class="font-semibold text-violet-600 hover:underline">
+          LOG {{ receipt.log_number }} — {{ receipt.last_name }}{% if receipt.first_name %}, {{ receipt.first_name }}{% endif %}
+        </a>
+      </div>
+      {% endif %}
+
+    </div><!-- end right col -->
+  </div><!-- end grid -->
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const receiptId = {{ receipt.id }};
+  const approveBtn = document.getElementById('approve-btn');
+  const rejectBtn  = document.getElementById('reject-btn');
+  const msgEl      = document.getElementById('action-msg');
+  if (!approveBtn) return;
+
+  function showMsg(text, ok) {
+    msgEl.textContent = text;
+    msgEl.className = 'text-sm font-medium px-3 py-2 rounded-lg ' +
+      (ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700');
+    msgEl.classList.remove('hidden');
+  }
+
+  approveBtn.addEventListener('click', async function () {
+    const category = document.getElementById('category-input').value.trim();
+    if (!category) { showMsg('Category is required.', false); return; }
+    approveBtn.disabled = true;
+    const r = await _csrfFetch(`/api/accounting/receipts/${receiptId}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        category,
+        account: document.getElementById('account-input').value.trim(),
+        notes:   document.getElementById('notes-input').value.trim(),
+      }),
+    });
+    const j = await r.json();
+    if (j.success) {
+      showMsg('Approved! Redirecting…', true);
+      setTimeout(() => { location.href = '/accounting/receipts?status=approved'; }, 1200);
+    } else {
+      showMsg('Error: ' + (j.error || 'unknown'), false);
+      approveBtn.disabled = false;
+    }
+  });
+
+  rejectBtn.addEventListener('click', async function () {
+    const reason = prompt('Rejection reason (optional):') ?? '';
+    rejectBtn.disabled = true;
+    const r = await _csrfFetch(`/api/accounting/receipts/${receiptId}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    const j = await r.json();
+    if (j.success) {
+      showMsg('Rejected. Redirecting…', true);
+      setTimeout(() => { location.href = '/accounting/receipts?status=rejected'; }, 1200);
+    } else {
+      showMsg('Error: ' + (j.error || 'unknown'), false);
+      rejectBtn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

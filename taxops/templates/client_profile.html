@@ -1,0 +1,499 @@
+{% extends "base.html" %}
+{% block title %}{{ profile_title_name }} — Client — TaxOps{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6 pb-16">
+
+  <div class="flex items-start justify-between gap-4 flex-wrap">
+    <div class="flex items-center gap-3 min-w-0">
+      <a href="javascript:history.back()" class="text-slate-400 hover:text-slate-700 shrink-0 p-1 rounded-lg hover:bg-slate-100 transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </a>
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold text-slate-800 truncate">{{ profile_title_name }}</h1>
+        <div class="text-sm text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
+          <span class="font-mono font-semibold">Client ID {{ client_id }}</span>
+          {% if client.referred_by %}<span>Referred by {{ client.referred_by }}</span>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROFILE-1 Shell: identity + contacts -->
+  <div class="bg-white rounded-xl border border-slate-200 p-5 grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="space-y-2">
+      <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Contact</h2>
+      <div class="text-sm space-y-1">
+        {% if client.taxpayer_phone %}<div><span class="text-slate-400">Home</span> {{ client.taxpayer_phone }}</div>{% endif %}
+        {% if client.taxpayer_cell %}<div><span class="text-slate-400">Cell</span> {{ client.taxpayer_cell }}</div>{% endif %}
+        {% if client.taxpayer_work_phone %}<div><span class="text-slate-400">Work</span> {{ client.taxpayer_work_phone }}</div>{% endif %}
+        {% if client.taxpayer_email %}<div class="truncate"><span class="text-slate-400">Email</span> {{ client.taxpayer_email }}</div>{% endif %}
+      </div>
+    </div>
+    <div class="space-y-2 lg:col-span-2">
+      <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Address</h2>
+      <p class="text-sm text-slate-700 whitespace-pre-wrap">{{ client.address or '—' }}</p>
+    </div>
+  </div>
+
+  <!-- PROFILE-5 Inline edit -->
+  <section class="bg-white rounded-xl border border-slate-200 overflow-hidden" id="client-edit-section">
+    <div class="px-5 py-3 bg-slate-800 flex items-center justify-between">
+      <span class="text-white font-bold text-sm tracking-wide">Edit client & filing (latest TY)</span>
+      {% if client_anchor_return_id and not privacy_mode %}
+      <button type="button" id="client-profile-save"
+              data-anchor-return="{{ client_anchor_return_id }}"
+              class="text-xs font-semibold rounded-lg px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-500 transition-colors">
+        Save changes
+      </button>
+      {% endif %}
+    </div>
+    <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% if not client_anchor_return_id %}
+      <p class="text-sm text-amber-700 md:col-span-2">No returns on file yet — edits require at least one return for this client.</p>
+      {% elif privacy_mode %}
+      <p class="text-sm text-slate-500 md:col-span-2">Turn off privacy mode to edit client profile fields.</p>
+      {% endif %}
+
+      {% if client_anchor_return_id and not privacy_mode %}
+      <label class="block text-sm"><span class="text-slate-500 text-xs uppercase font-semibold">Last name</span>
+        <input type="text" data-client-field="last_name" id="prof-last-name" value="{{ client.last_name or '' }}"
+               class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/></label>
+      <label class="block text-sm"><span class="text-slate-500 text-xs uppercase font-semibold">First name</span>
+        <input type="text" data-client-field="first_name" id="prof-first-name" value="{{ client.first_name or '' }}"
+               class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/></label>
+      <label class="block text-sm md:col-span-2"><span class="text-slate-500 text-xs uppercase font-semibold">Display name</span>
+        <input type="text" data-client-field="display_name" id="prof-display-name" value="{{ client.display_name or '' }}"
+               class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/></label>
+      <label class="block text-sm md:col-span-2"><span class="text-slate-500 text-xs uppercase font-semibold">Address</span>
+        <input type="text" data-client-field="address" id="prof-address" value="{{ client.address or '' }}"
+               class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/></label>
+      <label class="block text-sm"><span class="text-slate-500 text-xs uppercase font-semibold">Taxpayer phone</span>
+        <input type="text" data-client-field="taxpayer_phone" id="prof-phone" value="{{ client.taxpayer_phone or '' }}"
+               class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/></label>
+      <label class="block text-sm"><span class="text-slate-500 text-xs uppercase font-semibold">Cell</span>
+        <input type="text" data-client-field="taxpayer_cell" id="prof-cell" value="{{ client.taxpayer_cell or '' }}"
+               class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/></label>
+      <label class="block text-sm"><span class="text-slate-500 text-xs uppercase font-semibold">Email</span>
+        <input type="text" data-client-field="taxpayer_email" id="prof-email" value="{{ client.taxpayer_email or '' }}"
+               class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/></label>
+      <label class="block text-sm"><span class="text-slate-500 text-xs uppercase font-semibold">Referred by</span>
+        <input type="text" data-client-field="referred_by" id="prof-referred" value="{{ client.referred_by or '' }}"
+               class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/></label>
+      <div class="block text-sm">
+        <label class="inline-flex items-center gap-2 cursor-pointer mt-6">
+          <input type="checkbox" id="prof-referral-flag" {% if client.referral_flag %}checked{% endif %}
+                 class="rounded border-slate-300"/>
+          <span class="text-slate-600 text-sm font-medium">Referral flag</span>
+        </label>
+      </div>
+      <label class="block text-sm md:col-span-2"><span class="text-slate-500 text-xs uppercase font-semibold">Filing status (latest return · TY{% if client_returns[0].tax_year is not none %}{{ client_returns[0].tax_year }}{% else %}—{% endif %} / LOG {% if client_returns[0].log_number %}{{ client_returns[0].log_number }}{% else %}—{% endif %})</span>
+        <select data-return-field="filing_status" id="prof-filing"
+                class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white">
+          <option value="">— unset —</option>
+          {% for fs in filing_status_options %}
+          <option value="{{ fs }}" {% if filing_status_anchor == fs %}selected{% endif %}>{{ fs }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- PROFILE-2 Returns timeline -->
+  <section class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 font-bold text-sm text-slate-700">Returns · by tax year</div>
+    <div class="divide-y divide-slate-100 max-h-[22rem] overflow-y-auto">
+      {% for r in client_returns %}
+      <a href="/return/{{ r.id }}" class="flex items-center gap-4 px-5 py-3 hover:bg-slate-50 transition-colors">
+        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full font-bold font-mono">TY{% if r.tax_year is not none %}{{ r.tax_year }}{% else %}—{% endif %}</span>
+        <span class="font-mono text-sm font-bold text-slate-500 w-12 shrink-0">{{ r.log_number or '—' }}</span>
+        <span class="flex-1 min-w-0 text-sm font-semibold text-slate-800 truncate">{{ r.name_full }}</span>
+        <span class="text-xs px-2 py-1 rounded-full border shrink-0 {{ r.badge_class }}">{{ r.client_status or '—' }}</span>
+      </a>
+      {% else %}
+      <p class="text-sm text-slate-400 px-5 py-6">No returns.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- MULTIYEAR-1 … MULTIYEAR-4 Side-by-side tax year comparison -->
+  <section class="bg-white rounded-xl border border-slate-200 overflow-hidden" id="multi-year-section">
+    <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <span class="font-bold text-sm text-slate-800">Multi-year comparison</span>
+        <p class="text-xs text-slate-500 mt-0.5">Pick 2–3 tax years; highlights show large year-over-year changes (see thresholds).</p>
+      </div>
+      {% if comparison_year_choices | length >= 2 %}
+      <div class="flex flex-wrap gap-2 items-center">
+        <button type="button" id="multi-year-run" disabled
+                class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-500 disabled:opacity-40 disabled:cursor-not-allowed">
+          Compare
+        </button>
+        <button type="button" id="multi-year-pdf" disabled
+                class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-40">
+          Export PDF
+        </button>
+      </div>
+      {% endif %}
+    </div>
+    <div class="p-5">
+      {% if comparison_year_choices | length >= 2 %}
+      <div class="flex flex-wrap gap-x-4 gap-y-2 mb-4" id="multi-year-pickers">
+        {% for y in comparison_year_choices %}
+        <label class="inline-flex items-center gap-2 cursor-pointer select-none text-sm text-slate-700">
+          <input type="checkbox" class="multi-year-cb rounded border-slate-300 text-teal-600 focus:ring-teal-500" value="{{ y }}"/>
+          <span class="font-mono font-semibold">TY{{ y }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <p id="multi-year-meta" class="text-xs text-slate-400 mb-3 hidden"></p>
+      <div id="multi-year-error" class="hidden text-sm text-red-600 mb-3"></div>
+      <div id="multi-year-table-host" class="overflow-x-auto rounded-lg border border-slate-100"></div>
+      {% elif not client_returns %}
+      <p class="text-sm text-slate-400">No returns on file — comparison unavailable.</p>
+      {% else %}
+      <p class="text-sm text-slate-500">Add returns for at least <strong class="font-semibold">two different tax years</strong> to enable side-by-side comparison.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- PROFILE-3 Documents -->
+  <section class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-4 justify-between">
+      <span class="font-bold text-sm text-slate-700">Documents</span>
+      <div class="flex flex-wrap gap-3">
+        <select id="doc-filter-year" class="text-sm rounded-lg border border-slate-200 px-2 py-1.5 bg-white">
+          <option value="">All years</option>
+          {% for y in doc_year_options %}<option value="{{ y }}">TY{{ y }}</option>{% endfor %}
+        </select>
+        <select id="doc-filter-type" class="text-sm rounded-lg border border-slate-200 px-2 py-1.5 bg-white">
+          <option value="">All types</option>
+          {% for t in doc_type_options %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-left text-xs text-slate-500 uppercase">
+        <tr>
+          <th class="px-5 py-2">TY</th>
+          <th class="py-2">Log</th>
+          <th class="py-2">Type</th>
+          <th class="py-2">File</th>
+          <th class="py-2">Uploaded</th>
+          <th class="py-2 pr-5"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100" id="client-docs-tbody">
+        {% for d in client_documents %}
+        <tr data-doc-row data-tax-year="{{ d.tax_year or '' }}" data-doc-type="{{ d.doc_type or '' }}">
+          <td class="px-5 py-2 font-mono">{% if d.tax_year is not none %}{{ d.tax_year }}{% else %}—{% endif %}</td>
+          <td class="py-2 font-mono text-slate-500">{{ d.log_number or '—' }}</td>
+          <td class="py-2">{{ d.doc_type or '—' }}</td>
+          <td class="py-2 truncate max-w-[12rem]" title="{{ d.original_filename or d.filename }}">{{ d.original_filename or d.filename }}</td>
+          <td class="py-2 text-slate-500 text-xs">{{ d.uploaded_at or '—' }}</td>
+          <td class="py-2 pr-5 whitespace-nowrap">
+            <a href="/return/{{ d.return_id }}/documents/{{ d.id }}/view" class="text-blue-600 hover:underline font-medium">Open</a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="px-5 py-6 text-slate-400">No uploaded documents.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <!-- PROFILE-4 Notes / activity -->
+  <section class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 font-bold text-sm text-slate-700">Notes & activity</div>
+    <ul class="max-h-[28rem] overflow-y-auto divide-y divide-slate-100">
+      {% for a in client_activity %}
+      <li class="px-5 py-3 text-sm hover:bg-slate-50/50">
+        <div class="flex items-start gap-3">
+          {% if a.kind == 'note' %}
+          <span class="shrink-0 text-xs font-bold uppercase text-amber-600 bg-amber-50 px-2 py-0.5 rounded mt-0.5">Note</span>
+          {% elif a.new_status %}
+          <span class="shrink-0 text-xs font-bold uppercase text-sky-600 bg-sky-50 px-2 py-0.5 rounded mt-0.5">Status</span>
+          {% else %}
+          <span class="shrink-0 text-xs font-bold uppercase text-slate-500 bg-slate-100 px-2 py-0.5 rounded mt-0.5">Event</span>
+          {% endif %}
+          <div class="flex-1 min-w-0">
+            <div class="text-xs text-slate-400">{{ a.at }} · {% if a.return_id %}<a href="/return/{{ a.return_id }}" class="text-blue-600 hover:underline">{{ a.title }}</a>{% else %}{{ a.title }}{% endif %}</div>
+            {% if a.body %}<div class="text-slate-700 mt-1 whitespace-pre-wrap">{{ a.body }}</div>{% endif %}
+          </div>
+        </div>
+      </li>
+      {% else %}
+      <li class="px-5 py-6 text-slate-400 text-sm">No notes or status history yet.</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+
+<script>
+(function () {
+  const ySel = document.getElementById("doc-filter-year");
+  const tSel = document.getElementById("doc-filter-type");
+  function applyFilters() {
+    const y = ySel && ySel.value;
+    const t = tSel && tSel.value;
+    document.querySelectorAll("[data-doc-row]").forEach(function (row) {
+      const ry = row.getAttribute("data-tax-year") || "";
+      const rt = row.getAttribute("data-doc-type") || "";
+      const okY = !y || ry === String(y);
+      const okT = !t || rt === t;
+      row.style.display = okY && okT ? "" : "none";
+    });
+  }
+  if (ySel) ySel.addEventListener("change", applyFilters);
+  if (tSel) tSel.addEventListener("change", applyFilters);
+
+  const saveBtn = document.getElementById("client-profile-save");
+  if (saveBtn) {
+    saveBtn.addEventListener("click", async function () {
+      const rid = parseInt(saveBtn.getAttribute("data-anchor-return"), 10);
+      if (!rid) return;
+      const fields = [
+        ["last_name", document.getElementById("prof-last-name")?.value ?? ""],
+        ["first_name", document.getElementById("prof-first-name")?.value ?? ""],
+        ["display_name", document.getElementById("prof-display-name")?.value ?? ""],
+        ["address", document.getElementById("prof-address")?.value ?? ""],
+        ["taxpayer_phone", document.getElementById("prof-phone")?.value ?? ""],
+        ["taxpayer_cell", document.getElementById("prof-cell")?.value ?? ""],
+        ["taxpayer_email", document.getElementById("prof-email")?.value ?? ""],
+        ["referred_by", document.getElementById("prof-referred")?.value ?? ""],
+      ];
+      const ref = document.getElementById("prof-referral-flag");
+      if (ref) fields.push(["referral_flag", ref.checked ? 1 : 0]);
+      const filing = document.getElementById("prof-filing");
+      if (filing) fields.push(["filing_status", filing.value || ""]);
+
+      saveBtn.disabled = true;
+      try {
+        for (const [fld, val] of fields) {
+          const resp = await _csrfFetch("/api/return/" + rid + "/field", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ field: fld, value: val }),
+          });
+          const data = await resp.json();
+          if (!data.success) throw new Error(data.error || fld);
+        }
+        window.location.reload();
+      } catch (e) {
+        alert(e.message || String(e));
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+  }
+})();
+</script>
+<script>
+(function () {
+  const CLIENT_ID = {{ client_id }};
+  const runBtn = document.getElementById("multi-year-run");
+  const pdfBtn = document.getElementById("multi-year-pdf");
+  const host = document.getElementById("multi-year-table-host");
+  const errEl = document.getElementById("multi-year-error");
+  const meta = document.getElementById("multi-year-meta");
+  if (!runBtn || !host) return;
+
+  let lastYearsAsc = null;
+
+  function selectedYearsAsc() {
+    const ys = Array.from(document.querySelectorAll(".multi-year-cb:checked"))
+      .map((c) => parseInt(c.value, 10))
+      .filter((n) => !Number.isNaN(n))
+      .sort((a, b) => a - b);
+    return ys;
+  }
+
+  function syncButtons() {
+    const n = document.querySelectorAll(".multi-year-cb:checked").length;
+    runBtn.disabled = n < 2 || n > 3;
+    if (pdfBtn) pdfBtn.disabled = !lastYearsAsc || lastYearsAsc.length < 2;
+  }
+
+  document.querySelectorAll(".multi-year-cb").forEach((cb) => {
+    cb.addEventListener("change", (e) => {
+      const picks = document.querySelectorAll(".multi-year-cb:checked");
+      if (picks.length > 3) {
+        e.target.checked = false;
+        return;
+      }
+      syncButtons();
+    });
+  });
+
+  function _cpEscHtml(s) {
+    if (s == null || s === "") return "";
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function fmtMoney(v) {
+    if (v == null) return "\u2014";
+    try {
+      return new Intl.NumberFormat(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(Number(v));
+    } catch (_) {
+      return String(v);
+    }
+  }
+
+  function render(payload) {
+    const cols = payload.columns || [];
+    const rowspec = payload.rows || [];
+    const docTypes = payload.document_types || [];
+    let thead =
+      '<thead><tr><th scope="col" class="sticky left-0 z-10 bg-slate-100 text-left text-xs font-bold text-slate-600 uppercase px-3 py-2 border border-slate-200 min-w-[14rem]">Field</th>';
+    cols.forEach((c) => {
+      let head = '<span class="font-mono">TY' + _cpEscHtml(String(c.tax_year)) + "</span>";
+      if (c.has_return && c.return_url) {
+        head =
+          '<a href="' +
+          _cpEscHtml(c.return_url) +
+          '" class="font-mono font-bold text-teal-700 hover:underline">TY' +
+          _cpEscHtml(String(c.tax_year)) +
+          "</a>";
+      }
+      thead +=
+        '<th scope="col" class="text-left text-xs font-bold uppercase px-3 py-2 border border-slate-200 bg-slate-50 min-w-[9.5rem]">' +
+        head +
+        "</th>";
+    });
+    thead += "</tr></thead>";
+
+    let body = "<tbody>";
+    rowspec.forEach(function (row) {
+      body +=
+        '<tr><th scope="row" class="sticky left-0 z-10 bg-white text-sm font-semibold text-slate-700 px-3 py-2 border border-slate-200">' +
+        _cpEscHtml(row.label) +
+        "</th>";
+      cols.forEach(function (c) {
+        let val = "";
+        const hlSpec = c.field_highlights && c.field_highlights[row.field];
+        const hl = hlSpec
+          ? " bg-amber-100 font-semibold text-amber-950"
+          : "";
+        const cellCls = "text-sm px-3 py-2 border border-slate-200 align-top " + hl;
+        if (!c.has_return) {
+          val = '<span class="text-slate-400">No return</span>';
+        } else if (row.field === "adjusted_gross_income") {
+          val = _cpEscHtml(fmtMoney(c.adjusted_gross_income));
+        } else if (row.field === "filing_status") {
+          val = _cpEscHtml(c.filing_status || "\u2014");
+        } else if (row.field === "refund_amount") {
+          val = _cpEscHtml(fmtMoney(c.refund_amount));
+        } else if (row.field === "balance_due") {
+          val = _cpEscHtml(fmtMoney(c.balance_due));
+        } else if (row.field === "preparer") {
+          val = _cpEscHtml(c.preparer_display || "\u2014");
+        }
+        body += '<td class="' + cellCls.trim() + '">' + val + "</td>";
+      });
+      body += "</tr>";
+    });
+
+    body +=
+      '<tr><th colspan="' +
+      (cols.length + 1) +
+      '" class="bg-slate-100 text-left text-xs font-bold uppercase text-slate-600 px-3 py-2 border border-slate-200">Documents on file</th></tr>';
+    docTypes.forEach(function (dtRow) {
+      const lbl = dtRow.label || dtRow.doc_type;
+      body +=
+        '<tr><th scope="row" class="sticky left-0 z-10 bg-white text-xs font-medium text-slate-600 px-3 py-1.5 border border-slate-200">' +
+        _cpEscHtml(String(lbl)) +
+        "</th>";
+      cols.forEach(function (c) {
+        let sym;
+        let cls = "text-xs px-3 py-1.5 border border-slate-200 text-center ";
+        if (!c.has_return) {
+          sym = "\u2014";
+          cls += "text-slate-400";
+        } else {
+          const got = (c.documents_received || {})[dtRow.doc_type];
+          sym = got ? "Received" : "Missing";
+          cls += got ? " text-emerald-800 font-medium" : " bg-rose-50 text-rose-800 font-semibold";
+        }
+        body += '<td class="' + cls.trim() + '">' + sym + "</td>";
+      });
+      body += "</tr>";
+    });
+
+    body +=
+      '<tr><th scope="row" class="sticky left-0 z-10 bg-white text-xs font-medium text-slate-600 px-3 py-1.5 border border-slate-200">Missing-doc checklist</th>';
+    cols.forEach(function (c) {
+      let txt;
+      const cls =
+        "text-xs px-3 py-1.5 border border-slate-200 text-slate-700 align-top";
+      if (!c.has_return) txt = "\u2014";
+      else {
+        const mi = c.missing_doc_items || [];
+        txt = mi.length ? _cpEscHtml(mi.join("; ")) : "None listed";
+      }
+      body += '<td class="' + cls + '">' + txt + "</td>";
+    });
+    body += "</tr>";
+    body += "</tbody>";
+    host.innerHTML = '<table class="w-full border-collapse">' + thead + body + "</table>";
+  }
+
+  runBtn.addEventListener("click", async function () {
+    const asc = selectedYearsAsc();
+    if (asc.length < 2 || asc.length > 3) return;
+    if (errEl) errEl.classList.add("hidden");
+    host.innerHTML = '<p class="text-sm text-slate-400 px-2 py-4">Loading\u2026</p>';
+    runBtn.disabled = true;
+    try {
+      const qs = "?years=" + encodeURIComponent(asc.join(","));
+      const r = await _csrfFetch("/api/clients/" + CLIENT_ID + "/years" + qs);
+      const d = await _authJson(r);
+      lastYearsAsc = asc.slice().sort(function (a, b) {
+        return a - b;
+      });
+      if (pdfBtn) pdfBtn.disabled = asc.length < 2;
+      const th = d.thresholds || {};
+      if (meta) {
+        meta.textContent =
+          "YoY highlight rules vs next-older TY in selection: filing status/preparer changed; AGI pct change >= " +
+          (th.agi_percent != null ? th.agi_percent : "?") +
+          "%; refund delta >= $" +
+          (th.refund_abs != null ? th.refund_abs : "?") +
+          "; IRS balance delta >= $" +
+          (th.balance_abs != null ? th.balance_abs : "?") +
+          ".";
+        meta.classList.remove("hidden");
+      }
+      render(d);
+    } catch (e) {
+      host.innerHTML = "";
+      if (errEl) {
+        errEl.textContent = e && e.message ? e.message : "Comparison failed.";
+        errEl.classList.remove("hidden");
+      }
+      lastYearsAsc = null;
+      if (pdfBtn) pdfBtn.disabled = true;
+    } finally {
+      syncButtons();
+    }
+  });
+
+  if (pdfBtn) {
+    pdfBtn.addEventListener("click", function () {
+      if (!lastYearsAsc || lastYearsAsc.length < 2) return;
+      const qs =
+        "?years=" + encodeURIComponent(lastYearsAsc.slice().sort(function (a, b) { return a - b; }).join(","));
+      window.open("/api/clients/" + CLIENT_ID + "/years.pdf" + qs, "_blank");
+    });
+  }
+
+  syncButtons();
+})();
+</script>
+{% endblock %}

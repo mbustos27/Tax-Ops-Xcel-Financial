@@ -3,6 +3,7 @@ from pathlib import Path
 # All paths are absolute, anchored to the taxops/ directory itself.
 # This ensures the importer works regardless of which directory you run
 # `python main.py` from.
+import logging
 import os
 from collections.abc import MutableMapping
 
@@ -104,6 +105,91 @@ ERROR_DIR     = str(_HERE / "data" / "error")
 # "demo" shows a banner in the UI; anything else is production
 APP_ENV = os.environ.get("TAXOPS_ENV", "production").lower()
 
+# PROD-2 — rotating JSON logs + level (see logging_config.configure_logging).
+_ll = os.environ.get("TAXOPS_LOG_LEVEL", "INFO").strip().upper()
+LOG_LEVEL_STR = _ll if _ll in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") else "INFO"
+LOG_LEVEL_INT = getattr(logging, LOG_LEVEL_STR, logging.INFO)
+
+_log_json_raw = (os.environ.get("TAXOPS_LOG_JSON_PATH") or "").strip()
+LOG_JSON_PATH = Path(_log_json_raw) if _log_json_raw else None
+
+try:
+    _log_mb = int(os.environ.get("TAXOPS_LOG_JSON_MAX_MB", "50"))
+except ValueError:
+    _log_mb = 50
+LOG_JSON_MAX_BYTES = max(1, _log_mb) * 1024 * 1024
+
+try:
+    LOG_JSON_BACKUP_COUNT = int(os.environ.get("TAXOPS_LOG_JSON_BACKUPS", "10"))
+except ValueError:
+    LOG_JSON_BACKUP_COUNT = 10
+LOG_JSON_BACKUP_COUNT = max(0, LOG_JSON_BACKUP_COUNT)
+
+_lc = os.environ.get("TAXOPS_LOG_CONSOLE", "true").lower()
+LOG_CONSOLE_ENABLED = _lc in ("true", "1", "yes", "on")
+
+# PROD-3 — GET /health version string (CI/NSSM can set explicit release label).
+_RELEASE_VERSION_CACHED: str | None = None
+
+
+def taxops_release_version() -> str:
+    """``TAXOPS_VERSION`` overrides; otherwise short git SHA when ``.git`` exists; else ``unknown``."""
+    global _RELEASE_VERSION_CACHED
+    if _RELEASE_VERSION_CACHED is not None:
+        return _RELEASE_VERSION_CACHED
+    tagged = os.environ.get("TAXOPS_VERSION", "").strip()
+    if tagged:
+        _RELEASE_VERSION_CACHED = tagged
+        return _RELEASE_VERSION_CACHED
+    if not (_HERE.parent / ".git").exists():
+        _RELEASE_VERSION_CACHED = "unknown"
+        return _RELEASE_VERSION_CACHED
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(_HERE.parent), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        out = proc.stdout.strip() if proc.stdout else ""
+        _RELEASE_VERSION_CACHED = out if proc.returncode == 0 and out else "unknown"
+    except (OSError, subprocess.TimeoutExpired):
+        _RELEASE_VERSION_CACHED = "unknown"
+    return _RELEASE_VERSION_CACHED
+
+
+def taxops_asset_cache_version() -> str:
+    """Token for ``?v=`` on static JS/CSS URLs (CACHE bust / GitHub #141).
+
+    Precedence:
+
+    1. ``TAXOPS_APP_VERSION`` — bump this on each deploy when shipping static-only
+       changes without changing ``TAXOPS_VERSION`` or git revision.
+    2. ``taxops_release_version()`` — ``TAXOPS_VERSION`` env, else short git SHA.
+    3. If that resolves to ``unknown`` (zip deploy without ``.git``), use max
+       mtime (ns) of bundled static files under ``taxops/static/`` so refreshes
+       still change when ``app.js`` / ``app.css`` / ``tw.min.css`` change.
+    """
+    tag = os.environ.get("TAXOPS_APP_VERSION", "").strip()
+    if tag:
+        return tag
+    ver = taxops_release_version()
+    if ver != "unknown":
+        return ver
+    try:
+        mt = 0
+        for rel in ("static/app.js", "static/app.css", "static/tw.min.css"):
+            p = _HERE / rel
+            if p.is_file():
+                mt = max(mt, p.stat().st_mtime_ns)
+        return f"m{mt}" if mt else "0"
+    except OSError:
+        return "0"
+
+
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 # Default Ollama tag for any code path that does not pick a model explicitly
@@ -147,7 +233,7 @@ CHAT_TRAINING_LOG_PATH = Path(
     os.environ.get("CHAT_TRAINING_LOG_PATH", str(_HERE / "data" / "ai_chat_staff_queries.jsonl"))
 )
 
-# Document extraction — model tags must exist on `ollama list` (see `.env.example`).
+
 OLLAMA_EXTRACT_MODEL_TEXT = os.environ.get(
     "OLLAMA_EXTRACT_MODEL_TEXT",
 ) or OLLAMA_MODEL
@@ -161,14 +247,32 @@ OLLAMA_EXTRACT_TIMEOUT_TEXT = int(
     os.environ.get("OLLAMA_EXTRACT_TIMEOUT_TEXT", "90")
 )
 OLLAMA_EXTRACT_TIMEOUT_VISION = int(
-    os.environ.get("OLLAMA_EXTRACT_TIMEOUT_VISION", "240")
+    os.environ.get("OLLAMA_EXTRACT_TIMEOUT_VISION", "180")
 )
 
 DOCUMENTS_BASE_PATH = os.environ.get("DOCUMENTS_BASE_PATH", str(_HERE / "documents"))
 
+# MULTIYEAR-3 — YoY highlight thresholds for GET /api/clients/<id>/years
+def _mf_env(name: str, default: str) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return float(default)
+
+
+MULTIYEAR_AGI_PERCENT_THRESHOLD = _mf_env("TAXOPS_MULTIYEAR_AGI_PCT", "10")
+MULTIYEAR_REFUND_ABS_THRESHOLD = _mf_env("TAXOPS_MULTIYEAR_REFUND_ABS", "500")
+MULTIYEAR_BALANCE_ABS_THRESHOLD = _mf_env("TAXOPS_MULTIYEAR_BALANCE_ABS", "500")
+
 # DOC-6 — Drake Documents staging root on this machine (Working/Archive Cabinet data path).
 # Blank = POST /api/return/<id>/sync-to-drake returns 400. File copy only; no Drake API.
 DRAKE_DOCUMENTS_PATH = (os.environ.get("DRAKE_DOCUMENTS_PATH") or "").strip()
+
+# Drake Documents folder structure prep — DOC-6 (mirror TaxYear / LastName_ReturnID for future sync).
+# Separate from ``DRAKE_DOCUMENTS_PATH`` (bulk staging + manifest copy).
+DRAKE_DOCUMENTS_BASE = (os.environ.get("DRAKE_DOCUMENTS_BASE") or "").strip()
+_DRAKE_FOLDER_EN = os.environ.get("DRAKE_FOLDER_STRUCTURE_ENABLED", "false").lower()
+DRAKE_FOLDER_STRUCTURE_ENABLED = _DRAKE_FOLDER_EN == "true"
 
 # Email watcher (IMAP) — leave IMAP_HOST blank to disable
 IMAP_HOST          = os.environ.get("IMAP_HOST", "")
@@ -177,10 +281,35 @@ IMAP_USER          = os.environ.get("IMAP_USER", "")
 IMAP_PASS          = os.environ.get("IMAP_PASS", "")
 IMAP_POLL_INTERVAL = int(os.environ.get("IMAP_POLL_INTERVAL", 120))
 IMAP_FOLDER        = os.environ.get("IMAP_FOLDER", "INBOX")
-# Set to true to log what would be marked as read without touching Gmail
+
+# Comma-separated list of folders to poll when USE_GMAIL_CATEGORIES is false.
+# Folder names with spaces are supported (e.g. "TAX DOCUMENTS FROM CLIENTS").
+IMAP_FOLDERS: list[str] = [
+    f.strip()
+    for f in os.environ.get("IMAP_FOLDERS", IMAP_FOLDER).split(",")
+    if f.strip()
+]
+
+# Domain(s) the office sends from — emails arriving from these are self-sent.
+# Auto-derived from IMAP_USER; extend with OWN_EMAIL_DOMAINS env var (comma-separated).
+_imap_own_domain   = IMAP_USER.split("@")[-1].lower() if "@" in IMAP_USER else ""
+_extra_own         = os.environ.get("OWN_EMAIL_DOMAINS", "")
+OWN_EMAIL_DOMAINS: frozenset = frozenset(
+    d.strip().lower()
+    for d in ([_imap_own_domain] + _extra_own.split(","))
+    if d.strip()
+)
+# Dry-run: log what the mail watcher would do without touching any IMAP state.
 IMAP_DRY_RUN: bool = os.environ.get("IMAP_DRY_RUN", "false").lower() == "true"
-# When false, mail watcher never adds \\Seen — emails stay unread in the mailbox (still processes).
+# POLICY: TaxOps never sets or clears \Seen on any message.  IMAP_MARK_AS_READ
+# and IMAP_PRESERVE_UNREAD are retained for config-file backward compatibility
+# but have no effect — _mark_read() is never called anywhere in the codebase.
 IMAP_MARK_AS_READ: bool = os.environ.get("IMAP_MARK_AS_READ", "true").lower() == "true"
+# Part 5: max consecutive retry attempts before an email is permanently skipped.
+IMAP_MAX_RETRIES: int = int(os.environ.get("IMAP_MAX_RETRIES", "3"))
+# Retained for backward compat — no longer gates any behavior.  DB log dedup
+# (email_processing_log) runs unconditionally on every poll.
+IMAP_PRESERVE_UNREAD: bool = os.environ.get("IMAP_PRESERVE_UNREAD", "false").lower() == "true"
 
 # Ollama HTTP timeout for mail-watcher LLM calls (name extraction, domain classify)
 MAIL_WATCHER_LLM_TIMEOUT = int(os.environ.get("MAIL_WATCHER_LLM_TIMEOUT", "45"))
@@ -188,6 +317,15 @@ MAIL_WATCHER_LLM_TIMEOUT = int(os.environ.get("MAIL_WATCHER_LLM_TIMEOUT", "45"))
 # Fuzzy client match minimum for routing email attachments (name_matcher ACCEPT_THRESHOLD is 88).
 # Lower values attach more aggressively — verify Office tolerance before lowering below ~80.
 MAIL_WATCHER_CLIENT_MATCH_MIN_SCORE = int(os.environ.get("MAIL_WATCHER_CLIENT_MATCH_MIN_SCORE", "82"))
+
+# When false (default): image files (.jpg, .jpeg, .png) skip the vision model entirely.
+# Images are saved to the return and staff tag them manually.
+# Set true only when Ollama has enough resources for concurrent vision requests.
+EXTRACTOR_VISION_ENABLED: bool = os.environ.get("EXTRACTOR_VISION_ENABLED", "false").lower() == "true"
+
+# EMAIL-7: matches with score >= MIN_SCORE but < LOW_CONF_THRESHOLD go to pending_review
+# instead of auto-attaching; staff confirms/rejects from Email Review → Pending Review.
+MAIL_LOW_CONF_THRESHOLD = int(os.environ.get("MAIL_LOW_CONF_THRESHOLD", "88"))
 
 # Gmail exposes its tab categories as IMAP folders.
 # Each folder is mapped to a handling strategy:
@@ -317,6 +455,104 @@ PERSONAL_EMAIL_DOMAINS: frozenset = frozenset({
     "xcelfinancial.com",
 })
 
+# Client business domains — unique domains that belong to real clients and will
+# never appear in a generic spam training set.  Emails from these domains bypass
+# the ML classifier entirely and go straight to LLM evaluation.  After the first
+# successful attachment save, the domain is auto-boosted to cache so subsequent
+# emails hit the cache layer (Layer 5) and skip both ML and LLM.
+#
+# Populated via IMAP_CLIENT_HINT_DOMAINS env var (comma-separated).
+# Example: IMAP_CLIENT_HINT_DOMAINS=olavictory.org,coronabrosinstall.com,orealtyllc.com
+CLIENT_HINT_DOMAINS: frozenset = frozenset(
+    d.strip().lower()
+    for d in os.environ.get("IMAP_CLIENT_HINT_DOMAINS", "").split(",")
+    if d.strip()
+)
+
+# Asymmetric classifier confidence thresholds.
+# The penalty for a false-promotional classification (silently dropping a client
+# email) is much worse than a false-client classification (staff reviews an extra
+# email).  Promotional therefore requires higher confidence before being accepted.
+# Below either threshold the result is discarded and the email falls through to LLM.
+CLASSIFIER_PROMOTIONAL_THRESHOLD: float = float(
+    os.environ.get("CLASSIFIER_PROMOTIONAL_THRESHOLD", "0.80")
+)
+CLASSIFIER_CLIENT_THRESHOLD: float = float(
+    os.environ.get("CLASSIFIER_CLIENT_THRESHOLD", "0.65")
+)
+
+# ── INTAKE-8: Auto-discount for new client intakes ───────────────────────────
+# Dollar amount automatically applied as discount_amount on every new intake.
+# Set to 0 to disable. Configurable without a code change.
+INTAKE_AUTO_DISCOUNT: int = int(os.environ.get("INTAKE_AUTO_DISCOUNT", "20"))
+INTAKE_SUGGESTED_UPCHARGE_PCT: int = int(os.environ.get("INTAKE_SUGGESTED_UPCHARGE_PCT", "8"))
+
+# ── ACCOUNTING-2: Receipt OCR → QuickBooks categorization ────────────────────
+# Ollama vision model for receipt OCR (defaults to the existing extraction vision model).
+ACCOUNTING_VISION_MODEL: str = (
+    os.environ.get("OLLAMA_VISION_MODEL") or os.environ.get("OLLAMA_EXTRACT_MODEL_VISION", "llama3.2-vision")
+)
+ACCOUNTING_OCR_TIMEOUT: int = int(os.environ.get("ACCOUNTING_OCR_TIMEOUT", "180"))
+
+# QuickBooks export format: "csv" (QB Online) or "iif" (QB Desktop legacy).
+QB_EXPORT_MODE: str = (os.environ.get("QB_EXPORT_MODE") or "csv").lower()
+
+# Path to Chart of Accounts CSV (required for COA matching; optional at startup).
+COA_CSV_PATH: str = (os.environ.get("COA_CSV_PATH") or "").strip()
+
+# Path to historical transactions CSV (optional; used to seed embedding quality).
+HISTORY_CSV_PATH: str = (os.environ.get("HISTORY_CSV_PATH") or "").strip()
+
+# Embedding confidence bands: score >= HIGH → "high"; >= MEDIUM → "medium"; else "low".
+def _acc_float(name: str, default: str) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return float(default)
+
+ACCOUNTING_CONFIDENCE_HIGH: float   = _acc_float("ACCOUNTING_CONFIDENCE_HIGH", "0.80")
+ACCOUNTING_CONFIDENCE_MEDIUM: float = _acc_float("ACCOUNTING_CONFIDENCE_MEDIUM", "0.50")
+
+# Max retry attempts before receipt_queue item is permanently failed.
+ACCOUNTING_MAX_ATTEMPTS: int = int(os.environ.get("ACCOUNTING_MAX_ATTEMPTS", "3"))
+
+# ── RBAC ─────────────────────────────────────────────────────────────────────
+ROLE_HIERARCHY: dict[str, int] = {"staff": 0, "preparer": 1, "admin": 2}
+
+
+def _parse_taxops_users_map() -> dict[str, dict]:
+    """Parse TAXOPS_USERS into a lookup dict keyed by username.
+
+    Format: ``user:password:role;user2:password2:role2``
+    Falls back to TAXOPS_USER / TAXOPS_PASS as a single admin account so
+    existing single-user deployments that have not set TAXOPS_USERS continue
+    to work unchanged.
+    """
+    raw = (os.environ.get("TAXOPS_USERS") or "").strip()
+    result: dict[str, dict] = {}
+    if raw:
+        for entry in raw.split(";"):
+            entry = entry.strip()
+            if not entry:
+                continue
+            parts = entry.split(":", 2)
+            if len(parts) != 3:
+                continue
+            username, password, role = parts[0].strip(), parts[1].strip(), parts[2].strip().lower()
+            if role not in ROLE_HIERARCHY:
+                role = "staff"
+            if username:
+                result[username] = {"password": password, "role": role}
+    if not result:
+        u = (os.environ.get("TAXOPS_USER") or "").strip()
+        p = (os.environ.get("TAXOPS_PASS") or "").strip()
+        if u and p:
+            result[u] = {"password": p, "role": "admin"}
+    return result
+
+
+TAXOPS_USERS_MAP: dict[str, dict] = _parse_taxops_users_map()
+
 MANUAL_LOG_SOURCE = "MANUAL_LOG_IMPORT"
 DRAKE_SOURCE = "DRAKE_IMPORT"
 CSMDATA_SOURCE = "CSMDATA_IMPORT"
@@ -334,6 +570,11 @@ DRAKE_STATUS_MAP: dict[str, str] = {
     "EXTENSION":                    "PROCESSING",
     "EF REJECTED":                  "PROCESSING",
     "EF REJECT":                    "PROCESSING",
+    "EF PENDING":                   "PROCESSING",
+    # Prior-year carryforward — data rolled from prior season, needs work
+    "UPDATED FROM 2024":            "PROCESSING",
+    "UPDATED FROM 2023":            "PROCESSING",
+    "UPDATED FROM 2022":            "PROCESSING",
     # Drake "ready/printed" — prep done, client needs to sign before efiling
     "READY TO FILE":                "PICKUP",
     "READY TO PRINT":               "PICKUP",
@@ -367,6 +608,15 @@ DRAKE_TYPE_FORMS: dict[str, dict[str, int]] = {
     "990":     {"form_990_1041": 1},
     "1041":    {"form_990_1041": 1},
 }
+
+# ── AUDIT (AUDIT-2…AUDIT-7) ─────────────────────────────────────────────────
+_audit_on = (os.environ.get("AUDIT_LOGGING_ENABLED", "true") or "").lower()
+AUDIT_LOGGING_ENABLED = _audit_on in ("true", "1", "yes", "on")
+try:
+    AUDIT_RETENTION_YEARS_DEFAULT = int(os.environ.get("AUDIT_RETENTION_YEARS", "7"))
+except ValueError:
+    AUDIT_RETENTION_YEARS_DEFAULT = 7
+AUDIT_RETENTION_YEARS_DEFAULT = max(1, min(50, AUDIT_RETENTION_YEARS_DEFAULT))
 
 EXPECTED_HEADERS = [
     "LOG 2025",

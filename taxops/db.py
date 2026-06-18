@@ -6,12 +6,52 @@ from typing import Dict, List, Optional
 from config import DB_PATH
 from form_schema import CREATE_TABLE_FRAGMENTS_DOC7, get_form_alter_columns_by_table
 
+# DEBT-6: increment this integer whenever a new migration block is added to
+# _migrate_existing_tables.  The value is stored in app_settings and surfaced
+# via /health so ops can confirm a deploy applied all migrations.
+CURRENT_SCHEMA_VERSION = 5
+
 
 def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path or DB_PATH)
     conn.row_factory = sqlite3.Row
+    # SEC-4: WAL mode allows concurrent readers alongside a single writer — critical
+    # for the web process, audit writer, extractor worker, and mail watcher running
+    # simultaneously.  WAL is sticky on the file after the first connection sets it;
+    # subsequent connections still send the PRAGMA but it is a no-op.
+    conn.execute("PRAGMA journal_mode=WAL;")
+    # SEC-4: NORMAL is safe with WAL — it still fsync's the WAL checkpoint.
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    # SEC-4: wait up to 10 s instead of raising OperationalError immediately when
+    # the database is locked (e.g. audit writer holding a write transaction).
+    conn.execute("PRAGMA busy_timeout=10000;")
+    # SEC-4: keep temp tables and indices in memory — avoids temp-file I/O.
+    conn.execute("PRAGMA temp_store=MEMORY;")
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
+
+
+def get_schema_version(conn: sqlite3.Connection) -> int:
+    """DEBT-6: return the persisted schema version (0 if never set)."""
+    try:
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = 'schema_version'"
+        ).fetchone()
+        return int(row["value"]) if row else 0
+    except Exception:
+        return 0
+
+
+def set_schema_version(conn: sqlite3.Connection, version: int) -> None:
+    """DEBT-6: upsert the schema_version in app_settings."""
+    now_utc = __import__("time").strftime("%Y-%m-%dT%H:%M:%SZ", __import__("time").gmtime())
+    conn.execute(
+        """
+        INSERT INTO app_settings (key, value, updated_at) VALUES ('schema_version', ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+        """,
+        (str(version), now_utc),
+    )
 
 
 def init_db(conn: sqlite3.Connection) -> None:
@@ -223,6 +263,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           source            TEXT,
           file_path         TEXT NOT NULL,
           file_size_bytes   INTEGER,
+          file_hash         TEXT,
           uploaded_by       TEXT,
           uploaded_at       TEXT,
           notes             TEXT,
@@ -241,7 +282,7 @@ def init_db(conn: sqlite3.Connection) -> None:
           source          TEXT NOT NULL DEFAULT 'auto'
         );
 
-        CREATE TABLE IF NOT EXISTS email_sender_rules (
+        CREATE TABLE IF NOT EXISTS known_sender_rules (
           id          INTEGER PRIMARY KEY AUTOINCREMENT,
           domain      TEXT NOT NULL UNIQUE,
           rule_type   TEXT NOT NULL DEFAULT 'always_promotional',
@@ -303,6 +344,71 @@ def init_db(conn: sqlite3.Connection) -> None:
           expires_at            TEXT NOT NULL,
           hit_count             INTEGER NOT NULL DEFAULT 0
         );
+
+        -- AUDIT-1: unified app audit trail (JSON snapshots; user_id = login name until a users table exists)
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id      TEXT,
+          action       TEXT NOT NULL,
+          entity_type  TEXT NOT NULL,
+          entity_id    TEXT,
+          before_json  TEXT,
+          after_json   TEXT,
+          ip_address   TEXT,
+          created_at   TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key        TEXT PRIMARY KEY,
+          value      TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        -- ACCOUNTING-1: receipt OCR → QB categorization queue
+        -- Statuses: pending → processing → review → approved → rejected → exported
+        CREATE TABLE IF NOT EXISTS receipt_queue (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          return_document_id    INTEGER REFERENCES return_documents(id),
+          image_path            TEXT NOT NULL,
+          original_filename     TEXT,
+          status                TEXT NOT NULL DEFAULT 'pending',
+          ocr_raw               TEXT,
+          vendor                TEXT,
+          receipt_date          TEXT,
+          total_amount          REAL,
+          payment_method        TEXT,
+          line_items            TEXT,
+          category_candidates   TEXT,
+          suggested_category    TEXT,
+          suggested_account     TEXT,
+          confidence            TEXT,
+          approved_category     TEXT,
+          approved_account      TEXT,
+          reviewed_by           TEXT,
+          reviewed_at           TEXT,
+          review_notes          TEXT,
+          exported_at           TEXT,
+          export_file           TEXT,
+          error_message         TEXT,
+          attempts              INTEGER NOT NULL DEFAULT 0,
+          created_at            TEXT NOT NULL,
+          processed_at          TEXT
+        );
+
+        -- SEC-2: per-user accounts with hashed passwords.
+        -- user_id TEXT in audit_log refers to username here.
+        CREATE TABLE IF NOT EXISTS auth_users (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          username         TEXT NOT NULL UNIQUE,
+          password_hash    TEXT NOT NULL,
+          display_name     TEXT,
+          role             TEXT NOT NULL DEFAULT 'staff',
+          is_active        INTEGER NOT NULL DEFAULT 1,
+          created_at       TEXT NOT NULL,
+          last_login_at    TEXT,
+          failed_attempts  INTEGER NOT NULL DEFAULT 0,
+          locked_until     TEXT
+        );
         """
     )
     for _form_sql in CREATE_TABLE_FRAGMENTS_DOC7.values():
@@ -319,6 +425,32 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_efile_items_batch   ON efile_batch_items(batch_id);
         CREATE INDEX IF NOT EXISTS idx_efile_items_return  ON efile_batch_items(return_id);
         CREATE INDEX IF NOT EXISTS idx_ai_chat_common_exp ON ai_chat_common_answers(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at);
+
+        -- SEC-6: hot-path indexes confirmed missing via EXPLAIN QUERY PLAN
+        CREATE INDEX IF NOT EXISTS idx_return_docs_return   ON return_documents(return_id);
+        CREATE INDEX IF NOT EXISTS idx_return_docs_type     ON return_documents(return_id, doc_type);
+        CREATE INDEX IF NOT EXISTS idx_payments_return      ON payments(return_id);
+        CREATE INDEX IF NOT EXISTS idx_notes_return         ON notes(return_id);
+        CREATE INDEX IF NOT EXISTS idx_missing_docs_return  ON missing_docs(return_id);
+        CREATE INDEX IF NOT EXISTS idx_missing_docs_open    ON missing_docs(return_id, is_resolved);
+        CREATE INDEX IF NOT EXISTS idx_extraction_status    ON extraction_queue(status, created_at);
+        CREATE INDEX IF NOT EXISTS idx_extraction_return    ON extraction_queue(return_id);
+        -- DOC-HARD-2/3: fast lookup of permanently failed (dead-letter) items.
+        CREATE INDEX IF NOT EXISTS idx_extraction_failed    ON extraction_queue(status, attempts);
+        -- DOC-HARD-4: duplicate-detection lookup by content hash within a return.
+        CREATE INDEX IF NOT EXISTS idx_return_docs_hash     ON return_documents(return_id, file_hash);
+        -- ACCOUNTING-1: fast queue status scans.
+        CREATE INDEX IF NOT EXISTS idx_receipt_queue_status ON receipt_queue(status, created_at);
+        CREATE INDEX IF NOT EXISTS idx_receipt_queue_doc    ON receipt_queue(return_document_id);
+        CREATE INDEX IF NOT EXISTS idx_email_class_email    ON email_classifications(sender_email);
+        CREATE INDEX IF NOT EXISTS idx_email_class_domain   ON email_classifications(sender_domain);
+        CREATE INDEX IF NOT EXISTS idx_audit_log_user       ON audit_log(user_id);
+        CREATE INDEX IF NOT EXISTS idx_returns_status_year  ON returns(client_status, tax_year);
+        CREATE INDEX IF NOT EXISTS idx_returns_proc_year    ON returns(processor, tax_year);
+        CREATE INDEX IF NOT EXISTS idx_returns_updated_at   ON returns(updated_at);
+        CREATE INDEX IF NOT EXISTS idx_auth_users_username  ON auth_users(username);
         """
     )
     conn.commit()
@@ -394,6 +526,7 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             # pickup workflow
             "signatures_given INTEGER DEFAULT 0",
             "signatures_received INTEGER DEFAULT 0",
+            "adjusted_gross_income REAL",
         ],
         "payments": [
             "refund_amount REAL",
@@ -440,6 +573,11 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         "email_classifications": [
             "reviewed_missed INTEGER NOT NULL DEFAULT 0",
             "email_routed_ok INTEGER NOT NULL DEFAULT 0",
+            # EMAIL-6: fuzzy-match score (0–100) from name_matcher
+            "match_score INTEGER",
+            # EMAIL-7: matched client id; pending_review when score < ACCEPT_THRESHOLD
+            "matched_client_id INTEGER",
+            "match_status TEXT NOT NULL DEFAULT 'auto'",
         ],
         "import_batches": [
             "row_count INTEGER DEFAULT 0",
@@ -452,6 +590,15 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "updated_returns INTEGER DEFAULT 0",
             "events_created INTEGER DEFAULT 0",
             "notes_created INTEGER DEFAULT 0",
+        ],
+        "return_documents": [
+            "file_hash TEXT",
+        ],
+        "auth_users": [
+            # ONBOARD-1: forces password change on first login / after admin reset
+            "must_change_password INTEGER NOT NULL DEFAULT 0",
+            # ONBOARD-4: orientation screen shown exactly once after first password change
+            "has_seen_orientation INTEGER NOT NULL DEFAULT 0",
         ],
     }
 
@@ -466,6 +613,17 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
                     if "duplicate column" not in str(exc).lower():
                         raise
 
+    # Rename legacy email_sender_rules → known_sender_rules (DOC-3 epic name; one-time).
+    _rule_tables = [
+        r["name"]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name IN ('email_sender_rules', 'known_sender_rules')"
+        ).fetchall()
+    ]
+    if "email_sender_rules" in _rule_tables and "known_sender_rules" not in _rule_tables:
+        conn.execute("ALTER TABLE email_sender_rules RENAME TO known_sender_rules")
+
     # New-table migrations — safe to run on existing databases
     conn.execute(
         """
@@ -478,6 +636,7 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
           source            TEXT,
           file_path         TEXT NOT NULL,
           file_size_bytes   INTEGER,
+          file_hash         TEXT,
           uploaded_by       TEXT,
           uploaded_at       TEXT,
           notes             TEXT,
@@ -502,7 +661,7 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
     )
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS email_sender_rules (
+        CREATE TABLE IF NOT EXISTS known_sender_rules (
           id          INTEGER PRIMARY KEY AUTOINCREMENT,
           domain      TEXT NOT NULL UNIQUE,
           rule_type   TEXT NOT NULL DEFAULT 'always_promotional',
@@ -543,6 +702,28 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dashboard_saved_filters (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          filter_json TEXT NOT NULL,
+          is_default INTEGER NOT NULL DEFAULT 0,
+          is_shared INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_dash_saved_user ON dashboard_saved_filters(user_id)"
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_dash_saved_shared_default
+        ON dashboard_saved_filters(user_id, is_default)
+        """
+    )
     for _form_sql in CREATE_TABLE_FRAGMENTS_DOC7.values():
         conn.execute(_form_sql.strip())
     alter_map = get_form_alter_columns_by_table()
@@ -579,6 +760,117 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id      TEXT,
+          action       TEXT NOT NULL,
+          entity_type  TEXT NOT NULL,
+          entity_id    TEXT,
+          before_json  TEXT,
+          after_json   TEXT,
+          ip_address   TEXT,
+          created_at   TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key        TEXT PRIMARY KEY,
+          value      TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at)"
+    )
+    # SEC-6: hot-path indexes — safe to add on existing databases (IF NOT EXISTS)
+    for _idx_sql in (
+        "CREATE INDEX IF NOT EXISTS idx_return_docs_return   ON return_documents(return_id)",
+        "CREATE INDEX IF NOT EXISTS idx_return_docs_type     ON return_documents(return_id, doc_type)",
+        "CREATE INDEX IF NOT EXISTS idx_payments_return      ON payments(return_id)",
+        "CREATE INDEX IF NOT EXISTS idx_notes_return         ON notes(return_id)",
+        "CREATE INDEX IF NOT EXISTS idx_missing_docs_return  ON missing_docs(return_id)",
+        "CREATE INDEX IF NOT EXISTS idx_missing_docs_open    ON missing_docs(return_id, is_resolved)",
+        "CREATE INDEX IF NOT EXISTS idx_extraction_status    ON extraction_queue(status, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_extraction_return    ON extraction_queue(return_id)",
+        "CREATE INDEX IF NOT EXISTS idx_email_class_email    ON email_classifications(sender_email)",
+        "CREATE INDEX IF NOT EXISTS idx_email_class_domain   ON email_classifications(sender_domain)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_user       ON audit_log(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_returns_status_year  ON returns(client_status, tax_year)",
+        "CREATE INDEX IF NOT EXISTS idx_returns_proc_year    ON returns(processor, tax_year)",
+        "CREATE INDEX IF NOT EXISTS idx_returns_updated_at   ON returns(updated_at)",
+        "CREATE INDEX IF NOT EXISTS idx_auth_users_username  ON auth_users(username)",
+    ):
+        conn.execute(_idx_sql)
+    # SEC-2: per-user accounts — safe to run on existing databases
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auth_users (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          username         TEXT NOT NULL UNIQUE,
+          password_hash    TEXT NOT NULL,
+          display_name     TEXT,
+          role             TEXT NOT NULL DEFAULT 'staff',
+          is_active        INTEGER NOT NULL DEFAULT 1,
+          created_at       TEXT NOT NULL,
+          last_login_at    TEXT,
+          failed_attempts  INTEGER NOT NULL DEFAULT 0,
+          locked_until     TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_auth_users_username ON auth_users(username)"
+    )
+    # ACCOUNTING-1: receipt OCR queue — new-table migration for existing databases.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS receipt_queue (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          return_document_id    INTEGER REFERENCES return_documents(id),
+          image_path            TEXT NOT NULL,
+          original_filename     TEXT,
+          status                TEXT NOT NULL DEFAULT 'pending',
+          ocr_raw               TEXT,
+          vendor                TEXT,
+          receipt_date          TEXT,
+          total_amount          REAL,
+          payment_method        TEXT,
+          line_items            TEXT,
+          category_candidates   TEXT,
+          suggested_category    TEXT,
+          suggested_account     TEXT,
+          confidence            TEXT,
+          approved_category     TEXT,
+          approved_account      TEXT,
+          reviewed_by           TEXT,
+          reviewed_at           TEXT,
+          review_notes          TEXT,
+          exported_at           TEXT,
+          export_file           TEXT,
+          error_message         TEXT,
+          attempts              INTEGER NOT NULL DEFAULT 0,
+          created_at            TEXT NOT NULL,
+          processed_at          TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_receipt_queue_status ON receipt_queue(status, created_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_receipt_queue_doc ON receipt_queue(return_document_id)"
+    )
+    # DEBT-6: stamp the schema version so /health can confirm migrations ran.
+    set_schema_version(conn, CURRENT_SCHEMA_VERSION)
+    conn.commit()
 
 
 def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:

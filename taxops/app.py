@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import functools
 import os
 import threading
@@ -9,20 +10,49 @@ from datetime import date, datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flask import (
-    Flask, abort, current_app, flash, jsonify, redirect, render_template,
-    request, send_file, session, url_for,
+    Flask, abort, current_app, flash, g, jsonify, redirect, render_template,
+    request, Response, send_file, session, url_for,
 )
 
 import json
+import io
 import logging
+import math
+import secrets
+import shutil
 import sqlite3
 import tempfile
+import time
+from urllib.parse import urlencode
 
-from config import APP_ENV, DB_PATH
+import re as _re
+
+from config import (
+    APP_ENV,
+    DB_PATH,
+    DRAKE_FOLDER_STRUCTURE_ENABLED,
+    INTAKE_AUTO_DISCOUNT,
+    KNOWN_PROMOTIONAL_DOMAINS,
+    MASS_MAILING_PREFIXES,
+    MULTIYEAR_AGI_PERCENT_THRESHOLD,
+    MULTIYEAR_BALANCE_ABS_THRESHOLD,
+    MULTIYEAR_REFUND_ABS_THRESHOLD,
+    taxops_asset_cache_version,
+    taxops_release_version,
+)
+from logging_config import configure_logging
+
+configure_logging()
+
+from env_validation import validate_taxops_environment_and_exit
+
+validate_taxops_environment_and_exit()
+
 from csv_analyzer import analyze, iter_data_rows, normalize_status
-from db import get_connection, init_db
+from db import CURRENT_SCHEMA_VERSION, get_connection, get_schema_version, init_db
 from form_schema import FORM_INTEGER_COLUMNS, FORM_TABLE_INSERT_COLUMNS
 from merge_ops import merge_client_into
+from bulk_returns import bulk_apply_processor_changes, bulk_apply_status_changes
 from name_matcher import find_client as fuzzy_find_client, is_business, parse_name, _all_clients_cache
 from normalizer import normalize_date, normalize_currency, normalize_string, canonical_status, is_locked_status
 from preparer import (
@@ -31,6 +61,8 @@ from preparer import (
     preparer_filter_match_values,
     preparer_list_label,
 )
+import multiyear_comparison
+import season_rollover
 from source_compare import (
     discover_default_paths,
     list_csv_basenames,
@@ -38,6 +70,7 @@ from source_compare import (
     safe_resolve_csv,
 )
 from utils import (
+    get_drake_documents_path,
     get_return_documents_path,
     now,
     parse_iso_datetime,
@@ -48,22 +81,234 @@ from utils import (
 from mail_watcher import start_mail_watcher
 from extractor import start_extraction_worker
 from drake_documents_sync import sync_to_drake
-from config import KNOWN_PROMOTIONAL_DOMAINS, MASS_MAILING_PREFIXES
+
+_APP_START_MONOTONIC = time.monotonic()
 
 app = Flask(__name__)
+# CACHE / #142: never rely on intermediary caches honoring long TTL for send_file-backed responses.
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+# SEC-3: only reload templates in debug/dev mode — avoids unnecessary disk I/O in production.
+app.config["TEMPLATES_AUTO_RELOAD"] = app.debug
+# CACHE / #143: ``?v=`` on static URLs — resolved via taxops_asset_cache_version() (+ optional TAXOPS_APP_VERSION).
+app.config["APP_VERSION"] = taxops_asset_cache_version()
+
+# SEC-3: session cookie hardening + lifetime.
+# SESSION_COOKIE_SECURE is gated on TAXOPS_HTTPS_ENABLED because the office LAN
+# currently uses plain HTTP.  Set TAXOPS_HTTPS_ENABLED=true once a reverse proxy
+# or load balancer terminates TLS in front of this server.
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("TAXOPS_HTTPS_ENABLED", "false").lower() == "true",
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+)
+
+# SEC-5: cap incoming request bodies so a large upload cannot exhaust disk or
+# tie up Waitress threads.  50 MB covers the largest realistic tax document
+# bundles (multi-page PDF + photos).  Overridable via TAXOPS_MAX_UPLOAD_MB.
+_max_mb = max(1, min(int(os.environ.get("TAXOPS_MAX_UPLOAD_MB", "50")), 500))
+app.config["MAX_CONTENT_LENGTH"] = _max_mb * 1024 * 1024
+
+# SEC-1: CSRF protection via Flask-WTF.
+# WTF_CSRF_SECRET_KEY defaults to Flask's secret_key when not set separately — that is intentional here.
+# TESTING mode disables enforcement automatically (set app.config["WTF_CSRF_ENABLED"] = False in tests).
+from flask_wtf.csrf import CSRFProtect, CSRFError
+_csrf = CSRFProtect(app)
+
+# ── I18N-1: Flask-Babel ───────────────────────────────────────────────────────
+from flask_babel import Babel, gettext as _t
+
+_SUPPORTED_LOCALES = ("en", "es_MX")
+
+
+def _get_locale() -> str:
+    locale = session.get("locale", "en")
+    return locale if locale in _SUPPORTED_LOCALES else "en"
+
+
+babel = Babel(app, locale_selector=_get_locale)
+
+app.config["BABEL_DEFAULT_LOCALE"] = "en"
+app.config["BABEL_TRANSLATION_DIRECTORIES"] = "translations"
 
 from ai_routes import ai as ai_blueprint
 app.register_blueprint(ai_blueprint)
+
+from audit_service import (
+    audit_queue_depth,
+    fetch_audit_entry,
+    format_json_diff_styled_chunks,
+    get_audit_retention_years,
+    purge_audit_logs_older_than,
+    query_audit_logs,
+    register_audit_hooks,
+    sanitize_filename_audit,
+    set_audit_retention_years,
+    start_audit_writer,
+    write_audit_export_csv,
+)
+
+register_audit_hooks(app)
+start_audit_writer()   # REL-2: single long-lived writer thread
+
+# DEBT-1: register extracted blueprints.
+from routes.documents import documents_bp
+from routes.email_review import email_review_bp
+from routes.accounting import accounting_bp
+from routes.users import users_bp
+from routes.reports import reports_bp
+app.register_blueprint(documents_bp)
+app.register_blueprint(email_review_bp)
+app.register_blueprint(accounting_bp)
+app.register_blueprint(users_bp)
+app.register_blueprint(reports_bp)
+
+
+# REL-4: Flask g-based DB helper — lets routes use get_db() and have the connection
+# closed automatically at teardown, as a safer alternative to manual try/finally.
+def get_db():
+    """Return a per-request SQLite connection stored on Flask g (auto-closed at teardown)."""
+    if not hasattr(g, "db"):
+        g.db = get_connection()
+    return g.db
+
+
+@app.teardown_appcontext
+def _close_db(exc):  # noqa: ARG001
+    db = g.pop("db", None)
+    if db is not None:
+        db.close()
+
 
 app.jinja_env.globals["preparer_list_label"] = preparer_list_label
 
 # Secret key for signing session cookies.
 # Set TAXOPS_SECRET env-var in production; a random fallback is fine for dev.
-app.secret_key = os.environ.get("TAXOPS_SECRET", os.urandom(24))
+_secret = os.environ.get("TAXOPS_SECRET")
+if not _secret:
+    _secret_file = os.path.join(os.path.dirname(__file__), ".secret_key")
+    if os.path.exists(_secret_file):
+        _secret = open(_secret_file, "rb").read()
+    else:
+        _secret = os.urandom(32)
+        with open(_secret_file, "wb") as _f:
+            _f.write(_secret)
+app.secret_key = _secret
 
-# Login credentials — override via environment variables.
+# SEC-2: Legacy env-var credentials kept only for the bootstrap seed and test fixtures.
+# Production auth now goes through auth_users (check_password_hash).
+# These are intentionally preserved so that an existing deployment that hasn't yet
+# been bootstrapped can still log in via the fallback path below.
 _LOGIN_USER = os.environ.get("TAXOPS_USER", "info")
 _LOGIN_PASS = os.environ.get("TAXOPS_PASS", "2703Tax")
+
+
+# ── SEC-2: per-user auth helpers ─────────────────────────────────────────────
+
+from werkzeug.security import check_password_hash, generate_password_hash
+
+
+def _auth_users_exist(conn) -> bool:
+    """Return True if the auth_users table has at least one active user row."""
+    row = conn.execute("SELECT 1 FROM auth_users WHERE is_active = 1 LIMIT 1").fetchone()
+    return row is not None
+
+
+def bootstrap_auth_user(conn) -> bool:
+    """SEC-2: If auth_users is empty, seed one admin from TAXOPS_USER/TAXOPS_PASS env vars.
+
+    Returns True if a new row was created, False if the table already had users.
+    Safe to call every startup — is a no-op once any row exists.
+    """
+    if _auth_users_exist(conn):
+        return False
+    username = (os.environ.get("TAXOPS_USER") or "").strip()
+    password = os.environ.get("TAXOPS_PASS") or ""
+    if not username or not password:
+        return False
+    hashed = generate_password_hash(password)
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO auth_users (username, password_hash, display_name, role, is_active, created_at)
+        VALUES (?, ?, ?, 'admin', 1, ?)
+        """,
+        (username, hashed, username, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())),
+    )
+    conn.commit()
+    return True
+
+
+# SEC-7: max consecutive failures before account is locked.
+# Set TAXOPS_LOGIN_MAX_ATTEMPTS in the environment to change the threshold.
+# Lockout duration is TAXOPS_LOGIN_LOCKOUT_MINUTES (default 15).
+_LOGIN_MAX_ATTEMPTS: int = max(1, int(os.environ.get("TAXOPS_LOGIN_MAX_ATTEMPTS", "5")))
+_LOGIN_LOCKOUT_MINUTES: int = max(1, int(os.environ.get("TAXOPS_LOGIN_LOCKOUT_MINUTES", "15")))
+
+# Sentinel returned by _authenticate_user to distinguish lockout from bad credentials.
+_AUTH_LOCKED = object()
+
+
+def _authenticate_user(username: str, password: str):
+    """SEC-2/SEC-7: Look up username in auth_users, enforce lockout, verify hash.
+
+    Returns:
+      - dict with 'username'/'display_name'/'role' on success
+      - _AUTH_LOCKED sentinel when the account is currently locked
+      - None on bad credentials or unknown user
+
+    Falls back to env-var plaintext comparison ONLY when the table has no active
+    users yet (bootstrap not yet run), so existing deployments aren't locked out.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM auth_users WHERE username = ? AND is_active = 1 LIMIT 1",
+            (username,),
+        ).fetchone()
+        if row:
+            now_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+            # SEC-7: check existing lockout before verifying the password.
+            if row["locked_until"] and row["locked_until"] > now_utc:
+                return _AUTH_LOCKED
+
+            if check_password_hash(row["password_hash"], password):
+                conn.execute(
+                    "UPDATE auth_users SET last_login_at = ?, failed_attempts = 0, locked_until = NULL WHERE id = ?",
+                    (now_utc, row["id"]),
+                )
+                conn.commit()
+                return {
+                    "username": row["username"],
+                    "display_name": row["display_name"] or row["username"],
+                    "role": row["role"],
+                    "must_change_password": int(row["must_change_password"] or 0),
+                }
+            else:
+                new_attempts = (row["failed_attempts"] or 0) + 1
+                locked_until = None
+                if new_attempts >= _LOGIN_MAX_ATTEMPTS:
+                    import datetime as _dt
+                    locked_until = (
+                        _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(minutes=_LOGIN_LOCKOUT_MINUTES)
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                conn.execute(
+                    "UPDATE auth_users SET failed_attempts = ?, locked_until = ? WHERE id = ?",
+                    (new_attempts, locked_until, row["id"]),
+                )
+                conn.commit()
+                return None
+
+        # Fallback: no users in table yet — accept TAXOPS_USERS_MAP credentials.
+        if not _auth_users_exist(conn):
+            import hmac as _hmac
+            from config import TAXOPS_USERS_MAP
+            entry = TAXOPS_USERS_MAP.get(username)
+            if entry and _hmac.compare_digest(entry["password"], password):
+                return {"username": username, "display_name": username, "role": entry["role"]}
+        return None
+    finally:
+        conn.close()
 
 
 def privacy_mode_enabled() -> bool:
@@ -105,32 +350,103 @@ def _mask_client_payload(payload: dict) -> dict:
     return masked
 
 
-def login_required(f):
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        if not session.get("logged_in"):
-            # Fetch/XHR callers follow redirects into the HTML login page; that hides
-            # session expiry and spams logs with 302 + /login. Return JSON instead.
-            p = request.path or ""
-            if p.startswith("/api/") or p.startswith("/ai/"):
-                return jsonify({"error": "login_required"}), 401
-            return redirect(url_for("login", next=request.path))
-        return f(*args, **kwargs)
-    return wrapper
+# DEBT-1: auth helpers live in auth.py to avoid circular imports with blueprints.
+from auth import login_required, role_required, view_only_for  # noqa: E402 (import after path setup)
 
 
 @app.after_request
 def _security_headers(response):
-    """Add basic security headers — this app is internal-only."""
+    """SEC-3 / DEBT-5: security response headers — this app is internal-only (LAN).
+
+    Cache-Control strategy (DEBT-5):
+    - Versioned /static/ assets (?v=... query param added by taxops_asset_cache_version)
+      get "public, max-age=31536000, immutable" so browsers re-use them across sessions.
+    - All other responses (HTML pages, API JSON) stay "no-store" to prevent sensitive data
+      from being served from browser cache.
+
+    CSP notes:
+    - 'unsafe-inline' for script/style covers inline <script> blocks in templates.
+      A future hardening pass (nonce-based CSP) can eliminate it — tracked in DEBT-2.
+    - object-src 'none', base-uri 'self', form-action 'self' and
+      frame-ancestors 'none' provide the highest-value protections even with
+      'unsafe-inline' present.
+    - img-src includes data: and blob: for document upload previews.
+    """
     response.headers["X-Frame-Options"]        = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"]        = "same-origin"
-    response.headers["Cache-Control"]          = "no-store"
+
+    # DEBT-5: versioned static assets get a long-lived immutable cache.
+    # Flask's test_request_context may not have request available, guard safely.
+    try:
+        is_static = request.path.startswith("/static/") and "v=" in request.query_string.decode("ascii", errors="replace")
+    except RuntimeError:
+        is_static = False
+
+    if is_static:
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    else:
+        response.headers["Cache-Control"] = "no-store"
+
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none';"
+    )
     return response
+
+
+@app.errorhandler(403)
+def _forbidden(e):
+    return render_template("403.html", role=session.get("role", "")), 403
+
+
+@app.errorhandler(CSRFError)
+def _csrf_error(e: CSRFError):
+    """SEC-1: return a clean JSON/HTML error instead of Werkzeug 400 page."""
+    p = request.path or ""
+    if p.startswith("/api/") or p.startswith("/ai/"):
+        return jsonify({"error": _t("CSRF token missing or invalid. Reload the page and try again.")}), 400
+    return "<h1>400 Bad Request</h1><p>CSRF token missing or invalid. Please go back and try again.</p>", 400
+
+
+from werkzeug.exceptions import RequestEntityTooLarge
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def _handle_too_large(_e: RequestEntityTooLarge):
+    """SEC-5: return a readable JSON 413 instead of Werkzeug's HTML page."""
+    limit_mb = app.config.get("MAX_CONTENT_LENGTH", 0) // (1024 * 1024)
+    return jsonify({"error": _t("File too large. Maximum upload size is %(mb)s MB.", mb=limit_mb)}), 413
+
 
 # ── Workflow constants ────────────────────────────────────────────────────────
 
-STATUS_FLOW = ["PROCESSING", "HOLD", "FINALIZE", "PICKUP", "EFILE READY", "LOG OUT", "REJECTED"]
+STATUS_FLOW = ["PENDING INTAKE", "PROCESSING", "HOLD", "FINALIZE", "PICKUP", "EFILE READY", "LOG OUT", "REJECTED"]
+
+def _get_json_safe() -> dict | None:
+    """SEC-1: safe JSON body parser.
+
+    Accepts requests whose Content-Type contains 'application/json' OR whose body
+    looks like a JSON object/array (for legacy curl / integration callers that omit the
+    Content-Type header). Returns the parsed dict/list, or None if parsing fails.
+    Callers that need to reject a missing body entirely should check the return value.
+    """
+    ct = (request.content_type or "").lower()
+    if "application/json" in ct:
+        return request.get_json(silent=True)
+    # Fallback: try parsing if there is a body (tolerates missing Content-Type header).
+    if request.data:
+        return request.get_json(force=True, silent=True)
+    return None
+
 
 # Rejected-return client contact tracking (stored on returns; privacy: no SSN fields)
 CONTACT_STATUS_VALUES = ("not_contacted", "contacted", "follow_up_needed", "resolved")
@@ -142,6 +458,7 @@ CONTACT_LABELS = {
 }
 
 STATUS_BADGE = {
+    "PENDING INTAKE": "bg-violet-50 text-violet-800 border-violet-200",
     "PROCESSING":  "bg-sky-50 text-sky-700 border-sky-200",
     "HOLD":        "bg-orange-50 text-orange-700 border-orange-200",
     "FINALIZE":    "bg-yellow-50 text-yellow-700 border-yellow-200",
@@ -152,6 +469,7 @@ STATUS_BADGE = {
 }
 
 STATUS_DOT = {
+    "PENDING INTAKE": "dot-violet",
     "PROCESSING":  "dot-amber",
     "HOLD":        "dot-hold",
     "FINALIZE":    "dot-orange",
@@ -181,10 +499,31 @@ RETURN_EDITABLE = {
     "is_amended", "has_w7", "is_extension",
     "transfer_flag", "transfer_2025_flag", "transfer_2026_flag",
     "signatures_given", "signatures_received",
+    "filing_status",
 }
 
 # Fields that live in the clients table
-CLIENT_EDITABLE = {"display_name", "referred_by", "referral_flag", "last_name", "first_name"}
+CLIENT_EDITABLE = {
+    "display_name",
+    "referred_by",
+    "referral_flag",
+    "last_name",
+    "first_name",
+    "address",
+    "taxpayer_phone",
+    "taxpayer_cell",
+    "taxpayer_work_phone",
+    "spouse_cell",
+    "spouse_work_phone",
+    "taxpayer_email",
+    "spouse_email",
+    "taxpayer_dob",
+    "spouse_dob",
+    "spouse_last_name",
+    "spouse_first_name",
+    "taxpayer_occupation",
+    "spouse_occupation",
+}
 
 # Fields that live in the payments table
 PAYMENT_EDITABLE = {
@@ -197,7 +536,15 @@ CARD_FEE_RATE = 0.03   # 3 % card processing surcharge
 
 # Return document uploads (DOC-2)
 _ALLOWED_RETURN_DOC_TYPES = frozenset(
-    {"W-2", "1099", "prior_return", "government_id", "misc", "unknown"}
+    {
+        "W-2",
+        "1099",
+        "paystub",
+        "prior_return",
+        "government_id",
+        "misc",
+        "unknown",
+    }
 )
 _ALLOWED_RETURN_DOC_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".pdf"})
 
@@ -212,6 +559,8 @@ SELECT
     r.transfer_flag, r.transfer_2025_flag, r.transfer_2026_flag,
     r.efile_date, r.ack_date, r.drake_status_raw,
     r.contact_status, r.last_contacted_date,
+    r.filing_status,
+    r.adjusted_gross_income,
     r.created_at, r.updated_at,
     c.id   AS client_id,
     c.last_name, c.first_name, c.display_name,
@@ -250,7 +599,9 @@ def _enrich(r: dict) -> dict:
     first = r.get("first_name") or ""
     last  = r.get("last_name")  or ""
     r["name_full"] = r.get("display_name") or (f"{last}, {first}".strip(", ") if first else last)
-    r["forms"]        = _form_badges(r)
+    r["forms"]         = _form_badges(r)
+    # Pre-compute preparer display label so the AJAX row renderer doesn't need a server roundtrip.
+    r["processor_label"] = preparer_list_label(r.get("processor") or "")
     intake_dt = _parse_iso_date(r.get("intake_date"))
     completion_dt = _parse_iso_date(r.get("logout_date")) or _parse_iso_date(r.get("ack_date"))
     r["cycle_days"] = (
@@ -308,7 +659,7 @@ def _parse_iso_date(value: str | None):
 
 
 def query_returns(filters: dict | None = None) -> list[dict]:
-    conn = get_connection()
+    conn = get_connection()  # REL-4: closed in finally below
     f = filters or {}
     clauses: list[str] = []
     params:  list      = []
@@ -406,18 +757,263 @@ def query_returns(filters: dict | None = None) -> list[dict]:
             params.extend([qp, qp, qp])
 
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-    sql   = f"{_SELECT} {where} ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END, CAST(r.log_number AS INTEGER), r.id"
+    order = "ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END, CAST(r.log_number AS INTEGER), r.id"
+    sql   = f"{_SELECT} {where} {order}"
 
-    rows = conn.execute(sql, params).fetchall()
-    conn.close()
-    return [_enrich(dict(r)) for r in rows]
+    try:
+        rows = conn.execute(sql, params).fetchall()
+        return [_enrich(dict(r)) for r in rows]
+    finally:
+        conn.close()
+
+
+def query_returns_paginated(filters: dict | None = None, *, page: int = 1, per_page: int = 50) -> tuple[list[dict], int]:
+    """Return (rows_for_page, total_count) for dashboard pagination.
+
+    Runs two queries: a COUNT and a paginated SELECT.  Both share the same
+    WHERE clause built from *filters*, so the count always reflects the full
+    matching set regardless of the current page.
+    """
+    conn = get_connection()
+    f = filters or {}
+    clauses: list[str] = []
+    params:  list      = []
+
+    year = f.get("year") or date.today().year
+    clauses.append(
+        "(strftime('%Y', r.intake_date) = ? OR "
+        "(r.intake_date IS NULL AND r.tax_year = ?))"
+    )
+    params.append(str(year))
+    params.append(year - 1)
+
+    if f.get("status"):
+        statuses = f["status"] if isinstance(f["status"], list) else [f["status"]]
+        statuses = [s for s in statuses if s]
+        if statuses:
+            clauses.append(f"r.client_status IN ({','.join('?' for _ in statuses)})")
+            params.extend(statuses)
+
+    if f.get("processor"):
+        pvals = preparer_filter_match_values(f["processor"])
+        if pvals:
+            clauses.append("r.processor IN (" + ",".join("?" for _ in pvals) + ")")
+            params.extend(pvals)
+
+    if f.get("balance_due"):
+        clauses.append(
+            "(p.total_fee IS NOT NULL AND COALESCE(p.fee_paid,0) < p.total_fee)"
+        )
+    if f.get("late_intake"):
+        clauses.append(
+            "(r.intake_date IS NOT NULL AND ("
+            "CAST(substr(r.intake_date,6,2) AS INTEGER) > 4 OR "
+            "(CAST(substr(r.intake_date,6,2) AS INTEGER) = 4 AND CAST(substr(r.intake_date,9,2) AS INTEGER) >= 1)"
+            "))"
+        )
+    if f.get("slow_cycle"):
+        clauses.append(
+            "(r.intake_date IS NOT NULL AND "
+            "(r.logout_date IS NOT NULL OR r.ack_date IS NOT NULL) AND "
+            "(julianday(COALESCE(r.logout_date, r.ack_date)) - julianday(r.intake_date)) >= ?)"
+        )
+        params.append(SLOW_CYCLE_DAYS)
+
+    if f.get("form"):
+        form_col = f["form"]
+        allowed = {
+            "form_1040", "sched_a_d", "sched_c", "sched_e",
+            "form_1120", "form_1120s", "form_1065_llc",
+            "corp_officer", "business_owner", "form_990_1041",
+            "is_amended", "has_w7", "is_extension",
+        }
+        if form_col in allowed:
+            if form_col in ("is_amended", "has_w7", "is_extension"):
+                clauses.append(f"r.{form_col} = 1")
+            else:
+                clauses.append(f"rf.{form_col} = 1")
+
+    if f.get("reject_contact"):
+        st_raw = f.get("status")
+        st_list = st_raw if isinstance(st_raw, list) else ([st_raw] if st_raw else [])
+        if not (st_list and "REJECTED" not in st_list):
+            rc = (f["reject_contact"] or "").strip().lower()
+            clauses.append("r.client_status = 'REJECTED'")
+            if rc == "needs_followup":
+                clauses.append(
+                    "(r.contact_status IS NULL OR r.contact_status = '' OR "
+                    "r.contact_status IN ('not_contacted','follow_up_needed'))"
+                )
+            elif rc in CONTACT_STATUS_VALUES:
+                if rc == "not_contacted":
+                    clauses.append(
+                        "(r.contact_status IS NULL OR r.contact_status = '' OR r.contact_status = 'not_contacted')"
+                    )
+                else:
+                    clauses.append("r.contact_status = ?")
+                    params.append(rc)
+
+    if f.get("q"):
+        q = f["q"].strip()
+        if q.isdigit():
+            clauses.append("r.log_number = ?")
+            params.append(q)
+        else:
+            qp = f"%{q.lower()}%"
+            clauses.append(
+                "(lower(c.last_name) LIKE ? OR lower(c.first_name) LIKE ? OR lower(COALESCE(c.display_name,'')) LIKE ?)"
+            )
+            params.extend([qp, qp, qp])
+
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    order = "ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END, CAST(r.log_number AS INTEGER), r.id"
+
+    per_page = min(100, max(1, int(per_page)))
+    page     = max(1, int(page))
+    offset   = (page - 1) * per_page
+
+    # COUNT query — same WHERE, no ORDER/LIMIT
+    count_sql = (
+        "SELECT COUNT(*) n "
+        "FROM returns r "
+        "JOIN clients c ON c.id = r.client_id "
+        "LEFT JOIN payments p ON p.return_id = r.id "
+        "LEFT JOIN return_forms rf ON rf.return_id = r.id "
+        f"{where}"
+    )
+
+    paginated_sql = f"{_SELECT} {where} {order} LIMIT ? OFFSET ?"
+
+    try:
+        total_count = conn.execute(count_sql, params).fetchone()["n"]
+        rows = conn.execute(paginated_sql, params + [per_page, offset]).fetchall()
+        return [_enrich(dict(r)) for r in rows], total_count
+    finally:
+        conn.close()
 
 
 def get_one(return_id: int) -> dict | None:
-    conn = get_connection()
-    row  = conn.execute(f"{_SELECT} WHERE r.id = ?", (return_id,)).fetchone()
-    conn.close()
-    return _enrich(dict(row)) if row else None
+    with contextlib.closing(get_connection()) as conn:
+        row = conn.execute(f"{_SELECT} WHERE r.id = ?", (return_id,)).fetchone()
+        return _enrich(dict(row)) if row else None
+
+
+def batch_fetch_returns(return_ids: list[int]) -> dict[int, dict]:
+    """DEBT-4: fetch multiple returns in ONE query keyed by return_id.
+
+    Eliminates the N+1 pattern where callers loop over return_ids calling get_one()
+    individually.  Returns a mapping {return_id: enriched_dict}; missing ids are absent.
+    """
+    if not return_ids:
+        return {}
+    placeholders = ",".join("?" * len(return_ids))
+    with contextlib.closing(get_connection()) as conn:
+        rows = conn.execute(
+            f"{_SELECT} WHERE r.id IN ({placeholders})", list(return_ids)
+        ).fetchall()
+    return {r["id"]: _enrich(dict(r)) for r in rows}
+
+
+def _fetch_returns_for_client(conn: sqlite3.Connection, client_id: int) -> list[dict]:
+    rows = conn.execute(
+        f"{_SELECT} WHERE r.client_id = ? ORDER BY r.tax_year DESC, r.id DESC",
+        (client_id,),
+    ).fetchall()
+    return [_enrich(dict(r)) for r in rows]
+
+
+def _fetch_client_documents(conn: sqlite3.Connection, client_id: int) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT rd.id, rd.return_id, rd.filename, rd.original_filename,
+               rd.doc_type, rd.uploaded_at, rd.uploaded_by,
+               r.tax_year, r.log_number
+          FROM return_documents rd
+          JOIN returns r ON r.id = rd.return_id
+         WHERE r.client_id = ?
+           AND IFNULL(rd.is_deleted, 0) = 0
+         ORDER BY rd.uploaded_at IS NULL ASC, rd.uploaded_at DESC, rd.id DESC
+        """,
+        (client_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _fetch_client_activity(conn: sqlite3.Connection, client_id: int, limit: int = 150) -> list[dict]:
+    notes = conn.execute(
+        """
+        SELECT n.note_text, n.source, n.created_at, n.return_id,
+               r.tax_year, r.log_number
+          FROM notes n
+          JOIN returns r ON r.id = n.return_id
+         WHERE r.client_id = ?
+        """,
+        (client_id,),
+    ).fetchall()
+    events = conn.execute(
+        """
+        SELECT e.event_type, e.old_status, e.new_status, e.event_timestamp,
+               e.source_file, e.note, e.return_id,
+               r.tax_year, r.log_number
+          FROM status_events e
+          JOIN returns r ON r.id = e.return_id
+         WHERE r.client_id = ?
+        """,
+        (client_id,),
+    ).fetchall()
+    paired: list[tuple[str, str, dict]] = []
+    for n in notes:
+        paired.append(((n["created_at"] or ""), "note", dict(n)))
+    for e in events:
+        paired.append(((e["event_timestamp"] or ""), "event", dict(e)))
+    paired.sort(key=lambda x: x[0], reverse=True)
+
+    out: list[dict] = []
+    for ts, kind, row in paired[:limit]:
+        if kind == "note":
+            txt = row.get("note_text") or ""
+            if privacy_mode_enabled():
+                txt = _mask_value(txt)
+            ln = row.get("log_number")
+            ty = row.get("tax_year")
+            lbl = "Note · LOG " + (str(ln) if ln else "—")
+            if ty is not None:
+                lbl += f" · TY{ty}"
+            out.append({
+                "kind":      "note",
+                "at":        ts or "—",
+                "title":     lbl,
+                "body":      txt,
+                "return_id": row.get("return_id"),
+                "source":    row.get("source"),
+            })
+        else:
+            et = row.get("event_type") or "event"
+            old_s, new_s = row.get("old_status"), row.get("new_status")
+            if et == "STATUS_CHANGED":
+                summary = (
+                    ("Status · " + (str(old_s) if old_s else "—") + " → " + str(new_s))
+                    if new_s or old_s
+                    else et
+                )
+            else:
+                fragment = ": " + (row.get("note") or "") if row.get("note") else ""
+                summary = et + fragment
+            ln = row.get("log_number")
+            ty = row.get("tax_year")
+            subtitle = "LOG " + (str(ln) if ln else "—")
+            if ty is not None:
+                subtitle += f" · TY{ty}"
+            out.append({
+                "kind":       "event",
+                "at":         ts or "—",
+                "title":      summary,
+                "body":       (row.get("note") or row.get("source_file") or "") or None,
+                "return_id":  row.get("return_id"),
+                "subtitle":   subtitle,
+                "new_status": new_s,
+            })
+    return out
 
 
 def get_status_counts(year: int) -> dict[str, int]:
@@ -442,6 +1038,7 @@ def get_totals(year: int) -> dict:
         FROM returns r
         LEFT JOIN payments p ON p.return_id = r.id
         WHERE (strftime('%Y', r.intake_date) = ? OR (r.intake_date IS NULL AND r.tax_year = ?))
+          AND UPPER(COALESCE(r.client_status,'')) != 'CANCELLED'
         """,
         (str(year), year - 1),
     ).fetchone()
@@ -463,6 +1060,59 @@ def get_processors(year: int) -> list[str]:
     return [r["processor"] for r in rows]
 
 
+def _session_username() -> str | None:
+    u = (session.get("username") or "").strip()
+    return u or None
+
+
+def _resolve_current_role() -> str:
+    """Return the current user's role.
+
+    Prefer the session value (set on login with the new code). Fall back to
+    a DB lookup so that sessions created before ONBOARD-3 still get the
+    correct role without requiring a log-out / log-in cycle.  Env-var
+    fallback accounts are treated as admin.
+    """
+    if session.get("role"):
+        return session["role"]
+    username = _session_username()
+    if not username:
+        return "staff"
+    # Env-var fallback user has no DB row — treat as admin.
+    _tmp_conn = get_connection()
+    _no_db_users = not _auth_users_exist(_tmp_conn)
+    _tmp_conn.close()
+    if username == (_LOGIN_USER or "").strip().lower() and _no_db_users:
+        return "admin"
+    try:
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT role FROM auth_users WHERE username = ? AND is_active = 1 LIMIT 1",
+                (username,),
+            ).fetchone()
+        finally:
+            conn.close()
+        role = (row["role"] if row else None) or "staff"
+        session["role"] = role  # cache for subsequent requests
+        return role
+    except Exception:
+        return "staff"
+
+
+def _season_rollover_admins() -> frozenset[str]:
+    raw = (os.environ.get("TAXOPS_ROLLOVER_ADMINS") or "").strip().lower()
+    if raw:
+        return frozenset(p.strip().lower() for p in raw.split(",") if p.strip())
+    lu = (_LOGIN_USER or "").strip().lower()
+    return frozenset({lu}) if lu else frozenset()
+
+
+def can_run_season_rollover() -> bool:
+    u = (_session_username() or "").lower()
+    return bool(u) and u in _season_rollover_admins()
+
+
 def base_ctx(year: int | None = None) -> dict:
     today_year = date.today().year
     # Never let the season picker go backwards to a tax year.
@@ -472,6 +1122,20 @@ def base_ctx(year: int | None = None) -> dict:
     pending_review = conn.execute(
         "SELECT COUNT(*) n FROM review_queue WHERE status='pending'"
     ).fetchone()["n"]
+    # DOC-HARD-3: count permanently failed (dead-letter) extractions for the nav badge.
+    try:
+        failed_doc_count = conn.execute(
+            "SELECT COUNT(*) n FROM extraction_queue WHERE status = 'failed'"
+        ).fetchone()["n"]
+    except Exception:
+        failed_doc_count = 0
+    # ACCOUNTING-9: count receipts awaiting staff review for the nav badge.
+    try:
+        receipt_review_count = conn.execute(
+            "SELECT COUNT(*) n FROM receipt_queue WHERE status = 'review'"
+        ).fetchone()["n"]
+    except Exception:
+        receipt_review_count = 0
     # Rejected returns — always pulled regardless of season filter
     rejected_rows = conn.execute(
         f"{_SELECT} WHERE r.client_status = 'REJECTED' ORDER BY r.updated_at DESC"
@@ -491,6 +1155,13 @@ def base_ctx(year: int | None = None) -> dict:
         "pending_review_count": pending_review,
         "rejected_returns":     rejected,
         "rejected_count":       len(rejected),
+        "can_run_season_rollover": can_run_season_rollover(),
+        "failed_doc_count":       failed_doc_count,
+        "receipt_review_count":   receipt_review_count,
+        # ONBOARD-3: current user info for nav display.
+        # Fall back to DB lookup so sessions created before role was stored still work.
+        "current_user_name":    session.get("display_name") or session.get("username"),
+        "current_user_role":    _resolve_current_role(),
     }
 
 
@@ -619,12 +1290,31 @@ def login():
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
-        if username == _LOGIN_USER and password == _LOGIN_PASS:
-            session["logged_in"] = True
-            session["username"]  = username
+        user = _authenticate_user(username, password)
+        if user is _AUTH_LOCKED:
+            # SEC-7: constant-time failure — sleep before returning so a timing oracle
+            # cannot distinguish a lockout response from a bcrypt verification.
+            time.sleep(0.2)
+            error = "Invalid username or password."
+        elif user:
+            session.permanent = True  # SEC-3: enforce PERMANENT_SESSION_LIFETIME (12 h)
+            session["logged_in"]     = True
+            session["username"]      = user["username"]
+            session["role"]          = user.get("role", "staff")
+            session["display_name"]  = user.get("display_name") or user["username"]
+            # ONBOARD-2: check if user must change their temporary password
+            _mcp = user.get("must_change_password", 0)
+            if _mcp:
+                session["must_change_password"] = True
+                return redirect(url_for("change_password"))
+            session.pop("must_change_password", None)
             next_url = request.args.get("next") or url_for("dashboard")
             return redirect(next_url)
-        error = "Invalid username or password."
+        else:
+            # SEC-7: constant-time failure — sleep before returning so a timing oracle
+            # cannot distinguish an unknown-user response from a bcrypt verification.
+            time.sleep(0.2)
+            error = "Invalid username or password."
     return render_template("login.html", error=error)
 
 
@@ -634,12 +1324,569 @@ def logout():
     return redirect(url_for("login"))
 
 
+# ── ONBOARD-2: Forced password change ────────────────────────────────────────
+
+@app.route("/change-password", methods=["GET", "POST"])
+def change_password():
+    """ONBOARD-2: staff with must_change_password=1 are redirected here after login."""
+    if not session.get("logged_in"):
+        return redirect(url_for("login"))
+    if request.method == "GET":
+        return render_template("change_password.html")
+    new_pw = request.form.get("new_password") or ""
+    confirm_pw = request.form.get("confirm_password") or ""
+    if len(new_pw) < 8:
+        return render_template("change_password.html", error=_t("Password must be at least 8 characters."))
+    if new_pw != confirm_pw:
+        return render_template("change_password.html", error=_t("Passwords do not match."))
+    username = session.get("username")
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id, password_hash FROM auth_users WHERE username = ? AND is_active = 1",
+            (username,),
+        ).fetchone()
+        if not row:
+            return render_template("change_password.html", error=_t("Account not found."))
+        from werkzeug.security import check_password_hash as _chk, generate_password_hash as _gen
+        if _chk(row["password_hash"], new_pw):
+            return render_template("change_password.html", error=_t("New password must be different from the temporary password."))
+        conn.execute(
+            "UPDATE auth_users SET password_hash = ?, must_change_password = 0, failed_attempts = 0 WHERE id = ?",
+            (_gen(new_pw), row["id"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    session.pop("must_change_password", None)
+    # ONBOARD-4: route to orientation if staff hasn't seen it yet
+    conn2 = get_connection()
+    try:
+        orow = conn2.execute(
+            "SELECT has_seen_orientation FROM auth_users WHERE username = ?", (username,)
+        ).fetchone()
+        if orow and not orow["has_seen_orientation"]:
+            return redirect(url_for("orientation"))
+    finally:
+        conn2.close()
+    return redirect(url_for("dashboard"))
+
+
+# ── ONBOARD-4: First-login orientation ───────────────────────────────────────
+
+@app.route("/orientation")
+@login_required
+def orientation():
+    username = session.get("username")
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT has_seen_orientation FROM auth_users WHERE username = ?", (username,)
+        ).fetchone()
+        if row and row["has_seen_orientation"]:
+            return redirect(url_for("dashboard"))
+    finally:
+        conn.close()
+    return render_template("orientation.html")
+
+
+@app.post("/orientation/dismiss")
+@login_required
+def orientation_dismiss():
+    username = session.get("username")
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE auth_users SET has_seen_orientation = 1 WHERE username = ?", (username,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("dashboard"))
+
+
+# ── I18N-1: locale context processor + language toggle ───────────────────────
+
+@app.context_processor
+def _inject_locale():
+    """Make current_locale available in every template."""
+    return {"current_locale": _get_locale()}
+
+
+@app.post("/set-language")
+@login_required
+def set_language():
+    """I18N-1: switch the session locale. Accepts JSON {locale: 'es'|'en'}."""
+    data = request.get_json(silent=True) or {}
+    raw = (data.get("locale") or "").strip()
+    # Normalize to canonical form (accept es_mx or es_MX)
+    _LOCALE_ALIAS = {"en": "en", "es_mx": "es_MX", "es_MX": "es_MX"}
+    locale = _LOCALE_ALIAS.get(raw, "")
+    if not locale:
+        return jsonify({"error": "Unsupported locale. Supported: en, es_MX"}), 400
+    session["locale"] = locale
+    return jsonify({"success": True, "locale": locale})
+
+
+# ── TOUR-3: Tour state API ────────────────────────────────────────────────────
+
+def _tour_key_for_user(username: str) -> str | None:
+    """Return the app_settings key for the user's tour completion, or None if user not found."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id FROM auth_users WHERE username = ? LIMIT 1", (username,)
+        ).fetchone()
+        if row:
+            return f"tour_completed_{row['id']}"
+        # env-var fallback user has no DB row — use username directly
+        return f"tour_completed_env_{username}"
+    finally:
+        conn.close()
+
+
+@app.get("/api/tour/status")
+@login_required
+def api_tour_status():
+    """TOUR-3: return {completed: bool} for the current user."""
+    key = _tour_key_for_user(session.get("username") or "")
+    if not key:
+        return jsonify({"completed": False})
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?", (key,)
+        ).fetchone()
+        return jsonify({"completed": bool(row)})
+    finally:
+        conn.close()
+
+
+@app.post("/api/tour/complete")
+@login_required
+def api_tour_complete():
+    """TOUR-3: mark the tour as completed for the current user."""
+    key = _tour_key_for_user(session.get("username") or "")
+    if not key:
+        return jsonify({"success": False, "error": "user not found"}), 400
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
+            (key, now(), now()),
+        )
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+@app.post("/api/tour/reset")
+@login_required
+def api_tour_reset():
+    """TOUR-3: self-serve reset — lets any user replay their own tour."""
+    key = _tour_key_for_user(session.get("username") or "")
+    if not key:
+        return jsonify({"success": False, "error": "user not found"}), 400
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+@app.get("/api/translations")
+def api_translations():
+    """I18N-4: JS-side translatable strings for the current session locale.
+
+    Not gated by @login_required so the page can fetch it before session checks.
+    Returns a JSON object keyed by stable English keys.
+    """
+    strings = {
+        "loading":              _t("Loading..."),
+        "saving":               _t("Saving..."),
+        "uploading":            _t("Uploading..."),
+        "confirm_delete":       _t("Are you sure you want to delete this?"),
+        "no_results":           _t("No results"),
+        "error_generic":        _t("Something went wrong. Please try again."),
+        "upload_success":       _t("Document uploaded successfully."),
+        "upload_error":         _t("Upload failed. Please try again."),
+        "doc_deleted":          _t("Document deleted."),
+        "classification_saved": _t("Classification saved."),
+        "session_expired":      _t("Your session has expired. Please sign in again."),
+        # Tour step titles and bodies
+        "tour_s1_title":        _t("Find any client instantly"),
+        "tour_s1_body":         _t("Type a name or return number here. Results appear as you type. This is the fastest way to get to any client or return."),
+        "tour_s2_title":        _t("Track where every return stands"),
+        "tour_s2_body":         _t("These tabs filter by workflow status. PROCESSING means actively being worked. PICKUP means ready for the client. Click any tab to see only those returns."),
+        "tour_s3_title":        _t("Every document in one place"),
+        "tour_s3_body":         _t("W-2s, 1099s, and anything the client emails gets saved here automatically. You can also upload documents directly. Click any file to view it."),
+        "tour_s4_title":        _t("Change the return status"),
+        "tour_s4_body":         _t("Use this control to move the return through the workflow — from PROCESSING to FINALIZE to PICKUP — as you work it."),
+        "tour_s5_title":        _t("Keep your team in sync"),
+        "tour_s5_body":         _t("Add notes visible to everyone on the team. Record what was discussed, what's outstanding, or anything the next person needs to know."),
+        "tour_s6_title":        _t("Incoming client documents"),
+        "tour_s6_body":         _t("When a client emails their documents they appear here. Review and confirm to attach them to the right return. The system matches clients automatically — you just verify."),
+        "tour_s7_title":        _t("You are ready"),
+        "tour_s7_body":         _t("That covers the essentials. You can relaunch this tour anytime from the help icon in the top navigation. If you have questions check the runbook or ask your admin."),
+    }
+    resp = jsonify(strings)
+    # Short-lived cache is OK — locale rarely changes mid-session
+    resp.headers["Cache-Control"] = "private, max-age=60"
+    return resp
+
+
+@app.get("/health")
+def health():
+    """PROD-3 — liveness/readiness probe: JSON status, SQLite check, process uptime, version."""
+    db_ok = True
+    db_detail: dict = {}
+    t0 = time.perf_counter()
+    try:
+        conn = get_connection()
+        try:
+            conn.execute("SELECT 1").fetchone()
+        finally:
+            conn.close()
+        db_detail = {"ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000, 3)}
+    except sqlite3.Error as ex:
+        db_ok = False
+        db_detail = {
+            "ok": False,
+            "latency_ms": round((time.perf_counter() - t0) * 1000, 3),
+            "error": str(ex),
+        }
+
+    schema_ver: int | None = None
+    if db_ok:
+        try:
+            _sv_conn = get_connection()
+            try:
+                schema_ver = get_schema_version(_sv_conn)
+            finally:
+                _sv_conn.close()
+        except Exception:
+            pass
+
+    # DOC-HARD-1: include extraction queue depth so ops / monitoring can see pending docs.
+    extraction_q: dict | None = None
+    if db_ok:
+        try:
+            from extractor import extraction_queue_status_for_api
+            extraction_q = extraction_queue_status_for_api()
+        except Exception:
+            pass
+
+    # HEALTH-2/3: worker thread liveness
+    workers: dict = {}
+    try:
+        from extractor import extraction_worker_status
+        workers["extraction"] = extraction_worker_status()
+    except Exception:
+        workers["extraction"] = {"started": False, "running": False}
+    try:
+        from mail_watcher import mail_watcher_status
+        workers["mail_watcher"] = mail_watcher_status()
+    except Exception:
+        workers["mail_watcher"] = {"started": False, "running": False}
+    try:
+        from accounting_worker import accounting_worker_status
+        workers["accounting"] = accounting_worker_status()
+    except Exception:
+        pass  # accounting worker is optional
+
+    body = {
+        "status": "ok" if db_ok else "degraded",
+        "db": db_detail,
+        "uptime_seconds": round(time.monotonic() - _APP_START_MONOTONIC, 3),
+        "version": taxops_release_version(),
+        "audit_queue_depth": audit_queue_depth(),
+        "schema_version": schema_ver,
+        "schema_version_expected": CURRENT_SCHEMA_VERSION,
+        "extraction_queue": extraction_q,
+        "workers": workers,
+    }
+    return jsonify(body), (200 if db_ok else 503)
+
+
+@app.get("/api/dashboard/returns")
+@login_required
+def api_dashboard_returns():
+    """Paginated dashboard returns for AJAX navigation (Section 3 — dashboard pagination).
+
+    Accepts the same filter query-string parameters as GET / plus `page` and `per_page`.
+    Returns JSON with the paginated row list and total-count metadata so the client
+    can update the tbody and pagination controls without a full page reload.
+    """
+    year     = int(request.args.get("year", date.today().year))
+    page     = max(1, int(request.args.get("page", 1)))
+    per_page = min(100, max(1, int(request.args.get("per_page", 50))))
+    filters  = {
+        "year":           year,
+        "status":         request.args.getlist("status") or None,
+        "processor":      request.args.get("processor"),
+        "balance_due":    request.args.get("balance_due"),
+        "late_intake":    request.args.get("late_intake"),
+        "slow_cycle":     request.args.get("slow_cycle"),
+        "form":           request.args.get("form"),
+        "reject_contact": request.args.get("reject_contact"),
+        "q":              request.args.get("q"),
+    }
+    rows, total_count = query_returns_paginated(filters, page=page, per_page=per_page)
+    total_pages = max(1, math.ceil(total_count / per_page))
+    return jsonify({
+        "returns":     rows,
+        "total_count": total_count,
+        "page":        page,
+        "per_page":    per_page,
+        "total_pages": total_pages,
+        "has_next":    page < total_pages,
+        "has_prev":    page > 1,
+    })
+
+
+@app.get("/api/notifications/unread-documents")
+@login_required
+def api_unread_documents():
+    """Section 4 — document arrival badge.
+
+    Returns the count of email-sourced documents that have not yet been typed
+    (doc_type = 'unknown') and have not been soft-deleted.  This is the lightweight
+    query that drives the amber badge on the Email Review nav item.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) n FROM return_documents "
+            "WHERE source = 'email' AND doc_type = 'unknown' AND is_deleted = 0"
+        ).fetchone()
+        unconfirmed = conn.execute(
+            "SELECT COUNT(*) n FROM return_documents "
+            "WHERE match_confirmed = 0 AND is_deleted = 0"
+        ).fetchone()
+        return jsonify({
+            "count": row["n"],
+            "unconfirmed_matches": unconfirmed["n"],
+        })
+    finally:
+        conn.close()
+
+
+# ── Saved dashboard filters (Epic #85, FILTER-1…FILTER-6) ─────────────────────
+
+
+def _shared_saved_filter_admins() -> frozenset[str]:
+    raw = (os.environ.get("TAXOPS_SHARED_FILTER_ADMINS") or "").strip().lower()
+    if raw:
+        return frozenset(p.strip().lower() for p in raw.split(",") if p.strip())
+    lu = (_LOGIN_USER or "").strip().lower()
+    return frozenset({lu}) if lu else frozenset()
+
+
+def can_publish_shared_dashboard_filters() -> bool:
+    u = (_session_username() or "").lower()
+    return bool(u) and u in _shared_saved_filter_admins()
+
+
+def _dashboard_request_has_explicit_filters() -> bool:
+    if len(request.args.getlist("status")) > 0:
+        return True
+    for key in ("processor", "balance_due", "late_intake", "slow_cycle", "form", "reject_contact", "q"):
+        v = request.args.get(key)
+        if v is not None and str(v).strip():
+            return True
+    return False
+
+
+_ALLOWED_DASH_SAVE_FORM_FIELDS = frozenset(
+    [
+        "form_1040", "sched_a_d", "sched_c", "sched_e",
+        "form_1120", "form_1120s", "form_1065_llc",
+        "corp_officer", "business_owner", "form_990_1041",
+        "is_amended", "has_w7", "is_extension",
+    ]
+)
+
+
+def _sanitize_dashboard_filter_payload(raw: object) -> dict:
+    """Whitelist keys to match query_returns dashboard filters."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict = {}
+    sf = frozenset(s.upper() for s in STATUS_FLOW)
+    statuses = raw.get("status")
+    filtered_status: list[str] = []
+    if isinstance(statuses, list):
+        for s in statuses:
+            ss = str(s).strip().upper()
+            if ss in sf:
+                filtered_status.append(ss)
+    elif isinstance(statuses, str) and statuses.strip():
+        ss = statuses.strip().upper()
+        if ss in sf:
+            filtered_status.append(ss)
+    if filtered_status:
+        out["status"] = filtered_status
+
+    processor = raw.get("processor")
+    if processor is not None and str(processor).strip():
+        out["processor"] = str(processor).strip()
+
+    for flag in ("balance_due", "late_intake", "slow_cycle"):
+        val = raw.get(flag)
+        if val in ("1", 1, True, "true", "yes", "on"):
+            out[flag] = "1"
+
+    form_col = raw.get("form")
+    if isinstance(form_col, str) and form_col.strip():
+        fk = form_col.strip()
+        if fk in _ALLOWED_DASH_SAVE_FORM_FIELDS:
+            out["form"] = fk
+
+    rc = raw.get("reject_contact")
+    if isinstance(rc, str) and rc.strip():
+        rcv = rc.strip().lower()
+        if rcv == "needs_followup" or rcv in CONTACT_STATUS_VALUES:
+            out["reject_contact"] = rcv
+
+    qq = raw.get("q")
+    if isinstance(qq, str) and qq.strip():
+        out["q"] = qq.strip()[:500]
+
+    return out
+
+
+def _dashboard_saved_filter_meaningful(fd: dict) -> bool:
+    d = _sanitize_dashboard_filter_payload(fd)
+    return bool(d)
+
+
+def _dashboard_filter_query_string(filter_data: dict, year: int) -> str:
+    d = _sanitize_dashboard_filter_payload(filter_data)
+    pairs: list[tuple[str, str]] = [("year", str(int(year)))]
+    for s in d.get("status") or []:
+        pairs.append(("status", s))
+    proc = d.get("processor")
+    if proc:
+        pairs.append(("processor", str(proc)))
+    for flag in ("balance_due", "late_intake", "slow_cycle"):
+        if d.get(flag) == "1":
+            pairs.append((flag, "1"))
+    if d.get("form"):
+        pairs.append(("form", d["form"]))
+    if d.get("reject_contact"):
+        pairs.append(("reject_contact", d["reject_contact"]))
+    if d.get("q"):
+        pairs.append(("q", d["q"]))
+    return urlencode(pairs, doseq=True)
+
+
+def _dashboard_filter_snapshot_from_current_request(year: int) -> dict:
+    st = request.args.getlist("status")
+    fd: dict = {}
+    sf = frozenset(s.upper() for s in STATUS_FLOW)
+    st_clean = [str(x).strip().upper() for x in st if str(x).strip().upper() in sf]
+    if st_clean:
+        fd["status"] = st_clean
+    p = request.args.get("processor")
+    if p and str(p).strip():
+        fd["processor"] = str(p).strip()
+    if request.args.get("balance_due"):
+        fd["balance_due"] = "1"
+    if request.args.get("late_intake"):
+        fd["late_intake"] = "1"
+    if request.args.get("slow_cycle"):
+        fd["slow_cycle"] = "1"
+    form = request.args.get("form")
+    if form and form.strip() in _ALLOWED_DASH_SAVE_FORM_FIELDS:
+        fd["form"] = form.strip()
+    rj = request.args.get("reject_contact")
+    if rj:
+        rv = str(rj).strip().lower()
+        if rv == "needs_followup" or rv in CONTACT_STATUS_VALUES:
+            fd["reject_contact"] = rv
+    qq = request.args.get("q")
+    if qq and str(qq).strip():
+        fd["q"] = str(qq).strip()[:500]
+    return fd
+
+
+def _saved_dashboard_filters_payload(username: str | None, year: int) -> list[dict]:
+    if not username:
+        return []
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, user_id, name, filter_json, is_default, is_shared
+              FROM dashboard_saved_filters
+             WHERE is_shared = 1 OR user_id = ?
+             ORDER BY is_shared ASC, is_default DESC, lower(name), id
+            """,
+            (username,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    admins = _shared_saved_filter_admins()
+    uid_l = username.lower()
+    payload: list[dict] = []
+    for r in rows:
+        try:
+            merged = json.loads(r["filter_json"])
+        except (json.JSONDecodeError, TypeError, ValueError):
+            merged = {}
+        fd = _sanitize_dashboard_filter_payload(merged)
+        is_shared = bool(r["is_shared"])
+        qs = _dashboard_filter_query_string(fd, year)
+        owns_personal = (not is_shared) and (r["user_id"] == username)
+        payload.append({
+            "id":            r["id"],
+            "name":          r["name"],
+            "is_default":    bool(r["is_default"]) and owns_personal,
+            "is_shared":     is_shared,
+            "query_string": qs,
+            "filter":        fd,
+            "can_delete":    (is_shared and uid_l in admins) or owns_personal,
+            "can_set_default": owns_personal and not is_shared,
+        })
+    return payload
+
+
 # ── Page routes ───────────────────────────────────────────────────────────────
 
 @app.route("/")
 @login_required
 def dashboard():
     year = int(request.args.get("year", date.today().year))
+    uname = _session_username()
+
+    # FILTER-5: load user's default preset only on a \"clean\" dashboard query (season only).
+    if uname and not _dashboard_request_has_explicit_filters():
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT filter_json FROM dashboard_saved_filters "
+                "WHERE user_id = ? AND is_shared = 0 AND is_default = 1 LIMIT 1",
+                (uname,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row:
+            try:
+                sj = json.loads(row["filter_json"])
+            except (json.JSONDecodeError, TypeError, ValueError):
+                sj = {}
+            fd_clean = _sanitize_dashboard_filter_payload(sj)
+            if _dashboard_saved_filter_meaningful(fd_clean):
+                return redirect("/?" + _dashboard_filter_query_string(fd_clean, year))
+
+    # Dashboard pagination — cap per_page at 100, default 50.
+    page     = max(1, int(request.args.get("page", 1)))
+    per_page = min(100, max(1, int(request.args.get("per_page", 50))))
+
     filters = {
         "year":        year,
         "status":      request.args.getlist("status") or None,
@@ -651,14 +1898,31 @@ def dashboard():
         "reject_contact": request.args.get("reject_contact"),
         "q":           request.args.get("q"),
     }
-    returns = query_returns(filters)
+    returns, total_count = query_returns_paginated(filters, page=page, per_page=per_page)
+    total_pages = max(1, math.ceil(total_count / per_page))
     ctx = base_ctx(year)
-    ctx.update({"active_page": "dashboard", "returns": returns, "filters": filters})
+    snap = _dashboard_filter_snapshot_from_current_request(year)
+    ctx.update({
+        "active_page":                         "dashboard",
+        "returns":                             returns,
+        "filters":                             filters,
+        "total_count":                         total_count,
+        "page":                                page,
+        "per_page":                            per_page,
+        "total_pages":                         total_pages,
+        "has_next":                            page < total_pages,
+        "has_prev":                            page > 1,
+        "saved_dashboard_filters":             _saved_dashboard_filters_payload(uname, year),
+        "can_publish_shared_dashboard_filters": can_publish_shared_dashboard_filters(),
+        "dashboard_current_filter_snapshot":   snap,
+        "dashboard_snapshot_has_meaningful":    _dashboard_saved_filter_meaningful(snap),
+    })
     return render_template("dashboard.html", **ctx)
 
 
 @app.route("/return/<int:return_id>")
 @login_required
+@view_only_for("staff")
 def return_detail(return_id: int):
     ret = get_one(return_id)
     if not ret:
@@ -674,6 +1938,11 @@ def return_detail(return_id: int):
         "SELECT * FROM missing_docs WHERE return_id=? ORDER BY is_resolved, created_at",
         (return_id,)
     ).fetchall()
+    # DEP-1/DEP-3: load active dependents for return detail
+    dependents = conn.execute(
+        "SELECT * FROM dependents WHERE return_id=? AND is_deleted=0 ORDER BY id",
+        (return_id,)
+    ).fetchall()
     conn.close()
     notes_payload = [dict(n) for n in notes]
     if privacy_mode_enabled():
@@ -683,412 +1952,88 @@ def return_detail(return_id: int):
     # Always use current calendar year for the season picker — never the return's tax year.
     ctx = base_ctx(date.today().year)
     ctx.update({
-        "active_page":   "dashboard",
-        "ret":           ret,
-        "notes":         notes_payload,
-        "events":        [dict(e) for e in events],
-        "missing_docs":  [dict(d) for d in missing_docs],
+        "active_page":    "dashboard",
+        "ret":            ret,
+        "notes":          notes_payload,
+        "events":         [dict(e) for e in events],
+        "missing_docs":   [dict(d) for d in missing_docs],
+        "dependents":     [dict(d) for d in dependents],
         "contact_labels": CONTACT_LABELS,
+        "drake_enabled":  bool(DRAKE_FOLDER_STRUCTURE_ENABLED),
+        "view_only":      g.get("view_only", False),
     })
     return render_template("return_detail.html", **ctx)
 
 
-@app.route("/return/<int:return_id>/documents/upload", methods=["POST"])
+FILING_STATUS_OPTIONS = ("SINGLE", "MFJ", "MFS", "HH", "DEPENDENT", "QUAL NON DEP")
+
+
+def profile_title_for_client(cli_d: dict, client_id: int, *, privacy: bool) -> str:
+    if privacy:
+        return f"Client {client_id}"
+    fm = (
+        cli_d.get("display_name")
+        or f"{cli_d.get('last_name') or ''}, {cli_d.get('first_name') or ''}".strip(", ")
+    )
+    return (fm.strip() or f"Client {client_id}")
+
+
+@app.route("/clients/<int:client_id>")
 @login_required
-def return_documents_upload(return_id: int):
-    conn = get_connection()
-    full_path: str | None = None
-    try:
-        exists = conn.execute("SELECT id FROM returns WHERE id = ?", (return_id,)).fetchone()
-        if not exists:
-            return jsonify({"error": "Return not found"}), 404
-
-        if "document" not in request.files:
-            return jsonify({"error": "No file uploaded"}), 400
-
-        upload = request.files["document"]
-        if not upload or not upload.filename:
-            return jsonify({"error": "No file uploaded"}), 400
-
-        original_filename = upload.filename
-        ext = os.path.splitext(original_filename)[1].lower()
-        if ext not in _ALLOWED_RETURN_DOC_EXTENSIONS:
-            return jsonify({"error": "Unsupported file type. Use jpg, png, or pdf"}), 400
-
-        folder = get_return_documents_path(return_id)
-        sanitized = sanitize_filename(original_filename)
-        stem, ext_part = os.path.splitext(sanitized)
-        candidate = sanitized
-        counter = 1
-        while os.path.exists(os.path.join(folder, candidate)):
-            candidate = f"{stem}_{counter}{ext_part}"
-            counter += 1
-
-        full_path = os.path.abspath(os.path.join(folder, candidate))
-
-        raw_doc_type = (request.form.get("doc_type") or "unknown").strip()
-        doc_type = raw_doc_type if raw_doc_type in _ALLOWED_RETURN_DOC_TYPES else "unknown"
-
-        uploaded_at = now()
-        uploaded_by = session.get("username")
-
-        try:
-            upload.save(full_path)
-        except OSError:
-            return jsonify({"error": "Failed to save file"}), 500
-
-        file_size_bytes = os.path.getsize(full_path)
-
-        try:
-            cur = conn.execute(
-                """
-                INSERT INTO return_documents (
-                  return_id, filename, original_filename, doc_type, source,
-                  file_path, file_size_bytes, uploaded_by, uploaded_at, notes, is_deleted
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-                """,
-                (
-                    return_id,
-                    candidate,
-                    original_filename,
-                    doc_type,
-                    "walk_in",
-                    full_path,
-                    file_size_bytes,
-                    uploaded_by,
-                    uploaded_at,
-                    None,
-                ),
-            )
-            doc_id = cur.lastrowid
-            conn.commit()
-            _enqueue_extraction(doc_id, return_id)
-
-            app_obj = current_app._get_current_object()
-
-            def _bg_classify():
-                try:
-                    with app_obj.app_context():
-                        from ai_routes import _classify_document
-
-                        _classify_document(doc_id, only_if_still_unknown=True)
-                except Exception as e:
-                    logging.getLogger(__name__).error(
-                        "Background classify failed for doc %s: %s", doc_id, e
-                    )
-
-            threading.Thread(target=_bg_classify, daemon=True).start()
-        except Exception:
-            conn.rollback()
-            if full_path and os.path.isfile(full_path):
-                try:
-                    os.remove(full_path)
-                except OSError:
-                    pass
-            return jsonify({"error": "Could not record document"}), 500
-
-        return jsonify(
-            scrub_ssn_from_dict(
-                {
-                    "success": True,
-                    "doc_id": doc_id,
-                    "filename": candidate,
-                    "doc_type": doc_type,
-                    "uploaded_at": uploaded_at,
-                }
-            )
-        )
-    finally:
-        conn.close()
-
-
-@app.route("/return/<int:return_id>/documents")
-@login_required
-def return_documents_list(return_id: int):
+def client_profile(client_id: int):
     conn = get_connection()
     try:
-        rows = conn.execute(
-            """
-            SELECT
-                rd.id,
-                rd.filename,
-                rd.original_filename,
-                rd.doc_type,
-                rd.source,
-                rd.uploaded_by,
-                rd.uploaded_at,
-                rd.file_size_bytes,
-                eq.status AS extraction_status,
-                eq.confidence AS extraction_confidence,
-                eq.detected_form_type AS extraction_detected_table,
-                eq.extracted_fields AS extraction_fields_raw
-            FROM return_documents rd
-            LEFT JOIN (
-                SELECT e.id, e.doc_id, e.status, e.confidence,
-                       e.detected_form_type, e.extracted_fields
-                FROM extraction_queue e
-                INNER JOIN (
-                    SELECT doc_id AS d2, MAX(id) AS mid
-                    FROM extraction_queue
-                    GROUP BY doc_id
-                ) latest ON e.doc_id = latest.d2 AND e.id = latest.mid
-            ) eq ON eq.doc_id = rd.id
-            WHERE rd.return_id = ? AND rd.is_deleted = 0
-            ORDER BY rd.uploaded_at DESC
-            """,
-            (return_id,),
-        ).fetchall()
-        documents = []
-        for r in rows:
-            ext_stat = r["extraction_status"]
-            ext_conf_raw = r["extraction_confidence"]
-            try:
-                if ext_conf_raw is None:
-                    extraction_confidence = None
-                else:
-                    extraction_confidence = float(ext_conf_raw)
-            except (TypeError, ValueError):
-                extraction_confidence = None
-            extracted_fields_view = None
-            if ext_stat == "needs_review":
-                raw_j = r["extraction_fields_raw"]
-                if raw_j:
-                    try:
-                        parsed = json.loads(raw_j)
-                        if isinstance(parsed, dict):
-                            extracted_fields_view = scrub_ssn_from_dict(parsed)
-                        else:
-                            extracted_fields_view = {}
-                    except json.JSONDecodeError:
-                        extracted_fields_view = {}
-
-            documents.append(
-                scrub_ssn_from_dict(
-                    {
-                        "id": r["id"],
-                        "filename": r["filename"],
-                        "original_filename": r["original_filename"],
-                        "doc_type": r["doc_type"],
-                        "source": r["source"],
-                        "uploaded_by": r["uploaded_by"],
-                        "uploaded_at": r["uploaded_at"],
-                        "file_size_bytes": r["file_size_bytes"],
-                        "extraction_status": ext_stat,
-                        "extraction_confidence": extraction_confidence,
-                        "extracted_fields": extracted_fields_view,
-                    }
-                )
-            )
-        return jsonify({"documents": documents})
-    finally:
-        conn.close()
-
-
-@app.route("/return/<int:return_id>/documents/<int:doc_id>/view")
-@login_required
-def return_document_view(return_id: int, doc_id: int):
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            """
-            SELECT file_path, filename FROM return_documents
-            WHERE id = ? AND return_id = ? AND is_deleted = 0
-            """,
-            (doc_id, return_id),
-        ).fetchone()
-        if not row:
+        cli = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not cli:
             abort(404)
-        disk_path = row["file_path"]
-        if not disk_path or not os.path.isfile(disk_path):
-            return jsonify({"error": "File not found on disk"}), 404
+        client_row = dict(cli)
+        if privacy_mode_enabled():
+            client_disp = _mask_client_payload(client_row)
+        else:
+            client_disp = client_row
 
-        fname = row["filename"] or ""
-        view_ext = os.path.splitext(fname)[1].lower()
-        mimetype = None
-        if view_ext == ".pdf":
-            mimetype = "application/pdf"
-        elif view_ext in (".jpg", ".jpeg"):
-            mimetype = "image/jpeg"
-        elif view_ext == ".png":
-            mimetype = "image/png"
-
-        return send_file(disk_path, as_attachment=False, mimetype=mimetype)
+        returns = _fetch_returns_for_client(conn, client_id)
+        documents = _fetch_client_documents(conn, client_id)
+        activity = _fetch_client_activity(conn, client_id, limit=200)
+        doc_year_options = sorted(
+            {d["tax_year"] for d in documents if d.get("tax_year") is not None},
+            reverse=True,
+        )
     finally:
         conn.close()
 
+    anchor_return_id = returns[0]["id"] if returns else None
 
-@app.route("/return/<int:return_id>/documents/<int:doc_id>/delete", methods=["POST"])
-@login_required
-def return_document_delete(return_id: int, doc_id: int):
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            """
-            SELECT id FROM return_documents
-            WHERE id = ? AND return_id = ? AND is_deleted = 0
-            """,
-            (doc_id, return_id),
-        ).fetchone()
-        if not row:
-            return jsonify({"error": "Not found"}), 404
-        conn.execute(
-            "UPDATE return_documents SET is_deleted = 1 WHERE id = ?",
-            (doc_id,),
-        )
-        conn.commit()
-        return jsonify({"success": True})
-    finally:
-        conn.close()
+    nm = profile_title_for_client(client_row, client_id, privacy=privacy_mode_enabled())
 
+    yr = date.today().year
+    filing_for_form = ""
+    if returns:
+        filing_for_form = (returns[0].get("filing_status") or "").strip()
 
-@app.route("/return/<int:return_id>/documents/<int:doc_id>/tag", methods=["POST"])
-@login_required
-def return_document_tag(return_id: int, doc_id: int):
-    payload = request.get_json(silent=True) or {}
-    raw = payload.get("doc_type")
-    if raw is None or not isinstance(raw, str):
-        return jsonify({"error": "Missing or invalid doc_type"}), 400
-    doc_type = raw.strip()
-    if doc_type not in _ALLOWED_RETURN_DOC_TYPES:
-        return jsonify({"error": "Invalid doc_type"}), 400
-
-    conn = get_connection()
-    try:
-        cur = conn.execute(
-            """
-            UPDATE return_documents SET doc_type = ?
-            WHERE id = ? AND return_id = ? AND is_deleted = 0
-            """,
-            (doc_type, doc_id, return_id),
-        )
-        if cur.rowcount == 0:
-            return jsonify({"error": "Not found"}), 404
-        conn.commit()
-        return jsonify({"success": True, "doc_type": doc_type})
-    finally:
-        conn.close()
+    ctx = base_ctx(yr)
+    ctx.update({
+        "active_page":           "dashboard",
+        "client_id":             client_id,
+        "client":                client_disp,
+        "client_anchor_return_id": anchor_return_id,
+        "client_returns":        returns,
+        "client_documents":      documents,
+        "client_activity":       activity,
+        "doc_year_options":      doc_year_options,
+        "doc_type_options":      sorted(_ALLOWED_RETURN_DOC_TYPES),
+        "filing_status_options": FILING_STATUS_OPTIONS,
+        "filing_status_anchor": filing_for_form,
+        "profile_title_name": nm,
+        "comparison_year_choices": sorted(
+            {r["tax_year"] for r in returns if r.get("tax_year") is not None},
+            reverse=True,
+        ),
+    })
+    return render_template("client_profile.html", **ctx)
 
 
-_FORM_DATA_SQL_TABLES = frozenset(
-    {
-        "w2_records",
-        "f1099_nec_records",
-        "f1099_misc_records",
-        "f1099_int_records",
-        "f1099_div_records",
-    }
-)
-
-
-_FORM_DATA_UPDATE_FIELDS: dict[str, frozenset[str]] = {
-    tbl: frozenset(cols) for tbl, cols in FORM_TABLE_INSERT_COLUMNS.items()
-}
-
-
-def _parse_form_update_value(field: str, raw_val) -> object:
-    if field in FORM_INTEGER_COLUMNS:
-        if isinstance(raw_val, bool):
-            return 1 if raw_val else 0
-        s = str(raw_val or "").strip().lower()
-        return 1 if s in ("1", "true", "yes", "y", "on") else 0
-    if raw_val is None:
-        return ""
-    return str(raw_val).strip()
-
-
-@app.route("/return/<int:return_id>/documents/<int:doc_id>/confirm-extraction", methods=["POST"])
-@login_required
-def return_document_confirm_extraction(return_id: int, doc_id: int):
-    """Staff confirms queued extraction marked needs_review."""
-    from ai_routes import _form_table_to_doc_type, _save_form_data
-    from extractor import _resolve_detected_table
-
-    reviewer = session.get("username") or "staff"
-
-    conn = get_connection()
-    try:
-        doc = conn.execute(
-            """
-            SELECT id, doc_type FROM return_documents
-            WHERE id = ? AND return_id = ? AND is_deleted = 0
-            """,
-            (doc_id, return_id),
-        ).fetchone()
-        if not doc:
-            return jsonify({"error": "Not found"}), 404
-
-        eq = conn.execute(
-            """
-            SELECT id, extracted_fields, detected_form_type
-            FROM extraction_queue
-            WHERE doc_id = ? AND return_id = ? AND status = 'needs_review'
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (doc_id, return_id),
-        ).fetchone()
-        if not eq:
-            return jsonify({"error": "No extraction pending review"}), 400
-
-        raw_fields = eq["extracted_fields"] or "{}"
-        try:
-            fields = json.loads(raw_fields)
-            if not isinstance(fields, dict):
-                return jsonify({"error": "Invalid stored extraction"}), 400
-        except json.JSONDecodeError:
-            return jsonify({"error": "Invalid stored extraction"}), 400
-
-        fields = scrub_ssn_from_dict(fields)
-
-        table_name = eq["detected_form_type"]
-        if not table_name or table_name not in _FORM_DATA_SQL_TABLES:
-            table_name = _resolve_detected_table(doc["doc_type"], fields)
-
-        if not table_name or table_name not in _FORM_DATA_SQL_TABLES:
-            return jsonify({"error": "Could not resolve form type"}), 400
-
-        if not _save_form_data(conn, table_name, return_id, doc_id, fields):
-            return jsonify({"error": "Could not save form data"}), 500
-
-        doc_type_ui = _form_table_to_doc_type(table_name)
-        if doc_type_ui == "unknown":
-            return jsonify({"error": "Could not resolve document type"}), 400
-
-        conn.execute(
-            """
-            UPDATE return_documents SET doc_type = ?
-            WHERE id = ? AND return_id = ? AND is_deleted = 0
-            """,
-            (doc_type_ui, doc_id, return_id),
-        )
-        ts = now()
-        conn.execute(
-            """
-            UPDATE extraction_queue SET
-                status = 'completed',
-                reviewed_by = ?,
-                reviewed_at = ?,
-                processed_at = COALESCE(processed_at, ?),
-                extracted_fields = ?,
-                detected_form_type = ?,
-                confidence = COALESCE(confidence, 1.0)
-            WHERE id = ?
-            """,
-            (
-                reviewer,
-                ts,
-                ts,
-                json.dumps(fields),
-                table_name,
-                eq["id"],
-            ),
-        )
-        conn.commit()
-        return jsonify({"success": True, "doc_type": doc_type_ui})
-    finally:
-        conn.close()
-
+# DEBT-1: document routes moved to routes/documents.py (Blueprint).
 
 def _serialize_form_row(row: sqlite3.Row) -> dict:
     d = dict(row)
@@ -1156,6 +2101,7 @@ def return_form_data_update(return_id: int, table: str, record_id: int):
     if not allowed or field not in allowed:
         return jsonify({"error": "Invalid field"}), 400
 
+    raw_val = payload.get("value")
     val = _parse_form_update_value(field, raw_val)
 
     conn = get_connection()
@@ -1203,539 +2149,50 @@ def return_form_data_soft_delete(return_id: int, table: str, record_id: int):
         conn.close()
 
 
-# ── Email classification review ───────────────────────────────────────────────
-
-_EC_ALLOWED = frozenset({"client_document", "client_inquiry", "promotional", "unknown"})
-
-
-@app.route("/email-review")
-@login_required
-def email_review():
-    ctx = base_ctx()
-    ctx["active_page"] = "email_review"
-    return render_template("email_review.html", **ctx)
-
-
-@app.route("/api/email-classifications")
-@login_required
-def api_email_classifications_list():
-    conn = get_connection()
-    try:
-        rows = conn.execute(
-            """
-            SELECT ec.id, ec.sender_domain, ec.subject_snippet, ec.classification,
-                   ec.source, ec.created_at,
-                   (SELECT rd.return_id FROM return_documents rd
-                    WHERE rd.source = 'email' AND rd.is_deleted = 0
-                      AND rd.uploaded_at BETWEEN
-                          datetime(ec.created_at, '-10 minutes') AND
-                          datetime(ec.created_at, '+10 minutes')
-                    LIMIT 1) AS linked_return_id
-            FROM email_classifications ec
-            WHERE ec.confirmed_by IS NULL
-              AND ec.source != 'rule'
-              AND (ec.sender_domain IS NULL OR ec.sender_domain NOT IN (
-                  SELECT domain FROM email_sender_rules
-              ))
-            ORDER BY ec.created_at DESC
-            LIMIT 200
-            """
-        ).fetchall()
-        return jsonify({
-            "classifications": [
-                {
-                    "id": r["id"],
-                    "sender_domain": r["sender_domain"] or "",
-                    "subject_snippet": r["subject_snippet"] or "",
-                    "classification": r["classification"],
-                    "source": r["source"] or "auto",
-                    "created_at": r["created_at"],
-                    "linked_return_id": r["linked_return_id"],
-                }
-                for r in rows
-            ]
-        })
-    finally:
-        conn.close()
-
-
-@app.route("/api/email-classifications/<int:classification_id>/confirm", methods=["POST"])
-@login_required
-def api_email_classification_confirm(classification_id: int):
-    data = request.get_json(silent=True) or {}
-    confirm_current = (
-        bool(data.get("confirm_current"))
-        or str(data.get("confirm_current") or "").lower() in {"1", "true", "yes"}
-    )
-
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            "SELECT id, sender_domain, classification FROM email_classifications WHERE id = ?",
-            (classification_id,),
-        ).fetchone()
-        if row is None:
-            return jsonify({"error": "Not found"}), 404
-
-        if confirm_current:
-            classification = row["classification"] if row["classification"] in _EC_ALLOWED else "unknown"
-        else:
-            classification = data.get("classification", "")
-            if classification not in _EC_ALLOWED:
-                return (
-                    jsonify(
-                        {
-                            "error": "Invalid classification.",
-                            "allowed": sorted(_EC_ALLOWED),
-                        }
-                    ),
-                    400,
-                )
-
-        conn.execute(
-            """
-            UPDATE email_classifications
-            SET classification = ?, confirmed_by = ?, confirmed_at = ?, source = 'staff'
-            WHERE id = ?
-            """,
-            (classification, session.get("username"), now(), classification_id),
-        )
-
-        # Staff confirmation: upsert domain_classifications with boosted confidence.
-        # confidence_count = MAX(existing + 2, 3) so graduation threshold is met
-        # on first staff confirm for any non-personal domain.
-        domain = row["sender_domain"]
-        if domain:
-            conn.execute(
-                """
-                INSERT INTO domain_classifications
-                    (domain, classification, confidence_count, last_seen,
-                     last_confirmed_by, last_confirmed_at)
-                VALUES (?, ?, 3, ?, ?, ?)
-                ON CONFLICT(domain) DO UPDATE SET
-                    classification      = excluded.classification,
-                    confidence_count    = MAX(confidence_count + 2, 3),
-                    last_seen           = excluded.last_seen,
-                    last_confirmed_by   = excluded.last_confirmed_by,
-                    last_confirmed_at   = excluded.last_confirmed_at
-                """,
-                (domain, classification, now(), session.get("username"), now()),
-            )
-
-        conn.commit()
-
-        # Trigger graduation check in a background thread — never blocks the response
-        if domain:
-            import threading as _t
-            from mail_watcher import _check_graduation_trigger as _cgt
-            _t.Thread(
-                target=_cgt,
-                args=(current_app._get_current_object(), domain),
-                daemon=True,
-            ).start()
-
-        # Trigger fastText retrain — uses confirmed data, runs in background
-        from classifier import trigger_retrain_async
-        trigger_retrain_async(DB_PATH)
-
-        return jsonify({"success": True, "classification": classification})
-    finally:
-        conn.close()
-
-
-@app.route("/api/email-classifications/train", methods=["POST"])
-@login_required
-def api_email_classifications_train():
-    data = request.get_json(silent=True) or {}
-    confirmations = data.get("confirmations", [])
-    if not isinstance(confirmations, list):
-        return jsonify({"error": "confirmations must be a list"}), 400
-    updated = 0
-    conn = get_connection()
-    try:
-        for item in confirmations:
-            if not isinstance(item, dict):
-                continue
-            cid = item.get("id")
-            cls = item.get("classification", "")
-            if not isinstance(cid, int) or cls not in _EC_ALLOWED:
-                continue
-            conn.execute(
-                """
-                UPDATE email_classifications
-                SET classification = ?, confirmed_by = ?, confirmed_at = ?, source = 'staff'
-                WHERE id = ?
-                """,
-                (cls, session.get("username"), now(), cid),
-            )
-            updated += 1
-        conn.commit()
-        return jsonify({"success": True, "updated": updated})
-    finally:
-        conn.close()
-
-
-@app.route("/api/email-classifications/stats")
-@login_required
-def api_email_classifications_stats():
-    today = date.today().isoformat()
-    conn = get_connection()
-    try:
-        total_today = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications WHERE created_at >= ?", (today,)
-        ).fetchone()[0]
-        total_confirmed = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications WHERE confirmed_by IS NOT NULL"
-        ).fetchone()[0]
-        total_promotional = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications WHERE classification = 'promotional'"
-        ).fetchone()[0]
-        total_pending = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications WHERE confirmed_by IS NULL"
-        ).fetchone()[0]
-
-        # Domain classification learning progress
-        domains_cached = conn.execute(
-            "SELECT COUNT(*) FROM domain_classifications"
-        ).fetchone()[0]
-        domains_near_graduation = conn.execute(
-            "SELECT COUNT(*) FROM domain_classifications "
-            "WHERE confidence_count >= 2 AND graduated = 0"
-        ).fetchone()[0]
-        domains_graduated = conn.execute(
-            "SELECT COUNT(*) FROM domain_classifications WHERE graduated = 1"
-        ).fetchone()[0]
-        pending_suggestions = conn.execute(
-            "SELECT COUNT(*) FROM rule_suggestions WHERE status = 'pending'"
-        ).fetchone()[0]
-
-        return jsonify({
-            "total_today":           total_today,
-            "total_confirmed":       total_confirmed,
-            "total_promotional":     total_promotional,
-            "total_pending_review":  total_pending,
-            "domains_cached":        domains_cached,
-            "domains_near_graduation": domains_near_graduation,
-            "domains_graduated":     domains_graduated,
-            "pending_suggestions":   pending_suggestions,
-        })
-    finally:
-        conn.close()
-
-
-# ── Email classification helpers ─────────────────────────────────────────────
-
-def _is_promotional_domain(domain: str) -> bool:
-    """
-    Return True when a sender domain is known-promotional or a mass-mailing subdomain.
-    Used to suppress false-positive missed-attachment alerts.
-    """
-    if not domain:
-        return False
-    if any(domain.startswith(prefix) for prefix in MASS_MAILING_PREFIXES):
-        return True
-    parts = domain.split(".")
-    base = ".".join(parts[-2:]) if len(parts) >= 2 else domain
-    return base in KNOWN_PROMOTIONAL_DOMAINS
-
-
-# ── Email classification digest ───────────────────────────────────────────────
-
-@app.route("/api/email-classifications/digest")
-@login_required
-def api_email_classifications_digest():
-    today = date.today().isoformat()
-    conn = get_connection()
-    try:
-        client_docs_today = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications "
-            "WHERE classification = 'client_document' AND created_at >= ?",
-            (today,),
-        ).fetchone()[0]
-
-        need_tagging = conn.execute(
-            "SELECT COUNT(*) FROM return_documents "
-            "WHERE source = 'email' AND is_deleted = 0 "
-            "AND (doc_type IS NULL OR doc_type = 'unknown')"
-        ).fetchone()[0]
-
-        already_tagged = conn.execute(
-            "SELECT COUNT(*) FROM return_documents "
-            "WHERE source = 'email' AND is_deleted = 0 "
-            "AND doc_type IS NOT NULL AND doc_type != 'unknown'"
-        ).fetchone()[0]
-
-        # Missed-attachment hint: client_document today, not staff-dismissed, and
-        # mail_watcher did not mark email_routed_ok after saving files / drive note.
-        # Legacy rows pre-email_routed_ok still use a time proximity check in Python
-        # because SQLite datetime(..., modifier) may not parse ISO offsets from now().
-        raw_missed_rows = conn.execute(
-            """
-            SELECT ec.id, ec.sender_domain, ec.subject_snippet, ec.created_at
-            FROM email_classifications ec
-            WHERE ec.classification = 'client_document'
-              AND ec.created_at >= ?
-              AND COALESCE(ec.reviewed_missed, 0) = 0
-              AND COALESCE(ec.email_routed_ok, 0) = 0
-            ORDER BY ec.created_at DESC
-            """,
-            (today,),
-        ).fetchall()
-
-        window_start = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
-        doc_rows = conn.execute(
-            """
-            SELECT uploaded_at FROM return_documents
-            WHERE source = 'email' AND is_deleted = 0
-              AND substr(COALESCE(uploaded_at, ''), 1, 10) >= ?
-            """,
-            (window_start,),
-        ).fetchall()
-        doc_times = [
-            t for r in doc_rows
-            if (t := parse_iso_datetime(r["uploaded_at"])) is not None
-        ]
-        _miss_window_sec = 30 * 60
-
-        def _no_email_upload_near(ec_row) -> bool:
-            ec_t = parse_iso_datetime(ec_row["created_at"])
-            if ec_t is None:
-                return True
-            return not any(
-                abs((ec_t - d).total_seconds()) <= _miss_window_sec
-                for d in doc_times
-            )
-
-        # Exclude known promotional domains — their classification as client_document
-        # is a residual data artifact that does not represent a real missed attachment.
-        missed_rows = [
-            r for r in raw_missed_rows
-            if _no_email_upload_near(r)
-            and not _is_promotional_domain(r["sender_domain"] or "")
-        ]
-
-        client_inquiries_today = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications "
-            "WHERE classification = 'client_inquiry' AND created_at >= ?",
-            (today,),
-        ).fetchone()[0]
-
-        promotional_unconfirmed = conn.execute(
-            "SELECT COUNT(*) FROM email_classifications "
-            "WHERE classification = 'promotional' AND confirmed_by IS NULL"
-        ).fetchone()[0]
-
-        need_attention = conn.execute(
-            """
-            SELECT COUNT(*) FROM email_classifications
-            WHERE confirmed_by IS NULL
-              AND source != 'rule'
-              AND classification IN ('client_document', 'client_inquiry')
-              AND (sender_domain IS NULL OR sender_domain NOT IN (
-                  SELECT domain FROM email_sender_rules
-              ))
-            """
-        ).fetchone()[0]
-
-        untagged = conn.execute(
-            """
-            SELECT
-                rd.id AS doc_id,
-                rd.filename,
-                rd.return_id,
-                rd.uploaded_at,
-                c.display_name AS client_name,
-                r.tax_year,
-                r.log_number
-            FROM return_documents rd
-            JOIN returns r ON rd.return_id = r.id
-            JOIN clients c ON r.client_id = c.id
-            WHERE rd.source = 'email'
-              AND rd.doc_type = 'unknown'
-              AND rd.is_deleted = 0
-            ORDER BY rd.uploaded_at DESC
-            """
-        ).fetchall()
-
-        untagged_docs = []
-        for r in untagged:
-            untagged_docs.append(
-                scrub_ssn_from_dict(
-                    {
-                        "doc_id": r["doc_id"],
-                        "filename": r["filename"],
-                        "return_id": r["return_id"],
-                        "uploaded_at": r["uploaded_at"],
-                        "client_name": r["client_name"] or "",
-                        "tax_year": r["tax_year"],
-                        "log_number": r["log_number"] or "",
-                    }
-                )
-            )
-
-        return jsonify({
-            "client_docs_today": client_docs_today,
-            "need_tagging": need_tagging,
-            "already_tagged": already_tagged,
-            "possible_missed": len(missed_rows),
-            "client_inquiries_today": client_inquiries_today,
-            "promotional_unconfirmed": promotional_unconfirmed,
-            "need_attention": need_attention,
-            "missed_items": [
-                {
-                    "id": r["id"],
-                    "sender_domain": r["sender_domain"] or "",
-                    "subject_snippet": r["subject_snippet"] or "",
-                    "created_at": r["created_at"],
-                }
-                for r in missed_rows
-            ],
-            "untagged_docs": untagged_docs,
-            "untagged_count": len(untagged_docs),
-        })
-    finally:
-        conn.close()
-
-
-@app.route("/api/email-classifications/bulk-confirm", methods=["POST"])
-@login_required
-def api_email_classifications_bulk_confirm():
-    data = request.get_json(silent=True) or {}
-    classification = data.get("classification", "")
-    if classification not in _EC_ALLOWED:
-        return jsonify({"error": f"Invalid classification. Allowed: {', '.join(sorted(_EC_ALLOWED))}"}), 400
-    conn = get_connection()
-    try:
-        # Collect unique domains BEFORE the bulk update so we can run graduation checks
-        affected_domains = [
-            r["sender_domain"]
-            for r in conn.execute(
-                "SELECT DISTINCT sender_domain FROM email_classifications "
-                "WHERE classification = ? AND confirmed_by IS NULL",
-                (classification,),
-            ).fetchall()
-            if r["sender_domain"]
-        ]
-
-        result = conn.execute(
-            """
-            UPDATE email_classifications
-            SET confirmed_by = ?, confirmed_at = ?, source = 'staff'
-            WHERE classification = ? AND confirmed_by IS NULL
-            """,
-            (session.get("username") or "staff", now(), classification),
-        )
-
-        # Upsert domain_classifications for every affected domain
-        for domain in affected_domains:
-            conn.execute(
-                """
-                INSERT INTO domain_classifications
-                    (domain, classification, confidence_count, last_seen,
-                     last_confirmed_by, last_confirmed_at)
-                VALUES (?, ?, 3, ?, ?, ?)
-                ON CONFLICT(domain) DO UPDATE SET
-                    classification      = excluded.classification,
-                    confidence_count    = MAX(confidence_count + 2, 3),
-                    last_seen           = excluded.last_seen,
-                    last_confirmed_by   = excluded.last_confirmed_by,
-                    last_confirmed_at   = excluded.last_confirmed_at
-                """,
-                (domain, classification, now(), session.get("username") or "staff", now()),
-            )
-
-        conn.commit()
-
-        # Trigger graduation check for each unique domain in background threads
-        if affected_domains:
-            import threading as _t
-            from mail_watcher import _check_graduation_trigger as _cgt
-            _app = current_app._get_current_object()
-            for domain in affected_domains:
-                _t.Thread(
-                    target=_cgt, args=(_app, domain), daemon=True
-                ).start()
-
-        # Trigger fastText retrain once after all bulk confirms — background only
-        from classifier import trigger_retrain_async
-        trigger_retrain_async(DB_PATH)
-
-        return jsonify({"success": True, "confirmed_count": result.rowcount})
-    except Exception:
-        conn.rollback()
-        return jsonify({"error": "Could not bulk confirm"}), 500
-    finally:
-        conn.close()
-
-
-@app.route("/api/email-classifications/today-confirmed")
-@login_required
-def api_email_classifications_today_confirmed():
-    today = date.today().isoformat()
-    conn = get_connection()
-    try:
-        rows = conn.execute(
-            """
-            SELECT id, sender_domain, subject_snippet, classification,
-                   confirmed_by, confirmed_at, created_at
-            FROM email_classifications
-            WHERE confirmed_by IS NOT NULL AND created_at >= ?
-            ORDER BY confirmed_at DESC
-            LIMIT 200
-            """,
-            (today,),
-        ).fetchall()
-        return jsonify({
-            "confirmed": [
-                {
-                    "id": r["id"],
-                    "sender_domain": r["sender_domain"] or "",
-                    "subject_snippet": r["subject_snippet"] or "",
-                    "classification": r["classification"],
-                    "confirmed_by": r["confirmed_by"] or "",
-                    "confirmed_at": (r["confirmed_at"] or "").replace("T", " ")[:16],
-                    "created_at": r["created_at"],
-                }
-                for r in rows
-            ]
-        })
-    finally:
-        conn.close()
-
-
-@app.route("/api/email-classifications/<int:classification_id>/mark-missed-reviewed", methods=["POST"])
-@login_required
-def api_email_classification_mark_missed_reviewed(classification_id: int):
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            "SELECT id FROM email_classifications WHERE id = ?", (classification_id,)
-        ).fetchone()
-        if row is None:
-            return jsonify({"error": "Not found"}), 404
-        conn.execute(
-            "UPDATE email_classifications SET reviewed_missed = 1 WHERE id = ?",
-            (classification_id,),
-        )
-        conn.commit()
-        return jsonify({"success": True})
-    finally:
-        conn.close()
-
+# DEBT-1: email review routes moved to routes/email_review.py (Blueprint).
 
 # ── Email sender rules ────────────────────────────────────────────────────────
 
 _ESR_ALLOWED_RULE_TYPES = frozenset({"always_promotional", "always_client"})
+# Every runtime INSERT into known_sender_rules must use _insert_known_sender_rule(...)
+# with one of these insert_source values — see EMAIL-2 / mail_watcher epic.
+_KSR_ALLOWED_INSERT_SOURCES = frozenset({"manual_add", "suggestion_accept"})
+_RULE_NOTE_ACCEPTED_SUGGESTION = "staff-accepted-rule-suggestion"
+
+
+def _insert_known_sender_rule(
+    conn,
+    *,
+    domain: str,
+    rule_type: str,
+    note: str | None,
+    created_by: str | None,
+    created_at: str | None,
+    insert_source: str,
+) -> None:
+    """Single insert path for known_sender_rules — unexpected insert_source logs WARN."""
+    if insert_source not in _KSR_ALLOWED_INSERT_SOURCES:
+        logging.warning(
+            "UNEXPECTED known_sender_rules insert_site=%s domain=%s (blocked)",
+            insert_source,
+            domain,
+        )
+        raise ValueError(f"unknown known_sender_rules insert_site: {insert_source!r}")
+    conn.execute(
+        "INSERT INTO known_sender_rules (domain, rule_type, note, created_by, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (domain, rule_type, note, created_by, created_at),
+    )
 
 
 @app.route("/api/email-sender-rules")
-@login_required
-def api_email_sender_rules_list():
+@role_required("admin")
+def api_known_sender_rules_list():
     conn = get_connection()
     try:
         rows = conn.execute(
             "SELECT id, domain, rule_type, note, created_by, created_at "
-            "FROM email_sender_rules ORDER BY created_at DESC"
+            "FROM known_sender_rules ORDER BY created_at DESC"
         ).fetchall()
         return jsonify({
             "rules": [
@@ -1755,8 +2212,8 @@ def api_email_sender_rules_list():
 
 
 @app.route("/api/email-sender-rules/add", methods=["POST"])
-@login_required
-def api_email_sender_rules_add():
+@role_required("admin")
+def api_known_sender_rules_add():
     data      = request.get_json(silent=True) or {}
     domain    = (data.get("domain") or "").strip().lower()
     rule_type = data.get("rule_type", "always_promotional")
@@ -1769,10 +2226,14 @@ def api_email_sender_rules_add():
 
     conn = get_connection()
     try:
-        conn.execute(
-            "INSERT INTO email_sender_rules (domain, rule_type, note, created_by, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (domain, rule_type, note or None, session.get("username"), now()),
+        _insert_known_sender_rule(
+            conn,
+            domain=domain,
+            rule_type=rule_type,
+            note=note or None,
+            created_by=session.get("username"),
+            created_at=now(),
+            insert_source="manual_add",
         )
         conn.commit()
         return jsonify({"success": True, "domain": domain, "rule_type": rule_type})
@@ -1786,16 +2247,16 @@ def api_email_sender_rules_add():
 
 
 @app.route("/api/email-sender-rules/<int:rule_id>/delete", methods=["POST"])
-@login_required
+@role_required("admin")
 def api_email_sender_rule_delete(rule_id: int):
     conn = get_connection()
     try:
         row = conn.execute(
-            "SELECT id FROM email_sender_rules WHERE id = ?", (rule_id,)
+            "SELECT id FROM known_sender_rules WHERE id = ?", (rule_id,)
         ).fetchone()
         if row is None:
             return jsonify({"error": "Not found"}), 404
-        conn.execute("DELETE FROM email_sender_rules WHERE id = ?", (rule_id,))
+        conn.execute("DELETE FROM known_sender_rules WHERE id = ?", (rule_id,))
         conn.commit()
         return jsonify({"success": True})
     finally:
@@ -1805,7 +2266,7 @@ def api_email_sender_rule_delete(rule_id: int):
 # ── Rule suggestions (LLM-generated, staff-reviewed) ─────────────────────────
 
 @app.route("/api/rule-suggestions")
-@login_required
+@role_required("admin")
 def api_rule_suggestions_list():
     conn = get_connection()
     try:
@@ -1831,7 +2292,7 @@ def api_rule_suggestions_list():
 
 
 @app.route("/api/rule-suggestions/<int:suggestion_id>/accept", methods=["POST"])
-@login_required
+@role_required("admin")
 def api_rule_suggestion_accept(suggestion_id: int):
     conn = get_connection()
     try:
@@ -1849,10 +2310,14 @@ def api_rule_suggestion_accept(suggestion_id: int):
             return jsonify({"error": f"Invalid rule type: {rule_type}"}), 400
 
         try:
-            conn.execute(
-                "INSERT INTO email_sender_rules (domain, rule_type, note, created_by, created_at) "
-                "VALUES (?, ?, 'from-llm-suggestion', ?, ?)",
-                (domain, rule_type, session.get("username"), now()),
+            _insert_known_sender_rule(
+                conn,
+                domain=domain,
+                rule_type=rule_type,
+                note=_RULE_NOTE_ACCEPTED_SUGGESTION,
+                created_by=session.get("username"),
+                created_at=now(),
+                insert_source="suggestion_accept",
             )
         except Exception as exc:
             if "UNIQUE constraint" not in str(exc):
@@ -1874,7 +2339,7 @@ def api_rule_suggestion_accept(suggestion_id: int):
 
 
 @app.route("/api/rule-suggestions/<int:suggestion_id>/reject", methods=["POST"])
-@login_required
+@role_required("admin")
 def api_rule_suggestion_reject(suggestion_id: int):
     conn = get_connection()
     try:
@@ -1896,7 +2361,7 @@ def api_rule_suggestion_reject(suggestion_id: int):
 
 
 @app.route("/api/rule-suggestions/analyze", methods=["POST"])
-@login_required
+@role_required("admin")
 def api_rule_suggestions_analyze():
     import threading
     from mail_watcher import _analyze_patterns
@@ -1910,7 +2375,7 @@ def api_rule_suggestions_analyze():
 
 
 @app.route("/logout-queue")
-@login_required
+@role_required("preparer")
 def logout_queue():
     year = int(request.args.get("year", date.today().year))
     conn = get_connection()
@@ -1933,7 +2398,7 @@ def logout_queue():
 
 
 @app.route("/efile-queue")
-@login_required
+@role_required("preparer")
 def efile_queue():
     year  = int(request.args.get("year", date.today().year))
     sort  = request.args.get("sort", "log")   # "log" or "name"
@@ -1960,7 +2425,7 @@ def efile_queue():
 
 
 @app.route("/efile-queue/export")
-@login_required
+@role_required("preparer")
 def efile_queue_export():
     import csv, io
     year  = int(request.args.get("year", date.today().year))
@@ -2096,7 +2561,7 @@ def pickup_workflow(return_id: int):
 
 
 @app.route("/payments")
-@login_required
+@role_required("preparer")
 def payments():
     year         = int(request.args.get("year", date.today().year))
     balance_only = request.args.get("balance_only")
@@ -2123,12 +2588,14 @@ def payments():
 @login_required
 def intake():
     if request.method == "GET":
+        from config import INTAKE_SUGGESTED_UPCHARGE_PCT as _upc
         ctx = base_ctx()
         ctx.update({
             "active_page": "intake",
             "today": date.today().isoformat(),
             "error": None,
             "habit_profile": None,
+            "intake_suggested_upcharge_pct": _upc,
         })
         return render_template("intake.html", **ctx)
 
@@ -2140,8 +2607,10 @@ def intake():
     last_name  = (f.get("last_name") or "").strip().upper()
     first_name = (f.get("first_name") or "").strip().upper()
     if not last_name:
+        from config import INTAKE_SUGGESTED_UPCHARGE_PCT as _upc
         ctx = base_ctx()
-        ctx.update({"active_page": "intake", "today": today_iso, "error": "Last name is required.", "prefill": {}})
+        ctx.update({"active_page": "intake", "today": today_iso, "error": "Last name is required.",
+                    "prefill": {}, "intake_suggested_upcharge_pct": _upc})
         return render_template("intake.html", **ctx), 400
 
     def _v(key):
@@ -2159,6 +2628,14 @@ def intake():
         val = f.get(key, "").strip()
         return int(val) if val.isdigit() else None
 
+    def _ssn_last4_from_full(field_name: str) -> str | None:
+        """Extract last 4 digits from a full SSN field (XXX-XX-XXXX). Never logged."""
+        raw = f.get(field_name, "").strip()
+        digits = _re.sub(r"\D", "", raw)
+        if len(digits) >= 4:
+            return digits[-4:]
+        return digits if digits else None
+
     conn = get_connection()
     try:
         tax_year = _i("tax_year") or date.today().year
@@ -2172,6 +2649,10 @@ def intake():
 
         # ── Client — insert new or update existing (re-intake) ────────────────
         existing_client_id = _i("client_id")
+        # INTAKE-2: derive ssn_last4 from full SSN field (never stored in full)
+        taxpayer_ssn_last4 = _ssn_last4_from_full("ssn_full")
+        spouse_ssn_last4   = _ssn_last4_from_full("spouse_ssn_full")
+
         if existing_client_id:
             conn.execute(
                 """
@@ -2188,7 +2669,7 @@ def intake():
                 WHERE id=?
                 """,
                 (
-                    last_name, first_name, _v("ssn_last4"),
+                    last_name, first_name, taxpayer_ssn_last4,
                     (_v("spouse_last_name") or "").upper() or None,
                     (_v("spouse_first_name") or "").upper() or None,
                     _v("taxpayer_dob"), _v("spouse_dob"),
@@ -2221,7 +2702,7 @@ def intake():
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
-                    last_name, first_name, _v("ssn_last4"),
+                    last_name, first_name, taxpayer_ssn_last4,
                     (_v("spouse_last_name") or "").upper() or None,
                     (_v("spouse_first_name") or "").upper() or None,
                     _v("taxpayer_dob"), _v("spouse_dob"),
@@ -2298,6 +2779,11 @@ def intake():
         )
 
         # ── Payment ───────────────────────────────────────────────────────────
+        # INTAKE-8: apply auto-discount for new clients (no prior return)
+        discount_val = _n("discount_amount")
+        if existing_client_id is None and discount_val is None:
+            discount_val = float(INTAKE_AUTO_DISCOUNT) if INTAKE_AUTO_DISCOUNT else None
+
         conn.execute(
             """
             INSERT INTO payments (
@@ -2311,7 +2797,7 @@ def intake():
                 _n("total_fee"), _n("fee_paid"),
                 _v("receipt_number"), _v("receipt2_number"),
                 _n("accounting_fee"), _n("w7_fee"), _n("form_1099_fee"), _n("license_fee"),
-                _n("reprocess_fee"), _n("discount_amount"), _n("special_discount"),
+                _n("reprocess_fee"), discount_val, _n("special_discount"),
                 _n("down_payment"),
             ),
         )
@@ -2325,8 +2811,8 @@ def intake():
             conn.execute(
                 """
                 INSERT INTO dependents
-                  (return_id, full_name, ssn_last4, relationship, date_of_birth, medi_cal, created_at)
-                VALUES (?,?,?,?,?,?,?)
+                  (return_id, full_name, ssn_last4, relationship, date_of_birth, medi_cal, on_medicare, created_at)
+                VALUES (?,?,?,?,?,?,?,?)
                 """,
                 (
                     return_id, name,
@@ -2334,6 +2820,7 @@ def intake():
                     _v(f"dep_rel_{i}"),
                     _v(f"dep_dob_{i}"),
                     1 if f.get(f"dep_medicaid_{i}") else 0,
+                    1 if f.get(f"dep_medicare_{i}") else 0,
                     ts,
                 ),
             )
@@ -2370,7 +2857,7 @@ def intake():
 # ── CSV Upload / Analyze ──────────────────────────────────────────────────────
 
 @app.route("/upload", methods=["GET"])
-@login_required
+@role_required("admin")
 def upload_get():
     ctx = base_ctx()
     ctx.update({"active_page": "upload", "error": None})
@@ -2378,7 +2865,7 @@ def upload_get():
 
 
 @app.route("/upload/preview", methods=["POST"])
-@login_required
+@role_required("admin")
 def upload_preview():
     f = request.files.get("csv_file")
     if not f or not f.filename:
@@ -2419,10 +2906,10 @@ def upload_preview():
 
 
 @app.route("/upload/confirm", methods=["POST"])
-@login_required
+@role_required("admin")
 def upload_confirm():
     """Execute import using the analysis result confirmed by staff."""
-    data       = request.get_json(force=True)
+    data       = _get_json_safe()
     tmp_path   = data.get("tmp_path", "")
     overrides  = data.get("overrides", {})   # {str(col_index): "table.field" | "skip"}
     tax_year   = int(data.get("tax_year", date.today().year))
@@ -2557,25 +3044,47 @@ def _import_row(conn, row_data: dict, tax_year: int, ts: str, today_iso: str, st
         )
         return  # do not create return — wait for staff to resolve
     else:
-        # No match — create new client
-        conn.execute(
-            """INSERT INTO clients (last_name, first_name, referral_flag, referred_by,
-                                    prior_year_log, is_new_client, created_at, updated_at)
-               VALUES (?,?,?,?,?,1,?,?)""",
-            (
-                last_name, first_name,
-                1 if g("clients", "referral_flag") else 0,
-                normalize_string(g("clients", "referred_by")),
-                normalize_string(g("clients", "prior_year_log")),
-                ts, ts,
-            ),
-        )
-        client_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        # Add to cache so subsequent rows for the same new client match
-        if _client_cache is not None:
-            _client_cache.append({"id": client_id, "ln": last_name.upper(), "fn": (first_name or "").upper()})
-        stats["created"] = stats.get("created", 0) + 1
-        match_method = "new"
+        # Fuzzy returned nothing — try an exact SQL lookup before inserting a new row.
+        # This prevents duplicates for business names (NULL first_name) and handles
+        # cases where the in-memory cache was not populated (e.g. first row of a session).
+        if first_name:
+            _exact = conn.execute(
+                "SELECT id FROM clients WHERE lower(last_name)=lower(?) AND lower(first_name)=lower(?) LIMIT 1",
+                (last_name, first_name),
+            ).fetchone()
+        else:
+            _exact = conn.execute(
+                "SELECT id FROM clients WHERE lower(last_name)=lower(?) AND (first_name IS NULL OR first_name='') LIMIT 1",
+                (last_name,),
+            ).fetchone()
+
+        if _exact:
+            client_id = _exact[0]
+            conn.execute("UPDATE clients SET updated_at=? WHERE id=?", (ts, client_id))
+            if _client_cache is not None and not any(c["id"] == client_id for c in _client_cache):
+                _client_cache.append({"id": client_id, "ln": last_name.upper(), "fn": (first_name or "").upper()})
+            stats["updated"] = stats.get("updated", 0) + 1
+            match_method = "exact_fallback"
+        else:
+            # Genuinely new client
+            conn.execute(
+                """INSERT INTO clients (last_name, first_name, referral_flag, referred_by,
+                                        prior_year_log, is_new_client, created_at, updated_at)
+                   VALUES (?,?,?,?,?,1,?,?)""",
+                (
+                    last_name, first_name,
+                    1 if g("clients", "referral_flag") else 0,
+                    normalize_string(g("clients", "referred_by")),
+                    normalize_string(g("clients", "prior_year_log")),
+                    ts, ts,
+                ),
+            )
+            client_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            # Add to cache so subsequent rows for the same new client match
+            if _client_cache is not None:
+                _client_cache.append({"id": client_id, "ln": last_name.upper(), "fn": (first_name or "").upper()})
+            stats["created"] = stats.get("created", 0) + 1
+            match_method = "new"
 
     # ── Match or create return ────────────────────────────────────────────────
     ret_year = tax_year
@@ -2720,7 +3229,7 @@ def _import_row(conn, row_data: dict, tax_year: int, ts: str, today_iso: str, st
 # ── Export ────────────────────────────────────────────────────────────────────
 
 @app.route("/export")
-@login_required
+@role_required("admin")
 def export_excel():
     """Export the current filtered view as an .xlsx file."""
     import io
@@ -2869,7 +3378,7 @@ def export_excel():
 # ── Source compare (database vs office log + Drake files on disk) ─────────────
 
 @app.route("/source-compare")
-@login_required
+@role_required("admin")
 def source_compare_page():
     year = int(request.args.get("year", date.today().year))
     # only=miss (default) | all — so "show all returns" is stable after form submit
@@ -2999,7 +3508,7 @@ def _coerce_apply_value(raw: str, ftype: str):
 
 
 @app.route("/api/source-compare/apply", methods=["POST"])
-@login_required
+@role_required("admin")
 def source_compare_apply():
     """Apply selected source values (manual or drake) for a single return to the DB."""
     body = request.get_json(silent=True) or {}
@@ -3094,7 +3603,7 @@ def source_compare_apply():
 # ── Intake log (chronological register) ───────────────────────────────────────
 
 @app.route("/review")
-@login_required
+@role_required("admin")
 def review_queue_page():
     conn = get_connection()
     items = conn.execute(
@@ -3113,7 +3622,7 @@ def review_queue_page():
 
 
 @app.route("/review/resolve", methods=["POST"])
-@login_required
+@role_required("admin")
 def review_resolve():
     """Staff resolves a review_queue item.
 
@@ -3122,7 +3631,7 @@ def review_resolve():
       action    : 'confirm' | 'new' | 'link'
       client_id : int  (required for 'link'; ignored otherwise)
     """
-    data     = request.get_json(force=True)
+    data     = _get_json_safe()
     queue_id = int(data.get("queue_id", 0))
     action   = data.get("action", "")   # confirm | new | link
     override_client_id = data.get("client_id")  # for 'link'
@@ -3214,7 +3723,39 @@ def intake_log():
     return render_template("intake_log.html", **ctx)
 
 
+
 # ── JSON API ──────────────────────────────────────────────────────────────────
+
+
+@app.post("/api/client-error")
+@login_required
+def api_client_error():
+    """PROD-6: log frontend (vanilla JS) errors without taking down the Flask process."""
+    data = request.get_json(silent=True)
+    if data is None or not isinstance(data, dict):
+        return jsonify({"ok": False, "error": "expected_json_object"}), 400
+
+    kind = str(data.get("kind") or "unknown")[:64]
+    message = str(data.get("message") or "")[:2000]
+    page_url = str(data.get("page_url") or "")[:2000]
+    filename = str(data.get("filename") or "")[:500]
+    stack = str(data.get("stack") or "")[:8000]
+    lineno = data.get("lineno")
+    colno = data.get("colno")
+
+    frontend_log = logging.getLogger("taxops.frontend")
+    frontend_log.warning(
+        "CLIENT_JS[%s]: %s | url=%r file=%r line=%s col=%s\n%s",
+        kind,
+        message.replace("\r", " ").replace("\n", " ")[:480],
+        page_url[:400],
+        filename,
+        lineno,
+        colno,
+        stack.replace("\r", "").strip()[:2500],
+    )
+    return jsonify({"ok": True})
+
 
 @app.get("/api/clients/search")
 @login_required
@@ -3321,6 +3862,88 @@ def api_client_reintake(client_id: int):
     })
 
 
+@app.get("/api/clients/<int:client_id>/years")
+@login_required
+def api_client_year_comparison(client_id: int):
+    """MULTIYEAR-6 — normalized 2–3 year comparison payload for the client."""
+    raw = request.args.get("years") or ""
+    years_asc, err = multiyear_comparison.parse_years_param(raw)
+    if err:
+        return jsonify({"error": err}), 400
+
+    conn = get_connection()
+    try:
+        cli = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not cli:
+            return jsonify({"error": "Not found"}), 404
+        cli_d = dict(cli)
+        display = profile_title_for_client(cli_d, client_id, privacy=privacy_mode_enabled())
+        thresholds = {
+            "agi_percent": float(MULTIYEAR_AGI_PERCENT_THRESHOLD),
+            "refund_abs": float(MULTIYEAR_REFUND_ABS_THRESHOLD),
+            "balance_abs": float(MULTIYEAR_BALANCE_ABS_THRESHOLD),
+        }
+        payload = multiyear_comparison.build_client_year_comparison_payload(
+            conn,
+            client_id=client_id,
+            years_asc=years_asc or [],
+            thresholds=thresholds,
+            client_display_name=display,
+            privacy_mode=privacy_mode_enabled(),
+        )
+        return jsonify(payload)
+    finally:
+        conn.close()
+
+
+@app.get("/clients/<int:client_id>/years")
+@login_required
+def legacy_client_comparison_years(client_id: int):
+    """MULTIYEAR-6 — epic path aliases the JSON API."""
+    return api_client_year_comparison(client_id)
+
+
+@app.get("/api/clients/<int:client_id>/years.pdf")
+@login_required
+def api_client_year_comparison_pdf(client_id: int):
+    """MULTIYEAR-5 — same data as JSON route, formatted for preparer/client summary."""
+    raw = request.args.get("years") or ""
+    years_asc, err = multiyear_comparison.parse_years_param(raw)
+    if err:
+        return jsonify({"error": err}), 400
+
+    conn = get_connection()
+    try:
+        cli = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+        if not cli:
+            return jsonify({"error": "Not found"}), 404
+        cli_d = dict(cli)
+        display = profile_title_for_client(cli_d, client_id, privacy=privacy_mode_enabled())
+        thresholds = {
+            "agi_percent": float(MULTIYEAR_AGI_PERCENT_THRESHOLD),
+            "refund_abs": float(MULTIYEAR_REFUND_ABS_THRESHOLD),
+            "balance_abs": float(MULTIYEAR_BALANCE_ABS_THRESHOLD),
+        }
+        payload = multiyear_comparison.build_client_year_comparison_payload(
+            conn,
+            client_id=client_id,
+            years_asc=years_asc or [],
+            thresholds=thresholds,
+            client_display_name=display,
+            privacy_mode=privacy_mode_enabled(),
+        )
+    finally:
+        conn.close()
+
+    pdf_bytes = multiyear_comparison.render_year_comparison_pdf(payload)
+    fname = f"client_{client_id}_year_comparison.pdf"
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{fname}"'},
+    )
+
+
 @app.get("/api/search")
 @login_required
 def api_search():
@@ -3329,26 +3952,170 @@ def api_search():
     if not q:
         return jsonify([])
     results = query_returns({"year": year, "q": q})
+    deduped: list[dict] = []
+    seen: set[int] = set()
+    for r in results:
+        cid = r.get("client_id")
+        if cid is None or cid in seen:
+            continue
+        seen.add(int(cid))
+        deduped.append(r)
+        if len(deduped) >= 12:
+            break
+    priv = privacy_mode_enabled()
     return jsonify([
         {
-            "id":         r["id"],
-            "log_number": r["log_number"],
-            "name":       (f"XXXXX #{r['id']}" if privacy_mode_enabled() else r["name_full"]),
-            "status":     r["client_status"],
-            "badge":      r["badge_class"],
-            "tax_year":   r["tax_year"],
+            "id":          r["id"],
+            "client_id":   r["client_id"],
+            "log_number":  r["log_number"],
+            "name":        (f"XXXXX #{r['client_id']}" if priv else r["name_full"]),
+            "status":      r["client_status"],
+            "badge":       r["badge_class"],
+            "tax_year":    r["tax_year"],
         }
-        for r in results[:12]
+        for r in deduped
     ])
 
 
 @app.post("/api/privacy-mode")
 @login_required
 def api_privacy_mode():
-    data = request.get_json(force=True) if request.data else {}
+    data = _get_json_safe() if request.data else {}
     enabled = data.get("enabled")
     session["privacy_mode"] = bool(enabled)
     return jsonify({"success": True, "privacy_mode": bool(session.get("privacy_mode"))})
+
+
+@app.get("/api/filters")
+@login_required
+def api_dashboard_filters_list():
+    uname = _session_username()
+    if not uname:
+        return jsonify({"error": "No user in session"}), 400
+    year = int(request.args.get("year", date.today().year))
+    rows = _saved_dashboard_filters_payload(uname, year)
+    return jsonify({"filters": rows, "year": year})
+
+
+@app.post("/api/filters")
+@login_required
+def api_dashboard_filters_create():
+    uname = _session_username()
+    if not uname:
+        return jsonify({"error": "No user in session"}), 400
+    data = _get_json_safe() if request.data else {}
+    name = str(data.get("name") or "").strip()[:120]
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+
+    fd = _sanitize_dashboard_filter_payload(data.get("filter") or {})
+    if not _dashboard_saved_filter_meaningful(fd):
+        return jsonify({"error": "Filter has no criteria — pick status, preparer, or another filter first"}), 400
+
+    wants_shared = bool(data.get("is_shared"))
+    if wants_shared and not can_publish_shared_dashboard_filters():
+        return jsonify({"error": "Not allowed to publish shared filters"}), 403
+
+    set_default = bool(data.get("set_default")) and not wants_shared
+    ts = now()
+    year_hint = int(data.get("year", date.today().year))
+
+    new_id = None
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO dashboard_saved_filters (user_id, name, filter_json, is_default, is_shared, created_at)
+            VALUES (?, ?, ?, 0, ?, ?)
+            """,
+            (
+                uname,
+                name,
+                json.dumps(fd, separators=(",", ":"), sort_keys=True),
+                1 if wants_shared else 0,
+                ts,
+            ),
+        )
+        new_id = cur.lastrowid
+        if set_default and new_id:
+            conn.execute(
+                "UPDATE dashboard_saved_filters SET is_default = 0 WHERE user_id = ? AND is_shared = 0",
+                (uname,),
+            )
+            conn.execute(
+                "UPDATE dashboard_saved_filters SET is_default = 1 WHERE id = ?",
+                (new_id,),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        "success":      True,
+        "id":           new_id,
+        "query_string": _dashboard_filter_query_string(fd, year_hint),
+        "filter":       fd,
+        "set_default":  set_default,
+    })
+
+
+@app.delete("/api/filters/<int:fid>")
+@login_required
+def api_dashboard_filters_delete(fid: int):
+    uname = _session_username()
+    if not uname:
+        return jsonify({"error": "No user in session"}), 400
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT user_id, is_shared FROM dashboard_saved_filters WHERE id = ?",
+            (fid,),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        is_shared = bool(row["is_shared"])
+        uid = row["user_id"]
+        if is_shared:
+            if not can_publish_shared_dashboard_filters():
+                return jsonify({"error": "Forbidden"}), 403
+        elif uid != uname:
+            return jsonify({"error": "Forbidden"}), 403
+        conn.execute("DELETE FROM dashboard_saved_filters WHERE id = ?", (fid,))
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+@app.post("/api/filters/<int:fid>/default")
+@login_required
+def api_dashboard_filters_set_default(fid: int):
+    uname = _session_username()
+    if not uname:
+        return jsonify({"error": "No user in session"}), 400
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT user_id, is_shared FROM dashboard_saved_filters WHERE id = ?",
+            (fid,),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        if bool(row["is_shared"]) or row["user_id"] != uname:
+            return jsonify({"error": "Forbidden"}), 403
+        conn.execute(
+            "UPDATE dashboard_saved_filters SET is_default = 0 WHERE user_id = ? AND is_shared = 0",
+            (uname,),
+        )
+        conn.execute(
+            "UPDATE dashboard_saved_filters SET is_default = 1 "
+            "WHERE id = ? AND user_id = ? AND is_shared = 0",
+            (fid, uname),
+        )
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
 
 
 @app.post("/api/return/<int:return_id>/sync-to-drake")
@@ -3376,9 +4143,9 @@ def api_return_sync_to_drake(return_id: int):
 
 
 @app.post("/api/return/<int:return_id>/status")
-@login_required
+@role_required("preparer")
 def api_status(return_id: int):
-    data       = request.get_json(force=True)
+    data       = _get_json_safe()
     new_status = (data.get("status") or "").upper().strip()
     if new_status not in STATUS_FLOW:
         return jsonify({"error": "Invalid status"}), 400
@@ -3440,14 +4207,239 @@ def api_status(return_id: int):
     })
 
 
+BULK_RETURN_IDS_CAP = 500
+
+
+@app.post("/api/returns/bulk-status")
+@role_required("preparer")
+def api_returns_bulk_status():
+    payload    = _get_json_safe() or {}
+    raw_ids    = payload.get("return_ids")
+    new_status = (payload.get("status") or "").strip().upper()
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({"error": "return_ids required (non-empty list)"}), 400
+    if len(raw_ids) > BULK_RETURN_IDS_CAP:
+        return jsonify({"error": f"Too many returns (max {BULK_RETURN_IDS_CAP})"}), 400
+    try:
+        parsed_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        return jsonify({"error": "return_ids must be integers"}), 400
+    if new_status not in STATUS_FLOW:
+        return jsonify({"error": "Invalid status"}), 400
+    actor = (session.get("username") or "").strip() or "?"
+    conn  = get_connection()
+    try:
+        conn.execute("BEGIN")
+        errors = bulk_apply_status_changes(
+            conn,
+            return_ids=parsed_ids,
+            new_status=new_status,
+            status_flow=tuple(STATUS_FLOW),
+            status_date_stamp=STATUS_DATE_STAMP,
+            actor_username=actor,
+        )
+        if errors:
+            conn.rollback()
+            return jsonify({"success": False, "errors": errors, "changed": 0}), 409
+        conn.commit()
+        return jsonify(
+            {"success": True, "errors": [], "changed": len({i for i in parsed_ids})},
+        )
+    finally:
+        conn.close()
+
+
+@app.post("/api/returns/bulk-processor")
+@role_required("preparer")
+def api_returns_bulk_processor():
+    payload       = _get_json_safe() or {}
+    raw_ids       = payload.get("return_ids")
+    processor_raw = payload.get("processor")
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({"error": "return_ids required (non-empty list)"}), 400
+    if len(raw_ids) > BULK_RETURN_IDS_CAP:
+        return jsonify({"error": f"Too many returns (max {BULK_RETURN_IDS_CAP})"}), 400
+    try:
+        parsed_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        return jsonify({"error": "return_ids must be integers"}), 400
+    actor = (session.get("username") or "").strip() or "?"
+    conn  = get_connection()
+    try:
+        conn.execute("BEGIN")
+        errors, rows_updated = bulk_apply_processor_changes(
+            conn,
+            return_ids=parsed_ids,
+            new_processor_raw=processor_raw,
+            actor_username=actor,
+        )
+        if errors:
+            conn.rollback()
+            return jsonify({"success": False, "errors": errors, "changed": 0}), 409
+        conn.commit()
+        return jsonify(
+            {"success": True, "errors": [], "changed": rows_updated},
+        )
+    finally:
+        conn.close()
+
+
+@app.post("/api/returns/bulk-update")
+@role_required("preparer")
+def api_returns_bulk_update():
+    """Unified bulk update: set status and/or processor in one transaction.
+
+    Accepts JSON: {return_ids: [1,2,3], status: "PICKUP", processor: "Alice"}
+    At least one of status or processor must be supplied.
+    Maximum BULK_RETURN_IDS_CAP IDs per request.
+    Each changed return is audited individually.
+    Never returns ssn or identification fields.
+    """
+    payload     = _get_json_safe() or {}
+    raw_ids     = payload.get("return_ids")
+    new_status  = (payload.get("status") or "").strip().upper() or None
+    processor   = payload.get("processor")  # may be None to leave unchanged
+
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({"error": "return_ids required (non-empty list)"}), 400
+    if len(raw_ids) > BULK_RETURN_IDS_CAP:
+        return jsonify({"error": f"Too many returns (max {BULK_RETURN_IDS_CAP})"}), 400
+    try:
+        parsed_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        return jsonify({"error": "return_ids must be integers"}), 400
+
+    if new_status is None and processor is None:
+        return jsonify({"error": "At least one of status or processor must be provided"}), 400
+    if new_status is not None and new_status not in STATUS_FLOW:
+        return jsonify({"error": f"Invalid status. Allowed: {STATUS_FLOW}"}), 400
+
+    actor = (session.get("username") or "").strip() or "?"
+    conn  = get_connection()
+    try:
+        conn.execute("BEGIN")
+        errors: list[str] = []
+        updated_count = 0
+
+        if new_status is not None:
+            errs = bulk_apply_status_changes(
+                conn,
+                return_ids=parsed_ids,
+                new_status=new_status,
+                status_flow=tuple(STATUS_FLOW),
+                status_date_stamp=STATUS_DATE_STAMP,
+                actor_username=actor,
+            )
+            if errs:
+                conn.rollback()
+                return jsonify({"success": False, "errors": errs, "updated_count": 0}), 409
+            updated_count = len(parsed_ids)
+
+        if processor is not None:
+            perrs, rows_updated = bulk_apply_processor_changes(
+                conn,
+                return_ids=parsed_ids,
+                new_processor_raw=processor,
+                actor_username=actor,
+            )
+            if perrs:
+                conn.rollback()
+                return jsonify({"success": False, "errors": perrs, "updated_count": 0}), 409
+            updated_count = max(updated_count, rows_updated)
+
+        conn.commit()
+        return jsonify({"success": True, "updated_count": updated_count})
+    finally:
+        conn.close()
+
+
+def _validate_field(field: str, value) -> tuple[bool, str]:
+    """REL-6: coerce and validate a value for a known editable field.
+
+    Returns (ok, coerced_value_or_error_message).  Validators are intentionally
+    lenient about None/empty-string so clearing a field always works.
+    """
+    import re as _re
+
+    def _is_empty(v) -> bool:
+        return v is None or str(v).strip() == ""
+
+    # INTEGER boolean flags (0/1 only; None = clear)
+    _BOOL_FIELDS = {
+        "verified", "is_amended", "has_w7", "is_extension",
+        "transfer_flag", "transfer_2025_flag", "transfer_2026_flag",
+        "signatures_given", "signatures_received", "referral_flag",
+    }
+    # ISO-8601 date fields (YYYY-MM-DD or empty)
+    _DATE_FIELDS = {
+        "intake_date", "date_emailed", "pickup_date", "logout_date",
+        "updated_date", "efile_date", "ack_date", "taxpayer_dob", "spouse_dob",
+    }
+    # 4-digit tax-year integer
+    _YEAR_FIELDS = {"tax_year"}
+    # Money (REAL >= 0)
+    _MONEY_FIELDS = {"total_fee", "fee_paid", "cc_fee", "refund_amount", "bank_deposit"}
+
+    if field in _BOOL_FIELDS:
+        if _is_empty(value):
+            return True, None
+        try:
+            v = int(value)
+        except (TypeError, ValueError):
+            return False, f"Field '{field}' must be 0 or 1, got {value!r}"
+        if v not in (0, 1):
+            return False, f"Field '{field}' must be 0 or 1, got {v!r}"
+        return True, v
+
+    if field in _DATE_FIELDS:
+        if _is_empty(value):
+            return True, None
+        s = str(value).strip()
+        if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+            return False, f"Field '{field}' must be YYYY-MM-DD, got {s!r}"
+        return True, s
+
+    if field in _YEAR_FIELDS:
+        if _is_empty(value):
+            return True, None
+        try:
+            v = int(value)
+        except (TypeError, ValueError):
+            return False, f"Field '{field}' must be a 4-digit year, got {value!r}"
+        if not (1990 <= v <= 2100):
+            return False, f"Field '{field}' year {v} out of range 1990–2100"
+        return True, v
+
+    if field in _MONEY_FIELDS:
+        if _is_empty(value):
+            return True, None
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return False, f"Field '{field}' must be a number, got {value!r}"
+        if v < 0:
+            return False, f"Field '{field}' cannot be negative, got {v!r}"
+        return True, round(v, 2)
+
+    # Everything else (TEXT fields) — accept as-is; strip leading/trailing whitespace.
+    if value is None:
+        return True, None
+    return True, str(value).strip() or None
+
+
 @app.post("/api/return/<int:return_id>/field")
-@login_required
+@role_required("preparer")
 def api_field(return_id: int):
-    data  = request.get_json(force=True)
+    data  = _get_json_safe()
     field = (data.get("field") or "").strip()
     value = data.get("value")
     if field == "processor":
         value = normalize_preparer(value) if (value is not None and str(value).strip() != "") else None
+    elif field in (RETURN_EDITABLE | CLIENT_EDITABLE | PAYMENT_EDITABLE):
+        ok, coerced = _validate_field(field, value)
+        if not ok:
+            return jsonify({"error": coerced}), 400
+        value = coerced
 
     conn = get_connection()
     try:
@@ -3510,9 +4502,9 @@ def api_field(return_id: int):
 
 
 @app.post("/api/return/<int:return_id>/note")
-@login_required
+@role_required("preparer")
 def api_note(return_id: int):
-    data = request.get_json(force=True)
+    data = _get_json_safe()
     text = (data.get("text") or "").strip()
     if not text:
         return jsonify({"error": "Empty note"}), 400
@@ -3538,10 +4530,10 @@ def api_note(return_id: int):
 
 
 @app.post("/api/return/<int:return_id>/contact")
-@login_required
+@role_required("preparer")
 def api_return_contact(return_id: int):
     """Update client-contact follow-up fields for REJECTED returns."""
-    data  = request.get_json(force=True) or {}
+    data  = _get_json_safe() or {}
     cs_in = (data.get("contact_status") or "").strip().lower()
     if cs_in not in CONTACT_STATUS_VALUES:
         return jsonify({"error": "Invalid contact_status"}), 400
@@ -3579,9 +4571,9 @@ def api_return_contact(return_id: int):
 # ── Missing documents tracker ────────────────────────────────────────────────
 
 @app.post("/api/return/<int:return_id>/missing-doc")
-@login_required
+@role_required("preparer")
 def api_missing_doc_add(return_id: int):
-    data = request.get_json(force=True)
+    data = _get_json_safe()
     text = (data.get("text") or "").strip()
     if not text:
         return jsonify({"error": "Empty item"}), 400
@@ -3598,7 +4590,7 @@ def api_missing_doc_add(return_id: int):
 
 
 @app.post("/api/return/<int:return_id>/missing-doc/<int:doc_id>/toggle")
-@login_required
+@role_required("preparer")
 def api_missing_doc_toggle(return_id: int, doc_id: int):
     conn = get_connection()
     row = conn.execute(
@@ -3626,6 +4618,411 @@ def api_missing_doc_delete(return_id: int, doc_id: int):
     conn.commit()
     conn.close()
     return jsonify({"success": True})
+
+
+# ── DEP-1: Remove dependent from return ──────────────────────────────────────
+
+@app.delete("/api/return/<int:return_id>/dependents/<int:dep_id>")
+@login_required
+def api_dependent_delete(return_id: int, dep_id: int):
+    user   = session.get("username")
+    ip     = request.remote_addr
+    ts     = now()
+    conn   = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id, full_name FROM dependents WHERE id=? AND return_id=? AND is_deleted=0",
+            (dep_id, return_id),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "Dependent not found"}), 404
+        before = dict(row)
+        conn.execute(
+            "UPDATE dependents SET is_deleted=1 WHERE id=? AND return_id=?",
+            (dep_id, return_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    from audit_service import _enqueue_write
+    _enqueue_write(
+        user_id=user,
+        action="DEPENDENT_REMOVED",
+        entity_type="dependent",
+        entity_id=str(dep_id),
+        before=before,
+        after={"is_deleted": 1, "return_id": return_id},
+        ip_address=ip,
+        http_status=200,
+    )
+    return jsonify({"success": True})
+
+
+# ── LIFE-1: Cancel / uncancel return ─────────────────────────────────────────
+
+@app.post("/api/return/<int:return_id>/cancel")
+@role_required("preparer")
+def api_cancel_return(return_id: int):
+    data   = _get_json_safe()
+    reason = (data.get("reason") or "").strip()
+    if not reason:
+        return jsonify({"error": "reason is required"}), 400
+    user = session.get("username")
+    ip   = request.remote_addr
+    ts   = now()
+    conn = get_connection()
+    try:
+        ret = conn.execute("SELECT client_status FROM returns WHERE id=?", (return_id,)).fetchone()
+        if not ret:
+            return jsonify({"error": "Return not found"}), 404
+        if (ret["client_status"] or "").upper() == "CANCELLED":
+            return jsonify({"error": "Already cancelled"}), 409
+        pmt = conn.execute(
+            "SELECT id, total_fee, fee_paid FROM payments WHERE return_id=?", (return_id,)
+        ).fetchone()
+        original_fee = float(pmt["total_fee"] or 0) if pmt else 0.0
+        if pmt:
+            conn.execute(
+                "UPDATE payments SET cancelled_fee=?, total_fee=0, fee_paid=0 WHERE return_id=?",
+                (original_fee, return_id),
+            )
+        conn.execute(
+            "UPDATE returns SET client_status='CANCELLED', cancelled_fee=?, "
+            "cancelled_reason=?, cancelled_at=?, updated_at=? WHERE id=?",
+            (original_fee, reason, ts, ts, return_id),
+        )
+        note_text = f"Return cancelled: {reason} — original fee was ${original_fee:,.2f}"
+        conn.execute(
+            "INSERT INTO notes (return_id, note_text, source, created_at) VALUES (?,?,'CANCEL',?)",
+            (return_id, note_text, ts),
+        )
+        conn.execute(
+            "INSERT INTO status_events (return_id, event_type, old_status, new_status, "
+            "event_timestamp, source_file, note) VALUES (?, 'STATUS_CHANGED', ?, 'CANCELLED', ?, 'APP', ?)",
+            (return_id, ret["client_status"], ts, reason),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    from audit_service import _enqueue_write
+    _enqueue_write(
+        user_id=user, action="RETURN_CANCELLED", entity_type="return",
+        entity_id=str(return_id), before={"client_status": ret["client_status"], "total_fee": original_fee},
+        after={"client_status": "CANCELLED", "total_fee": 0, "reason": reason},
+        ip_address=ip, http_status=200,
+    )
+    return jsonify({"success": True, "original_fee": original_fee})
+
+
+@app.post("/api/return/<int:return_id>/uncancel")
+@role_required("preparer")
+def api_uncancel_return(return_id: int):
+    user = session.get("username")
+    ip   = request.remote_addr
+    ts   = now()
+    conn = get_connection()
+    try:
+        ret = conn.execute(
+            "SELECT client_status, cancelled_fee FROM returns WHERE id=?", (return_id,)
+        ).fetchone()
+        if not ret:
+            return jsonify({"error": "Return not found"}), 404
+        if (ret["client_status"] or "").upper() != "CANCELLED":
+            return jsonify({"error": "Return is not cancelled"}), 409
+        restored_fee = ret["cancelled_fee"] or 0.0
+        conn.execute(
+            "UPDATE returns SET client_status='PROCESSING', cancelled_fee=NULL, "
+            "cancelled_reason=NULL, cancelled_at=NULL, updated_at=? WHERE id=?",
+            (ts, return_id),
+        )
+        conn.execute(
+            "UPDATE payments SET total_fee=?, cancelled_fee=NULL WHERE return_id=?",
+            (restored_fee, return_id),
+        )
+        conn.execute(
+            "INSERT INTO notes (return_id, note_text, source, created_at) VALUES (?,?,'UNCANCEL',?)",
+            (return_id, f"Cancellation reversed — fee restored to ${restored_fee:,.2f}", ts),
+        )
+        conn.execute(
+            "INSERT INTO status_events (return_id, event_type, old_status, new_status, "
+            "event_timestamp, source_file, note) VALUES (?, 'STATUS_CHANGED', 'CANCELLED', 'PROCESSING', ?, 'APP', ?)",
+            (return_id, ts, "Cancellation reversed"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    from audit_service import _enqueue_write
+    _enqueue_write(
+        user_id=user, action="RETURN_UNCANCELLED", entity_type="return",
+        entity_id=str(return_id), before={"client_status": "CANCELLED"},
+        after={"client_status": "PROCESSING", "total_fee": restored_fee},
+        ip_address=ip, http_status=200,
+    )
+    return jsonify({"success": True, "restored_fee": restored_fee})
+
+
+# ── BANK-1: Routing number lookup (local JSON only) ───────────────────────────
+
+import json as _json_mod
+
+_ROUTING_DB: dict[str, str] | None = None
+
+def _load_routing_db() -> dict[str, str]:
+    global _ROUTING_DB
+    if _ROUTING_DB is None:
+        path = os.path.join(os.path.dirname(__file__), "data", "routing_numbers.json")
+        try:
+            with open(path, encoding="utf-8") as f:
+                _ROUTING_DB = _json_mod.load(f)
+        except Exception:
+            _ROUTING_DB = {}
+    return _ROUTING_DB
+
+
+@app.get("/api/routing-number/<string:routing_number>")
+@login_required
+def api_routing_number(routing_number: str):
+    if not routing_number.isdigit() or len(routing_number) != 9:
+        return jsonify({"error": "Routing number must be exactly 9 digits"}), 400
+    db = _load_routing_db()
+    bank_name = db.get(routing_number)
+    if bank_name:
+        return jsonify({"found": True, "bank_name": bank_name})
+    return jsonify({"found": False})
+
+
+# ── LIFE-2: Prior year fee for returning client intake ────────────────────────
+
+@app.get("/api/clients/<int:client_id>/prior-fee")
+@login_required
+def api_client_prior_fee(client_id: int):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT r.tax_year, p.total_fee
+            FROM returns r
+            LEFT JOIN payments p ON p.return_id = r.id
+            WHERE r.client_id = ?
+              AND r.tax_year = (
+                  SELECT MAX(tax_year) FROM returns
+                  WHERE client_id = ? AND UPPER(COALESCE(client_status,'')) != 'CANCELLED'
+              )
+              AND UPPER(COALESCE(r.client_status, '')) != 'CANCELLED'
+            LIMIT 1
+            """,
+            (client_id, client_id),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row or row["total_fee"] is None:
+        return jsonify({"found": False})
+    return jsonify({
+        "found": True,
+        "tax_year": row["tax_year"],
+        "total_fee": float(row["total_fee"]),
+    })
+
+
+# ── LIFE-3: Intake sheet PDF ──────────────────────────────────────────────────
+
+@app.get("/api/return/<int:return_id>/intake-sheet")
+@login_required
+def api_intake_sheet(return_id: int):
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable,
+    )
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    import io as _io
+
+    conn = get_connection()
+    try:
+        ret = conn.execute(
+            """
+            SELECT r.*, c.last_name, c.first_name, c.display_name,
+                   c.taxpayer_phone, c.taxpayer_cell, c.address,
+                   c.ssn_last4, c.taxpayer_email, c.spouse_last_name, c.spouse_first_name
+            FROM returns r JOIN clients c ON c.id = r.client_id
+            WHERE r.id = ?
+            """,
+            (return_id,),
+        ).fetchone()
+        if not ret:
+            conn.close()
+            return jsonify({"error": "Return not found"}), 404
+        r = dict(ret)
+
+        pmt = conn.execute(
+            "SELECT total_fee, discount_amount, special_discount FROM payments WHERE return_id=?",
+            (return_id,),
+        ).fetchone()
+
+        deps = conn.execute(
+            """
+            SELECT full_name, ssn_last4, relationship, date_of_birth, on_medicare
+            FROM dependents WHERE return_id=? AND is_deleted=0 ORDER BY id
+            """,
+            (return_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    # Privacy: mask SSN (always last4 only) and account number
+    acct_raw   = (r.get("bank_account") or "")
+    acct_masked = ("*" * (len(acct_raw) - 4) + acct_raw[-4:]) if len(acct_raw) > 4 else acct_raw
+
+    buf    = _io.BytesIO()
+    doc    = SimpleDocTemplate(buf, pagesize=letter, topMargin=0.75*inch, bottomMargin=0.75*inch,
+                                leftMargin=0.75*inch, rightMargin=0.75*inch)
+    styles = getSampleStyleSheet()
+    h1     = styles["Heading1"]
+    h2     = ParagraphStyle("h2", parent=styles["Heading2"], spaceAfter=4)
+    body   = styles["Normal"]
+    muted  = ParagraphStyle("muted", parent=styles["Normal"], textColor=colors.grey, fontSize=8)
+
+    client_name = (
+        r.get("display_name")
+        or f"{r.get('last_name','')}, {r.get('first_name','')}".strip(", ")
+    )
+    spouse_name = ""
+    if r.get("spouse_last_name") or r.get("spouse_first_name"):
+        spouse_name = f"{r.get('spouse_last_name','')}, {r.get('spouse_first_name','')}".strip(", ")
+
+    preparer_label = preparer_list_label(r.get("processor") or "")
+
+    elems = []
+    # Office header
+    elems.append(Paragraph("Xcel Financial Services, LLC", h1))
+    elems.append(Paragraph("Income Tax Client Intake Sheet", styles["Heading2"]))
+    elems.append(HRFlowable(width="100%", thickness=1, color=colors.black))
+    elems.append(Spacer(1, 0.1*inch))
+
+    # Return meta
+    meta_data = [
+        ["Tax Year:", str(r.get("tax_year") or ""), "Log #:", str(r.get("log_number") or "")],
+        ["Intake Date:", str(r.get("intake_date") or ""), "Preparer:", preparer_label],
+        ["Filing Status:", str(r.get("filing_status") or ""), "Return ID:", str(return_id)],
+    ]
+    meta_tbl = Table(meta_data, colWidths=[1.2*inch, 2.3*inch, 1.2*inch, 2.3*inch])
+    meta_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0,0), (-1,-1), "Helvetica"),
+        ("FONTSIZE", (0,0), (-1,-1), 9),
+        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
+        ("FONTNAME", (2,0), (2,-1), "Helvetica-Bold"),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+    ]))
+    elems.append(meta_tbl)
+    elems.append(Spacer(1, 0.1*inch))
+
+    # Client info
+    elems.append(Paragraph("Client Information", h2))
+    ci_data = [
+        ["Taxpayer:", client_name, "SSN Last 4:", str(r.get("ssn_last4") or "")],
+        ["Spouse:", spouse_name, "", ""],
+        ["Address:", str(r.get("address") or ""), "", ""],
+        ["Cell:", str(r.get("taxpayer_cell") or ""), "Home:", str(r.get("taxpayer_phone") or "")],
+        ["Email:", str(r.get("taxpayer_email") or ""), "", ""],
+    ]
+    ci_tbl = Table(ci_data, colWidths=[1.2*inch, 2.3*inch, 1.2*inch, 2.3*inch])
+    ci_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0,0), (-1,-1), "Helvetica"),
+        ("FONTSIZE", (0,0), (-1,-1), 9),
+        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
+        ("FONTNAME", (2,0), (2,-1), "Helvetica-Bold"),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+    ]))
+    elems.append(ci_tbl)
+    elems.append(Spacer(1, 0.1*inch))
+
+    # Dependents
+    if deps:
+        elems.append(Paragraph("Dependents", h2))
+        dep_header = [["Name", "DOB", "Relationship", "SSN Last 4", "Medicare"]]
+        dep_rows = dep_header + [
+            [
+                str(d["full_name"] or ""),
+                str(d["date_of_birth"] or ""),
+                str(d["relationship"] or ""),
+                str(d["ssn_last4"] or ""),
+                "Yes" if d["on_medicare"] else "No",
+            ]
+            for d in deps
+        ]
+        dep_tbl = Table(dep_rows, colWidths=[2*inch, 1*inch, 1.8*inch, 0.9*inch, 0.8*inch])
+        dep_tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#334155")),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTNAME", (0,1), (-1,-1), "Helvetica"),
+            ("FONTSIZE", (0,0), (-1,-1), 8),
+            ("TOPPADDING", (0,0), (-1,-1), 3),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8fafc")]),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+        ]))
+        elems.append(dep_tbl)
+        elems.append(Spacer(1, 0.1*inch))
+
+    # Banking
+    elems.append(Paragraph("Banking Information", h2))
+    bk_data = [
+        ["Bank Name:", str(r.get("bank_name") or ""), "Account Type:", str(r.get("bank_account_type") or "")],
+        ["Routing #:", str(r.get("bank_routing") or ""), "Account # (last 4):", acct_masked],
+    ]
+    bk_tbl = Table(bk_data, colWidths=[1.2*inch, 2.3*inch, 1.5*inch, 2.0*inch])
+    bk_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0,0), (-1,-1), "Helvetica"),
+        ("FONTSIZE", (0,0), (-1,-1), 9),
+        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
+        ("FONTNAME", (2,0), (2,-1), "Helvetica-Bold"),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+    ]))
+    elems.append(bk_tbl)
+    elems.append(Spacer(1, 0.1*inch))
+
+    # Fees
+    elems.append(Paragraph("Fees", h2))
+    total_fee = float(pmt["total_fee"] or 0) if pmt else 0.0
+    discount  = float(pmt["discount_amount"] or 0) if pmt else 0.0
+    sp_disc   = float(pmt["special_discount"] or 0) if pmt else 0.0
+    fee_data  = [
+        ["Total Fee:", f"${total_fee:,.2f}"],
+        ["Discount:", f"-${discount + sp_disc:,.2f}"],
+        ["Net Fee:", f"${max(0, total_fee - discount - sp_disc):,.2f}"],
+    ]
+    fee_tbl = Table(fee_data, colWidths=[1.5*inch, 1.5*inch])
+    fee_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0,0), (-1,-1), "Helvetica"),
+        ("FONTSIZE", (0,0), (-1,-1), 9),
+        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+    ]))
+    elems.append(fee_tbl)
+    elems.append(Spacer(1, 0.15*inch))
+
+    # Signature line
+    elems.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey))
+    elems.append(Spacer(1, 0.1*inch))
+    elems.append(Paragraph("Client signature: _______________________________   Date: _______________", body))
+    elems.append(Spacer(1, 0.05*inch))
+    elems.append(Paragraph("SSN not shown on this sheet for privacy protection.", muted))
+
+    doc.build(elems)
+    buf.seek(0)
+    return Response(
+        buf.read(),
+        mimetype="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="intake_{return_id}.pdf"',
+        },
+    )
 
 
 # ── Duplicate client detection & merge ───────────────────────────────────────
@@ -3779,7 +5176,7 @@ def _merge_pairs_for_session() -> list[dict]:
 
 
 @app.get("/merge-clients")
-@login_required
+@role_required("admin")
 def merge_clients_page():
     pairs = _merge_pairs_for_session()
     ctx = base_ctx(date.today().year)
@@ -3788,13 +5185,13 @@ def merge_clients_page():
 
 
 @app.post("/api/merge-clients")
-@login_required
+@role_required("admin")
 def api_merge_clients():
     """
     Merge 'discard' client into 'keep' client.
     Moves all returns (and review_queue refs) from discard → keep, then deletes discard.
     """
-    data       = request.get_json(force=True)
+    data       = _get_json_safe()
     keep_id    = int(data.get("keep_id", 0))
     discard_id = int(data.get("discard_id", 0))
     if not keep_id or not discard_id or keep_id == discard_id:
@@ -3876,7 +5273,7 @@ def api_merge_clients_bulk():
 @login_required
 def api_merge_skip():
     """Mark a pair as 'not duplicates' by storing a skip record (simple session list)."""
-    data = request.get_json(force=True)
+    data = _get_json_safe()
     skipped = session.get("merge_skipped", [])
     pair_key = f"{min(data['keep_id'], data['discard_id'])}-{max(data['keep_id'], data['discard_id'])}"
     if pair_key not in skipped:
@@ -3888,7 +5285,7 @@ def api_merge_skip():
 # ── E-file Batches ────────────────────────────────────────────────────────────
 
 @app.post("/efile-batch/create")
-@login_required
+@role_required("admin")
 def efile_batch_create():
     """Create a new e-file batch from a list of EFILE READY return IDs."""
     return_ids = request.form.getlist("return_ids")
@@ -3962,7 +5359,7 @@ def efile_batch_create():
 
 
 @app.route("/efile-batch/<int:batch_id>")
-@login_required
+@role_required("admin")
 def efile_batch_detail(batch_id: int):
     conn = get_connection()
     batch = conn.execute(
@@ -4019,7 +5416,7 @@ def efile_batch_detail(batch_id: int):
 
 
 @app.route("/efile-batch")
-@login_required
+@role_required("admin")
 def efile_batch_list():
     """List all e-file batches."""
     conn = get_connection()
@@ -4061,7 +5458,7 @@ def efile_batch_transmit(batch_id: int):
 @login_required
 def efile_batch_item_ack(batch_id: int, item_id: int):
     """Update ACK status on a single batch item."""
-    data       = request.get_json(force=True)
+    data       = _get_json_safe()
     ack_status = data.get("ack_status", "").lower()
     if ack_status not in ("pending", "accepted", "rejected"):
         return jsonify({"success": False, "error": "Invalid ack_status"}), 400
@@ -4175,7 +5572,7 @@ def efile_batch_item_ack(batch_id: int, item_id: int):
 @login_required
 def efile_batch_item_flag(batch_id: int, item_id: int):
     """Toggle 'needs calculation' flag on a batch item."""
-    data = request.get_json(force=True)
+    data = _get_json_safe()
     conn = get_connection()
     conn.execute(
         "UPDATE efile_batch_items SET needs_calculation=? WHERE id=? AND batch_id=?",
@@ -4229,7 +5626,7 @@ def efile_batch_item_logout(batch_id: int, item_id: int):
 
 
 @app.route("/efile-batch/<int:batch_id>/export")
-@login_required
+@role_required("admin")
 def efile_batch_export(batch_id: int):
     """Download batch as CSV.
     ?filter=all (default) | accepted | rejected
@@ -4334,7 +5731,7 @@ def efile_batch_export(batch_id: int):
 # ── Import Audit ──────────────────────────────────────────────────────────────
 
 @app.route("/import-audit")
-@login_required
+@role_required("admin")
 def import_audit():
     """Diagnostic page showing orphaned / unmatched records and import health."""
     conn = get_connection()
@@ -4464,7 +5861,7 @@ def import_audit():
 @login_required
 def api_audit_merge_client():
     """Merge an unlogged client into a logged one (from the audit page)."""
-    data       = request.get_json(force=True)
+    data       = _get_json_safe()
     discard_id = int(data["discard_id"])
     keep_id    = int(data["keep_id"])
     conn = get_connection()
@@ -4479,38 +5876,646 @@ def api_audit_merge_client():
         conn.close()
 
 
+# ── Season rollover (Epic #88 — ROLLOVER-1…6) ─────────────────────────────────
+
+
+# ── OPS-5: serve RUNBOOK.md in the admin UI ──────────────────────────────────
+
+@app.route("/admin/runbook")
+@login_required
+def admin_runbook():
+    """OPS-5: render RUNBOOK.md as a readable HTML page accessible from the footer."""
+    runbook_path = os.path.join(os.path.dirname(__file__), "docs", "RUNBOOK.md")
+    try:
+        with open(runbook_path, encoding="utf-8") as fh:
+            raw_md = fh.read()
+    except OSError:
+        raw_md = "# RUNBOOK.md not found\n\nFile expected at `docs/RUNBOOK.md`."
+    return render_template(
+        "runbook.html",
+        raw_md=raw_md,
+        active_page="runbook",
+    )
+
+
+@app.route("/admin/runbook/raw")
+@login_required
+def admin_runbook_raw():
+    """Serve raw RUNBOOK.md as plain text (for download / copy-paste)."""
+    runbook_path = os.path.join(os.path.dirname(__file__), "docs", "RUNBOOK.md")
+    try:
+        with open(runbook_path, encoding="utf-8") as fh:
+            content = fh.read()
+    except OSError:
+        content = "# RUNBOOK.md not found"
+    from flask import Response
+    return Response(content, mimetype="text/plain; charset=utf-8")
+
+
+# ── DOC-HARD-3: Failed document (dead-letter) admin ──────────────────────────
+
+@app.route("/admin/failed-docs")
+@login_required
+def failed_docs_admin():
+    """DOC-HARD-3: list extraction dead-letter items; staff can retry or dismiss."""
+    from extractor import MAX_ATTEMPTS
+    ctx = base_ctx()
+    ctx["active_page"] = "failed_docs"
+    with contextlib.closing(get_connection()) as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                eq.id AS eq_id, eq.doc_id, eq.attempts, eq.error_message,
+                eq.created_at, eq.processed_at,
+                rd.filename, rd.original_filename, rd.doc_type, rd.return_id,
+                r.log_number, c.last_name, c.first_name, r.tax_year
+            FROM extraction_queue eq
+            JOIN return_documents rd ON eq.doc_id = rd.id AND rd.is_deleted = 0
+            JOIN returns r ON eq.return_id = r.id
+            JOIN clients c ON c.id = r.client_id
+            WHERE eq.status = 'failed'
+            ORDER BY eq.processed_at DESC
+            LIMIT 200
+            """
+        ).fetchall()
+    ctx["failed_docs"] = [dict(r) for r in rows]
+    ctx["max_attempts"] = MAX_ATTEMPTS
+    return render_template("failed_docs_admin.html", **ctx)
+
+
+@app.post("/api/admin/documents/<int:doc_id>/retry")
+@login_required
+def api_admin_document_retry(doc_id: int):
+    """DOC-HARD-3: reset a dead-letter extraction item back to pending for retry."""
+    reviewer = session.get("username") or "staff"
+    with contextlib.closing(get_connection()) as conn:
+        row = conn.execute(
+            "SELECT id, return_id FROM extraction_queue WHERE doc_id = ? AND status = 'failed' "
+            "ORDER BY id DESC LIMIT 1",
+            (doc_id,),
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "No failed extraction found for this document"}), 404
+        conn.execute(
+            """
+            UPDATE extraction_queue
+            SET status = 'pending', attempts = 0, error_message = ?,
+                processed_at = NULL
+            WHERE id = ?
+            """,
+            (f"Manually retried by {reviewer}", row["id"]),
+        )
+        conn.commit()
+        from extractor import _notify_extraction_worker
+        _notify_extraction_worker()
+    return jsonify({"success": True, "doc_id": doc_id})
+
+
+# ── BACKUP-5: on-demand backup admin ─────────────────────────────────────────
+
+@app.route("/admin/backup")
+@login_required
+def backup_admin():
+    """BACKUP-5: admin page with manual backup trigger button."""
+    ctx = base_ctx()
+    ctx["active_page"] = "backup_admin"
+    return render_template("backup_admin.html", **ctx)
+
+
+@app.post("/api/admin/backup/run")
+@login_required
+def api_admin_backup_run():
+    """BACKUP-5: trigger an on-demand backup; returns JSON result."""
+    from backup import run_backup
+    try:
+        result = run_backup()
+        return jsonify({
+            "success": result.success,
+            "message": result.message,
+            "backup_file": result.backup_file,
+            "size_bytes": result.size_bytes,
+        }), (200 if result.success else 500)
+    except Exception as exc:
+        current_app.logger.exception("Manual backup failed")
+        return jsonify({"success": False, "message": str(exc), "backup_file": None, "size_bytes": None}), 500
+
+
+@app.route("/admin/season-rollover")
+@login_required
+def season_rollover_admin():
+    if not can_run_season_rollover():
+        abort(403)
+    ctx = base_ctx()
+    yr = date.today().year
+    ctx.update({
+        "active_page":               "season_rollover",
+        "rollover_status":           season_rollover.NEW_ROLLOVER_STATUS,
+        "default_source_tax_year":   yr - 1,
+        "default_target_tax_year":    yr,
+    })
+    return render_template("season_rollover.html", **ctx)
+
+
+@app.post("/api/admin/season-rollover/preview")
+@login_required
+def api_admin_season_rollover_preview():
+    if not can_run_season_rollover():
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        source_year = int(data["source_year"])
+        target_year = int(data["target_year"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "source_year and target_year are required integers"}), 400
+    carry_raw = data.get("carry") if isinstance(data.get("carry"), dict) else data
+    opts = season_rollover.carry_options_from_dict(carry_raw)
+
+    conn = get_connection()
+    try:
+        out = season_rollover.rollover_preview_json(
+            conn, source_year=source_year, target_year=target_year, options=opts
+        )
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/season-rollover/run")
+@login_required
+def api_admin_season_rollover_run():
+    if not can_run_season_rollover():
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        source_year = int(data["source_year"])
+        target_year = int(data["target_year"])
+        confirmation_year = int(data["confirmation_year"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify(
+            {"error": "source_year, target_year, and confirmation_year must be integers"},
+        ), 400
+
+    if confirmation_year != target_year:
+        return jsonify({"error": "Confirmation failed: enter the target tax year to confirm."}), 400
+
+    carry_raw = data.get("carry") if isinstance(data.get("carry"), dict) else data
+    opts = season_rollover.carry_options_from_dict(carry_raw)
+
+    actor = (_session_username() or "").strip() or None
+    ts = now()
+
+    conn = get_connection()
+    try:
+        result = season_rollover.rollover_commit(
+            conn,
+            source_year=source_year,
+            target_year=target_year,
+            options=opts,
+            actor=actor,
+            ts=ts,
+        )
+        if not result.get("ok"):
+            return jsonify({"ok": False, "error": result.get("error", "Rollover failed")}), 400
+
+        report = result.get("report") or {}
+        csv_body = season_rollover.build_rollover_report_csv(report)
+        session["season_rollover_export_csv"] = csv_body
+        session["season_rollover_export_filename"] = f"season_rollover_ty{target_year}_{ts[:10]}.csv"
+
+        created = report.get("created") or []
+        skipped = report.get("skipped") or []
+        noop_msg = None
+        if not created and skipped:
+            noop_msg = (
+                "No new returns created — likely an idempotent repeat (clients already "
+                f"have a TY{target_year} return)."
+            )
+        return jsonify({
+            "ok": True,
+            "created_count":   len(created),
+            "skipped_count": len(skipped),
+            "noop_message":    noop_msg,
+            "export_ready": True,
+        })
+    finally:
+        conn.close()
+
+
+@app.get("/admin/season-rollover/export.csv")
+@login_required
+def download_season_rollover_csv():
+    if not can_run_season_rollover():
+        abort(403)
+    csv_text = session.get("season_rollover_export_csv")
+    if csv_text is None:
+        abort(404)
+    fname = session.get("season_rollover_export_filename") or "season_rollover_report.csv"
+    return Response(
+        "\ufeff" + csv_text,
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+# ── AUDIT admin (AUDIT-3…AUDIT-7) ───────────────────────────────────────────
+
+
+def _audit_date_range_filters():
+    df = (request.args.get("date_from") or "").strip() or None
+    dt = (request.args.get("date_to") or "").strip() or None
+    date_from_iso = None
+    date_to_excl = None
+    try:
+        if df:
+            date_from_iso = f"{date.fromisoformat(df).isoformat()}T00:00:00"
+        if dt:
+            end_day = date.fromisoformat(dt) + timedelta(days=1)
+            date_to_excl = f"{end_day.isoformat()}T00:00:00"
+    except ValueError:
+        pass
+    return date_from_iso, date_to_excl
+
+
+@app.route("/admin/audit-log")
+@login_required
+def audit_log_admin():
+    user_f = (request.args.get("user_id") or "").strip() or None
+    action_f = (request.args.get("action") or "").strip() or None
+    entity_type_f = (request.args.get("entity_type") or "").strip() or None
+    entity_id_f = (request.args.get("entity_id") or "").strip() or None
+    date_from_iso, date_to_excl = _audit_date_range_filters()
+
+    try:
+        page = max(1, int(request.args.get("page") or "1"))
+    except ValueError:
+        page = 1
+    per_page = 75
+    offset = (page - 1) * per_page
+
+    conn = get_connection()
+    try:
+        retention_years = get_audit_retention_years(conn)
+        users_rows = conn.execute(
+            """SELECT DISTINCT user_id FROM audit_log
+               WHERE user_id IS NOT NULL AND TRIM(user_id) != ''
+               ORDER BY user_id LIMIT 400"""
+        ).fetchall()
+        users_list = [r["user_id"] for r in users_rows]
+
+        cnt, rows = query_audit_logs(
+            conn,
+            user_id=user_f,
+            action_contains=action_f,
+            entity_type=entity_type_f,
+            entity_id=entity_id_f,
+            date_from=date_from_iso,
+            date_to=date_to_excl,
+            limit=per_page,
+            offset=offset,
+        )
+    finally:
+        conn.close()
+
+    total_pages = max(1, (cnt + per_page - 1) // per_page) if cnt else 1
+
+    ctx = base_ctx()
+    ctx.update(
+        active_page="audit_log",
+        rows=rows,
+        total=cnt,
+        page=page,
+        total_pages=total_pages,
+        per_page=per_page,
+        users_list=users_list,
+        retention_years=retention_years,
+        filters={
+            "user_id": user_f or "",
+            "action": action_f or "",
+            "entity_type": entity_type_f or "",
+            "entity_id": entity_id_f or "",
+            "date_from": (request.args.get("date_from") or "").strip(),
+            "date_to": (request.args.get("date_to") or "").strip(),
+        },
+    )
+    return render_template("audit_log.html", **ctx)
+
+
+@app.route("/admin/audit-log/<int:entry_id>")
+@login_required
+def audit_log_detail(entry_id: int):
+    conn = get_connection()
+    try:
+        row = fetch_audit_entry(conn, entry_id)
+    finally:
+        conn.close()
+    if not row:
+        abort(404)
+    rowd = dict(row)
+    diff_chunks = format_json_diff_styled_chunks(rowd.get("before_json"), rowd.get("after_json"))
+    ctx = base_ctx()
+    ctx.update(active_page="audit_log", entry=rowd, diff_chunks=diff_chunks)
+    return render_template("audit_log_detail.html", **ctx)
+
+
+@app.get("/admin/audit-log/export.csv")
+@login_required
+def audit_log_export_csv():
+    user_f = (request.args.get("user_id") or "").strip() or None
+    action_f = (request.args.get("action") or "").strip() or None
+    entity_type_f = (request.args.get("entity_type") or "").strip() or None
+    entity_id_f = (request.args.get("entity_id") or "").strip() or None
+    date_from_iso, date_to_excl = _audit_date_range_filters()
+
+    conn = get_connection()
+    try:
+        buf = write_audit_export_csv(
+            conn,
+            filters={
+                "user_id": user_f,
+                "action_contains": action_f,
+                "entity_type": entity_type_f,
+                "entity_id": entity_id_f,
+                "date_from": date_from_iso,
+                "date_to": date_to_excl,
+            },
+        )
+    finally:
+        conn.close()
+
+    name = sanitize_filename_audit(
+        f"audit_export_{date.today().isoformat()}_{secrets.token_hex(4)}.csv"
+    )
+    return send_file(
+        io.BytesIO(buf.getvalue().encode("utf-8")),
+        as_attachment=True,
+        download_name=name,
+        mimetype="text/csv; charset=utf-8",
+    )
+
+
+@app.post("/admin/audit-log/retention")
+@login_required
+def audit_log_retention_update():
+    try:
+        years = int((request.form.get("retention_years") or "").strip())
+    except ValueError:
+        flash("Retention years must be a whole number.", "error")
+        return redirect(url_for("audit_log_admin"))
+
+    conn = get_connection()
+    try:
+        set_audit_retention_years(conn, years)
+        n = purge_audit_logs_older_than(conn, years)
+        conn.commit()
+        flash(f"Retention saved ({years} yr). Immediate purge removed {n} row(s).", "success")
+    finally:
+        conn.close()
+    return redirect(url_for("audit_log_admin"))
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+def register_workers(flask_app) -> None:
+    """REL-3: initialise DB, seed users, and start all background daemons.
+
+    Call this from *any* entry point (python app.py, waitress-serve, tests that
+    need background workers) rather than relying on __main__ guard.
+
+    Supported single entry point remains: ``python taxops/app.py``
+    (``waitress-serve taxops.app:app`` skips DB migration; run register_workers
+    explicitly or use the python app.py entry point instead).
+    """
+    _log = logging.getLogger(__name__)
+
     conn = get_connection()
     init_db(conn)
+    seeded = bootstrap_auth_user(conn)
+    if seeded:
+        _log.info(
+            "SEC-2: auth_users bootstrapped from TAXOPS_USER env var. "
+            "Consider unsetting TAXOPS_PASS after verifying login works."
+        )
     conn.close()
-    start_mail_watcher(app)
-    start_extraction_worker(app)
 
-    # Load or train fastText model at startup — runs in background, never blocks
-    import threading as _startup_threading
+    _taxops_env = os.environ.get("TAXOPS_ENV", "").lower()
+    if _taxops_env == "production" and not flask_app.config.get("SESSION_COOKIE_SECURE"):
+        _log.warning(
+            "SEC-3: SESSION_COOKIE_SECURE is False in a production environment. "
+            "Session cookies will be sent over plain HTTP. "
+            "Set app.config['SESSION_COOKIE_SECURE'] = True once TLS terminates in front of this server."
+        )
+
+    start_mail_watcher(flask_app)
+    start_extraction_worker(flask_app)
+    try:
+        from accounting_worker import start_accounting_worker
+        start_accounting_worker(flask_app)
+    except Exception as ex:
+        _log.warning("Accounting worker startup skipped: %s", ex)
+    try:
+        from chat_cache import start_cache_worker
+        start_cache_worker(flask_app)
+    except Exception as ex:
+        _log.warning("Chat cache worker startup skipped: %s", ex)
+
     def _startup_classifier():
         from classifier import _load_model, retrain
-        _load_model()         # hot-load existing model if available
-        retrain(DB_PATH)      # retrain on any newly confirmed data since last run
-    _startup_threading.Thread(
-        target=_startup_classifier, daemon=True, name="fasttext-startup"
-    ).start()
+        _load_model()
+        retrain(DB_PATH)
+
+    threading.Thread(target=_startup_classifier, daemon=True, name="fasttext-startup").start()
 
     def _warm_chat_cache():
         try:
             from datetime import date as _d
             from chat_cache import refresh_chat_cache as _warm_cc
-
             _warm_cc(year=_d.today().year)
         except Exception as ex:
-            logging.getLogger(__name__).warning("Chat cache warmup skipped: %s", ex)
+            _log.warning("Chat cache warmup skipped: %s", ex)
 
-    threading.Thread(
-        target=_warm_chat_cache, daemon=True, name="chat-cache-warm"
-    ).start()
+    threading.Thread(target=_warm_chat_cache, daemon=True, name="chat-cache-warm").start()
 
-    print("TaxOps running at http://localhost:5000")
+
+@app.post("/api/admin/reset-and-reimport")
+@login_required
+def api_admin_reset_and_reimport():
+    """
+    Controlled DB deduplication + forced re-import of every CSV in data/incoming/.
+
+    Requirements:
+      - Admin role only
+      - Exact confirmation string "RESET AND REIMPORT" in request body
+      - Creates a timestamped DB backup before touching anything
+      - Runs _deduplicate_existing_records
+      - Re-runs every CSV through the upsert importer (no new files moved; upsert is safe)
+      - Audit-logs the action
+    """
+    if _resolve_current_role() != "admin":
+        return jsonify({"error": "Forbidden — admin only"}), 403
+
+    data = _get_json_safe() or {}
+    if data.get("confirm") != "RESET AND REIMPORT":
+        return jsonify({"error": "Confirmation required: send {\"confirm\": \"RESET AND REIMPORT\"}"}), 400
+
+    import shutil as _shutil
+    from datetime import datetime as _dt
+    from pathlib import Path as _Path
+    from db import _deduplicate_existing_records
+    import main as _main_mod
+    from config import INCOMING_DIR, DB_PATH as _DB_PATH
+
+    actor = _session_username() or "unknown"
+
+    # 1. Timestamped backup
+    backup_path = _DB_PATH + ".backup." + _dt.now().strftime("%Y%m%d_%H%M%S")
+    try:
+        _shutil.copy2(_DB_PATH, backup_path)
+        current_app.logger.info("reset-and-reimport: DB backup created: %s", backup_path)
+    except Exception as exc:
+        return jsonify({"error": f"Backup failed: {exc}"}), 500
+
+    result_summary: dict = {
+        "backup_file": backup_path,
+        "dedup_removed": 0,
+        "files_processed": [],
+        "totals": {
+            "clients_created": 0,
+            "clients_updated": 0,
+            "returns_created": 0,
+            "returns_updated": 0,
+            "rows_skipped": 0,
+            "errors": [],
+        },
+    }
+
+    conn = get_connection()
+    try:
+        # 2. Dedup existing records
+        conn.execute("BEGIN")
+        removed = _deduplicate_existing_records(conn)
+        conn.commit()
+        result_summary["dedup_removed"] = removed
+
+        # 3. Re-run every CSV in data/incoming/
+        from utils import ImportResult
+        from datetime import date as _date
+
+        for csv_file in sorted(_Path(INCOMING_DIR).glob("*.csv")):
+            from main import _drake_year as _dy
+            from drake_importer import process_drake_csv, _open_and_detect
+            from importer import process_csv
+
+            try:
+                from utils import hash_file
+                file_hash = hash_file(str(csv_file))
+                batch_id = _main_mod.create_batch(conn, csv_file.name, file_hash + "_reimport_" + actor)
+            except Exception:
+                batch_id = _main_mod.create_batch(conn, csv_file.name, str(csv_file.stat().st_mtime))
+
+            stats: ImportResult | None = None
+            try:
+                conn.execute("BEGIN")
+                drake_year = _dy(csv_file.name)
+                if drake_year is not None:
+                    stats = process_drake_csv(conn, str(csv_file), batch_id, csv_file.name, drake_year)
+                else:
+                    # Try Drake CSM detection first; fall back to manual-log importer
+                    _, fmt = _open_and_detect(str(csv_file))
+                    if fmt != "UNKNOWN":
+                        # CSM or TAX_OPS format — use current year - 1 as tax year
+                        ty = _date.today().year - 1
+                        stats = process_drake_csv(conn, str(csv_file), batch_id, csv_file.name, ty)
+                    else:
+                        stats = process_csv(conn, str(csv_file), batch_id, csv_file.name)
+                conn.commit()
+            except Exception as exc:
+                conn.rollback()
+                current_app.logger.exception("reset-and-reimport: error processing %s", csv_file.name)
+                result_summary["files_processed"].append({
+                    "filename": csv_file.name,
+                    "error": str(exc),
+                })
+                result_summary["totals"]["errors"].append(f"{csv_file.name}: {exc}")
+                continue
+
+            if stats:
+                result_summary["files_processed"].append({
+                    "filename":        csv_file.name,
+                    "source":          stats.source,
+                    "rows":            stats.row_count,
+                    "clients_created": stats.created_clients,
+                    "clients_updated": stats.updated_clients,
+                    "returns_created": stats.created_returns,
+                    "returns_updated": stats.updated_returns,
+                    "errors":          stats.errors,
+                    "duration_s":      round(stats.duration_seconds, 2),
+                })
+                t = result_summary["totals"]
+                t["clients_created"] += stats.created_clients
+                t["clients_updated"] += stats.updated_clients
+                t["returns_created"] += stats.created_returns
+                t["returns_updated"] += stats.updated_returns
+                t["errors"].extend(stats.errors)
+
+        # 4. Audit the action
+        try:
+            from audit_service import _enqueue_write
+            _enqueue_write(
+                user_id=actor,
+                action="ADMIN_RESET_AND_REIMPORT",
+                entity_type="system",
+                entity_id=None,
+                before_data=None,
+                after_data=result_summary,
+            )
+        except Exception:
+            pass
+
+    finally:
+        conn.close()
+
+    current_app.logger.info(
+        "reset-and-reimport by %s: dedup_removed=%s files=%s clients_created=%s returns_created=%s",
+        actor,
+        result_summary["dedup_removed"],
+        len(result_summary["files_processed"]),
+        result_summary["totals"]["clients_created"],
+        result_summary["totals"]["returns_created"],
+    )
+    return jsonify({"success": True, **result_summary}), 200
+
+
+if __name__ == "__main__":
+    register_workers(app)
+
+    host = (os.environ.get("WAITRESS_HOST") or os.environ.get("HOST") or "0.0.0.0").strip() or "0.0.0.0"
+    port_raw = (
+        os.environ.get("WAITRESS_PORT")
+        or os.environ.get("PORT")
+        or "5000"
+    )
+    try:
+        port = int(str(port_raw).strip())
+    except ValueError:
+        port = 5000
+
+    print(f"TaxOps running at http://localhost:{port}", flush=True)
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
-    app.run(host="0.0.0.0", port=5000, debug=debug_mode, use_reloader=debug_mode)
+
+    # WSGI-2 (#138): Production/offices use Waitress; keep FLASK_DEBUG=1 only for interactive dev + reloader.
+    if debug_mode:
+        app.run(host=host, port=port, debug=True, use_reloader=True)
+    else:
+        from waitress import serve
+
+        try:
+            threads = int(os.environ.get("WAITRESS_THREADS", "8"))
+        except ValueError:
+            threads = 8
+        threads = max(1, min(threads, 64))
+
+        print(
+            f"Waitress listening on http://{host}:{port}/ (threads={threads})",
+            flush=True,
+        )
+        serve(app, host=host, port=port, threads=threads)

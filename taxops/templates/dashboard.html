@@ -27,33 +27,35 @@
         ~ pproc ~ pbal ~ plate ~ pslow %}
 
     <!-- Row 1: status pills -->
-    <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
-      <span class="text-sm font-medium text-slate-500 shrink-0">Status:</span>
+    <div id="status-pills" class="flex items-center gap-1.5 flex-nowrap overflow-x-auto" role="navigation" aria-label="{{ _('Filter by status') }}">
+      <span class="text-sm font-medium text-slate-500 shrink-0" id="status-filter-label">{{ _('Status:') }}</span>
       <a href="/?year={{ current_year }}{{ persist }}"
-         class="pill shrink-0 {% if not filters.status %}pill-active{% else %}pill-inactive{% endif %}">All</a>
+         class="pill shrink-0 {% if not filters.status %}pill-active{% else %}pill-inactive{% endif %}"
+         {% if not filters.status %}aria-current="page"{% endif %}>{{ _('All') }}</a>
       {% for s in status_flow %}
       <a href="/?year={{ current_year }}&status={{ s|urlencode }}{{ persist }}"
-         class="pill shrink-0 flex items-center gap-1.5 {% if filters.status and s in filters.status %}pill-active{% else %}pill-inactive{% endif %}">
-        <span class="status-dot {{ status_dot.get(s,'dot-slate') }}"></span>{{ s }}
+         class="pill shrink-0 flex items-center gap-1.5 {% if filters.status and s in filters.status %}pill-active{% else %}pill-inactive{% endif %}"
+         {% if filters.status and s in filters.status %}aria-current="page"{% endif %}>
+        <span class="status-dot {{ status_dot.get(s,'dot-slate') }}" aria-hidden="true"></span>{{ s }}
       </a>
       {% endfor %}
     </div>
 
     {% if filters.status and 'REJECTED' in filters.status %}
     <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto border-t border-slate-100 pt-2.5">
-      <span class="text-sm font-medium text-slate-500 shrink-0">Reject follow-up:</span>
+      <span class="text-sm font-medium text-slate-500 shrink-0">{{ _('Reject follow-up:') }}</span>
       {% set rbase = '/?year=' ~ current_year ~ '&status=' ~ ('REJECTED'|urlencode) ~ pproc ~ pbal ~ plate ~ pslow ~ pform %}
       <a href="{{ rbase }}"
-         class="pill shrink-0 {% if not filters.reject_contact %}pill-active{% else %}pill-inactive{% endif %}">All</a>
+         class="pill shrink-0 {% if not filters.reject_contact %}pill-active{% else %}pill-inactive{% endif %}">{{ _('All') }}</a>
       <a href="{{ rbase }}&reject_contact=needs_followup"
          class="pill shrink-0 {% if filters.reject_contact == 'needs_followup' %}pill-active{% else %}pill-inactive{% endif %}">
-        Needs contact
+        {{ _('Needs contact') }}
       </a>
       {% for rc_key, rc_label in [
-        ('not_contacted','Not contacted'),
-        ('contacted','Contacted'),
-        ('follow_up_needed','Follow-up needed'),
-        ('resolved','Resolved')
+        ('not_contacted', _('Not contacted')),
+        ('contacted', _('Contacted')),
+        ('follow_up_needed', _('Follow-up needed')),
+        ('resolved', _('Resolved'))
       ] %}
       <a href="{{ rbase }}&reject_contact={{ rc_key|urlencode }}"
          class="pill shrink-0 {% if filters.reject_contact == rc_key %}pill-active{% else %}pill-inactive{% endif %}">
@@ -67,15 +69,15 @@
     <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto border-t border-slate-100 pt-2.5">
       <button onclick="applyFilter('balance_due', '{{ '' if filters.balance_due else '1' }}')"
               class="pill shrink-0 {% if filters.balance_due %}bg-red-600 text-white border-red-600{% else %}pill-inactive{% endif %}">
-        💰 Balance Due
+        💰 {{ _('Balance Due') }}
       </button>
       <button onclick="applyFilter('late_intake', '{{ '' if filters.late_intake else '1' }}')"
               class="pill shrink-0 {% if filters.late_intake %}bg-amber-500 text-white border-amber-500{% else %}pill-inactive{% endif %}">
-        ⏰ Late Intake
+        ⏰ {{ _('Late Intake') }}
       </button>
       <button onclick="applyFilter('slow_cycle', '{{ '' if filters.slow_cycle else '1' }}')"
               class="pill shrink-0 {% if filters.slow_cycle %}bg-rose-600 text-white border-rose-600{% else %}pill-inactive{% endif %}">
-        🐢 Slow Cycle
+        🐢 {{ _('Slow Cycle') }}
       </button>
 
       <div class="w-px h-5 bg-slate-200 shrink-0 mx-1"></div>
@@ -96,10 +98,11 @@
 
     <!-- Row 3: preparer + quick filter -->
     <div class="flex items-center gap-2 flex-nowrap border-t border-slate-100 pt-2.5">
-      <span class="text-sm font-medium text-slate-500 shrink-0">Filter by preparer:</span>
+      <span class="text-sm font-medium text-slate-500 shrink-0">{{ _('Filter by preparer:') }}</span>
       <select onchange="applyFilter('processor', this.value)"
+              aria-label="{{ _('Filter by preparer') }}"
               class="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 shrink-0 min-w-[12rem] max-w-[20rem]">
-        <option value="">All</option>
+        <option value="">{{ _('All') }}</option>
         {% for p in processors %}
         <option value="{{ p }}" {% if filters.processor == p %}selected{% endif %}>{{ preparer_list_label(p) }}</option>
         {% endfor %}
@@ -108,20 +111,20 @@
       <div class="ml-auto flex items-center flex-wrap gap-x-2 gap-y-1 justify-end shrink-0">
         <div class="flex items-center gap-1.5 text-sm" title="Selection is kept when you change status, form, or preparer filters (this browser tab)">
           <span id="selected-count" class="font-semibold text-blue-600 tabular-nums">0</span>
-          <span class="text-slate-500">selected <span class="text-slate-400 font-normal">(persists between filters)</span></span>
+          <span class="text-slate-500">{{ _('selected') }} <span class="text-slate-400 font-normal">({{ _('persists between filters') }})</span></span>
           <button type="button" id="btn-select-all-visible"
                   class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100">
-            Select all visible
+            {{ _('Select all visible') }}
           </button>
           <button type="button" id="btn-clear-row-selection"
                   class="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
-            Clear
+            {{ _('Clear') }}
           </button>
         </div>
-        <input id="table-filter" type="text" placeholder="Quick filter…"
+        <input id="table-filter" type="text" placeholder="{{ _('Quick filter\u2026') }}"
                class="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 w-44">
         <span class="text-sm text-slate-500 whitespace-nowrap">
-          <span id="row-count">{{ returns | length }}</span> returns
+          <span id="row-count">{{ returns | length }}</span> / <span id="total-count">{{ total_count }}</span> {{ _('returns') }}
         </span>
         <a id="export-btn"
            href="/export?{{ request.query_string.decode() }}"
@@ -131,11 +134,83 @@
             <path stroke-linecap="round" stroke-linejoin="round"
                   d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
           </svg>
-          Export
+          {{ _('Export') }}
         </a>
       </div>
     </div>
 
+    <!-- Row 4: saved filter presets -->
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-slate-100 pt-2.5">
+      <span class="text-sm font-medium text-slate-500 shrink-0">{{ _('Saved:') }}</span>
+      <button type="button" id="btn-save-dashboard-filter"
+              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-violet-50"
+              {% if dashboard_snapshot_has_meaningful %}title="Save this filter combination for later"
+              {% else %}title="Pick at least one dashboard filter — or type 2+ characters in Quick filter — to save"
+              {% endif %}>
+        {{ _('Save current view\u2026') }}
+      </button>
+      <div id="saved-filter-pills" class="flex flex-wrap items-center gap-1.5 min-w-0 flex-1">
+        {% if not saved_dashboard_filters %}
+        <span class="text-xs text-slate-400">{{ _('None yet — narrow the list above, then save.') }}</span>
+        {% endif %}
+        {% for sf in saved_dashboard_filters %}
+        <span class="saved-filter-chip inline-flex items-stretch shrink-0 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden divide-x divide-slate-100"
+              data-filter-id="{{ sf.id }}">
+          <a href="/?{{ sf.query_string }}" class="px-2.5 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 max-w-[14rem] truncate"
+             title="{{ 'Shared with staff — ' if sf.is_shared }}Apply saved filters">{{ sf.name }}</a>
+          {% if sf.is_shared %}
+          <span class="inline-flex items-center px-1.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-800 bg-indigo-50 whitespace-nowrap" title="Visible to everyone">Staff</span>
+          {% endif %}
+          {% if sf.can_set_default %}
+          <button type="button" class="saved-filter-star px-1.5 py-1 text-xs text-amber-600 hover:bg-amber-50 whitespace-nowrap"
+                  title="{{ 'Your default dashboard' if sf.is_default else 'Set as my default' }}"
+                  aria-pressed="{{ 'true' if sf.is_default else 'false' }}">{{ '★' if sf.is_default else '☆' }}</button>
+          {% endif %}
+          {% if sf.can_delete %}
+          <button type="button" class="saved-filter-del px-1.5 py-1 text-xs text-slate-400 hover:bg-red-50 hover:text-red-600 font-bold leading-none" title="Delete saved view" aria-label="Delete {{ sf.name }}">×</button>
+          {% endif %}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Bulk actions toolbar (shows when ≥1 row selected in this tab/year) ── -->
+  <div id="bulk-actions-bar"
+       style="display: none;"
+       class="bulk-actions-bar flex-shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 shadow-sm">
+    <span class="text-sm font-semibold text-blue-950 shrink-0">
+      <span id="bulk-actions-count" class="tabular-nums">0</span> selected — bulk actions
+    </span>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs font-medium text-slate-600 shrink-0">{{ _('Status') }}</span>
+      <select id="bulk-status-pick"
+              class="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400 min-w-[9.5rem] max-w-[14rem]">
+        {% for s in status_flow %}
+        <option value="{{ s }}" {% if loop.first %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <button type="button" id="btn-bulk-status-open"
+              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-900 hover:bg-blue-50 whitespace-nowrap">
+        {{ _('Change status\u2026') }}
+      </button>
+    </div>
+    <div class="hidden sm:block w-px h-6 bg-blue-200 shrink-0" aria-hidden="true"></div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs font-medium text-slate-600 shrink-0">{{ _('Preparer') }}</span>
+      <select id="bulk-preparer-pick"
+              class="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400 min-w-[11rem] max-w-[18rem]">
+        <option value="">— Clear assignment</option>
+        {% for p in processors %}
+        <option value="{{ p }}">{{ preparer_list_label(p) }}</option>
+        {% endfor %}
+      </select>
+      <button type="button" id="btn-bulk-preparer-open"
+              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-900 hover:bg-blue-50 whitespace-nowrap">
+        Assign preparer…
+      </button>
+    </div>
   </div>
 
   <!-- ── Email classification reminder (hidden when nothing to act on) ─── -->
@@ -149,23 +224,24 @@
 
   <!-- ── Returns table — only this div scrolls ────────────────────────── -->
   <div id="dashboard-table-wrap" class="rounded-xl border border-slate-200 flex-1 min-h-0 overflow-y-auto bg-white outline-none" tabindex="-1">
-    <table class="data-table w-full text-sm">
+    <table class="data-table w-full text-sm" id="returns-table" aria-label="{{ _('Returns') }}" aria-live="polite" aria-busy="false">
+      <caption class="sr-only">{{ _('Tax returns table. Use arrow keys to navigate rows.') }}</caption>
       <thead class="sticky top-0 z-10">
         <tr>
           <th class="th w-9 text-center pl-1 rounded-tl-xl">
             <input type="checkbox" id="table-select-all" title="Select all visible rows" aria-label="Select all visible"
                    class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-400">
           </th>
-          <th class="th w-16 sortable" data-col="log" data-type="num">Log # <span class="sort-arrow"></span></th>
-          <th class="th w-16 text-center sortable" data-col="taxyear" data-type="num">TY <span class="sort-arrow"></span></th>
-          <th class="th sortable" data-col="name" data-type="str">Client <span class="sort-arrow"></span></th>
-          <th class="th">Forms</th>
-          <th class="th w-36">Flags</th>
-          <th class="th w-40 sortable" data-col="status" data-type="status">Status <span class="sort-arrow"></span></th>
-          <th class="th w-28 sortable" data-col="preparer" data-type="str">Preparer <span class="sort-arrow"></span></th>
-          <th class="th text-right w-24 sortable" data-col="fee" data-type="num">Fee <span class="sort-arrow"></span></th>
-          <th class="th text-right w-28 sortable" data-col="balance" data-type="num">Balance <span class="sort-arrow"></span></th>
-          <th class="th w-28 sortable" data-col="intake" data-type="str">Intake <span class="sort-arrow"></span></th>
+          <th class="th w-16 sortable" data-col="log" data-type="num">{{ _('Log #') }} <span class="sort-arrow"></span></th>
+          <th class="th w-16 text-center sortable" data-col="taxyear" data-type="num">{{ _('TY') }} <span class="sort-arrow"></span></th>
+          <th class="th sortable" data-col="name" data-type="str">{{ _('Client') }} <span class="sort-arrow"></span></th>
+          <th class="th">{{ _('Forms') }}</th>
+          <th class="th w-36">{{ _('Flags') }}</th>
+          <th class="th w-40 sortable" data-col="status" data-type="status">{{ _('Status') }} <span class="sort-arrow"></span></th>
+          <th class="th w-28 sortable" data-col="preparer" data-type="str">{{ _('Preparer') }} <span class="sort-arrow"></span></th>
+          <th class="th text-right w-24 sortable" data-col="fee" data-type="num">{{ _('Fee') }} <span class="sort-arrow"></span></th>
+          <th class="th text-right w-28 sortable" data-col="balance" data-type="num">{{ _('Balance') }} <span class="sort-arrow"></span></th>
+          <th class="th w-28 sortable" data-col="intake" data-type="str">{{ _('Intake') }} <span class="sort-arrow"></span></th>
           <th class="th text-center w-10 rounded-tr-xl">✓</th>
         </tr>
       </thead>
@@ -318,7 +394,7 @@
         <tr>
           <td colspan="12" class="px-6 py-16 text-center">
             <div class="text-5xl mb-3">📂</div>
-            <div class="font-semibold text-slate-500 text-base">No returns found</div>
+            <div class="font-semibold text-slate-500 text-base">{{ _('No returns found') }}</div>
             <div class="text-sm text-slate-400 mt-1">Import a CSV or adjust your filters</div>
           </td>
         </tr>
@@ -327,95 +403,578 @@
     </table>
   </div>
 
+  <!-- ── Pagination controls ──────────────────────────────────────────────── -->
+  <div id="dashboard-pagination"
+       class="flex items-center justify-between gap-4 px-4 py-2.5 bg-white rounded-xl border border-slate-200 shadow-sm flex-shrink-0 flex-wrap">
+    <div class="flex items-center gap-2">
+      <button id="pag-prev"
+              class="pill pill-inactive disabled:opacity-40 disabled:cursor-not-allowed"
+              {% if not has_prev %}disabled{% endif %}
+              onclick="loadPage({{ page - 1 }})">
+        ← {{ _('Prev') }}
+      </button>
+      <span id="pag-indicator" class="text-sm text-slate-600 font-medium tabular-nums whitespace-nowrap">
+        {{ _('Page') }} {{ page }} {{ _('of') }} <span id="pag-total-pages">{{ total_pages }}</span>
+      </span>
+      <button id="pag-next"
+              class="pill pill-inactive disabled:opacity-40 disabled:cursor-not-allowed"
+              {% if not has_next %}disabled{% endif %}
+              onclick="loadPage({{ page + 1 }})">
+        {{ _('Next') }} →
+      </button>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-sm text-slate-500 whitespace-nowrap">{{ _('Per page:') }}</span>
+      <select id="pag-per-page"
+              class="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+              onchange="loadPage(1, parseInt(this.value))">
+        <option value="25"  {% if per_page == 25  %}selected{% endif %}>25</option>
+        <option value="50"  {% if per_page == 50  %}selected{% endif %}>50</option>
+        <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ── Save filter preset + bulk confirm overlays ─────────────────────── -->
+  <!-- Save dashboard filter preset -->
+  <div id="save-dashboard-filter-modal" class="fixed inset-0 z-[58] hidden items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="save-dashboard-filter-modal-title">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-200">
+      <h3 id="save-dashboard-filter-modal-title" class="text-lg font-bold text-slate-900">{{ _('Save filter view') }}</h3>
+      <p class="text-sm text-slate-600 mt-1 leading-relaxed">{{ _('Name this preset. You can open it anytime from Saved below the filter bar.') }}</p>
+      <div class="mt-4 space-y-3">
+        <div>
+          <label for="save-dash-filter-name" class="block text-xs font-semibold text-slate-600 mb-1">{{ _('Name') }}</label>
+          <input id="save-dash-filter-name" type="text" maxlength="120" placeholder="{{ _('e.g. My rejects / Q4 review') }}"
+                 class="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-400"/>
+        </div>
+        <label class="flex items-start gap-2 cursor-pointer select-none">
+          <input id="save-dash-filter-default" type="checkbox" class="mt-1 rounded border-slate-300 text-violet-600 focus:ring-violet-400"/>
+          <span class="text-sm text-slate-700">Use as my default when I open Dashboard (personal only).</span>
+        </label>
+        {% if can_publish_shared_dashboard_filters %}
+        <label class="flex items-start gap-2 cursor-pointer select-none">
+          <input id="save-dash-filter-shared" type="checkbox" class="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"/>
+          <span class="text-sm text-slate-700">Publish for <strong class="font-semibold text-indigo-900">all staff</strong> (shared preset).</span>
+        </label>
+        {% endif %}
+        <p id="save-dash-filter-error" class="hidden text-sm text-red-600"></p>
+      </div>
+      <div class="mt-6 flex flex-wrap gap-2 justify-end">
+        <button type="button" id="save-dash-filter-cancel" class="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">
+          {{ _('Cancel') }}
+        </button>
+        <button type="button" id="save-dash-filter-submit" class="px-4 py-2 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 border border-violet-700">
+          {{ _('Save') }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="bulk-status-modal" class="fixed inset-0 z-[55] hidden items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="bulk-status-modal-title">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border border-slate-200">
+      <h3 id="bulk-status-modal-title" class="text-lg font-bold text-slate-900">{{ _('Confirm status change') }}</h3>
+      <p id="bulk-status-modal-summary" class="text-sm text-slate-600 mt-2 leading-relaxed"></p>
+      <div class="mt-5 flex flex-wrap gap-2 justify-end">
+        <button type="button" class="bulk-modal-cancel px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">
+          {{ _('Cancel') }}
+        </button>
+        <button type="button" id="bulk-status-modal-commit"
+                class="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 border border-blue-700">
+          {{ _('Confirm') }}
+        </button>
+      </div>
+    </div>
+  </div>
+  <div id="bulk-preparer-modal" class="fixed inset-0 z-[55] hidden items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="bulk-preparer-modal-title">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border border-slate-200">
+      <h3 id="bulk-preparer-modal-title" class="text-lg font-bold text-slate-900">{{ _('Confirm preparer assignment') }}</h3>
+      <p id="bulk-preparer-modal-summary" class="text-sm text-slate-600 mt-2 leading-relaxed"></p>
+      <div class="mt-5 flex flex-wrap gap-2 justify-end">
+        <button type="button" class="bulk-modal-cancel px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">
+          {{ _('Cancel') }}
+        </button>
+        <button type="button" id="bulk-preparer-modal-commit"
+                class="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 border border-blue-700">
+          {{ _('Confirm') }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dashboard-bulk-toast"
+       class="pointer-events-none fixed bottom-28 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-[56] opacity-0 translate-y-2 transition-all duration-200"
+       aria-live="polite" role="status">
+    <div id="dashboard-bulk-toast-inner" class="rounded-xl border px-4 py-3 shadow-2xl text-sm pointer-events-auto"></div>
+  </div>
+
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function applyFilter(key, value) {
-  const url = new URL(window.location);
-  if (value) url.searchParams.set(key, value);
-  else       url.searchParams.delete(key);
-  window.location = url.toString();
-}
-
-// ── Column sort ────────────────────────────────────────────────────────────
-const STATUS_ORDER = ['LOG IN','PROCESSING','FINALIZE','PICKUP','EFILE READY','LOG OUT','REJECTED'];
-let _sortCol = null, _sortAsc = true;
-
-document.querySelectorAll('th.sortable').forEach(th => {
-  th.addEventListener('click', () => {
-    const col = th.dataset.col;
-    if (_sortCol === col) _sortAsc = !_sortAsc;
-    else { _sortCol = col; _sortAsc = true; }
-
-    // Update arrow indicators
-    document.querySelectorAll('th.sortable .sort-arrow').forEach(a => a.className = 'sort-arrow');
-    th.querySelector('.sort-arrow').className = 'sort-arrow ' + (_sortAsc ? 'asc' : 'desc');
-
-    sortTable(col, th.dataset.type, _sortAsc);
-  });
-});
-
-function sortTable(col, type, asc) {
-  const tbody = document.querySelector('.data-table tbody');
-  const rows  = Array.from(tbody.querySelectorAll('tr[data-log]')); // skip empty-state row
-  rows.sort((a, b) => {
-    let va = a.dataset[col] || '';
-    let vb = b.dataset[col] || '';
-    let cmp = 0;
-    if (type === 'num') {
-      cmp = (parseFloat(va) || 0) - (parseFloat(vb) || 0);
-    } else if (type === 'status') {
-      cmp = STATUS_ORDER.indexOf(va) - STATUS_ORDER.indexOf(vb);
-    } else {
-      cmp = va.localeCompare(vb, undefined, {sensitivity: 'base'});
-    }
-    return asc ? cmp : -cmp;
-  });
-  rows.forEach(r => tbody.appendChild(r));
-  // recount visible rows after sort
-  updateRowCount();
-}
-
-function updateRowCount() {
-  const visible = document.querySelectorAll('.data-table tbody tr[data-search]:not(.tr-filter-hidden)').length;
-  const el = document.getElementById('row-count');
-  if (el) el.textContent = visible;
-  if (typeof syncDashboardTableSelection === "function") syncDashboardTableSelection();
-}
-
-// ── Email classification reminder ─────────────────────────────────────────────
+/* ── Dashboard pagination globals (injected server-side) ─────────────────── */
+window.__statusFlow   = {{ status_flow | tojson }};
+window.__statusDotMap = {{ status_dot  | tojson }};
+window.__pagState     = { page: {{ page }}, per_page: {{ per_page }}, total_pages: {{ total_pages }}, total_count: {{ total_count }} };
+</script>
+<script>
+/* ── AJAX pagination engine ──────────────────────────────────────────────── */
 (function () {
-  fetch('/api/email-classifications/digest')
-    .then(r => _authJson(r))
-    .then(d => {
-      const missed  = d.possible_missed  || 0;
-      const attn    = d.need_attention   || 0;
-      if (missed <= 0 && attn <= 0) return;
 
-      const indicator = document.getElementById('email-review-indicator');
-      const lines     = document.getElementById('email-review-lines');
-      if (!indicator || !lines) return;
+  /* Re-usable HTML escaping — falls back to the global escHtml from app.js */
+  function _esc(s) {
+    return escHtml(String(s == null ? '' : s));
+  }
 
-      const parts = [];
-      if (missed > 0) {
-        parts.push(
-          `<a href="/email-review#missed-alerts" class="block text-sm font-bold text-red-600 hover:underline">` +
-          `⚠ ${missed} possible missed attachment${missed !== 1 ? 's' : ''}</a>`
-        );
+  function _renderReturnRow(r) {
+    const yr = parseInt(document.body.dataset.year || new Date().getFullYear(), 10);
+    const scl = (r.client_status || '').replace(/ /g, '-');
+    const badgeCls = r.badge_class || 'bg-slate-100 text-slate-500 border-slate-200';
+    const dotCls   = r.color       || 'dot-slate';
+
+    const formBadges = (r.forms || []).map(b => `<span class="form-badge">${_esc(b)}</span>`).join('');
+
+    const flagHtml = r.risk_flags && r.risk_flags.length
+      ? `<div class="flex flex-wrap gap-1">${r.risk_flags.map(f => {
+          const c = f === 'LATE INTAKE' ? 'risk-late' : f === 'CLIENT CONTACT' ? 'risk-contact' : 'risk-slow';
+          return `<span class="risk-badge ${c}">${_esc(f)}</span>`;
+        }).join('')}</div>`
+      : '<span class="text-slate-300">—</span>';
+
+    const statusItems = (window.__statusFlow || []).map(s =>
+      `<button onclick="setStatus(${r.id},'${_esc(s)}',this)"
+          class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs hover:bg-slate-50 transition-colors${s === r.client_status ? ' font-bold text-slate-900 bg-slate-50' : ' text-slate-700'}">
+        <span class="status-dot ${(window.__statusDotMap || {})[s] || 'dot-slate'} shrink-0"></span>
+        ${_esc(s)}${s === r.client_status ? '<span class="ml-auto text-blue-500">✓</span>' : ''}
+      </button>`).join('');
+
+    const feeHtml = r.total_fee
+      ? `<span class="text-slate-700 tabular-nums">$${Number(r.total_fee).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`
+      : '<span class="text-slate-300">—</span>';
+
+    let balHtml = '<span class="text-slate-300">—</span>';
+    if (r.total_fee) {
+      if (r.paid_in_full) {
+        balHtml = '<span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">PAID</span>';
+      } else if (r.balance) {
+        balHtml = `<span class="text-xs font-bold text-red-600 tabular-nums">$${Number(r.balance).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`;
       }
-      if (attn > 0) {
-        parts.push(
-          `<a href="/email-review" class="block text-sm font-semibold text-amber-700 hover:underline">` +
-          `${attn} client email${attn !== 1 ? 's' : ''} need${attn !== 1 ? '' : 's'} review</a>`
-        );
+    }
+
+    const tyHtml = r.tax_year && r.tax_year !== yr - 1
+      ? `<span class="inline-block px-1.5 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">${r.tax_year}</span>`
+      : `<span class="text-xs text-slate-400">${r.tax_year || '—'}</span>`;
+
+    const ln = r.last_name || '', fn = r.first_name || '', dn = r.display_name || '';
+    const clientMain = `<div class="font-semibold text-slate-800 leading-tight">${_esc(ln)}${fn ? ', ' + _esc(fn) : ''}</div>`;
+    const clientAlt  = dn && dn !== `${ln} ${fn}`.trim()
+      ? `<div class="text-xs text-slate-400 mt-0.5">${_esc(dn)}</div>` : '';
+    const prepLabel  = _esc(r.processor_label || r.processor || '—');
+
+    return `<tr class="status-row status-${scl} group cursor-pointer"
+        data-search="${_esc(r.log_number)} ${_esc(ln)} ${_esc(fn)} ${_esc(dn)}"
+        data-log="${_esc(r.log_number || '')}"
+        data-taxyear="${r.tax_year || ''}"
+        data-name="${_esc(ln)},${_esc(fn)}"
+        data-status="${_esc(r.client_status || '')}"
+        data-preparer="${_esc(r.processor || '')}"
+        data-fee="${r.total_fee || 0}"
+        data-balance="${r.balance || 0}"
+        data-intake="${_esc(r.intake_date || '')}"
+        data-return-id="${r.id}"
+        onclick="if(!event.target.closest('.status-dropdown,.editable,.row-select-label')) window.location='/return/${r.id}'">
+      <td class="td text-center" onclick="event.stopPropagation()">
+        <input type="checkbox" class="row-select" id="row-sel-${r.id}" data-return-id="${r.id}">
+        <label for="row-sel-${r.id}" class="row-select-label inline-flex items-center justify-center min-w-[2.75rem] min-h-11 -my-1 cursor-pointer rounded-lg hover:bg-slate-100" title="Select this return">
+          <span class="w-4 h-4 rounded border border-slate-300 bg-white pointer-events-none row-select-skin"></span>
+        </label>
+      </td>
+      <td class="td"><span class="font-mono font-black text-slate-800 text-base tracking-tight">${_esc(r.log_number || '—')}</span></td>
+      <td class="td text-center">${tyHtml}</td>
+      <td class="td">${clientMain}${clientAlt}</td>
+      <td class="td"><div class="flex flex-wrap gap-0.5">${formBadges}</div></td>
+      <td class="td">${flagHtml}</td>
+      <td class="td">
+        <div class="status-dropdown relative inline-block">
+          <button onclick="toggleStatusMenu(this)" class="status-badge ${badgeCls} flex items-center gap-1">
+            ${_esc(r.client_status || 'NO STATUS')}
+            <svg class="w-2.5 h-2.5 opacity-40 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+          <div class="status-menu hidden absolute left-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-20 min-w-max py-1 overflow-hidden">${statusItems}</div>
+        </div>
+      </td>
+      <td class="td"><span class="editable text-slate-700 text-xs" data-return-id="${r.id}" data-field="processor" data-value="${_esc(r.processor || '')}" data-placeholder="Preparer">${prepLabel}</span></td>
+      <td class="td text-right">${feeHtml}</td>
+      <td class="td text-right">${balHtml}</td>
+      <td class="td"><span class="text-xs text-slate-500 tabular-nums">${_esc(r.intake_date || '—')}</span></td>
+      <td class="td text-center"><span class="editable cursor-pointer select-none" data-return-id="${r.id}" data-field="verified" data-type="bool" data-value="${r.verified ? '1' : '0'}">${r.verified ? '<span class="text-green-500 font-bold text-lg">✓</span>' : '<span class="text-slate-200 text-lg">○</span>'}</span></td>
+    </tr>`;
+  }
+
+  function _renderReturnRows(returns) {
+    if (!returns || !returns.length) {
+      return `<tr><td colspan="12" class="px-6 py-16 text-center">
+        <div class="text-5xl mb-3">📂</div>
+        <div class="font-semibold text-slate-500 text-base">No returns found</div>
+        <div class="text-sm text-slate-400 mt-1">Import a CSV or adjust your filters</div>
+      </td></tr>`;
+    }
+    return returns.map(_renderReturnRow).join('');
+  }
+
+  function _updatePaginationUI(data) {
+    const ps = window.__pagState;
+    ps.page        = data.page;
+    ps.per_page    = data.per_page;
+    ps.total_pages = data.total_pages;
+    ps.total_count = data.total_count;
+
+    const prevBtn  = document.getElementById('pag-prev');
+    const nextBtn  = document.getElementById('pag-next');
+    const indicator = document.getElementById('pag-indicator');
+    const totalPagesEl = document.getElementById('pag-total-pages');
+    const perPageSel   = document.getElementById('pag-per-page');
+
+    if (prevBtn)  { prevBtn.disabled  = !data.has_prev; prevBtn.onclick  = () => loadPage(data.page - 1); }
+    if (nextBtn)  { nextBtn.disabled  = !data.has_next; nextBtn.onclick  = () => loadPage(data.page + 1); }
+    if (indicator && totalPagesEl) totalPagesEl.textContent = data.total_pages;
+    if (indicator) indicator.querySelector && (indicator.innerHTML = `Page ${data.page} of <span id="pag-total-pages">${data.total_pages}</span>`);
+    if (perPageSel) perPageSel.value = String(data.per_page);
+
+    const rc = document.getElementById('row-count');
+    if (rc) rc.textContent = (data.returns || []).length;
+    const tc = document.getElementById('total-count');
+    if (tc) tc.textContent = data.total_count.toLocaleString();
+  }
+
+  window.loadPage = async function loadPage(page, perPage) {
+    const tbody = document.querySelector('#dashboard-table-wrap tbody');
+    const tbl   = document.getElementById('returns-table');
+    if (tbody) { tbody.style.opacity = '0.4'; tbody.style.pointerEvents = 'none'; }
+    if (tbl)   { tbl.setAttribute('aria-busy', 'true'); }
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', page);
+    if (perPage) url.searchParams.set('per_page', perPage);
+    // also remove page from filter URL so applyFilter resets to page 1
+    const apiUrl = new URL('/api/dashboard/returns', window.location.origin);
+    url.searchParams.forEach((v, k) => apiUrl.searchParams.set(k, v));
+
+    try {
+      const resp = await fetch(apiUrl.toString(), { credentials: 'same-origin' });
+      if (resp.status === 401) { window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname); return; }
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+
+      if (tbody) {
+        tbody.innerHTML = _renderReturnRows(data.returns);
+        tbody.style.opacity = '1';
+        tbody.style.pointerEvents = '';
       }
-      lines.innerHTML = parts.join('');
-      indicator.classList.remove('hidden');
-      indicator.classList.add('flex');
-    })
-    .catch(() => {});
+      if (tbl) { tbl.setAttribute('aria-busy', 'false'); }
+      _updatePaginationUI(data);
+      history.pushState({ page: data.page, per_page: data.per_page }, '', url.toString());
+    } catch (e) {
+      if (tbody) { tbody.style.opacity = '1'; tbody.style.pointerEvents = ''; }
+      if (tbl)   { tbl.setAttribute('aria-busy', 'false'); }
+      console.error('Dashboard pagination failed:', e);
+    }
+  };
+
+  // Handle browser back/forward button
+  window.addEventListener('popstate', function (ev) {
+    const s = ev.state;
+    if (s && s.page) loadPage(s.page, s.per_page);
+  });
+
+  // applyFilter should reset to page 1 — patch it to remove page param before navigating
+  document.addEventListener('DOMContentLoaded', function () {
+    const orig = window.applyFilter;
+    if (orig) {
+      window.applyFilter = function (key, value) {
+        const url = new URL(window.location);
+        if (value) url.searchParams.set(key, value);
+        else url.searchParams.delete(key);
+        url.searchParams.delete('page'); // always reset to page 1 on filter change
+        window.location = url.toString();
+      };
+    }
+  });
+
+})();
+</script>
+<script>
+(function () {
+
+  window.__dashboardFilterSnap = {{ dashboard_current_filter_snapshot | tojson }};
+  window.__dashSnapMeaningful = {{ dashboard_snapshot_has_meaningful | tojson }};
+
+  function _dashboardFilterYear() {
+    const y = document.body?.dataset?.year;
+    const n = parseInt(y || '', 10);
+    return Number.isFinite(n) ? n : new Date().getFullYear();
+  }
+
+  function dashboardSaveFilterMerged() {
+    const base = typeof window.__dashboardFilterSnap === 'object' && window.__dashboardFilterSnap
+      ? { ...window.__dashboardFilterSnap } : {};
+    const inp = document.getElementById('table-filter');
+    const qt = (inp?.value ?? '').trim();
+    if (qt.length >= 2) base.q = qt.slice(0, 500);
+    return base;
+  }
+
+  function dashboardSaveMeaningful() {
+    try {
+      return Object.keys(dashboardSaveFilterMerged()).length > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function syncSaveDashboardFilterBtn() {
+    const btn = document.getElementById('btn-save-dashboard-filter');
+    if (!btn) return;
+    const ok = !!(window.__dashSnapMeaningful || (document.getElementById('table-filter')?.value || '').trim().length >= 2);
+    btn.disabled = !ok;
+  }
+
+  function toggleSaveDashboardFilterModal(show) {
+    const m = document.getElementById('save-dashboard-filter-modal');
+    const nameEl = document.getElementById('save-dash-filter-name');
+    const err = document.getElementById('save-dash-filter-error');
+    if (!m) return;
+    if (show) {
+      err.classList.add('hidden');
+      err.textContent = '';
+      if (nameEl) nameEl.value = '';
+      const defCb = document.getElementById('save-dash-filter-default');
+      if (defCb) {
+        defCb.checked = false;
+        defCb.disabled = false;
+      }
+      const sh = document.getElementById('save-dash-filter-shared');
+      if (sh) sh.checked = false;
+      m.classList.remove('hidden');
+      m.classList.add('flex');
+      setTimeout(() => nameEl?.focus(), 50);
+    } else {
+      m.classList.add('hidden');
+      m.classList.remove('flex');
+    }
+  }
+
+  function applyFilter(key, value) {
+    const url = new URL(window.location);
+    if (value) url.searchParams.set(key, value);
+    else       url.searchParams.delete(key);
+    window.location = url.toString();
+  }
+
+  // ── Column sort ────────────────────────────────────────────────────────────
+  const STATUS_ORDER = ['PENDING INTAKE','LOG IN','PROCESSING','FINALIZE','PICKUP','EFILE READY','LOG OUT','REJECTED'];
+  let _sortCol = null, _sortAsc = true;
+
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (_sortCol === col) _sortAsc = !_sortAsc;
+      else { _sortCol = col; _sortAsc = true; }
+
+      // Update arrow indicators
+      document.querySelectorAll('th.sortable .sort-arrow').forEach(a => a.className = 'sort-arrow');
+      th.querySelector('.sort-arrow').className = 'sort-arrow ' + (_sortAsc ? 'asc' : 'desc');
+
+      sortTable(col, th.dataset.type, _sortAsc);
+    });
+  });
+
+  function sortTable(col, type, asc) {
+    const tbody = document.querySelector('.data-table tbody');
+    const rows  = Array.from(tbody.querySelectorAll('tr[data-log]')); // skip empty-state row
+    rows.sort((a, b) => {
+      let va = a.dataset[col] || '';
+      let vb = b.dataset[col] || '';
+      let cmp = 0;
+      if (type === 'num') {
+        cmp = (parseFloat(va) || 0) - (parseFloat(vb) || 0);
+      } else if (type === 'status') {
+        cmp = STATUS_ORDER.indexOf(va) - STATUS_ORDER.indexOf(vb);
+      } else {
+        cmp = va.localeCompare(vb, undefined, {sensitivity: 'base'});
+      }
+      return asc ? cmp : -cmp;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+    // recount visible rows after sort
+    updateRowCount();
+  }
+
+  function updateRowCount() {
+    const visible = document.querySelectorAll('.data-table tbody tr[data-search]:not(.tr-filter-hidden)').length;
+    const el = document.getElementById('row-count');
+    if (el) el.textContent = visible;
+    if (typeof syncDashboardTableSelection === "function") syncDashboardTableSelection();
+  }
+
+  // ── Email classification reminder ─────────────────────────────────────────────
+  (function () {
+    _csrfFetch('/api/email-classifications/digest')
+      .then(r => _authJson(r))
+      .then(d => {
+        const missed  = d.possible_missed  || 0;
+        const attn    = d.need_attention   || 0;
+        if (missed <= 0 && attn <= 0) return;
+
+        const indicator = document.getElementById('email-review-indicator');
+        const lines     = document.getElementById('email-review-lines');
+        if (!indicator || !lines) return;
+
+        const parts = [];
+        if (missed > 0) {
+          parts.push(
+            `<a href="/email-review#missed-alerts" class="block text-sm font-bold text-red-600 hover:underline">` +
+            `⚠ ${missed} possible missed attachment${missed !== 1 ? 's' : ''}</a>`
+          );
+        }
+        if (attn > 0) {
+          parts.push(
+            `<a href="/email-review" class="block text-sm font-semibold text-amber-700 hover:underline">` +
+            `${attn} client email${attn !== 1 ? 's' : ''} need${attn !== 1 ? '' : 's'} review</a>`
+          );
+        }
+        lines.innerHTML = parts.join('');
+        indicator.classList.remove('hidden');
+        indicator.classList.add('flex');
+      })
+      .catch(() => {});
+  })();
+
+  window.applyFilter = applyFilter;
+  window.syncSaveDashboardFilterBtn = syncSaveDashboardFilterBtn;
+  window.toggleSaveDashboardFilterModal = toggleSaveDashboardFilterModal;
+})();
+</script>
+<script>
+(function () {
+  function wireSavedFilterPills() {
+    document.getElementById('saved-filter-pills')?.addEventListener('click', async (ev) => {
+      const chip = ev.target.closest('.saved-filter-chip');
+      if (!chip) return;
+      const id = chip.dataset.filterId;
+
+      const delBtn = ev.target.closest('.saved-filter-del');
+      if (delBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (!confirm('Delete this saved view?')) return;
+        try {
+          const r = await _csrfFetch('/api/filters/' + encodeURIComponent(id), { method: 'DELETE' });
+          const d = await _authJson(r);
+          if (d.success) window.location.reload();
+          else alert(d.error || 'Could not delete');
+        } catch (e) {
+          alert('Could not delete.');
+        }
+        return;
+      }
+
+      const star = ev.target.closest('.saved-filter-star');
+      if (star) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        try {
+          const r = await _csrfFetch('/api/filters/' + encodeURIComponent(id) + '/default', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          await _authJson(r);
+          window.location.reload();
+        } catch (e) {
+          alert('Could not set default.');
+        }
+      }
+    });
+  }
+
+  function wireSaveFlow() {
+    const btnSave = document.getElementById('btn-save-dashboard-filter');
+    btnSave?.addEventListener('click', () => {
+      if (!dashboardSaveMeaningful()) return;
+      toggleSaveDashboardFilterModal(true);
+    });
+
+    document.getElementById('save-dash-filter-cancel')?.addEventListener('click', () => toggleSaveDashboardFilterModal(false));
+    document.getElementById('save-dashboard-filter-modal')?.addEventListener('click', (ev) => {
+      if (ev.target.id === 'save-dashboard-filter-modal') toggleSaveDashboardFilterModal(false);
+    });
+
+    document.getElementById('save-dash-filter-submit')?.addEventListener('click', async () => {
+      const nameEl = document.getElementById('save-dash-filter-name');
+      const err = document.getElementById('save-dash-filter-error');
+      const nm = (nameEl?.value || '').trim();
+      err.classList.add('hidden');
+      err.textContent = '';
+      if (!nm) {
+        err.textContent = 'Enter a name for this preset.';
+        err.classList.remove('hidden');
+        return;
+      }
+
+      const isShared = document.getElementById('save-dash-filter-shared')?.checked || false;
+      const setDefault = !isShared && document.getElementById('save-dash-filter-default')?.checked;
+
+      const body = {
+        name: nm,
+        filter: dashboardSaveFilterMerged(),
+        year: _dashboardFilterYear(),
+        set_default: !!(setDefault),
+        is_shared: !!(isShared),
+      };
+
+      try {
+        const r = await _csrfFetch('/api/filters', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        await _authJson(r);
+        window.location.reload();
+      } catch (e) {
+        err.textContent = (e && e.message) || 'Save failed.';
+        err.classList.remove('hidden');
+      }
+    });
+
+    document.getElementById('save-dash-filter-shared')?.addEventListener('change', (ev) => {
+      if (ev.target.checked) {
+        document.getElementById('save-dash-filter-default').checked = false;
+        document.getElementById('save-dash-filter-default').disabled = true;
+      } else {
+        document.getElementById('save-dash-filter-default').disabled = false;
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    syncSaveDashboardFilterBtn();
+    const tf = document.getElementById('table-filter');
+    tf?.addEventListener('input', () => { syncSaveDashboardFilterBtn(); });
+    wireSavedFilterPills();
+    wireSaveFlow();
+  });
+})();
+</script>
+
+<!-- TOUR-3: auto-launch tour on first dashboard visit if not yet completed -->
+<script>
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    // Only auto-launch if TaxOpsTour engine is loaded and no pending resume
+    if (!window.TaxOpsTour) return;
+    if (sessionStorage.getItem('taxops_tour_step') !== null) return;
+    fetch('/api/tour/status', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (!d.completed) window.TaxOpsTour.start(); })
+      .catch(function () {});
+  });
 })();
 </script>
 {% endblock %}

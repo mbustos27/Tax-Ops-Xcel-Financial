@@ -142,205 +142,210 @@
                   padding: 0.5rem 0.75rem; font-size: 0.875rem; color: #1e293b; }
 </style>
 <script>
-let _analysisData = null;
+(function () {
 
-const fileInput  = document.getElementById('file-input');
-const dropZone   = document.getElementById('drop-zone');
+  let _analysisData = null;
 
-// Drag-and-drop
-dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('border-blue-500','bg-blue-50'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-blue-500','bg-blue-50'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('border-blue-500','bg-blue-50');
-  const file = e.dataTransfer.files[0];
-  if (file) uploadFile(file);
-});
-fileInput.addEventListener('change', () => {
-  if (fileInput.files[0]) uploadFile(fileInput.files[0]);
-});
+  const fileInput  = document.getElementById('file-input');
+  const dropZone   = document.getElementById('drop-zone');
 
-async function uploadFile(file) {
-  const status = document.getElementById('upload-status');
-  status.textContent = `Analyzing ${file.name}…`;
-  status.classList.remove('hidden');
-
-  const fd = new FormData();
-  fd.append('csv_file', file);
-
-  const res  = await fetch('/upload/preview', { method: 'POST', body: fd });
-  const data = await res.json();
-
-  if (data.error) { status.textContent = 'Error: ' + data.error; return; }
-
-  _analysisData = data;
-  renderPreview(data);
-  document.getElementById('step-upload').classList.add('hidden');
-  document.getElementById('step-preview').classList.remove('hidden');
-}
-
-function renderPreview(data) {
-  // Banner
-  document.getElementById('analysis-title').textContent =
-    `Detected ${data.total_rows} data rows in "${data.filename}"`;
-  const mapped = data.columns.filter(c => !c.skip && c.field).length;
-  document.getElementById('analysis-subtitle').textContent =
-    `${mapped} of ${data.columns.length} columns mapped — review below before importing.`;
-
-  const warnBox = document.getElementById('analysis-warnings');
-  warnBox.innerHTML = (data.warnings || []).map(w =>
-    `<p class="text-xs text-amber-700 bg-amber-50 px-3 py-1 rounded-lg">⚠ ${w}</p>`
-  ).join('');
-
-  document.getElementById('confirm-count').textContent = data.total_rows;
-
-  // Mapping table
-  const tbody = document.getElementById('mapping-body');
-  tbody.innerHTML = data.columns.map((c, i) => {
-    if (c.skip && !c.raw_header) return ''; // completely blank
-    const confClass = c.skip ? 'conf-skip' : c.confidence >= 80 ? 'conf-high' : c.confidence >= 50 ? 'conf-med' : 'conf-low';
-    const confLabel = c.skip ? 'skipped' : `${c.confidence}%`;
-    const mappedKey = c.skip ? '' : `${c.table}.${c.field}`;
-    const mappedLabel = c.skip
-      ? (c.skip_reason
-          ? `<span class="text-slate-400 italic text-[11px]">— ${c.skip_reason}</span>`
-          : '—')
-      : `<span class="font-mono">${c.table}.${c.field}</span>`;
-    return `<tr class="hover:bg-slate-50${c.skip ? ' opacity-60' : ''}">
-      <td class="px-3 py-2 text-slate-400 font-mono text-xs">${c.index}</td>
-      <td class="px-3 py-2 font-medium text-slate-700">${c.raw_header || '<span class="text-slate-300 italic">blank</span>'}</td>
-      <td class="px-3 py-2 text-xs text-slate-600">${mappedLabel}</td>
-      <td class="px-3 py-2 text-center text-xs"><span class="${confClass}">${confLabel}</span></td>
-      <td class="px-3 py-2">
-        <select data-col="${c.index}"
-                class="override-select text-xs border border-slate-200 rounded-lg px-2 py-1 w-full focus:outline-none focus:ring-1 focus:ring-blue-400">
-          <option value="skip">— skip —</option>
-          ${allFieldOptions(mappedKey)}
-        </select>
-      </td>
-    </tr>`;
-  }).join('');
-
-  // Sample table
-  const visibleCols = data.columns.filter(c => !c.skip && c.raw_header);
-  const sHead = document.getElementById('sample-head');
-  sHead.innerHTML = visibleCols.map(c =>
-    `<th class="px-2 py-2 text-left font-semibold text-slate-500 whitespace-nowrap text-xs border-b border-slate-200">${c.raw_header}</th>`
-  ).join('');
-
-  const sBody = document.getElementById('sample-body');
-  sBody.innerHTML = (data.sample_rows || []).map(row =>
-    `<tr class="hover:bg-slate-50">${visibleCols.map(c =>
-      `<td class="px-2 py-1.5 text-slate-700 whitespace-nowrap">${row[c.index] || ''}</td>`
-    ).join('')}</tr>`
-  ).join('');
-}
-
-function allFieldOptions(selected) {
-  const fields = [
-    // ── Client identity ────────────────────────────────────────
-    ['clients.last_name',           'Last Name'],
-    ['clients.first_name',          'First Name'],
-    ['clients.display_name',        'Display Name'],
-    ['clients.referral_flag',       'Referral Flag'],
-    ['clients.referred_by',         'Referred By'],
-    // ── Log numbers ────────────────────────────────────────────
-    ['returns.log_number',          'Log #'],
-    ['clients.prior_year_log',      'Prior Log #'],
-    // ── Return metadata ────────────────────────────────────────
-    ['returns.tax_year',            'Tax Year'],
-    ['returns.is_extension',        'Extension / Return Type'],
-    ['returns.is_amended',          'Amended'],
-    ['returns.has_w7',              'W-7'],
-    // ── Workflow ───────────────────────────────────────────────
-    ['returns.processor',           'Processor'],
-    ['returns.verified',            'Verified / E-Filed'],
-    ['returns.client_status',       'Status'],
-    // ── Dates ──────────────────────────────────────────────────
-    ['returns.intake_date',         'Intake Date'],
-    ['returns.logout_date',         'Logout Date'],
-    ['returns.updated_date',        'Updated Date'],
-    ['returns.date_emailed',        'Date Emailed'],
-    ['returns.pickup_date',         'Pickup Date'],
-    ['returns.efile_date',          'E-File Date'],
-    ['returns.ack_date',            'Ack Date (Fed Ack)'],
-    // ── Flags ──────────────────────────────────────────────────
-    ['returns.transfer_2025_flag',  'Transfer 2025'],
-    ['returns.transfer_2026_flag',  'Transfer 2026'],
-    ['returns.transfer_flag',       'Transfer'],
-    ['returns.email_marker',        'Email Marker'],
-    // ── Payments ───────────────────────────────────────────────
-    ['payments.total_fee',          'Total Fee (Bal Due - BILL)'],
-    ['payments.fee_paid',           'Fee Paid'],
-    ['payments.refund_amount',      'Refund Amount'],
-    ['payments.balance_due',        'Balance Due (IRS)'],
-    ['payments.receipt_number',     'Receipt #'],
-    ['payments.cc_fee',             'CC Fee'],
-    ['payments.zelle_or_check_ref', 'Zelle / CK #'],
-    ['payments.cash_or_qpay_ref',   'Cash / QPay'],
-    // ── Forms ──────────────────────────────────────────────────
-    ['return_forms.form_1040',      '1040'],
-    ['return_forms.sched_a_d',      'Sch A&D'],
-    ['return_forms.sched_c',        'Sch C'],
-    ['return_forms.sched_e',        'Sch E'],
-    ['return_forms.form_1120',      '1120'],
-    ['return_forms.form_1120s',     '1120S'],
-    ['return_forms.form_1065_llc',  '1065 / LLC'],
-    ['return_forms.corp_officer',   'Corp Officer'],
-    ['return_forms.business_owner', 'Business Owner'],
-    ['return_forms.form_990_1041',  '990 / 1041'],
-    // ── Notes ──────────────────────────────────────────────────
-    ['notes.note_text',             'Notes'],
-  ];
-  return fields.map(([val, label]) =>
-    `<option value="${val}"${selected === val ? ' selected' : ''}>${label}</option>`
-  ).join('');
-}
-
-async function confirmImport() {
-  if (!_analysisData) return;
-  const btn = document.getElementById('confirm-btn');
-  btn.textContent = 'Importing…';
-  btn.disabled = true;
-
-  // Collect overrides
-  const overrides = {};
-  document.querySelectorAll('.override-select').forEach(sel => {
-    overrides[sel.dataset.col] = sel.value;
+  // Drag-and-drop
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('border-blue-500','bg-blue-50'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-blue-500','bg-blue-50'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('border-blue-500','bg-blue-50');
+    const file = e.dataTransfer.files[0];
+    if (file) uploadFile(file);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) uploadFile(fileInput.files[0]);
   });
 
-  const taxYear = parseInt(document.getElementById('tax-year-select').value);
+  async function uploadFile(file) {
+    const status = document.getElementById('upload-status');
+    status.textContent = `Analyzing ${file.name}…`;
+    status.classList.remove('hidden');
 
-  const res  = await fetch('/upload/confirm', {
-    method:  'POST',
-    headers: {'Content-Type': 'application/json'},
-    body:    JSON.stringify({ tmp_path: _analysisData.tmp_path, overrides, tax_year: taxYear }),
-  });
-  const data = await res.json();
+    const fd = new FormData();
+    fd.append('csv_file', file);
 
-  document.getElementById('step-preview').classList.add('hidden');
-  document.getElementById('step-result').classList.remove('hidden');
+    const res  = await _csrfFetch('/upload/preview', { method: 'POST', body: fd });
+    const data = await res.json();
 
-  if (data.error) {
-    document.getElementById('result-icon').textContent = '❌';
-    document.getElementById('result-title').textContent = 'Import failed';
-    document.getElementById('result-detail').textContent = data.error;
-  } else {
-    document.getElementById('result-icon').textContent = '✅';
-    document.getElementById('result-title').textContent = 'Import complete';
-    document.getElementById('result-detail').textContent =
-      `Created ${data.created} · Updated ${data.updated} · Skipped ${data.skipped}` +
-      (data.errors.length ? ` · ${data.errors.length} errors` : '');
+    if (data.error) { status.textContent = 'Error: ' + data.error; return; }
+
+    _analysisData = data;
+    renderPreview(data);
+    document.getElementById('step-upload').classList.add('hidden');
+    document.getElementById('step-preview').classList.remove('hidden');
   }
-}
 
-function resetUpload() {
-  _analysisData = null;
-  document.getElementById('step-upload').classList.remove('hidden');
-  document.getElementById('step-preview').classList.add('hidden');
-  document.getElementById('step-result').classList.add('hidden');
-  document.getElementById('upload-status').classList.add('hidden');
-  fileInput.value = '';
-}
+  function renderPreview(data) {
+    // Banner
+    document.getElementById('analysis-title').textContent =
+      `Detected ${data.total_rows} data rows in "${data.filename}"`;
+    const mapped = data.columns.filter(c => !c.skip && c.field).length;
+    document.getElementById('analysis-subtitle').textContent =
+      `${mapped} of ${data.columns.length} columns mapped — review below before importing.`;
+
+    const warnBox = document.getElementById('analysis-warnings');
+    warnBox.innerHTML = (data.warnings || []).map(w =>
+      `<p class="text-xs text-amber-700 bg-amber-50 px-3 py-1 rounded-lg">⚠ ${w}</p>`
+    ).join('');
+
+    document.getElementById('confirm-count').textContent = data.total_rows;
+
+    // Mapping table
+    const tbody = document.getElementById('mapping-body');
+    tbody.innerHTML = data.columns.map((c, i) => {
+      if (c.skip && !c.raw_header) return ''; // completely blank
+      const confClass = c.skip ? 'conf-skip' : c.confidence >= 80 ? 'conf-high' : c.confidence >= 50 ? 'conf-med' : 'conf-low';
+      const confLabel = c.skip ? 'skipped' : `${c.confidence}%`;
+      const mappedKey = c.skip ? '' : `${c.table}.${c.field}`;
+      const mappedLabel = c.skip
+        ? (c.skip_reason
+            ? `<span class="text-slate-400 italic text-[11px]">— ${c.skip_reason}</span>`
+            : '—')
+        : `<span class="font-mono">${c.table}.${c.field}</span>`;
+      return `<tr class="hover:bg-slate-50${c.skip ? ' opacity-60' : ''}">
+        <td class="px-3 py-2 text-slate-400 font-mono text-xs">${c.index}</td>
+        <td class="px-3 py-2 font-medium text-slate-700">${c.raw_header || '<span class="text-slate-300 italic">blank</span>'}</td>
+        <td class="px-3 py-2 text-xs text-slate-600">${mappedLabel}</td>
+        <td class="px-3 py-2 text-center text-xs"><span class="${confClass}">${confLabel}</span></td>
+        <td class="px-3 py-2">
+          <select data-col="${c.index}"
+                  class="override-select text-xs border border-slate-200 rounded-lg px-2 py-1 w-full focus:outline-none focus:ring-1 focus:ring-blue-400">
+            <option value="skip">— skip —</option>
+            ${allFieldOptions(mappedKey)}
+          </select>
+        </td>
+      </tr>`;
+    }).join('');
+
+    // Sample table
+    const visibleCols = data.columns.filter(c => !c.skip && c.raw_header);
+    const sHead = document.getElementById('sample-head');
+    sHead.innerHTML = visibleCols.map(c =>
+      `<th class="px-2 py-2 text-left font-semibold text-slate-500 whitespace-nowrap text-xs border-b border-slate-200">${c.raw_header}</th>`
+    ).join('');
+
+    const sBody = document.getElementById('sample-body');
+    sBody.innerHTML = (data.sample_rows || []).map(row =>
+      `<tr class="hover:bg-slate-50">${visibleCols.map(c =>
+        `<td class="px-2 py-1.5 text-slate-700 whitespace-nowrap">${row[c.index] || ''}</td>`
+      ).join('')}</tr>`
+    ).join('');
+  }
+
+  function allFieldOptions(selected) {
+    const fields = [
+      // ── Client identity ────────────────────────────────────────
+      ['clients.last_name',           'Last Name'],
+      ['clients.first_name',          'First Name'],
+      ['clients.display_name',        'Display Name'],
+      ['clients.referral_flag',       'Referral Flag'],
+      ['clients.referred_by',         'Referred By'],
+      // ── Log numbers ────────────────────────────────────────────
+      ['returns.log_number',          'Log #'],
+      ['clients.prior_year_log',      'Prior Log #'],
+      // ── Return metadata ────────────────────────────────────────
+      ['returns.tax_year',            'Tax Year'],
+      ['returns.is_extension',        'Extension / Return Type'],
+      ['returns.is_amended',          'Amended'],
+      ['returns.has_w7',              'W-7'],
+      // ── Workflow ───────────────────────────────────────────────
+      ['returns.processor',           'Processor'],
+      ['returns.verified',            'Verified / E-Filed'],
+      ['returns.client_status',       'Status'],
+      // ── Dates ──────────────────────────────────────────────────
+      ['returns.intake_date',         'Intake Date'],
+      ['returns.logout_date',         'Logout Date'],
+      ['returns.updated_date',        'Updated Date'],
+      ['returns.date_emailed',        'Date Emailed'],
+      ['returns.pickup_date',         'Pickup Date'],
+      ['returns.efile_date',          'E-File Date'],
+      ['returns.ack_date',            'Ack Date (Fed Ack)'],
+      // ── Flags ──────────────────────────────────────────────────
+      ['returns.transfer_2025_flag',  'Transfer 2025'],
+      ['returns.transfer_2026_flag',  'Transfer 2026'],
+      ['returns.transfer_flag',       'Transfer'],
+      ['returns.email_marker',        'Email Marker'],
+      // ── Payments ───────────────────────────────────────────────
+      ['payments.total_fee',          'Total Fee (Bal Due - BILL)'],
+      ['payments.fee_paid',           'Fee Paid'],
+      ['payments.refund_amount',      'Refund Amount'],
+      ['payments.balance_due',        'Balance Due (IRS)'],
+      ['payments.receipt_number',     'Receipt #'],
+      ['payments.cc_fee',             'CC Fee'],
+      ['payments.zelle_or_check_ref', 'Zelle / CK #'],
+      ['payments.cash_or_qpay_ref',   'Cash / QPay'],
+      // ── Forms ──────────────────────────────────────────────────
+      ['return_forms.form_1040',      '1040'],
+      ['return_forms.sched_a_d',      'Sch A&D'],
+      ['return_forms.sched_c',        'Sch C'],
+      ['return_forms.sched_e',        'Sch E'],
+      ['return_forms.form_1120',      '1120'],
+      ['return_forms.form_1120s',     '1120S'],
+      ['return_forms.form_1065_llc',  '1065 / LLC'],
+      ['return_forms.corp_officer',   'Corp Officer'],
+      ['return_forms.business_owner', 'Business Owner'],
+      ['return_forms.form_990_1041',  '990 / 1041'],
+      // ── Notes ──────────────────────────────────────────────────
+      ['notes.note_text',             'Notes'],
+    ];
+    return fields.map(([val, label]) =>
+      `<option value="${val}"${selected === val ? ' selected' : ''}>${label}</option>`
+    ).join('');
+  }
+
+  async function confirmImport() {
+    if (!_analysisData) return;
+    const btn = document.getElementById('confirm-btn');
+    btn.textContent = 'Importing…';
+    btn.disabled = true;
+
+    // Collect overrides
+    const overrides = {};
+    document.querySelectorAll('.override-select').forEach(sel => {
+      overrides[sel.dataset.col] = sel.value;
+    });
+
+    const taxYear = parseInt(document.getElementById('tax-year-select').value);
+
+    const res  = await _csrfFetch('/upload/confirm', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({ tmp_path: _analysisData.tmp_path, overrides, tax_year: taxYear }),
+    });
+    const data = await res.json();
+
+    document.getElementById('step-preview').classList.add('hidden');
+    document.getElementById('step-result').classList.remove('hidden');
+
+    if (data.error) {
+      document.getElementById('result-icon').textContent = '❌';
+      document.getElementById('result-title').textContent = 'Import failed';
+      document.getElementById('result-detail').textContent = data.error;
+    } else {
+      document.getElementById('result-icon').textContent = '✅';
+      document.getElementById('result-title').textContent = 'Import complete';
+      document.getElementById('result-detail').textContent =
+        `Created ${data.created} · Updated ${data.updated} · Skipped ${data.skipped}` +
+        (data.errors.length ? ` · ${data.errors.length} errors` : '');
+    }
+  }
+
+  function resetUpload() {
+    _analysisData = null;
+    document.getElementById('step-upload').classList.remove('hidden');
+    document.getElementById('step-preview').classList.add('hidden');
+    document.getElementById('step-result').classList.add('hidden');
+    document.getElementById('upload-status').classList.add('hidden');
+    fileInput.value = '';
+  }
+
+  window.resetUpload = resetUpload;
+})();
 </script>
 {% endblock %}

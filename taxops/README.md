@@ -113,3 +113,16 @@ From the `taxops` folder:
 ```bash
 python main.py
 ```
+
+## Production / office LAN (Epic #82 · #95 / #96)
+
+NSSM-hosted deployments reachable from multiple PCs:
+
+- **`python app.py`** serves with **Waitress** (multi-threaded WSGI) when **`FLASK_DEBUG` is not `1`**; leave production on Waitress and use `FLASK_DEBUG=1` only for local development. See GitHub **[#136](https://github.com/mbustos27/Tax-Ops-Xcel-Financial/issues/136)** (**WSGI** epic). Optional concurrency check: **`python scripts/smoke_waitress_concurrency.py`**.
+
+- **`docs/OFFICE_NETWORK.md`** — LAN IP/firewall (**Private** profile), bookmarks, staff onboarding, **`/health`**, troubleshooting matrix.
+- **`scripts/smoke_deploy.py`** and **`scripts/smoke_deploy.ps1`** — probes **`GET /health`**, **`GET /login`** (versioned static CSS `?v=` links), and **`GET /static/app.js?v=…`** matching that token; non-zero exit when something is wrong. See GitHub **[#141](https://github.com/mbustos27/Tax-Ops-Xcel-Financial/issues/141)** (CACHE epic).
+
+- **Static cache busting:** set **`TAXOPS_VERSION`** or **`TAXOPS_APP_VERSION`** when you deploy so `?v=` on JS/CSS changes (#142–#144). Without git on the server, the app falls back to filesystem mtime for the version token.
+
+See GitHub **[Production Hardening #82](https://github.com/mbustos27/Tax-Ops-Xcel-Financial/issues/82)** and child issues (**#83** audit epic, PROD issues **#89–#96**).

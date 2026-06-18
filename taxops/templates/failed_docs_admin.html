@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Failed Documents — TaxOps{% endblock %}
+
+{% block content %}
+<div class="max-w-screen-xl mx-auto px-4 py-6 space-y-6 pb-24">
+
+  <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">Failed Documents</h1>
+      <p class="text-sm text-slate-500 mt-1">
+        Documents that failed extraction after {{ max_attempts }} attempt{{ 's' if max_attempts != 1 else '' }}.
+        Retry resets the attempt counter and wakes the extraction worker immediately.
+      </p>
+    </div>
+    {% if failed_docs %}
+    <button id="retry-all-btn"
+            class="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600
+                   text-white text-sm font-semibold transition-colors disabled:opacity-50">
+      Retry all ({{ failed_docs|length }})
+    </button>
+    {% endif %}
+  </div>
+
+  {% if not failed_docs %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm px-6 py-12 text-center text-slate-500">
+    <svg class="w-10 h-10 mx-auto mb-3 text-green-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round"
+            d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <p class="font-semibold text-slate-700">No failed documents</p>
+    <p class="text-sm mt-1">All extractions are healthy or still in progress.</p>
+  </div>
+  {% else %}
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 border-b border-slate-200">
+        <tr>
+          <th class="px-4 py-3 text-left font-semibold text-slate-700 w-12">#</th>
+          <th class="px-4 py-3 text-left font-semibold text-slate-700">Document</th>
+          <th class="px-4 py-3 text-left font-semibold text-slate-700">Return</th>
+          <th class="px-4 py-3 text-left font-semibold text-slate-700">Attempts</th>
+          <th class="px-4 py-3 text-left font-semibold text-slate-700">Reason</th>
+          <th class="px-4 py-3 text-left font-semibold text-slate-700">Failed at</th>
+          <th class="px-4 py-3 text-right font-semibold text-slate-700">Action</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100" id="failed-docs-tbody">
+        {% for doc in failed_docs %}
+        <tr id="row-{{ doc.doc_id }}" class="hover:bg-slate-50 transition-colors">
+          <td class="px-4 py-3 text-slate-400 font-mono text-xs">{{ doc.eq_id }}</td>
+          <td class="px-4 py-3">
+            <a href="/return/{{ doc.return_id }}/documents/{{ doc.doc_id }}/view"
+               target="_blank"
+               class="font-medium text-blue-600 hover:underline">
+              {{ doc.filename or doc.original_filename or '(unknown)' }}
+            </a>
+            {% if doc.doc_type %}
+            <span class="ml-1.5 inline-block text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
+              {{ doc.doc_type }}
+            </span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3">
+            <a href="/return/{{ doc.return_id }}"
+               class="font-mono font-semibold text-slate-800 hover:text-blue-600 hover:underline">
+              {{ doc.log_number or '#' + doc.return_id|string }}
+            </a>
+            <div class="text-xs text-slate-500 mt-0.5">
+              {{ doc.last_name }}{% if doc.first_name %}, {{ doc.first_name }}{% endif %}
+              · TY{{ doc.tax_year }}
+            </div>
+          </td>
+          <td class="px-4 py-3">
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold
+                         {% if doc.attempts >= max_attempts %}bg-red-100 text-red-700{% else %}bg-amber-100 text-amber-700{% endif %}">
+              {{ doc.attempts }}/{{ max_attempts }}
+            </span>
+          </td>
+          <td class="px-4 py-3 max-w-xs">
+            <span class="text-xs text-slate-500 font-mono truncate block" title="{{ doc.error_message or '' }}">
+              {{ (doc.error_message or '—')[:80] }}{% if doc.error_message and doc.error_message|length > 80 %}…{% endif %}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+            {{ (doc.processed_at or doc.created_at or '')[:16] }}
+          </td>
+          <td class="px-4 py-3 text-right">
+            <button class="retry-btn text-xs px-3 py-1.5 rounded-lg border border-slate-200
+                           hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50 transition-all
+                           disabled:opacity-50"
+                    data-doc-id="{{ doc.doc_id }}">
+              Retry
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  async function retryDoc(docId) {
+    const resp = await _csrfFetch(`/api/admin/documents/${docId}/retry`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return resp.json();
+  }
+
+  document.querySelectorAll('.retry-btn').forEach(btn => {
+    btn.addEventListener('click', async function () {
+      const docId = this.dataset.docId;
+      this.disabled = true;
+      this.textContent = '…';
+      try {
+        const data = await retryDoc(docId);
+        if (data.success) {
+          const row = document.getElementById('row-' + docId);
+          if (row) {
+            row.style.opacity = '0.4';
+            row.querySelectorAll('td').forEach(td => td.style.textDecoration = 'line-through');
+            this.textContent = '✓ Queued';
+            this.classList.add('text-green-600', 'border-green-300');
+          }
+        } else {
+          this.textContent = 'Error';
+          this.classList.add('text-red-600');
+          this.disabled = false;
+        }
+      } catch {
+        this.textContent = 'Error';
+        this.classList.add('text-red-600');
+        this.disabled = false;
+      }
+    });
+  });
+
+  const retryAllBtn = document.getElementById('retry-all-btn');
+  if (retryAllBtn) {
+    retryAllBtn.addEventListener('click', async function () {
+      const btns = document.querySelectorAll('.retry-btn:not(:disabled)');
+      retryAllBtn.disabled = true;
+      retryAllBtn.textContent = 'Retrying…';
+      let done = 0;
+      for (const btn of btns) {
+        btn.click();
+        done++;
+        await new Promise(r => setTimeout(r, 80));
+      }
+      retryAllBtn.textContent = `Queued ${done}`;
+    });
+  }
+})();
+</script>
+{% endblock %}

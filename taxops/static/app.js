@@ -1,3 +1,35 @@
+// ── SEC-1: CSRF-aware fetch helper ─────────────────────────────────────────
+// Reads the token from <meta name="csrf-token"> (injected by base.html / login.html).
+// All mutating requests (POST / PATCH / PUT / DELETE) automatically get X-CSRFToken.
+// Read-only methods (GET / HEAD) are passed through unchanged.
+function _csrfToken() {
+  const m = document.querySelector('meta[name="csrf-token"]');
+  return m ? m.getAttribute("content") : "";
+}
+
+function _csrfFetch(url, options) {
+  const opts = Object.assign({}, options || {});
+  const method = ((opts.method || "GET").toUpperCase());
+  const mutating = method === "POST" || method === "PATCH" || method === "PUT" || method === "DELETE";
+  if (mutating) {
+    opts.headers = Object.assign({ "X-CSRFToken": _csrfToken() }, opts.headers || {});
+  }
+  return fetch(url, opts);
+}
+
+// ── I18N-4: JS translation helper ────────────────────────────────────────────
+// Populated on DOMContentLoaded from GET /api/translations (current session locale).
+window._t = {};
+function t(key) {
+  return window._t[key] !== undefined ? window._t[key] : key;
+}
+(function _loadTranslations() {
+  fetch("/api/translations")
+    .then(function (r) { return r.ok ? r.json() : {}; })
+    .then(function (data) { window._t = data || {}; })
+    .catch(function () { /* fail silently — English fallback via key */ });
+})();
+
 // ── Status badge Tailwind classes (mirrors app.py STATUS_BADGE) ───────────
 const STATUS_BADGE = {
   "PROCESSING":  "bg-sky-50 text-sky-700 border-sky-200",
@@ -59,12 +91,14 @@ async function runSearch(q) {
 
 function renderSearchResults(items, container) {
   if (!items.length) {
-    container.innerHTML = `<div class="px-4 py-3 text-sm text-slate-400">No results</div>`;
+    container.innerHTML = `<div class="px-4 py-3 text-sm text-slate-400">${t("no_results")}</div>`;
     container.classList.remove("hidden");
     return;
   }
-  container.innerHTML = items.map(r => `
-    <a href="/return/${r.id}"
+  container.innerHTML = items.map(r => {
+    const href = (r.client_id != null && r.client_id !== "") ? `/clients/${r.client_id}` : `/return/${r.id}`;
+    return `
+    <a href="${href}"
        class="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
       <span class="font-mono font-bold text-slate-400 w-10 shrink-0 text-xs">${r.log_number ?? '—'}</span>
       <span class="flex-1 min-w-0">
@@ -73,7 +107,8 @@ function renderSearchResults(items, container) {
       </span>
       <span class="text-xs px-2 py-px rounded-full border shrink-0 ${r.badge || "bg-slate-100 text-slate-500 border-slate-200"}">${r.status || "—"}</span>
     </a>
-  `).join("");
+  `;
+  }).join("");
   container.classList.remove("hidden");
 }
 
@@ -83,15 +118,34 @@ function toggleStatusMenu(btn) {
   const menu   = btn.nextElementSibling;
   const hidden = menu.classList.contains("hidden");
   // close all open menus first
-  document.querySelectorAll(".status-menu").forEach(m => m.classList.add("hidden"));
-  if (hidden) menu.classList.remove("hidden");
+  document.querySelectorAll(".status-menu").forEach(m => {
+    m.classList.add("hidden");
+    const b = m.previousElementSibling;
+    if (b) b.setAttribute("aria-expanded", "false");
+  });
+  if (hidden) {
+    menu.classList.remove("hidden");
+    btn.setAttribute("aria-expanded", "true");
+    // WCAG 2.1.1: close on Escape
+    const closeOnEscape = (e) => {
+      if (e.key === "Escape") {
+        menu.classList.add("hidden");
+        btn.setAttribute("aria-expanded", "false");
+        btn.focus();
+        document.removeEventListener("keydown", closeOnEscape);
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+  } else {
+    btn.setAttribute("aria-expanded", "false");
+  }
 }
 
 async function setStatus(returnId, status, btn) {
   const menu  = btn.closest(".status-menu");
   const badge = menu.previousElementSibling;
   try {
-    const resp = await fetch(`/api/return/${returnId}/status`, {
+    const resp = await _csrfFetch(`/api/return/${returnId}/status`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ status }),
@@ -220,7 +274,7 @@ async function commitEdit(el, value) {
   if (unchanged) { el.textContent = inlineFieldDisplay(el, original); return; }
 
   try {
-    const resp = await fetch(`/api/return/${returnId}/field`, {
+    const resp = await _csrfFetch(`/api/return/${returnId}/field`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ field, value: value || null }),
@@ -250,7 +304,7 @@ async function toggleBool(el) {
   const isTrue   = el.dataset.value === "1";
   const newVal   = isTrue ? 0 : 1;
   try {
-    const resp = await fetch(`/api/return/${returnId}/field`, {
+    const resp = await _csrfFetch(`/api/return/${returnId}/field`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ field, value: newVal }),
@@ -274,7 +328,7 @@ async function submitNote(returnId) {
   if (!text) return;
 
   try {
-    const resp = await fetch(`/api/return/${returnId}/note`, {
+    const resp = await _csrfFetch(`/api/return/${returnId}/note`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ text }),
@@ -332,7 +386,7 @@ function runTableQuickFilter() {
   syncDashboardTableSelection();
 }
 
-function scheduleTableQuickFilter(immediate) {
+function scheduleTableQuickFilter(_immediate) {
   if (_tableFilterRaf) cancelAnimationFrame(_tableFilterRaf);
   _tableFilterRaf = requestAnimationFrame(() => {
     _tableFilterRaf = 0;
@@ -454,6 +508,309 @@ function syncDashboardTableSelection() {
 
   const sc = document.getElementById("selected-count");
   if (sc) sc.textContent = String(s.size);
+
+  syncBulkActionsBar();
+}
+
+function syncBulkActionsBar() {
+  const bar = document.getElementById("bulk-actions-bar");
+  const bn = document.getElementById("bulk-actions-count");
+  if (!bar || !bn) return;
+  const n = readPersistentSet().size;
+  bn.textContent = String(n);
+  bar.style.display = n > 0 ? "flex" : "none";
+}
+
+/** Dashboard bulk overlays + toast(BULK-2…6) — no-ops unless toolbar markup exists. */
+let _bulkConfirm = null;
+let _bulkCommitInFlight = false;
+let _dashboardBulkToastTimer = null;
+
+function openBulkModal(el) {
+  if (!el) return;
+  el.classList.remove("hidden");
+  el.classList.add("flex");
+}
+
+function closeBulkModal(el) {
+  if (!el) return;
+  el.classList.add("hidden");
+  el.classList.remove("flex");
+}
+
+function hideDashboardBulkToast() {
+  const wrap = document.getElementById("dashboard-bulk-toast");
+  if (!wrap) return;
+  wrap.classList.add("opacity-0", "translate-y-2");
+  wrap.classList.remove("opacity-100", "translate-y-0");
+}
+
+/** @param {'success'|'error'|'warn'} variant */
+function showDashboardBulkToast(variant, innerHtml, durationMs) {
+  const wrap = document.getElementById("dashboard-bulk-toast");
+  const inner = document.getElementById("dashboard-bulk-toast-inner");
+  if (!wrap || !inner) return;
+
+  clearTimeout(_dashboardBulkToastTimer);
+  const skin =
+    variant === "success"
+      ? "border-green-200 bg-green-50 text-green-950"
+      : variant === "warn"
+        ? "border-amber-200 bg-amber-50 text-amber-950"
+        : "border-red-200 bg-red-50 text-red-950";
+
+  inner.className = `rounded-xl border px-4 py-3 shadow-2xl text-sm pointer-events-auto ${skin}`;
+  inner.innerHTML = innerHtml;
+
+  wrap.classList.remove("opacity-0", "translate-y-2");
+  wrap.classList.add("opacity-100", "translate-y-0");
+
+  const ms =
+    typeof durationMs === "number"
+      ? durationMs
+      : variant === "success"
+        ? 5500
+        : 14000;
+
+  _dashboardBulkToastTimer = setTimeout(() => hideDashboardBulkToast(), ms);
+}
+
+function formatBulkErrorList(errors) {
+  if (!errors || errors.length === 0) return "";
+  const cap = errors.slice(0, 35);
+  const items = cap
+    .map((e) => {
+      const id = e.return_id != null ? `#${e.return_id}` : "—";
+      return `<li class="leading-snug"><span class="font-mono">${escHtml(String(id))}</span> — ${escHtml(
+        String(e.error || ""),
+      )}</li>`;
+    })
+    .join("");
+  const more =
+    errors.length > cap.length
+      ? `<li class="text-slate-600 list-none mt-1">…and ${errors.length - cap.length} more.</li>`
+      : "";
+  return `<ul class="list-disc pl-4 mt-2 space-y-0.5 text-xs">${items}${more}</ul>`;
+}
+
+async function dashboardBulkFetchJson(endpoint, payload) {
+  let resp;
+  try {
+    resp = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    return { ok: false, status: 0, body: {}, networkError: String((e && e.message) || e || "network") };
+  }
+
+  const raw = await resp.text().catch(() => "");
+  let body = {};
+  if (raw) {
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      body = { error: raw.slice(0, 200) };
+    }
+  }
+
+  if (resp.status === 401) {
+    window.location.href = `/login?next=${encodeURIComponent(
+      `${window.location.pathname}${window.location.search}`,
+    )}`;
+    return { ok: false, status: 401, body, unauthorized: true };
+  }
+
+  return { ok: resp.ok, status: resp.status, body };
+}
+
+function initDashboardBulkActions() {
+  const bar = document.getElementById("bulk-actions-bar");
+  const statusModal = document.getElementById("bulk-status-modal");
+  const prepModal = document.getElementById("bulk-preparer-modal");
+  if (!bar || !statusModal || !prepModal) return;
+
+  const stPick = document.getElementById("bulk-status-pick");
+  const prPick = document.getElementById("bulk-preparer-pick");
+
+  [statusModal, prepModal].forEach((modal) => {
+    modal.querySelectorAll(".bulk-modal-cancel").forEach((b) => {
+      b.addEventListener("click", () => {
+        closeBulkModal(statusModal);
+        closeBulkModal(prepModal);
+        _bulkConfirm = null;
+      });
+    });
+    modal.addEventListener("click", (ev) => {
+      if (ev.target === modal) {
+        closeBulkModal(modal);
+        _bulkConfirm = null;
+      }
+    });
+  });
+
+  document.getElementById("btn-bulk-status-open")?.addEventListener("click", () => {
+    const ids =
+      typeof window.getSelectedReturnIds === "function" ? window.getSelectedReturnIds() : [];
+    if (!ids.length) {
+      showDashboardBulkToast(
+        "warn",
+        `<p class="font-semibold">No returns selected</p><p class="text-xs mt-1 opacity-90">Select one or more rows with the checkboxes first.</p>`,
+        5000,
+      );
+      return;
+    }
+    const st = stPick?.value || "";
+    const sm = document.getElementById("bulk-status-modal-summary");
+    if (sm) {
+      sm.innerHTML = `
+        <p>Set client status on <strong class="tabular-nums">${ids.length}</strong> return${ids.length === 1 ? "" : "s"} 
+        to <strong>${escHtml(st)}</strong>.</p>
+        <p class="text-xs mt-2 text-slate-500">The server applies this as one transaction — if any return cannot move, nothing changes and you’ll see details below.</p>`;
+    }
+    _bulkConfirm = { kind: "status", ids, status: st };
+    openBulkModal(statusModal);
+  });
+
+  document.getElementById("btn-bulk-preparer-open")?.addEventListener("click", () => {
+    const ids =
+      typeof window.getSelectedReturnIds === "function" ? window.getSelectedReturnIds() : [];
+    if (!ids.length) {
+      showDashboardBulkToast(
+        "warn",
+        `<p class="font-semibold">No returns selected</p><p class="text-xs mt-1 opacity-90">Select one or more rows with the checkboxes first.</p>`,
+        5000,
+      );
+      return;
+    }
+    const raw = prPick?.value ?? "";
+    const label =
+      raw && String(raw).trim()
+        ? escHtml(preparerListLabelJs(String(raw)))
+        : '<span class="italic">clear assignment</span>';
+    const sm = document.getElementById("bulk-preparer-modal-summary");
+    if (sm) {
+      sm.innerHTML = `
+        <p>Assign preparer on <strong class="tabular-nums">${ids.length}</strong> return${ids.length === 1 ? "" : "s"} 
+        to <strong>${label}</strong>.</p>
+        <p class="text-xs mt-2 text-slate-500">Rows already set to this preparer count as skipped (shown in the success toast).</p>`;
+    }
+    _bulkConfirm = { kind: "preparer", ids, processor: raw.trim() === "" ? null : raw };
+    openBulkModal(prepModal);
+  });
+
+  document.getElementById("bulk-status-modal-commit")?.addEventListener("click", async () => {
+    if (_bulkCommitInFlight || !_bulkConfirm || _bulkConfirm.kind !== "status") return;
+    const pending = _bulkConfirm;
+    const btns = statusModal.querySelectorAll("button");
+    _bulkCommitInFlight = true;
+    btns.forEach((x) => {
+      x.disabled = true;
+    });
+    try {
+      const result = await dashboardBulkFetchJson("/api/returns/bulk-status", {
+        return_ids: pending.ids,
+        status: pending.status,
+      });
+      if (result.unauthorized) return;
+
+      closeBulkModal(statusModal);
+      const b = result.body || {};
+      const errs = b.errors || [];
+
+      if (!result.ok) {
+        if (result.networkError) {
+          showDashboardBulkToast(
+            "error",
+            `<p class="font-semibold">Bulk status failed</p><p class="text-xs mt-1">${escHtml(result.networkError)}</p>`,
+          );
+          return;
+        }
+        const msg = b.error
+          ? `<p>${escHtml(String(b.error))}</p>`
+          : `<p class="font-semibold">Could not bulk update status (${result.status})</p>`;
+        showDashboardBulkToast("error", msg + formatBulkErrorList(errs));
+        return;
+      }
+
+      const nUp = typeof b.changed === "number" ? b.changed : pending.ids.length;
+      showDashboardBulkToast(
+        "success",
+        `<p class="font-semibold">Updated ${nUp} return${nUp !== 1 ? "s" : ""}</p><p class="text-xs mt-1">Reloading the dashboard…</p>`,
+        4000,
+      );
+      window.setTimeout(() => window.location.reload(), 350);
+    } finally {
+      _bulkCommitInFlight = false;
+      btns.forEach((x) => {
+        x.disabled = false;
+      });
+      _bulkConfirm = null;
+    }
+  });
+
+  document.getElementById("bulk-preparer-modal-commit")?.addEventListener("click", async () => {
+    if (_bulkCommitInFlight || !_bulkConfirm || _bulkConfirm.kind !== "preparer") return;
+    const pending = _bulkConfirm;
+    const btns = prepModal.querySelectorAll("button");
+    _bulkCommitInFlight = true;
+    btns.forEach((x) => {
+      x.disabled = true;
+    });
+    try {
+      const result = await dashboardBulkFetchJson("/api/returns/bulk-processor", {
+        return_ids: pending.ids,
+        processor: pending.processor,
+      });
+      if (result.unauthorized) return;
+
+      closeBulkModal(prepModal);
+      const b = result.body || {};
+      const errs = b.errors || [];
+
+      if (!result.ok) {
+        if (result.networkError) {
+          showDashboardBulkToast(
+            "error",
+            `<p class="font-semibold">Bulk preparer failed</p><p class="text-xs mt-1">${escHtml(result.networkError)}</p>`,
+          );
+          return;
+        }
+        const msg = b.error
+          ? `<p>${escHtml(String(b.error))}</p>`
+          : `<p class="font-semibold">Could not bulk assign preparer (${result.status})</p>`;
+        showDashboardBulkToast("error", msg + formatBulkErrorList(errs));
+        return;
+      }
+
+      const ch = typeof b.changed === "number" ? b.changed : 0;
+      const skipped = pending.ids.length - ch;
+
+      if (ch > 0) {
+        showDashboardBulkToast(
+          "success",
+          `<p class="font-semibold">Preparer updated on ${ch} return${ch !== 1 ? "s" : ""}</p>` +
+            (skipped > 0 ? `<p class="text-xs mt-1 opacity-90">${skipped} already matched — skipped.</p>` : "") +
+            `<p class="text-xs mt-1">Reloading the dashboard…</p>`,
+          5500,
+        );
+        window.setTimeout(() => window.location.reload(), 380);
+      } else {
+        showDashboardBulkToast(
+          "warn",
+          `<p class="font-semibold">Nothing to update</p><p class="text-xs mt-1">Each selected row already had this preparer assignment.</p>`,
+          7000,
+        );
+      }
+    } finally {
+      _bulkCommitInFlight = false;
+      btns.forEach((x) => {
+        x.disabled = false;
+      });
+      _bulkConfirm = null;
+    }
+  });
 }
 
 function initDashboardTableSelection() {
@@ -530,14 +887,430 @@ document.addEventListener("click", e => {
   }
 });
 
+// ── PROD-6 Client error boundary (global handlers + optional server report) ─
+
+const _CLIENT_ERR_DEDUP_MS = 60_000;
+const _clientErrDedup = new Map();
+
+const _CLIENT_ERR_DEFAULT_DETAIL =
+  "A script hit an unexpected issue. Your data on the server is fine. Reload if buttons or searches stop responding. A short report was posted to the server log for staff.";
+
+function _clientErrDedupKey(parts) {
+  return parts.join("\u241e");
+}
+
+function _clientErrShouldSend(key) {
+  const now = Date.now();
+  const t = _clientErrDedup.get(key);
+  if (t !== undefined && now - t < _CLIENT_ERR_DEDUP_MS) return false;
+  _clientErrDedup.set(key, now);
+  if (_clientErrDedup.size > 200) _clientErrDedup.clear();
+  return true;
+}
+
+function _truncateClientErrStr(s, max) {
+  const t = typeof s === "string" ? s : String(s);
+  return t.length > max ? t.slice(0, max - 1) + "\u2026" : t;
+}
+
+function postClientErrorReport(payload) {
+  try {
+    const pk = _clientErrDedupKey([
+      payload.kind || "",
+      payload.message || "",
+      payload.filename || "",
+      String(payload.lineno ?? ""),
+    ]);
+    if (!_clientErrShouldSend(pk)) return;
+    const body = {
+      kind: _truncateClientErrStr(payload.kind || "unknown", 32),
+      message: _truncateClientErrStr(payload.message || "", 2000),
+      page_url: _truncateClientErrStr(payload.page_url || "", 2000),
+      filename: _truncateClientErrStr(payload.filename || "", 500),
+      lineno: payload.lineno,
+      colno: payload.colno,
+      stack: _truncateClientErrStr(payload.stack || "", 8000),
+    };
+    _csrfFetch("/api/client-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+    }).catch(() => {});
+  } catch {
+    /* never throw — error handlers must stay safe */
+  }
+}
+
+function showClientErrorBoundaryFriendly() {
+  const panel = document.getElementById("client-error-boundary");
+  const detail = document.getElementById("client-error-boundary-detail");
+  if (!panel || !detail) return;
+  detail.textContent = _CLIENT_ERR_DEFAULT_DETAIL;
+  panel.classList.remove("hidden");
+}
+
+(function registerTaxopsClientFatalHandlers() {
+  window.addEventListener("error", (ev) => {
+    const msg = ev.message ? String(ev.message) : "Script error";
+    showClientErrorBoundaryFriendly();
+    postClientErrorReport({
+      kind: "error",
+      message: msg,
+      filename: ev.filename || "",
+      lineno: typeof ev.lineno === "number" ? ev.lineno : null,
+      colno: typeof ev.colno === "number" ? ev.colno : null,
+      stack: ev.error && ev.error.stack ? String(ev.error.stack) : "",
+      page_url: window.location.href || "",
+    });
+  });
+
+  window.addEventListener("unhandledrejection", (ev) => {
+    const r = ev.reason;
+    let msg = "Unhandled promise rejection";
+    let stack = "";
+    if (typeof r === "string") msg = r;
+    else if (r && typeof r === "object" && typeof r.message === "string") {
+      msg = r.message || msg;
+      if (typeof r.stack === "string") stack = r.stack;
+    }
+    showClientErrorBoundaryFriendly();
+    postClientErrorReport({
+      kind: "unhandledrejection",
+      message: msg,
+      filename: "",
+      lineno: null,
+      colno: null,
+      stack,
+      page_url: window.location.href || "",
+    });
+  });
+})();
+
+function wireClientErrorBoundaryButtons() {
+  const panel = document.getElementById("client-error-boundary");
+  const btnDismiss = document.getElementById("client-error-boundary-dismiss");
+  const btnReload = document.getElementById("client-error-boundary-reload");
+  if (!panel || !btnDismiss || !btnReload) return;
+  btnDismiss.addEventListener("click", () => panel.classList.add("hidden"));
+  btnReload.addEventListener("click", () => window.location.reload());
+}
+
+// ── INTAKE-6: Phone auto-formatter ───────────────────────────────────────────
+// Attach to any input with data-phone-input attribute.
+
+function _formatPhoneValue(value) {
+  const digits = value.replace(/\D/g, "").slice(0, 10);
+  if (digits.length === 0) return "";
+  if (digits.length <= 3) return "(" + digits;
+  if (digits.length <= 6) return "(" + digits.slice(0, 3) + ") " + digits.slice(3);
+  return "(" + digits.slice(0, 3) + ") " + digits.slice(3, 6) + "-" + digits.slice(6);
+}
+
+function initPhoneFormat() {
+  function _attachPhone(el) {
+    el.addEventListener("input", () => {
+      const cur = el.selectionStart;
+      const oldLen = el.value.length;
+      el.value = _formatPhoneValue(el.value);
+      const diff = el.value.length - oldLen;
+      const next = Math.max(0, cur + diff);
+      el.setSelectionRange(next, next);
+    });
+    el.addEventListener("paste", () => {
+      setTimeout(() => { el.value = _formatPhoneValue(el.value); }, 0);
+    });
+  }
+  document.querySelectorAll("[data-phone-input]").forEach(_attachPhone);
+}
+
+// ── INTAKE-1: Year expansion ──────────────────────────────────────────────────
+// Attach to any input with data-year-input attribute.
+// On blur: 2-digit 00-29 → 2000-2029, 30-99 → 1930-1999. 4-digit unchanged.
+
+function initYearExpand() {
+  function _expandYear(el) {
+    el.addEventListener("blur", () => {
+      const v = el.value.trim();
+      if (!/^\d{2}$/.test(v)) return;
+      const n = parseInt(v, 10);
+      el.value = n <= 29 ? String(2000 + n) : String(1900 + n);
+    });
+  }
+  document.querySelectorAll("[data-year-input]").forEach(_expandYear);
+}
+
+// ── INTAKE-2: SSN formatter ───────────────────────────────────────────────────
+// Attach to any input with data-ssn-input attribute.
+// Formats as XXX-XX-XXXX as user types. Uses type=password for shoulder safety.
+
+function initSsnFormat() {
+  function _formatSsn(value) {
+    const d = value.replace(/\D/g, "").slice(0, 9);
+    if (d.length <= 3) return d;
+    if (d.length <= 5) return d.slice(0, 3) + "-" + d.slice(3);
+    return d.slice(0, 3) + "-" + d.slice(3, 5) + "-" + d.slice(5);
+  }
+  function _attachSsn(el) {
+    el.addEventListener("input", () => {
+      const pos = el.selectionStart;
+      const oldLen = el.value.length;
+      el.value = _formatSsn(el.value);
+      const diff = el.value.length - oldLen;
+      const next = Math.max(0, pos + diff);
+      el.setSelectionRange(next, next);
+    });
+    el.addEventListener("paste", () => {
+      setTimeout(() => { el.value = _formatSsn(el.value); }, 0);
+    });
+  }
+  document.querySelectorAll("[data-ssn-input]").forEach(_attachSsn);
+}
+
+// ── INTAKE-4: Spouse last name auto-fill ─────────────────────────────────────
+
+function initSpouseAutoFill() {
+  const taxpayerLast = document.getElementById("field-last_name");
+  const spouseLast   = document.getElementById("field-spouse_last_name");
+  const hint         = document.getElementById("spouse-autofill-hint");
+  if (!taxpayerLast || !spouseLast) return;
+
+  taxpayerLast.addEventListener("keyup", () => {
+    if (spouseLast.value !== "" && !spouseLast.dataset.autofilled) return;
+    spouseLast.value = taxpayerLast.value;
+    spouseLast.dataset.autofilled = "true";
+    if (hint) hint.classList.remove("hidden");
+  });
+
+  spouseLast.addEventListener("input", () => {
+    delete spouseLast.dataset.autofilled;
+    if (hint) hint.classList.add("hidden");
+  });
+}
+
+// ── INTAKE-5: Address autocomplete (Nominatim / OpenStreetMap) ───────────────
+// Debounced — fires after 400ms of no typing. PII-free query (address only).
+// Fails silently if Nominatim is unreachable — never blocks intake submission.
+
+function initAddressAutocomplete() {
+  const field = document.getElementById("field-address");
+  if (!field) return;
+
+  const wrapper = field.parentElement;
+  const prevPos = window.getComputedStyle(wrapper).position;
+  if (prevPos === "static") wrapper.style.position = "relative";
+
+  const dropdown = document.createElement("div");
+  dropdown.id = "address-dropdown";
+  dropdown.className = "hidden absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden max-h-56 overflow-y-auto";
+  wrapper.appendChild(dropdown);
+
+  let _addrTimer = null;
+
+  field.addEventListener("input", () => {
+    clearTimeout(_addrTimer);
+    const q = field.value.trim();
+    if (q.length < 5) { dropdown.classList.add("hidden"); return; }
+    _addrTimer = setTimeout(() => _fetchAddresses(q), 400);
+  });
+
+  field.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") dropdown.classList.add("hidden");
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!field.contains(e.target) && !dropdown.contains(e.target))
+      dropdown.classList.add("hidden");
+  });
+
+  async function _fetchAddresses(q) {
+    try {
+      const url =
+        "https://nominatim.openstreetmap.org/search?q=" +
+        encodeURIComponent(q) +
+        "&countrycodes=us&format=json&addressdetails=1&limit=5";
+      const resp = await fetch(url, { headers: { "User-Agent": "TaxOps/1.0" } });
+      if (!resp.ok) { dropdown.classList.add("hidden"); return; }
+      const results = await resp.json();
+      _renderAddressResults(results);
+    } catch {
+      dropdown.classList.add("hidden");
+    }
+  }
+
+  function _renderAddressResults(results) {
+    if (!results || !results.length) { dropdown.classList.add("hidden"); return; }
+    dropdown.innerHTML = results.map((r, i) =>
+      `<button type="button" data-idx="${i}"
+               class="addr-pick w-full text-left px-4 py-2.5 hover:bg-slate-50
+                      transition-colors border-b border-slate-100 last:border-0 text-sm text-slate-800">
+         ${escHtml(r.display_name || "")}
+       </button>`
+    ).join("");
+    dropdown.classList.remove("hidden");
+    dropdown.querySelectorAll(".addr-pick").forEach((btn) => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      btn.addEventListener("click", () => _selectAddress(results[idx]));
+    });
+  }
+
+  function _selectAddress(result) {
+    const a = result.address || {};
+    const street = [a.house_number, a.road].filter(Boolean).join(" ");
+    const city   = a.city || a.town || a.village || a.hamlet || "";
+    const state  = a.state || "";
+    const zip    = a.postcode || "";
+    field.value = [street, city, state, zip].filter(Boolean).join(", ");
+    dropdown.classList.add("hidden");
+  }
+}
+
+// ── BANK-1: Routing number → bank name auto-fill ──────────────────────────────
+// Attach to any input with [data-routing-input]. On blur, if value is exactly
+// 9 digits, calls GET /api/routing-number/{value}. On success fills the bank
+// name field identified by [data-bank-name-target] and shows a small hint.
+// On not-found does nothing — staff types manually.
+// Routing numbers are never logged by the server route.
+
+function initRoutingLookup() {
+  document.querySelectorAll("[data-routing-input]").forEach((input) => {
+    const targetId  = input.dataset.bankNameTarget;
+    const hintEl    = document.getElementById("routing-lookup-hint");
+
+    input.addEventListener("blur", async () => {
+      const val = input.value.trim();
+      if (!/^\d{9}$/.test(val)) return;
+      try {
+        const res  = await _csrfFetch(`/api/routing-number/${encodeURIComponent(val)}`);
+        const data = await res.json();
+        if (!data.found) return;
+        const bankField = targetId ? document.getElementById(targetId) : null;
+        if (bankField && !bankField.value) {
+          bankField.value = data.bank_name;
+        }
+        if (hintEl) {
+          hintEl.textContent = `${data.bank_name} — confirm or edit`;
+          hintEl.classList.remove("hidden");
+        }
+        if (bankField) {
+          bankField.addEventListener("input", () => {
+            if (hintEl) hintEl.classList.add("hidden");
+          }, { once: true });
+        }
+      } catch {
+        // fail silently — staff types manually
+      }
+    });
+  });
+}
+
+// ── Section 5: Inline field validation (blur-based, WCAG 3.3.1) ──────────────
+
+function _fieldError(el, msg) {
+  let err = document.getElementById("err-" + el.id);
+  if (!err) {
+    err = document.createElement("p");
+    err.id = "err-" + el.id;
+    err.className = "field-error";
+    err.setAttribute("role", "alert");
+    el.parentNode.appendChild(err);
+    el.setAttribute("aria-describedby", "err-" + el.id);
+  }
+  if (msg) {
+    err.textContent = msg;
+    err.classList.add("visible");
+    el.setAttribute("aria-invalid", "true");
+  } else {
+    err.classList.remove("visible");
+    el.removeAttribute("aria-invalid");
+  }
+}
+
+function initIntakeValidation() {
+  // Phone fields: require 10 digits on blur
+  document.querySelectorAll("[data-phone-input]").forEach((el) => {
+    el.addEventListener("blur", () => {
+      const digits = el.value.replace(/\D/g, "");
+      if (el.value.length > 0 && digits.length < 10) {
+        _fieldError(el, t("Invalid phone number — must be 10 digits"));
+      } else {
+        _fieldError(el, "");
+      }
+    });
+    el.addEventListener("input", () => _fieldError(el, ""));
+  });
+
+  // Routing number: must be exactly 9 digits
+  document.querySelectorAll("[data-routing-input]").forEach((el) => {
+    el.addEventListener("blur", () => {
+      if (el.value.length > 0 && !/^\d{9}$/.test(el.value)) {
+        _fieldError(el, t("Routing numbers are 9 digits"));
+      } else {
+        _fieldError(el, "");
+      }
+    });
+    el.addEventListener("input", () => _fieldError(el, ""));
+  });
+
+  // Year fields: expanded value should be 4-digit year in reasonable range
+  document.querySelectorAll("[data-year-input]").forEach((el) => {
+    el.addEventListener("blur", () => {
+      const v = el.value.trim();
+      if (!v) return;
+      const n = parseInt(v, 10);
+      if (isNaN(n) || v.length < 2 || n < 1900 || n > 2099) {
+        _fieldError(el, t("Please enter a valid year"));
+      } else {
+        _fieldError(el, "");
+      }
+    });
+    el.addEventListener("input", () => _fieldError(el, ""));
+  });
+
+  // Required fields: show message on blur if empty
+  const intakeForm = document.getElementById("intake-form");
+  if (intakeForm) {
+    intakeForm.querySelectorAll("[required]").forEach((el) => {
+      el.addEventListener("blur", () => {
+        if (!el.value.trim()) {
+          _fieldError(el, t("This field is required"));
+        } else {
+          _fieldError(el, "");
+        }
+      });
+      el.addEventListener("input", () => _fieldError(el, ""));
+    });
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", () => {
+  wireClientErrorBoundaryButtons();
   initSearch();
   initInlineEdit();
   initTableFilter();
   initDashboardTableSelection();
+  initDashboardBulkActions();
   initYearPicker();
+  initPhoneFormat();
+  initYearExpand();
+  initSsnFormat();
+  initSpouseAutoFill();
+  initAddressAutocomplete();
+  initRoutingLookup();
+  initIntakeValidation();
+
+  // TOUR-3: help icon resets server-side completion then restarts the tour
+  const _tourHelpBtn = document.getElementById("tour-help-btn");
+  if (_tourHelpBtn) {
+    _tourHelpBtn.addEventListener("click", async () => {
+      try {
+        await _csrfFetch("/api/tour/reset", { method: "POST" });
+      } catch (_) { /* non-fatal — still restart visually */ }
+      if (window.TaxOpsTour) window.TaxOpsTour.restart();
+    });
+  }
 
   // Press "/" to focus search from anywhere
   document.addEventListener("keydown", e => {
@@ -548,3 +1321,296 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
+
+// ── TOUR-1/2/3: Staff onboarding tooltip tour ─────────────────────────────────
+// Vanilla JS — no external library. Exposes window.TaxOpsTour.start() and
+// window.TaxOpsTour.restart(). State persisted in app_settings via API.
+
+window.TaxOpsTour = (function () {
+
+  // ── Step definitions (TOUR-2) ───────────────────────────────────────────────
+  // Each step: { selector, title, body, position, page, navigate }
+  //   page      — URL prefix the step lives on (null = any page)
+  //   navigate  — URL to go to before this step (triggers page reload + resume)
+  function _steps() {
+    return [
+      {
+        selector: "#global-search",
+        title: t("tour_s1_title"),
+        body: t("tour_s1_body"),
+        position: "below",
+        page: "/",
+      },
+      {
+        selector: "#status-pills",
+        title: t("tour_s2_title"),
+        body: t("tour_s2_body"),
+        position: "below",
+        page: "/",
+      },
+      {
+        selector: "#documents",
+        title: t("tour_s3_title"),
+        body: t("tour_s3_body"),
+        position: "below",
+        page: "/return/",
+        navigate: "_first_return",
+      },
+      {
+        selector: "#return-status-control",
+        title: t("tour_s4_title"),
+        body: t("tour_s4_body"),
+        position: "below",
+        page: "/return/",
+      },
+      {
+        selector: "#notes-card",
+        title: t("tour_s5_title"),
+        body: t("tour_s5_body"),
+        position: "below",
+        page: "/return/",
+      },
+      {
+        selector: "#zone-a-section",
+        title: t("tour_s6_title"),
+        body: t("tour_s6_body"),
+        position: "below",
+        page: "/email-review",
+        navigate: "/email-review",
+      },
+      {
+        selector: "#site-header",
+        title: t("tour_s7_title"),
+        body: t("tour_s7_body"),
+        position: "below",
+        page: null,
+      },
+    ];
+  }
+
+  const SESSION_KEY = "taxops_tour_step";
+  let _currentStep = 0;
+  let _active = false;
+
+  // ── DOM helpers ─────────────────────────────────────────────────────────────
+
+  function _cleanup() {
+    document.querySelectorAll("[data-taxops-tour]").forEach(el => el.remove());
+    document.querySelectorAll("[data-taxops-tour-highlight]").forEach(el => {
+      el.style.position = "";
+      el.style.zIndex = "";
+      el.style.outline = "";
+      el.removeAttribute("data-taxops-tour-highlight");
+    });
+    _active = false;
+  }
+
+  function _backdrop() {
+    const bd = document.createElement("div");
+    bd.setAttribute("data-taxops-tour", "backdrop");
+    Object.assign(bd.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "9998",
+      pointerEvents: "all",
+    });
+    bd.addEventListener("click", () => dismiss());
+    document.body.appendChild(bd);
+    return bd;
+  }
+
+  function _highlightEl(el) {
+    const prev = document.querySelector("[data-taxops-tour-highlight]");
+    if (prev) {
+      prev.style.position = "";
+      prev.style.zIndex = "";
+      prev.style.outline = "";
+      prev.removeAttribute("data-taxops-tour-highlight");
+    }
+    el.setAttribute("data-taxops-tour-highlight", "1");
+    const cs = window.getComputedStyle(el);
+    if (cs.position === "static") el.style.position = "relative";
+    el.style.zIndex = "9999";
+    el.style.outline = "2px solid #6366f1";
+    el.style.borderRadius = el.style.borderRadius || "6px";
+  }
+
+  function _tooltip(step, idx, total) {
+    const tt = document.createElement("div");
+    tt.setAttribute("data-taxops-tour", "tooltip");
+    Object.assign(tt.style, {
+      position: "fixed",
+      zIndex: "10000",
+      maxWidth: "320px",
+      background: "#1e293b",
+      color: "#f1f5f9",
+      borderRadius: "12px",
+      padding: "16px 18px",
+      boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
+      opacity: "0",
+      transition: "opacity 150ms ease",
+      pointerEvents: "all",
+    });
+
+    const progress = `<span style="font-size:11px;color:#94a3b8;display:block;margin-bottom:8px;">Step ${idx + 1} of ${total}</span>`;
+    const titleHtml = `<p style="font-weight:700;font-size:14px;margin:0 0 6px;">${escHtml(step.title)}</p>`;
+    const bodyHtml  = `<p style="font-size:13px;line-height:1.55;margin:0 0 14px;color:#cbd5e1;">${escHtml(step.body)}</p>`;
+    const isLast    = idx === total - 1;
+    const nextLabel = isLast ? "Done ✓" : "Next →";
+    const btnRow = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <button data-taxops-tour="skip"
+          style="font-size:12px;color:#94a3b8;background:none;border:none;cursor:pointer;padding:0;">
+          Skip tour
+        </button>
+        <button data-taxops-tour="next"
+          style="font-size:13px;font-weight:600;background:#6366f1;color:#fff;border:none;
+                 border-radius:7px;padding:7px 16px;cursor:pointer;">
+          ${nextLabel}
+        </button>
+      </div>`;
+
+    tt.innerHTML = progress + titleHtml + bodyHtml + btnRow;
+    document.body.appendChild(tt);
+    requestAnimationFrame(() => { tt.style.opacity = "1"; });
+
+    tt.querySelector("[data-taxops-tour='skip']").addEventListener("click", () => dismiss());
+    tt.querySelector("[data-taxops-tour='next']").addEventListener("click", () => {
+      if (isLast) complete();
+      else goToStep(_currentStep + 1);
+    });
+    return tt;
+  }
+
+  function _positionTooltip(tt, target) {
+    const tr = target.getBoundingClientRect();
+    const ttH = tt.offsetHeight || 160;
+    const ttW = tt.offsetWidth  || 320;
+    const vp  = { w: window.innerWidth, h: window.innerHeight };
+    const margin = 12;
+
+    let top, left;
+    if (tr.bottom + ttH + margin < vp.h) {
+      top  = tr.bottom + margin;
+      left = Math.min(Math.max(tr.left, margin), vp.w - ttW - margin);
+    } else {
+      top  = Math.max(tr.top - ttH - margin, margin);
+      left = Math.min(Math.max(tr.left, margin), vp.w - ttW - margin);
+    }
+    tt.style.top  = top  + "px";
+    tt.style.left = left + "px";
+  }
+
+  // ── Navigation helpers ──────────────────────────────────────────────────────
+
+  function _firstReturnUrl() {
+    const links = document.querySelectorAll("a[href^='/return/']");
+    if (links.length) return links[0].getAttribute("href");
+    const trs = document.querySelectorAll("tr[data-id]");
+    if (trs.length) return `/return/${trs[0].dataset.id}`;
+    return null;
+  }
+
+  function _navigateForStep(step, stepIdx) {
+    if (!step.navigate) return false;
+    const nav = step.navigate === "_first_return" ? _firstReturnUrl() : step.navigate;
+    if (!nav) return false;
+    const path = window.location.pathname;
+    if (path.startsWith("/return/") && step.page === "/return/") return false;
+    if (step.navigate !== "_first_return" && path.startsWith(step.navigate)) return false;
+    sessionStorage.setItem(SESSION_KEY, String(stepIdx));
+    window.location.href = nav;
+    return true;
+  }
+
+  // ── Step runner ─────────────────────────────────────────────────────────────
+
+  function goToStep(idx) {
+    const STEPS = _steps();
+    if (idx >= STEPS.length) { complete(); return; }
+    _currentStep = idx;
+
+    const step = STEPS[idx];
+
+    // Navigate to a different page if needed
+    if (_navigateForStep(step, idx)) return;
+
+    // Remove previous tooltip
+    document.querySelectorAll("[data-taxops-tour='tooltip']").forEach(el => el.remove());
+
+    const target = document.querySelector(step.selector);
+    if (!target) {
+      // Target not found on this page — skip silently
+      goToStep(idx + 1);
+      return;
+    }
+
+    _highlightEl(target);
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    setTimeout(() => {
+      const tt = _tooltip(step, idx, _steps().length);
+      setTimeout(() => _positionTooltip(tt, target), 20);
+      // Reposition on scroll/resize
+      const repos = () => _positionTooltip(tt, target);
+      window.addEventListener("scroll", repos, { passive: true });
+      window.addEventListener("resize", repos, { passive: true });
+      tt._cleanupRepos = () => {
+        window.removeEventListener("scroll", repos);
+        window.removeEventListener("resize", repos);
+      };
+    }, 80);
+  }
+
+  // ── Public API ───────────────────────────────────────────────────────────────
+
+  function start() {
+    if (_active) return;
+    _active = true;
+    _cleanup();
+    _backdrop();
+    goToStep(0);
+  }
+
+  function restart() {
+    _cleanup();
+    _active = true;
+    sessionStorage.removeItem(SESSION_KEY);
+    _backdrop();
+    goToStep(0);
+  }
+
+  function dismiss() {
+    sessionStorage.removeItem(SESSION_KEY);
+    _cleanup();
+  }
+
+  function complete() {
+    sessionStorage.removeItem(SESSION_KEY);
+    _cleanup();
+    _csrfFetch("/api/tour/complete", { method: "POST" }).catch(() => {});
+  }
+
+  // ── Resume from sessionStorage after page navigation ────────────────────────
+
+  function _maybeResume() {
+    const pending = sessionStorage.getItem(SESSION_KEY);
+    if (pending === null) return;
+    const idx = parseInt(pending, 10);
+    if (isNaN(idx) || idx < 0 || idx >= _steps().length) {
+      sessionStorage.removeItem(SESSION_KEY);
+      return;
+    }
+    sessionStorage.removeItem(SESSION_KEY);
+    setTimeout(() => {
+      _active = true;
+      _backdrop();
+      goToStep(idx);
+    }, 500);
+  }
+
+  document.addEventListener("DOMContentLoaded", _maybeResume);
+
+  return { start, restart, dismiss, complete };
+
+})();
