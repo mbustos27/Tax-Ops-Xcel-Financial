@@ -18,8 +18,8 @@ from datetime import date, timedelta
 
 from flask import Blueprint, current_app, jsonify, render_template, request, session
 
-from auth import login_required
-from config import DB_PATH, KNOWN_PROMOTIONAL_DOMAINS, MASS_MAILING_PREFIXES
+from auth import login_required, role_required
+from config import DB_PATH, KNOWN_PROMOTIONAL_DOMAINS, MASS_MAILING_PREFIXES, OWN_EMAIL_DOMAINS
 from db import get_connection
 from utils import now, parse_iso_datetime, scrub_ssn_from_dict
 
@@ -40,7 +40,7 @@ def _is_promotional_domain(domain: str) -> bool:
 
 
 @email_review_bp.route("/email-review")
-@login_required
+@role_required("preparer")
 def email_review():
     from app import base_ctx  # lazy import avoids circular at module level
     ctx = base_ctx()
@@ -49,14 +49,14 @@ def email_review():
 
 
 @email_review_bp.route("/api/email-classifications")
-@login_required
+@role_required("preparer")
 def api_email_classifications_list():
     conn = get_connection()
     try:
         rows = conn.execute(
             """
-            SELECT ec.id, ec.sender_domain, ec.subject_snippet, ec.classification,
-                   ec.source, ec.created_at,
+            SELECT ec.id, ec.sender_email, ec.sender_domain, ec.subject_snippet,
+                   ec.classification, ec.source, ec.created_at,
                    (SELECT rd.return_id FROM return_documents rd
                     WHERE rd.source = 'email' AND rd.is_deleted = 0
                       AND rd.uploaded_at BETWEEN
@@ -77,7 +77,10 @@ def api_email_classifications_list():
             "classifications": [
                 {
                     "id": r["id"],
+                    "sender_email": r["sender_email"] or "",
                     "sender_domain": r["sender_domain"] or "",
+                    "is_own": (r["sender_domain"] or "").lower() in OWN_EMAIL_DOMAINS
+                              or (r["sender_email"] or "").lower() in OWN_EMAIL_DOMAINS,
                     "subject_snippet": r["subject_snippet"] or "",
                     "classification": r["classification"],
                     "source": r["source"] or "auto",
@@ -92,7 +95,7 @@ def api_email_classifications_list():
 
 
 @email_review_bp.route("/api/email-classifications/<int:classification_id>/confirm", methods=["POST"])
-@login_required
+@role_required("preparer")
 def api_email_classification_confirm(classification_id: int):
     data = request.get_json(silent=True) or {}
     confirm_current = (
@@ -161,7 +164,7 @@ def api_email_classification_confirm(classification_id: int):
 
 
 @email_review_bp.route("/api/email-classifications/train", methods=["POST"])
-@login_required
+@role_required("preparer")
 def api_email_classifications_train():
     data = request.get_json(silent=True) or {}
     confirmations = data.get("confirmations", [])
@@ -193,7 +196,7 @@ def api_email_classifications_train():
 
 
 @email_review_bp.route("/api/email-classifications/stats")
-@login_required
+@role_required("preparer")
 def api_email_classifications_stats():
     today = date.today().isoformat()
     conn = get_connection()
@@ -237,7 +240,7 @@ def api_email_classifications_stats():
 
 
 @email_review_bp.route("/api/email-classifications/digest")
-@login_required
+@role_required("preparer")
 def api_email_classifications_digest():
     today = date.today().isoformat()
     conn = get_connection()
@@ -255,7 +258,7 @@ def api_email_classifications_digest():
 
         raw_missed_rows = conn.execute(
             """
-            SELECT ec.id, ec.sender_domain, ec.subject_snippet, ec.created_at
+            SELECT ec.id, ec.sender_email, ec.sender_domain, ec.subject_snippet, ec.created_at
             FROM email_classifications ec
             WHERE ec.classification = 'client_document'
               AND ec.created_at >= ?
@@ -326,6 +329,10 @@ def api_email_classifications_digest():
             for r in untagged
         ]
 
+        unconfirmed_matches = conn.execute(
+            "SELECT COUNT(*) n FROM return_documents WHERE match_confirmed = 0 AND is_deleted = 0"
+        ).fetchone()[0]
+
         return jsonify({
             "client_docs_today": client_docs_today,
             "need_tagging": need_tagging,
@@ -334,8 +341,10 @@ def api_email_classifications_digest():
             "client_inquiries_today": client_inquiries_today,
             "promotional_unconfirmed": promotional_unconfirmed,
             "need_attention": need_attention,
+            "unconfirmed_matches": unconfirmed_matches,
             "missed_items": [
-                {"id": r["id"], "sender_domain": r["sender_domain"] or "",
+                {"id": r["id"], "sender_email": r["sender_email"] or "",
+                 "sender_domain": r["sender_domain"] or "",
                  "subject_snippet": r["subject_snippet"] or "", "created_at": r["created_at"]}
                 for r in missed_rows
             ],
@@ -347,7 +356,7 @@ def api_email_classifications_digest():
 
 
 @email_review_bp.route("/api/email-classifications/bulk-confirm", methods=["POST"])
-@login_required
+@role_required("preparer")
 def api_email_classifications_bulk_confirm():
     data = request.get_json(silent=True) or {}
     classification = data.get("classification", "")
@@ -399,7 +408,7 @@ def api_email_classifications_bulk_confirm():
 
 
 @email_review_bp.route("/api/email-classifications/today-confirmed")
-@login_required
+@role_required("preparer")
 def api_email_classifications_today_confirmed():
     today = date.today().isoformat()
     conn = get_connection()
@@ -433,7 +442,7 @@ def api_email_classifications_today_confirmed():
 
 
 @email_review_bp.route("/api/email-classifications/pending-review")
-@login_required
+@role_required("preparer")
 def api_email_pending_review_list():
     """EMAIL-7: return pending_review items so staff can confirm/reject."""
     conn = get_connection()
@@ -479,7 +488,7 @@ def api_email_pending_review_list():
 
 
 @email_review_bp.route("/api/email-classifications/<int:classification_id>/confirm-match", methods=["POST"])
-@login_required
+@role_required("preparer")
 def api_email_confirm_match(classification_id: int):
     """EMAIL-7: staff confirms a low-confidence match — promote docs from mail_pending_review → email."""
     user = session.get("user", "staff")
@@ -524,7 +533,7 @@ def api_email_confirm_match(classification_id: int):
 
 
 @email_review_bp.route("/api/email-classifications/<int:classification_id>/reject-match", methods=["POST"])
-@login_required
+@role_required("preparer")
 def api_email_reject_match(classification_id: int):
     """EMAIL-7: staff rejects a low-confidence match — soft-delete pending docs."""
     user = session.get("user", "staff")
@@ -569,7 +578,7 @@ def api_email_reject_match(classification_id: int):
 
 
 @email_review_bp.route("/api/email-classifications/<int:classification_id>/mark-missed-reviewed", methods=["POST"])
-@login_required
+@role_required("preparer")
 def api_email_classification_mark_missed_reviewed(classification_id: int):
     conn = get_connection()
     try:
@@ -584,5 +593,210 @@ def api_email_classification_mark_missed_reviewed(classification_id: int):
         )
         conn.commit()
         return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+@email_review_bp.route("/api/email-review/unconfirmed-matches")
+@role_required("preparer")
+def api_unconfirmed_matches():
+    """Fix 3 — documents attached by email matching that staff have not yet verified.
+
+    Returns per-document: doc_id, filename, doc_type, match_score (0.0–1.0),
+    uploaded_at, return_id, client_display_name, tax_year, sender_domain,
+    subject_snippet.
+
+    Never returns file_path, ssn_last4, or identification numbers.
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT rd.id          AS doc_id,
+                   rd.filename,
+                   rd.doc_type,
+                   rd.match_score,
+                   rd.uploaded_at,
+                   rd.return_id,
+                   c.display_name AS client_display_name,
+                   r.tax_year,
+                   (SELECT ec.sender_domain FROM email_classifications ec
+                    WHERE ec.matched_client_id = c.id
+                    ORDER BY ec.created_at DESC LIMIT 1) AS sender_domain,
+                   (SELECT ec.subject_snippet FROM email_classifications ec
+                    WHERE ec.matched_client_id = c.id
+                    ORDER BY ec.created_at DESC LIMIT 1) AS subject_snippet
+            FROM return_documents rd
+            JOIN returns r  ON rd.return_id  = r.id
+            JOIN clients c  ON r.client_id   = c.id
+            WHERE rd.match_confirmed = 0 AND rd.is_deleted = 0
+            ORDER BY rd.uploaded_at DESC
+            """
+        ).fetchall()
+        return jsonify({
+            "items": [
+                scrub_ssn_from_dict({
+                    "doc_id":              r["doc_id"],
+                    "filename":            r["filename"],
+                    "doc_type":            r["doc_type"] or "unknown",
+                    "match_score":         r["match_score"],
+                    "uploaded_at":         r["uploaded_at"],
+                    "return_id":           r["return_id"],
+                    "client_display_name": r["client_display_name"] or "",
+                    "tax_year":            r["tax_year"],
+                    "sender_domain":       r["sender_domain"] or "",
+                    "subject_snippet":     r["subject_snippet"] or "",
+                })
+                for r in rows
+            ]
+        })
+    finally:
+        conn.close()
+
+
+@email_review_bp.route("/api/email-review/unconfirmed-matches/<int:doc_id>/confirm", methods=["POST"])
+@role_required("preparer")
+def api_confirm_unconfirmed_match(doc_id: int):
+    """Fix 3 — staff confirms a document is on the correct return."""
+    user = session.get("username", "staff")
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id FROM return_documents WHERE id = ? AND match_confirmed = 0 AND is_deleted = 0",
+            (doc_id,),
+        ).fetchone()
+        if row is None:
+            return jsonify({"error": "Not found or already confirmed"}), 404
+        conn.execute(
+            "UPDATE return_documents SET match_confirmed = 1 WHERE id = ?",
+            (doc_id,),
+        )
+        conn.commit()
+        try:
+            from utils import _enqueue_write
+            _enqueue_write(
+                "return_document", doc_id, "match_confirmed",
+                {"confirmed_by": user},
+            )
+        except Exception:
+            pass
+        return jsonify({"success": True})
+    except Exception:
+        conn.rollback()
+        return jsonify({"error": "Could not confirm match"}), 500
+    finally:
+        conn.close()
+
+
+@email_review_bp.route("/api/email-review/unconfirmed-matches/<int:doc_id>/reassign", methods=["POST"])
+@role_required("preparer")
+def api_reassign_unconfirmed_match(doc_id: int):
+    """Fix 3 — move a document to the correct return and mark it confirmed."""
+    import os
+    import shutil
+    from utils import get_return_documents_path
+
+    user = session.get("username", "staff")
+    data = request.get_json(silent=True) or {}
+    new_return_id = data.get("return_id")
+    if not isinstance(new_return_id, int):
+        return jsonify({"error": "return_id (integer) is required"}), 400
+
+    conn = get_connection()
+    try:
+        doc = conn.execute(
+            "SELECT id, return_id, file_path, filename FROM return_documents WHERE id = ? AND is_deleted = 0",
+            (doc_id,),
+        ).fetchone()
+        if doc is None:
+            return jsonify({"error": "Document not found"}), 404
+
+        if conn.execute("SELECT id FROM returns WHERE id = ?", (new_return_id,)).fetchone() is None:
+            return jsonify({"error": "Target return not found"}), 404
+
+        old_return_id  = doc["return_id"]
+        old_file_path  = doc["file_path"]
+        new_folder     = get_return_documents_path(new_return_id)
+        os.makedirs(new_folder, exist_ok=True)
+
+        new_file_path = os.path.join(new_folder, doc["filename"])
+        if os.path.exists(new_file_path):
+            stem, ext = os.path.splitext(doc["filename"])
+            i = 1
+            while os.path.exists(new_file_path):
+                new_file_path = os.path.join(new_folder, f"{stem}_{i}{ext}")
+                i += 1
+
+        if old_file_path and os.path.isfile(old_file_path):
+            shutil.move(old_file_path, new_file_path)
+
+        conn.execute(
+            """
+            UPDATE return_documents
+            SET return_id = ?, file_path = ?, match_confirmed = 1, match_method = 'manual'
+            WHERE id = ?
+            """,
+            (new_return_id, new_file_path, doc_id),
+        )
+        conn.commit()
+        try:
+            from utils import _enqueue_write
+            _enqueue_write(
+                "return_document", doc_id, "reassigned",
+                {"from_return": old_return_id, "to_return": new_return_id, "reassigned_by": user},
+            )
+        except Exception:
+            pass
+        return jsonify({"success": True})
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"error": f"Could not reassign: {exc}"}), 500
+    finally:
+        conn.close()
+
+
+@email_review_bp.route("/api/email-review/unconfirmed-matches/bulk-confirm", methods=["POST"])
+@role_required("preparer")
+def api_bulk_confirm_unconfirmed_matches():
+    """Fix 5 — confirm all unconfirmed docs with match_score >= 0.90 in one click."""
+    conn = get_connection()
+    try:
+        result = conn.execute(
+            """
+            UPDATE return_documents
+            SET match_confirmed = 1
+            WHERE match_confirmed = 0 AND match_score >= 0.90 AND is_deleted = 0
+            """
+        )
+        conn.commit()
+        return jsonify({"success": True, "confirmed_count": result.rowcount})
+    except Exception:
+        conn.rollback()
+        return jsonify({"error": "Could not bulk confirm"}), 500
+    finally:
+        conn.close()
+
+
+@email_review_bp.route("/api/email-processing-log")
+@role_required("preparer")
+def api_email_processing_log():
+    """Part 7: return the last 50 rows from email_processing_log for the processing log panel.
+
+    Privacy: returns only domain, subject_snippet, outcome, attempt_count,
+    last_attempt_at, and error_message.  Never includes full email body,
+    sender address, SSN, or identification numbers.
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, sender_domain, subject_snippet, outcome,
+                   attempt_count, last_attempt_at, error_message
+            FROM email_processing_log
+            ORDER BY last_attempt_at DESC
+            LIMIT 50
+            """
+        ).fetchall()
+        return jsonify([dict(r) for r in rows])
     finally:
         conn.close()

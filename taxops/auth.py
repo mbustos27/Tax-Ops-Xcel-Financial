@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import functools
 
-from flask import jsonify, redirect, request, session, url_for
+from flask import abort, g, jsonify, redirect, request, session, url_for
 
 
 def login_required(f):
@@ -33,3 +33,42 @@ def login_required(f):
                 return redirect(url_for("change_password"))
         return f(*args, **kwargs)
     return wrapper
+
+
+def role_required(min_role: str):
+    """Decorator factory: enforce a minimum role, implicitly wrapping login_required.
+
+    Aborts with 403 when the authenticated user's role rank is below min_role.
+    API paths (/api/*, /ai/*) receive a 403 JSON response; HTML routes get abort(403).
+    """
+    def decorator(f):
+        @functools.wraps(f)
+        @login_required
+        def wrapper(*args, **kwargs):
+            from config import ROLE_HIERARCHY
+            user_role = session.get("role", "staff")
+            if ROLE_HIERARCHY.get(user_role, 0) < ROLE_HIERARCHY.get(min_role, 0):
+                p = request.path or ""
+                if p.startswith("/api/") or p.startswith("/ai/"):
+                    return jsonify({"error": "forbidden", "required_role": min_role}), 403
+                abort(403)
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def view_only_for(max_role: str):
+    """Decorator factory: set ``g.view_only = True`` when user's role rank <= max_role's rank.
+
+    Does not block access — the route renders normally. Templates check ``view_only``
+    to suppress edit controls for lower-privileged users.
+    """
+    def decorator(f):
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            from config import ROLE_HIERARCHY
+            user_role = session.get("role", "staff")
+            g.view_only = ROLE_HIERARCHY.get(user_role, 0) <= ROLE_HIERARCHY.get(max_role, 0)
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator

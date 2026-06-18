@@ -53,11 +53,15 @@
         </a>
 
         <!-- Tools dropdown (queues & utility pages consolidated to free header space for search) -->
+        {% set _role = session.get('role', 'staff') %}
+        {% set _is_preparer = _role in ('preparer', 'admin') %}
+        {% set _is_admin = _role == 'admin' %}
         {% set tools_active =
             active_page in ('upload','source_compare','import_audit','merge','efile_batch','audit_log',
                             'logout','efile','payments','review','ai_chat','season_rollover','backup_admin','failed_docs','admin_users')
             or request.path.startswith('/email-review')
         %}
+        {% if _is_preparer %}
         <div class="relative" id="tools-menu-wrap">
           <button id="tools-btn"
                   type="button"
@@ -93,6 +97,7 @@
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'payments' %}tools-item-active{% endif %}">
               <span>{{ _('Payments') }}</span>
             </a>
+            {% if _is_admin %}
             <a href="/review"
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'review' %}tools-item-active{% endif %}">
               <span>{{ _('Review') }}</span>
@@ -100,6 +105,7 @@
               <span class="shrink-0 bg-amber-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ pending_review_count }}</span>
               {% endif %}
             </a>
+            {% endif %}
             <a href="/ai/chat?year={{ current_year }}"
                class="tools-item {% if active_page == 'ai_chat' %}tools-item-active{% endif %}">
               {{ _('AI Assistant') }}
@@ -114,6 +120,7 @@
               </span>
             </a>
 
+            {% if _is_admin %}
             <div class="my-1 border-t border-slate-100"></div>
 
             <a href="/efile-batch"
@@ -146,12 +153,10 @@
                class="tools-item {% if active_page == 'accounting_settings' %}tools-item-active{% endif %}">
               {{ _('QB Settings') }}
             </a>
-            {% if current_user_role == 'admin' %}
             <a href="{{ url_for('users.admin_users') }}"
                class="tools-item {% if active_page == 'admin_users' %}tools-item-active{% endif %}">
               {{ _('Staff Accounts') }}
             </a>
-            {% endif %}
             <a href="{{ url_for('audit_log_admin') }}"
                class="tools-item {% if active_page == 'audit_log' %}tools-item-active{% endif %}">
               {{ _('Audit log') }}
@@ -180,8 +185,10 @@
                class="tools-item {% if active_page == 'merge' %}tools-item-active{% endif %}">
               {{ _('Merge Dupes') }}
             </a>
+            {% endif %}
           </div>
         </div>
+        {% endif %}
 
         <a href="/intake" class="nav-link {% if active_page == 'intake' %}active{% endif %}">
           {{ _('+ New Intake') }}

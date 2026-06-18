@@ -299,10 +299,13 @@ def _authenticate_user(username: str, password: str):
                 conn.commit()
                 return None
 
-        # Fallback: no users in table yet — accept env-var credentials.
+        # Fallback: no users in table yet — accept TAXOPS_USERS_MAP credentials.
         if not _auth_users_exist(conn):
-            if username == _LOGIN_USER and password == _LOGIN_PASS and username:
-                return {"username": username, "display_name": username, "role": "admin"}
+            import hmac as _hmac
+            from config import TAXOPS_USERS_MAP
+            entry = TAXOPS_USERS_MAP.get(username)
+            if entry and _hmac.compare_digest(entry["password"], password):
+                return {"username": username, "display_name": username, "role": entry["role"]}
         return None
     finally:
         conn.close()
@@ -347,8 +350,8 @@ def _mask_client_payload(payload: dict) -> dict:
     return masked
 
 
-# DEBT-1: login_required lives in auth.py to avoid circular imports with blueprints.
-from auth import login_required  # noqa: E402 (import after path setup)
+# DEBT-1: auth helpers live in auth.py to avoid circular imports with blueprints.
+from auth import login_required, role_required, view_only_for  # noqa: E402 (import after path setup)
 
 
 @app.after_request
@@ -398,6 +401,11 @@ def _security_headers(response):
         "frame-ancestors 'none';"
     )
     return response
+
+
+@app.errorhandler(403)
+def _forbidden(e):
+    return render_template("403.html", role=session.get("role", "")), 403
 
 
 @app.errorhandler(CSRFError)
@@ -1914,6 +1922,7 @@ def dashboard():
 
 @app.route("/return/<int:return_id>")
 @login_required
+@view_only_for("staff")
 def return_detail(return_id: int):
     ret = get_one(return_id)
     if not ret:
@@ -1951,6 +1960,7 @@ def return_detail(return_id: int):
         "dependents":     [dict(d) for d in dependents],
         "contact_labels": CONTACT_LABELS,
         "drake_enabled":  bool(DRAKE_FOLDER_STRUCTURE_ENABLED),
+        "view_only":      g.get("view_only", False),
     })
     return render_template("return_detail.html", **ctx)
 
@@ -2176,7 +2186,7 @@ def _insert_known_sender_rule(
 
 
 @app.route("/api/email-sender-rules")
-@login_required
+@role_required("admin")
 def api_known_sender_rules_list():
     conn = get_connection()
     try:
@@ -2202,7 +2212,7 @@ def api_known_sender_rules_list():
 
 
 @app.route("/api/email-sender-rules/add", methods=["POST"])
-@login_required
+@role_required("admin")
 def api_known_sender_rules_add():
     data      = request.get_json(silent=True) or {}
     domain    = (data.get("domain") or "").strip().lower()
@@ -2237,7 +2247,7 @@ def api_known_sender_rules_add():
 
 
 @app.route("/api/email-sender-rules/<int:rule_id>/delete", methods=["POST"])
-@login_required
+@role_required("admin")
 def api_email_sender_rule_delete(rule_id: int):
     conn = get_connection()
     try:
@@ -2256,7 +2266,7 @@ def api_email_sender_rule_delete(rule_id: int):
 # ── Rule suggestions (LLM-generated, staff-reviewed) ─────────────────────────
 
 @app.route("/api/rule-suggestions")
-@login_required
+@role_required("admin")
 def api_rule_suggestions_list():
     conn = get_connection()
     try:
@@ -2282,7 +2292,7 @@ def api_rule_suggestions_list():
 
 
 @app.route("/api/rule-suggestions/<int:suggestion_id>/accept", methods=["POST"])
-@login_required
+@role_required("admin")
 def api_rule_suggestion_accept(suggestion_id: int):
     conn = get_connection()
     try:
@@ -2329,7 +2339,7 @@ def api_rule_suggestion_accept(suggestion_id: int):
 
 
 @app.route("/api/rule-suggestions/<int:suggestion_id>/reject", methods=["POST"])
-@login_required
+@role_required("admin")
 def api_rule_suggestion_reject(suggestion_id: int):
     conn = get_connection()
     try:
@@ -2351,7 +2361,7 @@ def api_rule_suggestion_reject(suggestion_id: int):
 
 
 @app.route("/api/rule-suggestions/analyze", methods=["POST"])
-@login_required
+@role_required("admin")
 def api_rule_suggestions_analyze():
     import threading
     from mail_watcher import _analyze_patterns
@@ -2365,7 +2375,7 @@ def api_rule_suggestions_analyze():
 
 
 @app.route("/logout-queue")
-@login_required
+@role_required("preparer")
 def logout_queue():
     year = int(request.args.get("year", date.today().year))
     conn = get_connection()
@@ -2388,7 +2398,7 @@ def logout_queue():
 
 
 @app.route("/efile-queue")
-@login_required
+@role_required("preparer")
 def efile_queue():
     year  = int(request.args.get("year", date.today().year))
     sort  = request.args.get("sort", "log")   # "log" or "name"
@@ -2415,7 +2425,7 @@ def efile_queue():
 
 
 @app.route("/efile-queue/export")
-@login_required
+@role_required("preparer")
 def efile_queue_export():
     import csv, io
     year  = int(request.args.get("year", date.today().year))
@@ -2551,7 +2561,7 @@ def pickup_workflow(return_id: int):
 
 
 @app.route("/payments")
-@login_required
+@role_required("preparer")
 def payments():
     year         = int(request.args.get("year", date.today().year))
     balance_only = request.args.get("balance_only")
@@ -2847,7 +2857,7 @@ def intake():
 # ── CSV Upload / Analyze ──────────────────────────────────────────────────────
 
 @app.route("/upload", methods=["GET"])
-@login_required
+@role_required("admin")
 def upload_get():
     ctx = base_ctx()
     ctx.update({"active_page": "upload", "error": None})
@@ -2855,7 +2865,7 @@ def upload_get():
 
 
 @app.route("/upload/preview", methods=["POST"])
-@login_required
+@role_required("admin")
 def upload_preview():
     f = request.files.get("csv_file")
     if not f or not f.filename:
@@ -2896,7 +2906,7 @@ def upload_preview():
 
 
 @app.route("/upload/confirm", methods=["POST"])
-@login_required
+@role_required("admin")
 def upload_confirm():
     """Execute import using the analysis result confirmed by staff."""
     data       = _get_json_safe()
@@ -3219,7 +3229,7 @@ def _import_row(conn, row_data: dict, tax_year: int, ts: str, today_iso: str, st
 # ── Export ────────────────────────────────────────────────────────────────────
 
 @app.route("/export")
-@login_required
+@role_required("admin")
 def export_excel():
     """Export the current filtered view as an .xlsx file."""
     import io
@@ -3368,7 +3378,7 @@ def export_excel():
 # ── Source compare (database vs office log + Drake files on disk) ─────────────
 
 @app.route("/source-compare")
-@login_required
+@role_required("admin")
 def source_compare_page():
     year = int(request.args.get("year", date.today().year))
     # only=miss (default) | all — so "show all returns" is stable after form submit
@@ -3498,7 +3508,7 @@ def _coerce_apply_value(raw: str, ftype: str):
 
 
 @app.route("/api/source-compare/apply", methods=["POST"])
-@login_required
+@role_required("admin")
 def source_compare_apply():
     """Apply selected source values (manual or drake) for a single return to the DB."""
     body = request.get_json(silent=True) or {}
@@ -3593,7 +3603,7 @@ def source_compare_apply():
 # ── Intake log (chronological register) ───────────────────────────────────────
 
 @app.route("/review")
-@login_required
+@role_required("admin")
 def review_queue_page():
     conn = get_connection()
     items = conn.execute(
@@ -3612,7 +3622,7 @@ def review_queue_page():
 
 
 @app.route("/review/resolve", methods=["POST"])
-@login_required
+@role_required("admin")
 def review_resolve():
     """Staff resolves a review_queue item.
 
@@ -4133,7 +4143,7 @@ def api_return_sync_to_drake(return_id: int):
 
 
 @app.post("/api/return/<int:return_id>/status")
-@login_required
+@role_required("preparer")
 def api_status(return_id: int):
     data       = _get_json_safe()
     new_status = (data.get("status") or "").upper().strip()
@@ -4201,7 +4211,7 @@ BULK_RETURN_IDS_CAP = 500
 
 
 @app.post("/api/returns/bulk-status")
-@login_required
+@role_required("preparer")
 def api_returns_bulk_status():
     payload    = _get_json_safe() or {}
     raw_ids    = payload.get("return_ids")
@@ -4240,7 +4250,7 @@ def api_returns_bulk_status():
 
 
 @app.post("/api/returns/bulk-processor")
-@login_required
+@role_required("preparer")
 def api_returns_bulk_processor():
     payload       = _get_json_safe() or {}
     raw_ids       = payload.get("return_ids")
@@ -4275,7 +4285,7 @@ def api_returns_bulk_processor():
 
 
 @app.post("/api/returns/bulk-update")
-@login_required
+@role_required("preparer")
 def api_returns_bulk_update():
     """Unified bulk update: set status and/or processor in one transaction.
 
@@ -4418,7 +4428,7 @@ def _validate_field(field: str, value) -> tuple[bool, str]:
 
 
 @app.post("/api/return/<int:return_id>/field")
-@login_required
+@role_required("preparer")
 def api_field(return_id: int):
     data  = _get_json_safe()
     field = (data.get("field") or "").strip()
@@ -4492,7 +4502,7 @@ def api_field(return_id: int):
 
 
 @app.post("/api/return/<int:return_id>/note")
-@login_required
+@role_required("preparer")
 def api_note(return_id: int):
     data = _get_json_safe()
     text = (data.get("text") or "").strip()
@@ -4520,7 +4530,7 @@ def api_note(return_id: int):
 
 
 @app.post("/api/return/<int:return_id>/contact")
-@login_required
+@role_required("preparer")
 def api_return_contact(return_id: int):
     """Update client-contact follow-up fields for REJECTED returns."""
     data  = _get_json_safe() or {}
@@ -4561,7 +4571,7 @@ def api_return_contact(return_id: int):
 # ── Missing documents tracker ────────────────────────────────────────────────
 
 @app.post("/api/return/<int:return_id>/missing-doc")
-@login_required
+@role_required("preparer")
 def api_missing_doc_add(return_id: int):
     data = _get_json_safe()
     text = (data.get("text") or "").strip()
@@ -4580,7 +4590,7 @@ def api_missing_doc_add(return_id: int):
 
 
 @app.post("/api/return/<int:return_id>/missing-doc/<int:doc_id>/toggle")
-@login_required
+@role_required("preparer")
 def api_missing_doc_toggle(return_id: int, doc_id: int):
     conn = get_connection()
     row = conn.execute(
@@ -4651,7 +4661,7 @@ def api_dependent_delete(return_id: int, dep_id: int):
 # ── LIFE-1: Cancel / uncancel return ─────────────────────────────────────────
 
 @app.post("/api/return/<int:return_id>/cancel")
-@login_required
+@role_required("preparer")
 def api_cancel_return(return_id: int):
     data   = _get_json_safe()
     reason = (data.get("reason") or "").strip()
@@ -4705,7 +4715,7 @@ def api_cancel_return(return_id: int):
 
 
 @app.post("/api/return/<int:return_id>/uncancel")
-@login_required
+@role_required("preparer")
 def api_uncancel_return(return_id: int):
     user = session.get("username")
     ip   = request.remote_addr
@@ -5166,7 +5176,7 @@ def _merge_pairs_for_session() -> list[dict]:
 
 
 @app.get("/merge-clients")
-@login_required
+@role_required("admin")
 def merge_clients_page():
     pairs = _merge_pairs_for_session()
     ctx = base_ctx(date.today().year)
@@ -5175,7 +5185,7 @@ def merge_clients_page():
 
 
 @app.post("/api/merge-clients")
-@login_required
+@role_required("admin")
 def api_merge_clients():
     """
     Merge 'discard' client into 'keep' client.
@@ -5275,7 +5285,7 @@ def api_merge_skip():
 # ── E-file Batches ────────────────────────────────────────────────────────────
 
 @app.post("/efile-batch/create")
-@login_required
+@role_required("admin")
 def efile_batch_create():
     """Create a new e-file batch from a list of EFILE READY return IDs."""
     return_ids = request.form.getlist("return_ids")
@@ -5349,7 +5359,7 @@ def efile_batch_create():
 
 
 @app.route("/efile-batch/<int:batch_id>")
-@login_required
+@role_required("admin")
 def efile_batch_detail(batch_id: int):
     conn = get_connection()
     batch = conn.execute(
@@ -5406,7 +5416,7 @@ def efile_batch_detail(batch_id: int):
 
 
 @app.route("/efile-batch")
-@login_required
+@role_required("admin")
 def efile_batch_list():
     """List all e-file batches."""
     conn = get_connection()
@@ -5616,7 +5626,7 @@ def efile_batch_item_logout(batch_id: int, item_id: int):
 
 
 @app.route("/efile-batch/<int:batch_id>/export")
-@login_required
+@role_required("admin")
 def efile_batch_export(batch_id: int):
     """Download batch as CSV.
     ?filter=all (default) | accepted | rejected
@@ -5721,7 +5731,7 @@ def efile_batch_export(batch_id: int):
 # ── Import Audit ──────────────────────────────────────────────────────────────
 
 @app.route("/import-audit")
-@login_required
+@role_required("admin")
 def import_audit():
     """Diagnostic page showing orphaned / unmatched records and import health."""
     conn = get_connection()

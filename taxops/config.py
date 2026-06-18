@@ -516,6 +516,43 @@ ACCOUNTING_CONFIDENCE_MEDIUM: float = _acc_float("ACCOUNTING_CONFIDENCE_MEDIUM",
 # Max retry attempts before receipt_queue item is permanently failed.
 ACCOUNTING_MAX_ATTEMPTS: int = int(os.environ.get("ACCOUNTING_MAX_ATTEMPTS", "3"))
 
+# ── RBAC ─────────────────────────────────────────────────────────────────────
+ROLE_HIERARCHY: dict[str, int] = {"staff": 0, "preparer": 1, "admin": 2}
+
+
+def _parse_taxops_users_map() -> dict[str, dict]:
+    """Parse TAXOPS_USERS into a lookup dict keyed by username.
+
+    Format: ``user:password:role;user2:password2:role2``
+    Falls back to TAXOPS_USER / TAXOPS_PASS as a single admin account so
+    existing single-user deployments that have not set TAXOPS_USERS continue
+    to work unchanged.
+    """
+    raw = (os.environ.get("TAXOPS_USERS") or "").strip()
+    result: dict[str, dict] = {}
+    if raw:
+        for entry in raw.split(";"):
+            entry = entry.strip()
+            if not entry:
+                continue
+            parts = entry.split(":", 2)
+            if len(parts) != 3:
+                continue
+            username, password, role = parts[0].strip(), parts[1].strip(), parts[2].strip().lower()
+            if role not in ROLE_HIERARCHY:
+                role = "staff"
+            if username:
+                result[username] = {"password": password, "role": role}
+    if not result:
+        u = (os.environ.get("TAXOPS_USER") or "").strip()
+        p = (os.environ.get("TAXOPS_PASS") or "").strip()
+        if u and p:
+            result[u] = {"password": p, "role": "admin"}
+    return result
+
+
+TAXOPS_USERS_MAP: dict[str, dict] = _parse_taxops_users_map()
+
 MANUAL_LOG_SOURCE = "MANUAL_LOG_IMPORT"
 DRAKE_SOURCE = "DRAKE_IMPORT"
 CSMDATA_SOURCE = "CSMDATA_IMPORT"
