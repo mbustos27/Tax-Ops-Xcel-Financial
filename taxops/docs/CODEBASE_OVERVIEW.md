@@ -26,10 +26,9 @@ There is no public internet exposure. Staff access it from workstations on the s
 ```
 taxops/
 ├── app.py                    # ~5 500-line Flask core — routing, lifecycle, startup
-├── ai_routes.py              # AI/LLM Blueprint (/ai/*) — chat, extract, classify
+│                              #   (/email-inbox routes live here — see §6)
 ├── routes/
 │   ├── documents.py          # Document intake Blueprint (/api/documents/*, /admin/failed-docs)
-│   ├── email_review.py       # Email review Blueprint (/email-review, /api/email-classifications/*)
 │   └── accounting.py         # Accounting Blueprint (/accounting/*, /api/accounting/*)
 ├── db.py                     # Schema init, migrations (CURRENT_SCHEMA_VERSION = 4)
 ├── config.py                 # All env-var defaults (~80 variables)
@@ -85,11 +84,12 @@ Schema version: **4** (checked at startup via `app_settings`, surfaced in `/heal
 | `efile_batches` / `efile_batch_items` | E-file batch management |
 | `return_documents` | Files attached to returns — path, hash, source, extraction status |
 | `extraction_queue` | Pending/completed LLM field-extraction jobs |
-| `email_classifications` | Mail watcher classification history — sender, subject, match_score, match_status |
-| `known_sender_rules` | Hard-skip / promotional domain rules |
-| `rule_suggestions` | LLM-proposed rule suggestions awaiting staff approval |
-| `domain_classifications` | Cached domain → classification (confidence_count, graduated) |
-| `ai_chat_common_answers` | Disk cache for LLM chat answers (TTL-based) |
+| `email_inbox` | Holding area for IMAP attachments awaiting staff assignment to a return |
+| `email_processing_log` | Restart-safe IMAP UID dedup log — (uid, folder) → terminal outcome |
+| `email_sender_rules` | Staff allow/block rules for sender suppression (not yet wired into `mail_watcher.py` — see §6) |
+| `email_classifications` | **Dead table, not read/written by current code.** History from the pre-simplification 6-layer classifier. Scheduled for archival rename to `archive_email_classifications`; see `pre-email-simplification` git tag for the historical implementation |
+| `domain_classifications` | **Dead table, not read/written by current code.** Same era as above; scheduled for archival rename to `archive_domain_classifications` |
+| `ai_chat_common_answers` | **Dead table** — disk cache for the removed AI chat assistant (see §5) |
 | `audit_log` | Immutable write audit trail with retention |
 | `app_settings` | Key-value store (schema_version, audit retention, etc.) |
 | `auth_users` | Hashed login credentials (bcrypt via Werkzeug) |
@@ -146,47 +146,50 @@ The GPU server is a separate box on the same LAN; the app talks to it over the n
 5. Score ≥ 0.85 → auto-tag + write `return_forms`; below → status = `needs_review`
 6. Max 3 attempts before `failed` (dead-letter)
 
-**Chat pipeline** (`ai_routes.py`):
-1. Request arrives at `POST /ai/chat`
-2. `_try_cache_response()` — SQLite disk cache hit → return immediately
-3. Router LLM (`llama3.2`) classifies intent: `aggregate_query`, `client_specific`, `general_question`, or `out_of_scope`
-4. Data plane builds office snapshot (all clients, returns, status, payments, pending items)
-5. Answer LLM generates markdown response
-6. Cache write, return to client
+**Chat pipeline:** removed along with the AI chat assistant subsystem (`ai_routes.py`,
+`classifier.py`, `chat_cache.py`, `chat_training_log.py`, `rag.py`) in the same change that
+simplified the email system — see `pre-email-simplification` git tag for the prior
+implementation if this is ever revisited.
 
 ---
 
-## 6. Mail Watcher Pipeline
+## 6. Mail Watcher Pipeline — holding-area model
+
+The email pipeline was rewritten from a 6-layer ML classifier (sender-rule lookup, fuzzy
+client matching, auto-confirmation queue) to a simpler holding-area model. There is no
+automated client matching anywhere in the current design — staff manually pick the return.
+The prior architecture is preserved at git tag `pre-email-simplification` for reference.
 
 ```
-IMAP SEARCH UNSEEN
-  └─ for each UID:
-       _mark_uid_processed()      ← claimed before dispatch (EMAIL-1 contract)
-       _fetch_message_data()
-       └─ _classify_email()       ← 5-layer pipeline:
-            Layer 1: known_sender_rules   (DB, zero LLM)
-            Layer 2: personal_llm cache
-            Layer 3: domain_classifications cache
-            Layer 4: fastText / keyword
-            Layer 5: Ollama LLM fallback
-       └─ _dispatch_classified_message()
-            ├─ hard-skip / promotional → log + return
-            ├─ client_document/inquiry:
-            │    _extract_client_name()
-            │    _match_client()          ← rapidfuzz, returns match_score
-            │    if score < MAIL_LOW_CONF_THRESHOLD (88):
-            │       _save_attachments(source='mail_pending_review')
-            │       email_classifications.match_status = 'pending_review'
-            │    else:
-            │       _save_attachments(source='email')
-            │       _add_note()
-            │       _mark_email_routed_ok()
-            └─ no match → _log_unmatched()
+mail-watcher poll cycle (every IMAP_POLL_INTERVAL, default 120s)
+  └─ IMAP UID SEARCH UNSEEN per folder (Gmail category folders skipped/routed per
+     GMAIL_CATEGORY_FOLDERS; only INBOX gets full_processing by default)
+       └─ dedup: in-process memo (_processed_uids, FIFO-capped) →
+                 email_processing_log (authoritative; terminal outcomes never re-fetched)
+       └─ _fetch_message_data()          ← BODY.PEEK[] — never RFC822, never marks \Seen
+       └─ suppression (no LLM, no per-message DB read):
+            _is_promotional(domain)      ← KNOWN_PROMOTIONAL_DOMAINS / MASS_MAILING_PREFIXES
+            _is_drive_share(subject, body)
+       └─ _save_to_inbox()               ← saves .pdf/.jpg/.jpeg/.png parts to EMAIL_INBOX_DIR,
+                                            inserts one email_inbox row per file (is_assigned=0)
+       └─ email_processing_log upsert    ← outcome: success | skip | no_attachment | retry
 ```
 
-**Low-confidence review queue** (EMAIL-7): Staff sees pending items at `/email-review` → Zone PR with score badge → Confirm (promotes docs) or Reject (soft-deletes docs).
+**Staff assignment (`/email-inbox` UI):**
+1. Staff views unassigned `email_inbox` rows, previews the file, picks a `return_id`
+2. `POST /api/email-inbox/<id>/assign` copies the file into the return's document folder,
+   inserts a `return_documents` row (`source='email_inbox'`, `match_confirmed=1`,
+   `match_method='email_manual'` — set explicitly, never via column default), enqueues
+   extraction, marks the `email_inbox` row `is_assigned=1`
+3. `POST /api/email-inbox/<id>/delete` soft-deletes (`is_deleted=1`) — the file stays on disk
 
-**Diagnostic log per poll cycle:**  
+**Sender rules:** `email_sender_rules` holds staff allow/block rules but `_is_promotional()`
+does not currently consult it — suppression relies solely on the hardcoded
+`KNOWN_PROMOTIONAL_DOMAINS`/`MASS_MAILING_PREFIXES` config lists. Wiring the rules table back
+into suppression (with an allow > block > hardcoded-list precedence and a minimal admin UI to
+maintain it) is tracked as follow-up work.
+
+**Diagnostic log per poll cycle:**
 `Folder INBOX: 2 new of 5 unseen (3 already seen)`
 
 ---
@@ -213,30 +216,19 @@ IMAP SEARCH UNSEEN
 
 ### `app.py` (main routes, all `@login_required` except `/health` and `/login`)
 
-**Pages:** `/` (dashboard), `/return/<id>`, `/clients/<id>`, `/intake`, `/upload`, `/review`, `/payments`, `/logout-queue`, `/efile-queue`, `/efile-batch`, `/merge-clients`, `/import-audit`, `/source-compare`, `/email-review`, `/admin/*`
+**Pages:** `/` (dashboard), `/return/<id>`, `/clients/<id>`, `/intake`, `/upload`, `/review`, `/payments`, `/logout-queue`, `/efile-queue`, `/efile-batch`, `/merge-clients`, `/import-audit`, `/source-compare`, `/email-inbox`, `/admin/*`
 
 **APIs:**
 - `POST /api/return/<id>/field` — field update with type validation (REL-6)
 - `POST /api/return/<id>/status` / `/note` / `/contact` / `/missing-doc`
 - `GET /api/clients/search`, `GET /api/search` — global search
 - `GET/POST /api/filters` — saved dashboard filters
-- `POST /api/email-sender-rules/*` — known sender rule management
-- `POST /api/rule-suggestions/*` — LLM-suggested rule accept/reject
 - `POST /api/merge-clients*` — client merge
 - `POST /api/efile-batch/*` — e-file batch management
 - `POST /api/audit/merge-client`
 - `POST /api/admin/backup/run` — on-demand backup
 - `POST /api/admin/season-rollover/*`
 - `GET /health` — anonymous, returns full system status JSON
-
-### `ai_routes.py` Blueprint (`/ai/*`, all `@login_required` except `/ai/status`)
-
-- `GET /ai/status` — Ollama connectivity probe (accepts 401 unauthenticated)
-- `GET/POST /ai/chat` — LLM chat with data plane
-- `POST /ai/return/<id>/draft-email` — draft client email
-- `POST /ai/rejection-code/lookup` — IRS reject code explanation
-- `POST /ai/documents/<id>/extract` — trigger extraction (async job)
-- `POST /ai/documents/<id>/classify` — trigger classification
 
 ### `routes/documents.py` Blueprint
 
@@ -245,17 +237,14 @@ IMAP SEARCH UNSEEN
 - `POST /api/admin/documents/<id>/retry` — retry failed extraction
 - `POST /api/returns/<id>/documents/upload` — multipart upload with dedup
 
-### `routes/email_review.py` Blueprint
+### Email inbox routes (`app.py`, not a separate Blueprint)
 
-- `GET/POST /email-review` — staff review page
-- `GET /api/email-classifications` — list with zone grouping
-- `POST /api/email-classifications/<id>/confirm`
-- `POST /api/email-classifications/<id>/confirm-match` — EMAIL-7 low-conf confirm
-- `POST /api/email-classifications/<id>/reject-match` — EMAIL-7 low-conf reject
-- `GET /api/email-classifications/pending-review` — EMAIL-7 queue
-- `POST /api/email-classifications/train` — trigger fastText retrain
-- `GET /api/email-classifications/stats` / `digest` / `today-confirmed`
-- `POST /api/email-classifications/bulk-confirm`
+- `GET /email-inbox` — staff holding-area page (unassigned attachments)
+- `GET /api/email-inbox/items` — JSON list, excludes assigned/deleted, never includes `file_path`
+- `GET /api/email-inbox/<id>/file` — serves the file, path-confined to `EMAIL_INBOX_DIR`
+- `POST /api/email-inbox/<id>/assign` — copies file to the return, inserts `return_documents`
+  (`match_confirmed=1, match_method='email_manual'`), enqueues extraction
+- `POST /api/email-inbox/<id>/delete` — soft-delete (`is_deleted=1`), file stays on disk
 
 ### `routes/accounting.py` Blueprint
 
@@ -284,9 +273,9 @@ IMAP SEARCH UNSEEN
 | Page | Path | What it does |
 |------|------|--------------|
 | Dashboard | `/` | All clients, status filters, quick search, payment summary |
-| Return Detail | `/return/<id>` | Documents, form fields, notes, extraction feedback, AI chat |
+| Return Detail | `/return/<id>` | Documents, form fields, notes, extraction feedback |
 | Review Queue | `/review` | Flagged extraction results needing human review |
-| Email Review | `/email-review` | 4 zones: Needs attention, Pending Review (low-conf), Promotional, Confirmed |
+| Email Inbox | `/email-inbox` | Unassigned IMAP attachments awaiting staff assignment to a return |
 | Upload | `/upload` | CSV preview/confirm import |
 | E-file Queue | `/efile-queue` | Returns ready for e-file |
 | Accounting | `/accounting/receipts` | Receipt OCR queue + QB export |
@@ -428,23 +417,26 @@ extraction-worker
                                Review resolved → return_forms
 ```
 
-### Mail watcher lifecycle
+### Mail watcher lifecycle (holding-area model)
 ```
-Gmail IMAP (every 120 s)
+Gmail IMAP (every IMAP_POLL_INTERVAL, default 120 s)
         │
         ▼
-_classify_email() [5-layer: rules → cache → ML → LLM]
+dedup (memo → email_processing_log) → BODY.PEEK[] fetch
         │
-        ├─ promotional → log + skip
-        ├─ unknown → unmatched log
-        └─ client_document:
-               _match_client() → score
-               ├─ score < 82  → no route, unmatched log
-               ├─ 82 ≤ score < 88 → mail_pending_review
-               │                    email_classifications.match_status='pending_review'
-               │                    staff reviews at /email-review → Zone PR
-               └─ score ≥ 88  → _save_attachments() + _add_note()
-                                 extraction_queue (auto-enqueued)
+        ├─ _is_promotional() / _is_drive_share() → log + skip (no LLM, no matching)
+        └─ has attachment → _save_to_inbox()
+                                 │
+                                 ▼
+                          email_inbox (is_assigned=0)
+                                 │
+                                 ▼
+                       staff reviews at /email-inbox, picks return
+                                 │
+                                 ▼
+              POST /api/email-inbox/<id>/assign
+                    → return_documents (match_confirmed=1, match_method='email_manual')
+                    → extraction_queue (auto-enqueued)
 ```
 
 ### Receipt accounting lifecycle

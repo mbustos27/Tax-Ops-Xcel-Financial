@@ -1,0 +1,71 @@
+---
+description: Hard invariants for taxops — read-status, match_confirmed, vision, privacy
+alwaysApply: true
+---
+
+# TaxOps hard invariants — never break these
+
+## Email architecture (holding-area model — since `pre-email-simplification` tag)
+
+- Pipeline: IMAP → `mail_watcher._save_to_inbox()` → `email_inbox` (unassigned) →
+  staff manually assigns via `/email-inbox` UI → `/api/email-inbox/<id>/assign` →
+  `return_documents` (+ extraction enqueued).
+- There is no automated sender classifier, fuzzy client matching, or confirmation
+  queue in this architecture. `known_sender_rules`, `_save_attachments`,
+  `_update_domain_cache`, and `/api/email-review/*` no longer exist — do not
+  reintroduce references to them. Historical implementation is preserved at git
+  tag `pre-email-simplification` if that system is ever revived.
+- Archived (dead, do not read/write): `archive_email_classifications`,
+  `archive_domain_classifications` — see the migration that renamed them.
+
+## Email read/unread status
+
+- **`_mark_read` is a tombstone — never call it.**
+- All IMAP fetches use `BODY.PEEK[]`, never `RFC822` (which auto-sets `\Seen` on Gmail).
+- `email_processing_log` is the restart-safe dedup layer — checked every poll, unconditionally.
+- No `-FLAGS \Seen` STORE call exists anywhere and none may be added.
+
+## Email match confirmation (rewritten — staff assignment IS the confirmation)
+
+- Email-assign path (`/api/email-inbox/<id>/assign` in `app.py`): must explicitly set
+  `match_confirmed=1, match_score=NULL, match_method='email_manual'`. Never omit these
+  columns and rely on the schema default — that silent-drift bug is what this rule exists
+  to prevent.
+- Walk-in uploads via `routes/documents.py` must have `match_confirmed=1, match_method='manual'`.
+- `match_confirmed=0` is reserved for a future path where software proposes a match a human
+  has not yet ratified. No such path currently exists — do not set it to 0 anywhere today.
+
+## Suppression rules (sender allow/block)
+
+- Suppression stays LLM-free and does **at most one** rules `SELECT` per poll cycle (cache
+  in memory, refresh once per cycle) — never a per-message DB read.
+- Precedence: explicit staff **allow** > explicit staff **block** > Drive-share suppression >
+  hardcoded `KNOWN_PROMOTIONAL_DOMAINS`/`MASS_MAILING_PREFIXES` > default pass-through.
+- Personal email domains (gmail.com, yahoo.com, icloud.com, etc.) can only be blocked at the
+  full-address level, never at the domain level.
+
+## Vision extraction
+
+- `EXTRACTOR_VISION_ENABLED` defaults to `false`.
+- When false, `.jpg/.jpeg/.png` files return `(None, "image_skipped")` from `_extract_fields`
+  and the queue row gets `status='skipped'` — never `'failed'`, never retried.
+
+## Privacy
+
+- `file_path`, `ssn_last4`, and identification numbers are never returned in any API response.
+- Email body is never stored in any DB column.
+- `BODY.PEEK[]` ensures email body content never touches server flags.
+- `scrub_ssn_from_dict()` is applied to all user-supplied filenames before they touch disk or DB.
+- `IMAP_PASS` is never logged, printed, or rendered in any UI (including admin health panels).
+
+## DB migrations
+
+- New columns go in `_migrate_existing_tables()` in `db.py`, never in `init_db()` only.
+- Always use `ALTER TABLE … ADD COLUMN` with a safe default so existing rows stay valid.
+- Every schema change is a numbered migration, tested against a DB copy first
+  (`PRAGMA wal_checkpoint(TRUNCATE);` then copy `.db`/`-wal`/`-shm`, run, `PRAGMA integrity_check;`).
+
+## Watcher thread safety
+
+- Single-start guard (`_watcher_started`) must be preserved — the Flask dev-server reloader
+  must never spawn a second poll thread.
