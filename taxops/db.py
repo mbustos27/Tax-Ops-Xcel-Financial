@@ -332,7 +332,9 @@ def init_db(conn: sqlite3.Connection) -> None:
           source          TEXT NOT NULL DEFAULT 'auto'
         );
 
-        CREATE TABLE IF NOT EXISTS known_sender_rules (
+        -- Staff sender allow/block rules. `domain` holds either a bare domain or a
+        -- full address depending on `rule_scope` (added via migration below).
+        CREATE TABLE IF NOT EXISTS email_sender_rules (
           id          INTEGER PRIMARY KEY AUTOINCREMENT,
           domain      TEXT NOT NULL UNIQUE,
           rule_type   TEXT NOT NULL DEFAULT 'always_promotional',
@@ -903,6 +905,14 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "has_seen_orientation INTEGER NOT NULL DEFAULT 0",
         ],
         # ← end auth_users
+        "email_sender_rules": [
+            # Phase 2.1 rules-UI design: whether `domain` holds a bare domain or a
+            # full address. All pre-existing rows are domain-level, hence the default.
+            "rule_scope TEXT NOT NULL DEFAULT 'domain'",
+            # 'allow' or 'block'. All pre-existing rows were always_promotional
+            # suppression entries, hence the default.
+            "action TEXT NOT NULL DEFAULT 'block'",
+        ],
     }
 
     for table_name, columns in table_columns.items():
@@ -924,16 +934,18 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         "WHERE has_seen_orientation = 0 AND last_login_at IS NOT NULL"
     )
 
-    # Rename legacy email_sender_rules → known_sender_rules (DOC-3 epic name; one-time).
-    _rule_tables = [
-        r["name"]
-        for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' "
-            "AND name IN ('email_sender_rules', 'known_sender_rules')"
-        ).fetchall()
-    ]
-    if "email_sender_rules" in _rule_tables and "known_sender_rules" not in _rule_tables:
-        conn.execute("ALTER TABLE email_sender_rules RENAME TO known_sender_rules")
+    # Phase 0.6 (email-holding-area stabilization): email_sender_rules is the
+    # canonical sender-rules table (reversing an earlier, never-completed plan
+    # to rename it to known_sender_rules). Drop the orphaned empty duplicate
+    # left behind by that abandoned migration — only if it's still empty, so
+    # this is a no-op (not a data-loss risk) anywhere it isn't.
+    _known_exists = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='known_sender_rules'"
+    ).fetchone()
+    if _known_exists:
+        _known_count = conn.execute("SELECT COUNT(*) AS c FROM known_sender_rules").fetchone()["c"]
+        if _known_count == 0:
+            conn.execute("DROP TABLE known_sender_rules")
 
     # New-table migrations — safe to run on existing databases
     conn.execute(
@@ -972,7 +984,7 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
     )
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS known_sender_rules (
+        CREATE TABLE IF NOT EXISTS email_sender_rules (
           id          INTEGER PRIMARY KEY AUTOINCREMENT,
           domain      TEXT NOT NULL UNIQUE,
           rule_type   TEXT NOT NULL DEFAULT 'always_promotional',

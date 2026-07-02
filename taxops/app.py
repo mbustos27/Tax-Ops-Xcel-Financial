@@ -2500,11 +2500,16 @@ def api_email_inbox_assign(item_id: int):
 
         final_filename = os.path.basename(dest_path)
         ts = now()
+        # Invariant (taxops-invariants.mdc): staff picking the return via this
+        # endpoint IS the human confirmation. Set match fields explicitly —
+        # never rely on the column default, which is what caused this to
+        # silently drift to match_method=NULL for every email-assigned doc.
         cur = conn.execute(
             "INSERT INTO return_documents "
             "(return_id, filename, original_filename, doc_type, source, "
-            " file_path, file_size_bytes, uploaded_by, uploaded_at) "
-            "VALUES (?, ?, ?, 'unknown', 'email_inbox', ?, ?, ?, ?)",
+            " file_path, file_size_bytes, uploaded_by, uploaded_at, "
+            " match_confirmed, match_score, match_method) "
+            "VALUES (?, ?, ?, 'unknown', 'email_inbox', ?, ?, ?, ?, 1, NULL, 'email_manual')",
             (
                 return_id, final_filename, orig_name,
                 dest_path, inbox_row["file_size_bytes"],
