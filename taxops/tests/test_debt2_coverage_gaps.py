@@ -20,12 +20,14 @@ def test_documents_blueprint_registered(app):
     assert "/return/<int:return_id>/documents/<int:doc_id>/view" in rules
 
 
-def test_email_review_blueprint_registered(app):
-    """email_review_bp is registered and its routes appear in the URL map."""
+def test_email_inbox_routes_registered(app):
+    """Email-inbox holding-area routes (app.py, not a Blueprint) are registered."""
     rules = {r.rule for r in app.url_map.iter_rules()}
-    assert "/email-review" in rules
-    assert "/api/email-classifications" in rules
-    assert "/api/email-classifications/stats" in rules
+    assert "/email-inbox" in rules
+    assert "/api/email-inbox/items" in rules
+    assert "/api/email-inbox/<int:item_id>/file" in rules
+    assert "/api/email-inbox/<int:item_id>/assign" in rules
+    assert "/api/email-inbox/<int:item_id>/delete" in rules
 
     # also verify auth module used
     import auth
@@ -102,18 +104,16 @@ def test_document_upload_rejects_unsupported_extension(client_logged_in, seeded_
     assert resp.status_code == 400
 
 
-# ── Email review Blueprint ───────────────────────────────────────────────────
+# ── Email inbox (holding-area) routes ────────────────────────────────────────
 
-def test_email_classifications_list_reachable(client_logged_in):
-    """GET /api/email-classifications returns 200 via Blueprint."""
-    resp = client_logged_in.get("/api/email-classifications")
+def test_email_inbox_items_list_reachable(client_logged_in):
+    """GET /api/email-inbox/items returns 200 with an 'items' list (can_use_email_tools=admin)."""
+    resp = client_logged_in.get("/api/email-inbox/items")
     assert resp.status_code == 200
-    assert "classifications" in resp.get_json()
+    assert "items" in resp.get_json()
 
 
-def test_email_classifications_stats_reachable(client_logged_in):
-    """GET /api/email-classifications/stats returns 200 via Blueprint."""
-    resp = client_logged_in.get("/api/email-classifications/stats")
+def test_email_inbox_page_reachable(client_logged_in):
+    """GET /email-inbox renders 200 for an admin (can_use_email_tools)."""
+    resp = client_logged_in.get("/email-inbox")
     assert resp.status_code == 200
-    data = resp.get_json()
-    assert "total_today" in data

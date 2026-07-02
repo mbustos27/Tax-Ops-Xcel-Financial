@@ -1,335 +1,422 @@
-"""Part 8 — mail_watcher outcome-based mark-as-read tests.
+"""mail_watcher outcome model — holding-area poll cycle.
 
-Tests that verify:
-  - Successful processing marks as read (OUTCOME_SUCCESS)
-  - Failed attachment save leaves unread (OUTCOME_RETRY)
-  - Known-rule match marks as read immediately (OUTCOME_SKIP)
-  - Max retries exceeded marks as read and stops retrying (OUTCOME_SKIP)
-  - Duplicate attachment is skipped without error
-  - DRY_RUN never calls imap.store
-  - Processing log upserts correctly on repeated attempts
+Covers the current architecture (see taxops-invariants.mdc / CODEBASE_OVERVIEW.md):
+  - success / skip / no_attachment are terminal outcomes — never retried
+  - retry leaves the UID unclaimed (memo AND email_processing_log) so the
+    next poll cycle re-fetches it
+  - IMAP_DRY_RUN performs zero writes of any kind (Phase 0.4 fix — this was
+    previously dead config; _poll_once_inner now honors it)
+  - the in-process memo is only populated *after* a confirmed terminal DB
+    log write (claim-after-success — audit finding C1)
+  - Gmail category-folder routing ('skip' folders never get fetched)
+  - _is_promotional / _is_drive_share suppression, at both the unit level
+    and end-to-end through a full poll cycle
+  - _mark_read is a permanent tombstone regardless of outcome
 """
 from __future__ import annotations
 
-import hashlib
+import email.message
 import threading
-from email.message import EmailMessage
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from db import get_connection, init_db
 
 
-# ── Shared helpers ────────────────────────────────────────────────────────────
+# ── Fake IMAP server ──────────────────────────────────────────────────────────
+
+class _FakeImap:
+    """Minimal stand-in for imaplib.IMAP4_SSL covering exactly what
+    _poll_once_inner calls: login, list, select, uid(SEARCH/FETCH), logout."""
+
+    def __init__(self, folders: dict[str, list[tuple[bytes, bytes]]], fail_fetch_uids: set[str] | None = None):
+        # folders: {folder_name: [(uid_bytes, raw_message_bytes), ...]}
+        self._folders = folders
+        self._fail_fetch_uids = fail_fetch_uids or set()
+        self.selected: str | None = None
+        self.fetch_calls: list[str] = []
+
+    def login(self, user, password):
+        return ("OK", [b"Logged in"])
+
+    def list(self):
+        items = [f'(\\HasNoChildren) "/" "{name}"'.encode() for name in self._folders]
+        return ("OK", items)
+
+    def select(self, folder):
+        name = folder.strip('"')
+        if name in self._folders:
+            self.selected = name
+            return ("OK", [b"1"])
+        return ("NO", [b"no such folder"])
+
+    def uid(self, command, *args):
+        if command == "SEARCH":
+            uids = [u for u, _ in self._folders.get(self.selected, [])]
+            if not uids:
+                return ("OK", [b""])
+            return ("OK", [b" ".join(uids)])
+        if command == "FETCH":
+            uid_arg = args[0]
+            uid_str = uid_arg.decode("ascii") if isinstance(uid_arg, bytes) else str(uid_arg)
+            self.fetch_calls.append(uid_str)
+            if uid_str in self._fail_fetch_uids:
+                return ("OK", [])
+            for uid, raw in self._folders.get(self.selected, []):
+                if uid.decode("ascii") == uid_str:
+                    return ("OK", [(b"1 (BODY[])", raw)])
+            return ("OK", [])
+        raise AssertionError(f"Unexpected IMAP command: {command}")
+
+    def logout(self):
+        return ("OK", [b"bye"])
+
+
+def _raw_message(sender: str = "client@example.com", subject: str = "docs",
+                  attachment: bytes | None = b"%PDF-1.4 test") -> bytes:
+    msg = email.message.EmailMessage()
+    msg["From"] = sender
+    msg["Subject"] = subject
+    msg.set_content("body")
+    if attachment is not None:
+        msg.add_attachment(attachment, maintype="application", subtype="pdf", filename="doc.pdf")
+    return msg.as_bytes()
+
 
 class _QuietThread(threading.Thread):
-    """Silences background classify threads during tests."""
     def start(self) -> None:
         return None
 
 
-def _make_email_with_pdf(filename: str = "test.pdf", payload: bytes = b"PDF") -> object:
-    msg = EmailMessage()
-    msg["From"] = "test@example.com"
-    msg["Subject"] = "Test"
-    msg.add_attachment(payload, maintype="application", subtype="pdf", filename=filename)
-    return msg
-
-
 @pytest.fixture
-def db_path(tmp_path, monkeypatch):
-    path = str(tmp_path / "test.db")
+def poll_env(taxops_db_path: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Configure mail_watcher for a single-folder, non-Gmail-category poll cycle
+    against a temp DB and temp EMAIL_INBOX_DIR."""
     import config as cfg
-    import db as db_mod
-    monkeypatch.setattr(cfg, "DB_PATH", path)
-    monkeypatch.setattr(db_mod, "DB_PATH", path)
-    conn = get_connection(path)
-    init_db(conn)
-    # seed a client and return so attachment saving can succeed
-    conn.execute(
-        "INSERT INTO clients (id, last_name, first_name) VALUES (9001, 'Smith', 'Jane')"
-    )
-    conn.execute(
-        "INSERT INTO returns (id, client_id, tax_year, client_status) VALUES (8001, 9001, 2025, 'PROCESSING')"
-    )
-    conn.commit()
-    conn.close()
-    return path
-
-
-@pytest.fixture
-def docs_path(tmp_path, monkeypatch):
-    import utils as utils_mod
-    root = tmp_path / "docs"
-
-    def _rtp(rid):
-        p = root / str(rid)
-        p.mkdir(parents=True, exist_ok=True)
-        return str(p)
-
-    monkeypatch.setattr(utils_mod, "get_return_documents_path", _rtp)
-    monkeypatch.setattr(utils_mod, "_enqueue_extraction", lambda *a, **k: None)
-    return root
-
-
-@pytest.fixture
-def quiet_threads(monkeypatch):
     import mail_watcher as mw
+
+    monkeypatch.setattr(cfg, "IMAP_HOST", "imap.example.com")
+    monkeypatch.setattr(cfg, "IMAP_PORT", 993)
+    monkeypatch.setattr(cfg, "IMAP_USER", "office@example.com")
+    monkeypatch.setattr(cfg, "IMAP_PASS", "secret")
+    monkeypatch.setattr(cfg, "IMAP_FOLDERS", ["INBOX"])
+    monkeypatch.setattr(cfg, "USE_GMAIL_CATEGORIES", False)
+    monkeypatch.setattr(cfg, "IMAP_DRY_RUN", False)
+    inbox_dir = tmp_path / "email_inbox"
+    inbox_dir.mkdir()
+    monkeypatch.setattr(cfg, "EMAIL_INBOX_DIR", str(inbox_dir))
     monkeypatch.setattr(mw.threading, "Thread", _QuietThread)
+    mw._processed_uids.clear()
+    mw._processed_uids_fifo.clear()
+    return inbox_dir
 
 
-# ── Outcome constants ─────────────────────────────────────────────────────────
+def _install_fake_imap(monkeypatch: pytest.MonkeyPatch, fake: _FakeImap) -> _FakeImap:
+    import mail_watcher as mw
+    monkeypatch.setattr(mw.imaplib, "IMAP4_SSL", lambda host, port: fake)
+    return fake
+
+
+def _log_row(db_path: str, uid: str, folder: str = "INBOX"):
+    conn = get_connection(db_path)
+    row = conn.execute(
+        "SELECT outcome, attempt_count FROM email_processing_log "
+        "WHERE message_uid=? AND imap_folder=?",
+        (uid, folder),
+    ).fetchone()
+    conn.close()
+    return row
+
+
+# ── Outcome constants (kept from prior suite) ────────────────────────────────
 
 def test_outcome_constants_defined():
     import mail_watcher as mw
     assert mw.OUTCOME_SUCCESS == "success"
-    assert mw.OUTCOME_SKIP    == "skip"
-    assert mw.OUTCOME_RETRY   == "retry"
+    assert mw.OUTCOME_SKIP == "skip"
+    assert mw.OUTCOME_RETRY == "retry"
     assert mw.OUTCOME_DRY_RUN == "dry_run"
+    assert mw.OUTCOME_NO_ATTACHMENT == "no_attachment"
 
 
-# ── _dispatch_classified_message returns outcomes ────────────────────────────
+# ── success / no_attachment / skip are terminal, never retried ──────────────
 
-def test_known_rule_returns_skip():
-    import mail_watcher as mw
-    msg = {
-        "classification": "client_document",
-        "source_layer": "known_rule",
-        "sender_domain": "spam.com",
-        "sender_email": "noreply@spam.com",
-        "subject": "promo",
-        "body_text": "",
-        "message": MagicMock(),
-        "sender": "noreply@spam.com",
-    }
-    outcome = mw._dispatch_classified_message(None, msg)
-    assert outcome == mw.OUTCOME_SKIP
-
-
-def test_promotional_returns_skip():
-    import mail_watcher as mw
-    msg = {
-        "classification": "promotional",
-        "source_layer": "keyword",
-        "sender_domain": "promo.com",
-        "sender_email": "deals@promo.com",
-        "subject": "big sale",
-        "body_text": "",
-        "message": MagicMock(),
-        "sender": "deals@promo.com",
-    }
-    outcome = mw._dispatch_classified_message(MagicMock(), msg)
-    assert outcome == mw.OUTCOME_SKIP
-
-
-def test_unknown_classification_returns_skip():
-    import mail_watcher as mw
-    msg = {
-        "classification": "unknown",
-        "source_layer": "llm",
-        "sender_domain": "unknown.com",
-        "sender_email": "x@unknown.com",
-        "subject": "????",
-        "body_text": "",
-        "message": MagicMock(),
-        "sender": "x@unknown.com",
-    }
-    with patch.object(mw, "_log_unmatched"):
-        outcome = mw._dispatch_classified_message(MagicMock(), msg)
-    assert outcome == mw.OUTCOME_SKIP
-
-
-# ── Successful processing marks as read ──────────────────────────────────────
-
-def test_successful_processing_never_marks_read(db_path, docs_path, quiet_threads, monkeypatch):
-    """OUTCOME_SUCCESS from dispatch → imap.uid('STORE') is NEVER called.
-    TaxOps read-status policy: emails are never marked read under any outcome."""
+def test_success_outcome_is_terminal_and_saved_to_inbox(taxops_db_path, poll_env, monkeypatch):
     import mail_watcher as mw
 
-    imap_mock = MagicMock()
-    uid = b"42"
-    msg = {
-        "uid": uid,
-        "folder": "INBOX",
-        "classification": "client_document",
-        "source_layer": "llm",
-        "sender_domain": "example.com",
-        "sender_email": "jane@example.com",
-        "subject": "My W2",
-        "body_text": "Here is my W2",
-        "message": _make_email_with_pdf(),
-        "sender": "Jane Smith <jane@example.com>",
-    }
+    fake = _install_fake_imap(monkeypatch, _FakeImap({
+        "INBOX": [(b"1", _raw_message())],
+    }))
 
-    with patch.object(mw, "_extract_client_name", return_value="Smith Jane"), \
-         patch.object(mw, "_match_client", return_value={"id": 9001, "match_score": 90, "first_name": "Jane", "last_name": "Smith"}), \
-         patch.object(mw, "_find_current_return", return_value={"id": 8001}), \
-         patch.object(mw, "_save_attachments", return_value=1), \
-         patch.object(mw, "_add_note", return_value=True), \
-         patch.object(mw, "_update_domain_cache"), \
-         patch.object(mw, "_upsert_processing_log"), \
-         patch.object(mw, "_retry_cap_exceeded", return_value=False):
+    mw._poll_once_inner(MagicMock())
 
-        try:
-            outcome = mw._dispatch_classified_message(MagicMock(), msg)
-        except Exception:
-            outcome = mw.OUTCOME_RETRY
+    row = _log_row(taxops_db_path, "1")
+    assert row is not None and row["outcome"] == mw.OUTCOME_SUCCESS
+    assert mw._already_processed_in_log("1", "INBOX") is True
+    assert mw._uid_in_memo("INBOX", "1") is True
 
-    assert outcome == mw.OUTCOME_SUCCESS
-    # Policy: _mark_read is never called — imap.uid("STORE") must not appear
-    imap_mock.uid.assert_not_called()
-
-
-# ── Failed attachment save leaves unread ─────────────────────────────────────
-
-def test_failed_attachment_save_leaves_unread(monkeypatch):
-    """Exception in _save_attachments → OUTCOME_RETRY → imap.store NOT called."""
-    import mail_watcher as mw
-
-    imap_mock = MagicMock()
-    uid = b"99"
-    msg = {
-        "uid": uid,
-        "folder": "INBOX",
-        "classification": "client_document",
-        "source_layer": "llm",
-        "sender_domain": "fail.com",
-        "sender_email": "x@fail.com",
-        "subject": "doc",
-        "body_text": "",
-        "message": MagicMock(),
-        "sender": "x@fail.com",
-    }
-
-    with patch.object(mw, "_extract_client_name", return_value="Smith Jane"), \
-         patch.object(mw, "_match_client", return_value={"id": 9001, "match_score": 95, "first_name": "Jane", "last_name": "Smith"}), \
-         patch.object(mw, "_find_current_return", return_value={"id": 8001}), \
-         patch.object(mw, "_save_attachments", side_effect=RuntimeError("disk full")):
-        try:
-            outcome = mw._dispatch_classified_message(MagicMock(), msg)
-        except Exception:
-            outcome = mw.OUTCOME_RETRY
-
-    assert outcome == mw.OUTCOME_RETRY
-    # imap.store must NOT be called for RETRY outcome
-    imap_mock.uid.assert_not_called()
-
-
-# ── Known-rule marks as read without DB write ─────────────────────────────────
-
-def test_known_rule_marks_read_no_db_write(monkeypatch):
-    """Known-rule skip → OUTCOME_SKIP → mark as read; no email_classifications row written."""
-    import mail_watcher as mw
-
-    imap_mock = MagicMock()
-    uid = b"55"
-
-    with patch.object(mw, "_record_classification") as mock_record:
-        msg = {
-            "uid": uid,
-            "folder": "INBOX",
-            "classification": "promotional",
-            "source_layer": "known_rule",
-            "sender_domain": "skip.com",
-            "sender_email": "x@skip.com",
-            "subject": "skip",
-            "body_text": "",
-            "message": MagicMock(),
-            "sender": "x@skip.com",
-        }
-        outcome = mw._dispatch_classified_message(MagicMock(), msg)
-
-    assert outcome == mw.OUTCOME_SKIP
-    # No DB classification written for known_rule
-    mock_record.assert_not_called()
-
-
-# ── Max retries exceeded ──────────────────────────────────────────────────────
-
-def test_max_retries_exceeded_marks_read(db_path, monkeypatch):
-    """When attempt_count >= IMAP_MAX_RETRIES, outcome=SKIP and message gets marked read."""
-    import mail_watcher as mw
-
-    uid_str = "uid-max-retry"
-    folder  = "INBOX"
-
-    # Seed the processing log with attempt_count at the cap
-    import config as cfg
-    conn = get_connection(db_path)
-    conn.execute(
-        "INSERT INTO email_processing_log "
-        "(message_uid, imap_folder, sender_domain, subject_snippet, outcome, attempt_count, last_attempt_at) "
-        "VALUES (?, ?, 'x.com', 'test', 'retry', ?, datetime('now'))",
-        (uid_str, folder, cfg.IMAP_MAX_RETRIES),
-    )
-    conn.commit()
+    conn = get_connection(taxops_db_path)
+    n = conn.execute("SELECT COUNT(*) c FROM email_inbox").fetchone()["c"]
     conn.close()
+    assert n == 1
 
-    assert mw._retry_cap_exceeded(uid_str, folder) is True
-
-
-def test_below_retry_cap_not_exceeded(db_path, monkeypatch):
-    """When attempt_count < IMAP_MAX_RETRIES, _retry_cap_exceeded returns False."""
-    import mail_watcher as mw
-
-    uid_str = "uid-below-cap"
-    folder  = "INBOX"
-
-    conn = get_connection(db_path)
-    conn.execute(
-        "INSERT INTO email_processing_log "
-        "(message_uid, imap_folder, sender_domain, subject_snippet, outcome, attempt_count, last_attempt_at) "
-        "VALUES (?, ?, 'x.com', 'test', 'retry', 1, datetime('now'))",
-        (uid_str, folder),
-    )
-    conn.commit()
+    # Second poll cycle, same UID still "returned" by the server (as if
+    # unseen) — must NOT be re-fetched or re-saved.
+    fake.fetch_calls.clear()
+    mw._poll_once_inner(MagicMock())
+    assert fake.fetch_calls == [], "Terminal (success) UID must not be re-fetched on the next poll"
+    conn = get_connection(taxops_db_path)
+    n2 = conn.execute("SELECT COUNT(*) c FROM email_inbox").fetchone()["c"]
     conn.close()
+    assert n2 == 1, "No duplicate email_inbox row from re-processing a terminal UID"
 
-    assert mw._retry_cap_exceeded(uid_str, folder) is False
 
-
-# ── _mark_read is a tombstone — never touches IMAP ───────────────────────────
-
-def test_mark_read_tombstone_never_calls_store(monkeypatch):
-    """_mark_read is a disabled tombstone — imap.uid(STORE) is never called
-    regardless of IMAP_DRY_RUN or IMAP_MARK_AS_READ settings."""
+def test_no_attachment_outcome_is_terminal(taxops_db_path, poll_env, monkeypatch):
     import mail_watcher as mw
+
+    _install_fake_imap(monkeypatch, _FakeImap({
+        "INBOX": [(b"2", _raw_message(attachment=None))],
+    }))
+
+    mw._poll_once_inner(MagicMock())
+
+    row = _log_row(taxops_db_path, "2")
+    assert row is not None and row["outcome"] == mw.OUTCOME_NO_ATTACHMENT
+    assert mw._already_processed_in_log("2", "INBOX") is True
+    assert mw._uid_in_memo("INBOX", "2") is True
+
+
+def test_promotional_sender_yields_skip_end_to_end(taxops_db_path, poll_env, monkeypatch):
     import config as cfg
+    import mail_watcher as mw
+
+    promo_domain = next(iter(cfg.KNOWN_PROMOTIONAL_DOMAINS))
+    _install_fake_imap(monkeypatch, _FakeImap({
+        "INBOX": [(b"3", _raw_message(sender=f"deals@{promo_domain}"))],
+    }))
+
+    mw._poll_once_inner(MagicMock())
+
+    row = _log_row(taxops_db_path, "3")
+    assert row is not None and row["outcome"] == mw.OUTCOME_SKIP
+    conn = get_connection(taxops_db_path)
+    n = conn.execute("SELECT COUNT(*) c FROM email_inbox").fetchone()["c"]
+    conn.close()
+    assert n == 0, "Promotional sender must not reach the inbox holding area"
+
+
+# ── retry leaves the UID unclaimed ───────────────────────────────────────────
+
+def test_retry_leaves_uid_unclaimed_and_is_reprocessed(taxops_db_path, poll_env, monkeypatch):
+    import mail_watcher as mw
+
+    fake = _install_fake_imap(monkeypatch, _FakeImap(
+        {"INBOX": [(b"4", _raw_message())]},
+        fail_fetch_uids={"4"},
+    ))
+
+    mw._poll_once_inner(MagicMock())
+
+    row = _log_row(taxops_db_path, "4")
+    assert row is not None and row["outcome"] == mw.OUTCOME_RETRY
+    assert mw._already_processed_in_log("4", "INBOX") is False, "retry must not be terminal"
+    assert mw._uid_in_memo("INBOX", "4") is False, "retry must leave the UID unclaimed in the memo"
+
+    conn = get_connection(taxops_db_path)
+    n = conn.execute("SELECT COUNT(*) c FROM email_inbox").fetchone()["c"]
+    conn.close()
+    assert n == 0
+
+    # Fix the "server" (fetch now succeeds) and poll again — must be retried.
+    fake._fail_fetch_uids.clear()
+    mw._poll_once_inner(MagicMock())
+    row2 = _log_row(taxops_db_path, "4")
+    assert row2["outcome"] == mw.OUTCOME_SUCCESS
+    assert row2["attempt_count"] == 2, "attempt_count increments across retry attempts (upsert)"
+
+
+# ── IMAP_DRY_RUN performs zero writes ────────────────────────────────────────
+
+def test_dry_run_writes_nothing(taxops_db_path, poll_env, monkeypatch):
+    """IMAP_DRY_RUN=true: no disk write, no email_inbox row, no processing-log
+    row, and the UID is left unclaimed so a real (non-dry-run) poll will still
+    process it."""
+    import config as cfg
+    import mail_watcher as mw
+
+    monkeypatch.setattr(cfg, "IMAP_DRY_RUN", True)
+    _install_fake_imap(monkeypatch, _FakeImap({
+        "INBOX": [(b"5", _raw_message())],
+    }))
+
+    mw._poll_once_inner(MagicMock())
+
+    assert _log_row(taxops_db_path, "5") is None, "dry run must not write email_processing_log"
+    assert mw._uid_in_memo("INBOX", "5") is False, "dry run must not claim the UID"
+
+    conn = get_connection(taxops_db_path)
+    n = conn.execute("SELECT COUNT(*) c FROM email_inbox").fetchone()["c"]
+    conn.close()
+    assert n == 0, "dry run must not write email_inbox"
+    assert list(poll_env.iterdir()) == [], "dry run must not write any file to EMAIL_INBOX_DIR"
+
+
+# ── memo-vs-DB dedup layering ─────────────────────────────────────────────────
+
+def test_db_log_dedup_populates_memo_without_refetch(taxops_db_path, poll_env, monkeypatch):
+    """A UID already terminal in email_processing_log (but not yet in the
+    in-process memo, e.g. after a restart) is skipped without a re-fetch, and
+    the memo is populated so subsequent polls skip it even faster."""
+    import mail_watcher as mw
+
+    mw._upsert_processing_log("6", "INBOX", "example.com", "old", mw.OUTCOME_SUCCESS)
+    assert mw._uid_in_memo("INBOX", "6") is False  # simulates a fresh process, e.g. after restart
+
+    fake = _install_fake_imap(monkeypatch, _FakeImap({
+        "INBOX": [(b"6", _raw_message())],
+    }))
+
+    mw._poll_once_inner(MagicMock())
+
+    assert fake.fetch_calls == [], "DB-terminal UID must be skipped via the log check, never fetched"
+    assert mw._uid_in_memo("INBOX", "6") is True, "memo should be back-filled from the DB check"
+
+
+def test_memo_claimed_only_after_log_write_succeeds(taxops_db_path, poll_env, monkeypatch):
+    """Claim-after-success (audit finding C1): if the processing-log write
+    itself fails, the UID must NOT be added to the memo."""
+    import mail_watcher as mw
+
+    _install_fake_imap(monkeypatch, _FakeImap({
+        "INBOX": [(b"7", _raw_message())],
+    }))
+    monkeypatch.setattr(mw, "_upsert_processing_log", MagicMock(side_effect=RuntimeError("db down")))
+
+    mw._poll_once_inner(MagicMock())
+
+    assert mw._uid_in_memo("INBOX", "7") is False, "a failed log write must never claim the UID"
+
+
+# ── Gmail category-folder routing ────────────────────────────────────────────
+
+def test_category_folder_skip_never_fetches(taxops_db_path, tmp_path, monkeypatch):
+    """Folders mapped to 'skip' in GMAIL_CATEGORY_FOLDERS are auto-logged as
+    OUTCOME_SKIP without ever calling FETCH."""
+    import config as cfg
+    import mail_watcher as mw
+
+    monkeypatch.setattr(cfg, "IMAP_HOST", "imap.example.com")
+    monkeypatch.setattr(cfg, "IMAP_USER", "office@example.com")
+    monkeypatch.setattr(cfg, "IMAP_PASS", "secret")
+    monkeypatch.setattr(cfg, "USE_GMAIL_CATEGORIES", True)
+    monkeypatch.setattr(cfg, "IMAP_DRY_RUN", False)
+    inbox_dir = tmp_path / "email_inbox"
+    inbox_dir.mkdir()
+    monkeypatch.setattr(cfg, "EMAIL_INBOX_DIR", str(inbox_dir))
+    monkeypatch.setattr(mw.threading, "Thread", _QuietThread)
+    mw._processed_uids.clear()
+    mw._processed_uids_fifo.clear()
+
+    fake = _install_fake_imap(monkeypatch, _FakeImap({
+        "INBOX": [(b"8", _raw_message())],
+        "CATEGORY_PROMOTIONS": [(b"9", _raw_message())],
+    }))
+
+    mw._poll_once_inner(MagicMock())
+
+    assert "9" not in fake.fetch_calls, "'skip'-handling folders must never be fetched"
+    assert "8" in fake.fetch_calls, "'full_processing' folders must still be fetched"
+    row9 = _log_row(taxops_db_path, "9", "CATEGORY_PROMOTIONS")
+    assert row9 is not None and row9["outcome"] == mw.OUTCOME_SKIP
+
+
+# ── _is_promotional / _is_drive_share unit-level suppression ────────────────
+
+def test_is_promotional_known_domain_blocked():
+    import config as cfg
+    import mail_watcher as mw
+    domain = next(iter(cfg.KNOWN_PROMOTIONAL_DOMAINS))
+    assert mw._is_promotional(domain) is True
+
+
+def test_is_promotional_personal_domain_never_blocked(monkeypatch):
+    import config as cfg
+    import mail_watcher as mw
+    monkeypatch.setattr(cfg, "KNOWN_PROMOTIONAL_DOMAINS", frozenset({"gmail.com"}))
+    monkeypatch.setattr(cfg, "PERSONAL_EMAIL_DOMAINS", frozenset({"gmail.com"}))
+    assert mw._is_promotional("gmail.com") is False, "personal domains are never suppressed, even if also listed"
+
+
+def test_is_promotional_mass_mailing_prefix_blocked(monkeypatch):
+    import config as cfg
+    import mail_watcher as mw
+    monkeypatch.setattr(cfg, "MASS_MAILING_PREFIXES", ("mail.",))
+    monkeypatch.setattr(cfg, "KNOWN_PROMOTIONAL_DOMAINS", frozenset())
+    monkeypatch.setattr(cfg, "PERSONAL_EMAIL_DOMAINS", frozenset())
+    assert mw._is_promotional("mail.somevendor.com") is True
+
+
+def test_is_drive_share_detects_share_notification():
+    import mail_watcher as mw
+    assert mw._is_drive_share("Jane has shared a file with you", "") is True
+    assert mw._is_drive_share("My W2", "See attached please") is False
+
+
+# ── _mark_read tombstone ──────────────────────────────────────────────────────
+
+def test_mark_read_tombstone_never_calls_store():
+    """_mark_read is a disabled tombstone (empty body) — calling it is a no-op
+    and never touches the imap object, regardless of arguments."""
+    import mail_watcher as mw
 
     imap_mock = MagicMock()
-
-    # Call with every combination of flags — none should reach STORE
-    for dry_run, mark_as_read in [(True, True), (False, True), (True, False), (False, False)]:
-        monkeypatch.setattr(cfg, "IMAP_DRY_RUN", dry_run)
-        monkeypatch.setattr(cfg, "IMAP_MARK_AS_READ", mark_as_read)
-        mw._mark_read(imap_mock, b"123", "tombstone-test")
-
+    mw._mark_read(imap_mock, b"123", "tombstone-test")
     imap_mock.uid.assert_not_called()
+    imap_mock.store.assert_not_called()
 
 
-# ── Processing log upsert ────────────────────────────────────────────────────
-
-def test_processing_log_upsert(db_path, monkeypatch):
-    """Processing same uid twice → attempt_count=2, not two separate rows."""
-    import mail_watcher as mw
+def test_no_outcome_path_calls_imap_store(taxops_db_path, poll_env, monkeypatch):
+    """End-to-end: across success, skip (promotional), and no_attachment
+    outcomes in one poll cycle, imap.uid('STORE', ...) is never invoked —
+    read-status policy is enforced at the dispatch loop, not just in the
+    (now-unused) _mark_read tombstone."""
     import config as cfg
-    monkeypatch.setattr(cfg, "DB_PATH", db_path)
-    import db as db_mod
-    monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+    import mail_watcher as mw
 
-    uid_str = "uid-upsert-test"
-    folder  = "INBOX"
+    promo_domain = next(iter(cfg.KNOWN_PROMOTIONAL_DOMAINS))
+    fake = _install_fake_imap(monkeypatch, _FakeImap({
+        "INBOX": [
+            (b"10", _raw_message(sender="client@example.com")),
+            (b"11", _raw_message(sender=f"deals@{promo_domain}")),
+            (b"12", _raw_message(sender="client@example.com", attachment=None)),
+        ],
+    }))
+    orig_uid = fake.uid
+    monkeypatch.setattr(fake, "uid", lambda cmd, *a: (_ for _ in ()).throw(AssertionError("STORE must never be called"))
+                         if cmd == "STORE" else orig_uid(cmd, *a))
 
-    mw._upsert_processing_log(uid_str, folder, "x.com", "subject", mw.OUTCOME_RETRY, "err1")
-    mw._upsert_processing_log(uid_str, folder, "x.com", "subject", mw.OUTCOME_RETRY, "err2")
+    mw._poll_once_inner(MagicMock())
 
-    conn = get_connection(db_path)
+    assert _log_row(taxops_db_path, "10")["outcome"] == mw.OUTCOME_SUCCESS
+    assert _log_row(taxops_db_path, "11")["outcome"] == mw.OUTCOME_SKIP
+    assert _log_row(taxops_db_path, "12")["outcome"] == mw.OUTCOME_NO_ATTACHMENT
+
+
+# ── Processing log helpers (kept from prior suite) ───────────────────────────
+
+def test_processing_log_upsert(taxops_db_path):
+    import mail_watcher as mw
+
+    mw._upsert_processing_log("uid-upsert-test", "INBOX", "x.com", "subject", mw.OUTCOME_RETRY, "err1")
+    mw._upsert_processing_log("uid-upsert-test", "INBOX", "x.com", "subject", mw.OUTCOME_RETRY, "err2")
+
+    conn = get_connection(taxops_db_path)
     rows = conn.execute(
         "SELECT attempt_count, error_message FROM email_processing_log "
         "WHERE message_uid = ? AND imap_folder = ?",
-        (uid_str, folder),
+        ("uid-upsert-test", "INBOX"),
     ).fetchall()
     conn.close()
 
@@ -338,119 +425,35 @@ def test_processing_log_upsert(db_path, monkeypatch):
     assert rows[0]["error_message"] == "err2"
 
 
-# ── Duplicate attachment skipped ──────────────────────────────────────────────
-
-def test_duplicate_attachment_skipped(db_path, docs_path, quiet_threads, monkeypatch):
-    """_save_attachments returns 0 when identical file already exists for the return."""
+def test_already_processed_in_log_returns_true(taxops_db_path):
     import mail_watcher as mw
-    import utils as utils_mod
-    import config as cfg
-    monkeypatch.setattr(cfg, "DB_PATH", db_path)
-    import db as db_mod
-    monkeypatch.setattr(db_mod, "DB_PATH", db_path)
 
-    payload = b"DUPLICATE_PDF_CONTENT"
-    file_hash = hashlib.sha256(payload).hexdigest()
-    sanitized = "test.pdf"
+    mw._upsert_processing_log("uid-done", "INBOX", "x.com", "sub", mw.OUTCOME_SUCCESS)
+    mw._upsert_processing_log("uid-retry", "INBOX", "x.com", "sub", mw.OUTCOME_RETRY)
 
-    # Pre-seed the document so it looks like it was already saved
-    conn = get_connection(db_path)
-    conn.execute(
-        "INSERT INTO return_documents "
-        "(return_id, filename, original_filename, doc_type, source, file_path, "
-        " file_size_bytes, file_hash, uploaded_by, uploaded_at, is_deleted) "
-        "VALUES (8001, ?, ?, 'unknown', 'email', '/fake/path', ?, ?, 'mail_watcher', datetime('now'), 0)",
-        (sanitized, sanitized, len(payload), file_hash),
-    )
-    conn.commit()
-    conn.close()
-
-    msg = _make_email_with_pdf(filename=sanitized, payload=payload)
-
-    app_mock = MagicMock()
-    app_mock.app_context.return_value.__enter__ = MagicMock(return_value=None)
-    app_mock.app_context.return_value.__exit__  = MagicMock(return_value=False)
-
-    count = mw._save_attachments(app_mock, msg, 8001)
-    assert count == 0, "Duplicate attachment should be silently skipped"
-
-
-# ── Read status is never modified — all outcomes ─────────────────────────────
-
-def test_no_outcome_ever_marks_read(monkeypatch):
-    """imap.uid(STORE) is never called for any outcome — read-status policy is absolute."""
-    import mail_watcher as mw
-    import config as cfg
-
-    monkeypatch.setattr(cfg, "IMAP_PRESERVE_UNREAD", False)  # even with flag off
-    monkeypatch.setattr(cfg, "IMAP_MARK_AS_READ", True)
-    monkeypatch.setattr(cfg, "IMAP_DRY_RUN", False)
-
-    imap_mock = MagicMock()
-    uid = b"no-store-test"
-
-    for outcome in (mw.OUTCOME_SUCCESS, mw.OUTCOME_SKIP, mw.OUTCOME_RETRY, mw.OUTCOME_DRY_RUN):
-        # Replicate the decision point in _poll_once_inner — STORE must never appear
-        if outcome == mw.OUTCOME_RETRY:
-            pass  # left unread for retry
-        elif outcome == mw.OUTCOME_DRY_RUN:
-            pass  # dry-run, no IMAP state changes
-        else:
-            pass  # policy: never mark read regardless of outcome
-
-    imap_mock.uid.assert_not_called()
-
-
-def test_already_processed_in_log_returns_true(db_path, monkeypatch):
-    """_already_processed_in_log returns True for success/skip, False for retry."""
-    import mail_watcher as mw
-    import config as cfg
-    import db as db_mod
-    monkeypatch.setattr(cfg, "DB_PATH", db_path)
-    monkeypatch.setattr(db_mod, "DB_PATH", db_path)
-
-    conn = get_connection(db_path)
-    conn.execute(
-        "INSERT INTO email_processing_log "
-        "(message_uid, imap_folder, sender_domain, subject_snippet, outcome, attempt_count, last_attempt_at) "
-        "VALUES ('uid-done', 'INBOX', 'x.com', 'sub', 'success', 1, datetime('now'))"
-    )
-    conn.execute(
-        "INSERT INTO email_processing_log "
-        "(message_uid, imap_folder, sender_domain, subject_snippet, outcome, attempt_count, last_attempt_at) "
-        "VALUES ('uid-retry', 'INBOX', 'x.com', 'sub', 'retry', 2, datetime('now'))"
-    )
-    conn.commit()
-    conn.close()
-
-    assert mw._already_processed_in_log("uid-done",  "INBOX") is True
+    assert mw._already_processed_in_log("uid-done", "INBOX") is True
     assert mw._already_processed_in_log("uid-retry", "INBOX") is False
-    assert mw._already_processed_in_log("uid-new",   "INBOX") is False
+    assert mw._already_processed_in_log("uid-new", "INBOX") is False
 
 
-# ── /api/email-processing-log endpoint ───────────────────────────────────────
+# ── Poll-lock skip counter (moved from the now-deleted test_email_stability.py) ──
 
-def test_processing_log_endpoint_returns_50(client_logged_in, taxops_db_path, monkeypatch):
-    """GET /api/email-processing-log returns at most 50 rows in JSON."""
-    from db import get_connection
+def test_poll_skip_counter_increments():
+    """_poll_skip_count increments when the poll lock is already held."""
+    import mail_watcher as mw
+    orig_count = mw._poll_skip_count
+    try:
+        mw._poll_lock.acquire()
+        mw._poll_once(None)  # will skip because lock is held
+        assert mw._poll_skip_count > orig_count
+    finally:
+        mw._poll_lock.release()
+        mw._poll_skip_count = 0
 
-    conn = get_connection(taxops_db_path)
-    for i in range(60):
-        conn.execute(
-            "INSERT INTO email_processing_log "
-            "(message_uid, imap_folder, sender_domain, subject_snippet, outcome, attempt_count, last_attempt_at) "
-            "VALUES (?, 'INBOX', 'x.com', 'sub', 'success', 1, datetime('now'))",
-            (f"uid-endpoint-{i}",),
-        )
-    conn.commit()
-    conn.close()
 
-    rv = client_logged_in.get("/api/email-processing-log")
-    assert rv.status_code == 200
-    data = rv.get_json()
-    assert isinstance(data, list)
-    assert len(data) <= 50
-    # Verify privacy: no email body, no full address
-    for row in data:
-        assert "body" not in row
-        assert "@" not in (row.get("sender_domain") or "")  # domain only, not address
+def test_mail_watcher_status_includes_poll_skipped():
+    """mail_watcher_status() must expose poll_skipped count."""
+    import mail_watcher as mw
+    status = mw.mail_watcher_status()
+    assert "poll_skipped" in status
+    assert isinstance(status["poll_skipped"], int)

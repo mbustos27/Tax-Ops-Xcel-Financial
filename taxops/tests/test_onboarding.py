@@ -72,7 +72,7 @@ def test_create_user_success(client_logged_in, taxops_db_path):
     r = client_logged_in.post(
         "/api/admin/users",
         json={"username": "newstaff", "display_name": "New Staff",
-              "role": "staff", "temporary_password": "temp1234"},
+              "role": "preparer", "temporary_password": "temp1234"},
     )
     assert r.status_code == 200
     data = r.get_json()
@@ -93,7 +93,7 @@ def test_create_user_duplicate_username(client_logged_in, taxops_db_path):
     _seed_user(taxops_db_path, username="dupuser")
     r = client_logged_in.post(
         "/api/admin/users",
-        json={"username": "dupuser", "role": "staff", "temporary_password": "temp1234"},
+        json={"username": "dupuser", "role": "preparer", "temporary_password": "temp1234"},
     )
     assert r.status_code == 409
 

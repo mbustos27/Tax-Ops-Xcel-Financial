@@ -269,6 +269,7 @@ def _poll_once_inner(app) -> None:
     from config import (
         IMAP_HOST, IMAP_PORT, IMAP_USER, IMAP_PASS,
         IMAP_FOLDERS, GMAIL_CATEGORY_FOLDERS, USE_GMAIL_CATEGORIES,
+        IMAP_DRY_RUN,
     )
 
     folders_to_check = GMAIL_CATEGORY_FOLDERS if USE_GMAIL_CATEGORIES else {
@@ -402,6 +403,14 @@ def _poll_once_inner(app) -> None:
                             "Log write failed for uid=%s after skip (drive-share) — will retry: %s",
                             uid_str, log_exc,
                         )
+                    continue
+
+                # ── Dry run: log what would happen, write nothing at all ──
+                # (no disk write, no email_inbox row, no processing-log row,
+                # no memo claim) so the UID is re-evaluated on the next poll
+                # once IMAP_DRY_RUN is turned back off.
+                if IMAP_DRY_RUN:
+                    logger.info(f"[DRY RUN] Would save attachment(s) from {domain} — no writes performed")
                     continue
 
                 # ── Attachment save ───────────────────────────────────────

@@ -91,7 +91,7 @@ class TestApiTranslations:
         data = json.loads(r.data)
         assert data["loading"] == "Cargando..."
         assert data["no_results"] == "Sin resultados"
-        assert data["tour_s1_title"] == "Encuentra cualquier cliente al instante"
+        assert data["tour_s1_title"] == "Encuentra a cualquier cliente al instante"
 
     def test_has_all_required_keys(self, client):
         r = client.get("/api/translations")
@@ -119,7 +119,7 @@ class TestApiTranslations:
         )
         r = client_logged_in.get("/api/translations")
         data = json.loads(r.data)
-        assert data["tour_s7_title"] == "Está listo"
+        assert data["tour_s7_title"] == "Estás listo"
 
     def test_back_to_english_after_switch(self, client_logged_in):
         client_logged_in.post(
