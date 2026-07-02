@@ -49,6 +49,13 @@
                   <p class="font-semibold text-sm truncate" style="color:var(--text-primary)">
                     {{ item.original_filename or item.filename }}
                   </p>
+                  {% if item.needs_manual_tagging %}
+                  <span class="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                        style="background:var(--badge-bg);color:var(--badge-text)"
+                        title="{{ _('Image — will need manual tagging') }}">
+                    {{ _('Image — will need manual tagging') }}
+                  </span>
+                  {% endif %}
                   <p class="text-xs mt-0.5 truncate" style="color:var(--text-muted)">
                     {{ item.sender_email or '(no sender)' }}
                   </p>

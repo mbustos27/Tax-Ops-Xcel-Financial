@@ -156,10 +156,12 @@ from routes.documents import documents_bp
 from routes.accounting import accounting_bp
 from routes.users import users_bp
 from routes.reports import reports_bp
+from routes.sender_rules import sender_rules_bp
 app.register_blueprint(documents_bp)
 app.register_blueprint(accounting_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(reports_bp)
+app.register_blueprint(sender_rules_bp)
 
 
 # REL-4: Flask g-based DB helper — lets routes use get_db() and have the connection
@@ -1673,6 +1675,7 @@ def api_translations():
         "upload_error":         _t("Upload failed. Please try again."),
         "doc_deleted":          _t("Document deleted."),
         "classification_saved": _t("Classification saved."),
+        "needs_manual_tag":     _t("Needs manual tag"),
         "session_expired":      _t("Your session has expired. Please sign in again."),
         # Tour step titles and bodies
         # UI chrome strings used in modal buttons
@@ -2399,6 +2402,7 @@ def return_form_data_soft_delete(return_id: int, table: str, record_id: int):
 @app.route("/email-inbox")
 @permission_required("can_use_email_tools")
 def email_inbox_page():
+    from utils import needs_manual_tagging
     conn = get_connection()
     try:
         rows = conn.execute(
@@ -2406,6 +2410,8 @@ def email_inbox_page():
             "ORDER BY received_at DESC"
         ).fetchall()
         inbox_items = [dict(r) for r in rows]
+        for item in inbox_items:
+            item["needs_manual_tagging"] = needs_manual_tagging(item.get("filename") or "")
         unassigned_count = len(inbox_items)
     finally:
         conn.close()
@@ -2421,6 +2427,7 @@ def email_inbox_page():
 @app.route("/api/email-inbox/items")
 @permission_required("can_use_email_tools")
 def api_email_inbox_items():
+    from utils import needs_manual_tagging
     conn = get_connection()
     try:
         rows = conn.execute(
@@ -2429,7 +2436,15 @@ def api_email_inbox_items():
             "FROM email_inbox WHERE is_assigned=0 AND is_deleted=0 "
             "ORDER BY received_at DESC"
         ).fetchall()
-        return jsonify({"items": [dict(r) for r in rows]})
+        items = []
+        for r in rows:
+            d = dict(r)
+            # Phase 2.3: predicts whether extraction will be skipped post-assign
+            # (image attachment + EXTRACTOR_VISION_ENABLED=false). Never derived
+            # from or exposing file_path.
+            d["needs_manual_tagging"] = needs_manual_tagging(d.get("filename") or "")
+            items.append(d)
+        return jsonify({"items": items})
     finally:
         conn.close()
 

@@ -97,6 +97,29 @@ def sanitize_filename(filename: str) -> str:
     return f"{name[:60]}{ext.lower()}"
 
 
+# Phase 2.3 (email system revamp): raster image extensions that extractor.py's
+# _extract_fields() returns ("image_skipped") for whenever vision extraction is
+# disabled. Kept in sync with the check in extractor.py's _extract_fields.
+_MANUAL_TAG_IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png"})
+
+
+def needs_manual_tagging(filename: str) -> bool:
+    """True when a file will be saved but never auto-extracted, so a staff
+    member must tag its form type by hand.
+
+    Mirrors the condition in extractor.py's _extract_fields(): raster image
+    attachments are skipped (not retried) whenever EXTRACTOR_VISION_ENABLED
+    is false. Kept here as a shared, side-effect-free predicate so both the
+    email inbox view and the return documents list can render the same
+    "needs manual tag" signal without importing extractor.py.
+    """
+    from config import EXTRACTOR_VISION_ENABLED
+    if EXTRACTOR_VISION_ENABLED:
+        return False
+    ext = os.path.splitext(filename or "")[1].lower()
+    return ext in _MANUAL_TAG_IMAGE_EXTS
+
+
 def _scrub_ssn_from_string(value: str) -> str:
     if not isinstance(value, str):
         return value

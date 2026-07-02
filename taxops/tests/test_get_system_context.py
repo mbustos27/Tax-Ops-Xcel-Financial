@@ -78,16 +78,19 @@ def test_get_system_context_dataplane_compact_shape(seeded_conn):
 
 
 def test_gather_season_dataplane_survives_dropped_optional_tables(seeded_conn):
+    """email_classifications was archived in Phase 2.2 (renamed to
+    archive_email_classifications) and init_db no longer creates it, so
+    gather_season_dataplane no longer queries it at all — only
+    extraction_queue is exercised here as a still-optional table."""
     seeded_conn.executescript(
         """
         DROP TABLE IF EXISTS extraction_queue;
-        DROP TABLE IF EXISTS email_classifications;
         """
     )
     seeded_conn.commit()
     dp = dt.gather_season_dataplane(seeded_conn, 2026)
     assert dp["extraction_by_status"] == []
-    assert dp["email_classifications_year"] == []
+    assert "email_classifications_year" not in dp
     assert int((dp.get("forms") or {}).get("returns_in_season") or 0) == 3
 
 

@@ -1,28 +1,401 @@
-/* ── Base legibility ───────────────────────────────────────────────────── */
-body {
-  font-size: 1rem;          /* 16 px baseline — never go below this */
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
+/* ══════════════════════════════════════════════════════════════════════════
+   TOKEN ALIASES — short-name variables required by the dark-mode override
+   block below. The existing PART 1 tokens (--nav-bg, --input-bg, etc.) are
+   preserved unchanged; these aliases map onto the same palette values.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --bg-card-alt:       #F5F0EA;
+  --bg-input:          #FCFCFC;
+  --bg-hover:          #F0EAE2;
+  --bg-dropdown:       #FCFCFC;
+  /* Short-form status aliases — same palette as --status-*-color */
+  --status-processing: #3a7cb5;
+  --status-finalize:   #b5891a;
+  --status-hold:       #c2621a;
+  --status-efile:      #5A6AB0;
+  --status-pickup:     #1a8a7a;
+  --status-logout:     #7a7570;
+  --status-rejected:   #b53a3a;
+}
+[data-theme="dark"] {
+  --bg-card-alt: #2A1E12; --bg-input: #2A1E12; --bg-hover: #2E2214; --bg-dropdown: #2A1E12;
+  --status-processing: #5a9fd4; --status-finalize: #d4a83a; --status-hold: #d4823a;
+  --status-efile: #8898d0; --status-pickup: #3ab4a0; --status-logout: #8a8580;
+  --status-rejected: #d46a6a;
+}
+[data-theme="light"] {
+  --bg-card-alt: #F5F0EA; --bg-input: #FCFCFC; --bg-hover: #F0EAE2; --bg-dropdown: #FCFCFC;
+  --status-processing: #3a7cb5; --status-finalize: #b5891a; --status-hold: #c2621a;
+  --status-efile: #5A6AB0; --status-pickup: #1a8a7a; --status-logout: #7a7570;
+  --status-rejected: #b53a3a;
 }
 
-/* ── Status row left-bar accent ────────────────────────────────────────
-   box-shadow instead of border-left so it works with border-collapse:collapse
-   on every row, not just the first.                                      */
-tr.status-row           { box-shadow: inset 4px 0 0 0 transparent; }
-tr.status-PROCESSING    { box-shadow: inset 4px 0 0 0 #0ea5e9; }
-tr.status-FINALIZE      { box-shadow: inset 4px 0 0 0 #eab308; }
-tr.status-EFILE-READY   { box-shadow: inset 4px 0 0 0 #6366f1; }
-tr.status-PICKUP        { box-shadow: inset 4px 0 0 0 #14b8a6; }
-tr.status-LOG-OUT       { box-shadow: inset 4px 0 0 0 #94a3b8; }
-tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
+/* ══════════════════════════════════════════════════════════════════════════
+   PROFESSIONAL PALETTE — primary brand + per-status bg/text/border/dot
+   tokens. The existing raw --status-*-color tokens remain for back-compat;
+   all new badge and accent rules reference the more granular tokens below.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Primary brand (Cabernet Warm) ──────────────────────────────────── */
+  --color-primary:        #6B2233;
+  --color-primary-hover:  #54192A;
+  --color-primary-light:  #F3E5E8;
+  --color-primary-text:   #4A1722;
+  --color-primary-border: #D9B8BF;
+
+  /* ── Status: PROCESSING — steel blue ────────────────────────────────── */
+  --status-processing-bg:     #eef3fa;
+  --status-processing-text:   #2d5a8e;
+  --status-processing-border: #c2d4ed;
+  --status-processing-dot:    #4a7db5;
+
+  /* ── Status: HOLD — warm amber-red ──────────────────────────────────── */
+  --status-hold-bg:     #fdf3ec;
+  --status-hold-text:   #9a4a1a;
+  --status-hold-border: #f0c4a0;
+  --status-hold-dot:    #c96a2a;
+
+  /* ── Status: FINALIZE — sage green ──────────────────────────────────── */
+  --status-finalize-bg:     #eef6f0;
+  --status-finalize-text:   #2a6b3a;
+  --status-finalize-border: #b0d8b8;
+  --status-finalize-dot:    #4a9a5a;
+
+  /* ── Status: PICKUP — warm teal ─────────────────────────────────────── */
+  --status-pickup-bg:     #ecf7f5;
+  --status-pickup-text:   #1e6a5e;
+  --status-pickup-border: #9ed4cc;
+  --status-pickup-dot:    #2e8a7a;
+
+  /* ── Status: EFILE READY — slate blue ───────────────────────────────── */
+  --status-efile-bg:     #EEF0F7;
+  --status-efile-text:   #3A4A8A;
+  --status-efile-border: #B8C4E0;
+  --status-efile-dot:    #5A6AB0;
+
+  /* ── Status: LOG OUT — warm gray ────────────────────────────────────── */
+  --status-logout-bg:     #f4f3f1;
+  --status-logout-text:   #6a6560;
+  --status-logout-border: #d0cdc8;
+  --status-logout-dot:    #9a9590;
+
+  /* ── Status: REJECTED — clear red (only saturated color) ────────────── */
+  --status-rejected-bg:     #fdf0f0;
+  --status-rejected-text:   #8a2020;
+  --status-rejected-border: #eaaeae;
+  --status-rejected-dot:    #c03030;
+
+  /* ── Status: PENDING INTAKE — neutral blue-gray ─────────────────────── */
+  --status-pending-bg:     #f0f2f5;
+  --status-pending-text:   #4a5568;
+  --status-pending-border: #c8d0da;
+  --status-pending-dot:    #7a8898;
+}
+
+[data-theme="dark"] {
+  --color-primary:        #A8536A;
+  --color-primary-hover:  #BC6D82;
+  --color-primary-light:  #3D1820;
+  --color-primary-text:   #D9A0AC;
+  --color-primary-border: #5A2530;
+
+  --status-processing-bg:     #1a2535; --status-processing-text:   #8ab5e0;
+  --status-processing-border: #2a4060; --status-processing-dot:    #6a9fd0;
+
+  --status-hold-bg:     #2d1e10; --status-hold-text:   #e0a070;
+  --status-hold-border: #5a3010; --status-hold-dot:    #d08040;
+
+  --status-finalize-bg:     #1a2d1e; --status-finalize-text:   #80c890;
+  --status-finalize-border: #2a4a2e; --status-finalize-dot:    #60a870;
+
+  --status-pickup-bg:     #182828; --status-pickup-text:   #70c0b0;
+  --status-pickup-border: #285040; --status-pickup-dot:    #50a898;
+
+  --status-efile-bg:     #1a2035; --status-efile-text:   #8898d0;
+  --status-efile-border: #2a3060; --status-efile-dot:    #7888c0;
+
+  --status-logout-bg:     #252220; --status-logout-text:   #989088;
+  --status-logout-border: #3a3530; --status-logout-dot:    #787068;
+
+  --status-rejected-bg:     #2d1818; --status-rejected-text:   #e08080;
+  --status-rejected-border: #5a2020; --status-rejected-dot:    #c05050;
+
+  --status-pending-bg:     #1e2230; --status-pending-text:   #8090a8;
+  --status-pending-border: #2a3040; --status-pending-dot:    #607088;
+}
+
+[data-theme="light"] {
+  --color-primary:        #6B2233;
+  --color-primary-hover:  #54192A;
+  --color-primary-light:  #F3E5E8;
+  --color-primary-text:   #4A1722;
+  --color-primary-border: #D9B8BF;
+
+  --status-processing-bg:     #eef3fa; --status-processing-text:   #2d5a8e;
+  --status-processing-border: #c2d4ed; --status-processing-dot:    #4a7db5;
+  --status-hold-bg:     #fdf3ec; --status-hold-text:   #9a4a1a;
+  --status-hold-border: #f0c4a0; --status-hold-dot:    #c96a2a;
+  --status-finalize-bg:     #eef6f0; --status-finalize-text:   #2a6b3a;
+  --status-finalize-border: #b0d8b8; --status-finalize-dot:    #4a9a5a;
+  --status-pickup-bg:     #ecf7f5; --status-pickup-text:   #1e6a5e;
+  --status-pickup-border: #9ed4cc; --status-pickup-dot:    #2e8a7a;
+  --status-efile-bg:     #EEF0F7; --status-efile-text:   #3A4A8A;
+  --status-efile-border: #B8C4E0; --status-efile-dot:    #5A6AB0;
+  --status-logout-bg:     #f4f3f1; --status-logout-text:   #6a6560;
+  --status-logout-border: #d0cdc8; --status-logout-dot:    #9a9590;
+  --status-rejected-bg:     #fdf0f0; --status-rejected-text:   #8a2020;
+  --status-rejected-border: #eaaeae; --status-rejected-dot:    #c03030;
+  --status-pending-bg:     #f0f2f5; --status-pending-text:   #4a5568;
+  --status-pending-border: #c8d0da; --status-pending-dot:    #7a8898;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PART 1 — CSS CUSTOM PROPERTIES (light mode defaults, warm-shifted)
+   ══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Page surfaces ──────────────────────────────────────────────────── */
+  --bg-page:          #FAF7F2;
+  --bg-card:          #FCFCFC;
+  --bg-card-hover:    #F5F0EA;
+  --bg-card-border:   #E0D9CF;
+
+  /* ── Navigation (Cabernet Warm) ─────────────────────────────────────── */
+  --nav-bg:           #3D1019;
+  --nav-bg-sub:       rgba(0,0,0,0.40);
+  --nav-border:       rgba(255,255,255,0.08);
+  --nav-text:         #D9B0B6;
+  --nav-text-active:  #F4DEE2;
+  --nav-hover-bg:     #54192A;
+  --nav-active-bg:    #54192A;
+  --nav-input-bg:     #54192A;
+  --nav-input-text:   #F4DEE2;
+
+  /* ── Body text ───────────────────────────────────────────────────────── */
+  --text-primary:     #1C1208;
+  --text-secondary:   #5A4A3A;
+  --text-muted:       #8A7A6A;
+  --text-on-dark:     #FCFCFC;
+
+  /* ── Borders & dividers ──────────────────────────────────────────────── */
+  --border-default:   #DDD4C8;
+  --border-strong:    #C5BAB0;
+  --border-subtle:    #EDE8E0;
+
+  /* ── Interactive ─────────────────────────────────────────────────────── */
+  --focus-ring:       #D9B8BF;
+  --link-color:       #6B2233;
+
+  /* ── Status colors — warm-shifted ────────────────────────────────────── */
+  --status-processing-color:  #3a7cb5;
+  --status-finalize-color:    #b5891a;
+  --status-hold-color:        #c2621a;
+  --status-efile-color:       #5A6AB0;
+  --status-pickup-color:      #1a8a7a;
+  --status-logout-color:      #7a7570;
+  --status-rejected-color:    #b53a3a;
+
+  /* ── Semantic surfaces ───────────────────────────────────────────────── */
+  --surface-info:     #eff6ff;
+  --surface-success:  #f0fdf4;
+  --surface-warning:  #fffbeb;
+  --surface-danger:   #fef2f2;
+  --text-info:        #1e4d8c;
+  --text-success:     #166534;
+  --text-warning:     #92400e;
+  --text-danger:      #991b1b;
+  --border-info:      #bfdbfe;
+  --border-success:   #bbf7d0;
+  --border-warning:   #fde68a;
+  --border-danger:    #fecaca;
+
+  /* ── Dropdown / overlay ──────────────────────────────────────────────── */
+  --dropdown-bg:      #FCFCFC;
+  --dropdown-border:  #E0D9CF;
+  --dropdown-shadow:  0 8px 24px rgba(77,53,32,0.12);
+
+  /* ── Table ───────────────────────────────────────────────────────────── */
+  --table-header-bg:  #FCFCFC;
+  --table-header-text:#5A4A3A;
+  --table-row-hover:  #F5F0EA;
+  --table-border:     #E0D9CF;
+  --table-divider:    #EDE8E0;
+
+  /* ── Form inputs ─────────────────────────────────────────────────────── */
+  --input-bg:         #FCFCFC;
+  --input-border:     #C5BAB0;
+  --input-text:       #1C1208;
+  --input-placeholder:#9A8878;
+  --input-focus-border:#D9B8BF;
+
+  /* ── Scrollbar ───────────────────────────────────────────────────────── */
+  --scrollbar-track:  #F5F0EA;
+  --scrollbar-thumb:  #C5BAB0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PART 2 — DARK THEME (manual toggle only via [data-theme="dark"])
+   ══════════════════════════════════════════════════════════════════════════ */
+
+[data-theme="dark"] {
+  --bg-page:          #1A1208;
+  --bg-card:          #241A0E;
+  --bg-card-hover:    #2A1E12;
+  --bg-card-border:   #3A2E20;
+
+  --nav-bg:           #2A0B12;
+  --nav-bg-sub:       rgba(0,0,0,0.55);
+  --nav-border:       rgba(255,255,255,0.07);
+  --nav-text:         #B88A90;
+  --nav-text-active:  #E8C8CD;
+  --nav-hover-bg:     #3D1019;
+  --nav-active-bg:    #3D1019;
+  --nav-input-bg:     #3D1019;
+  --nav-input-text:   #E8C8CD;
+
+  --text-primary:     #F0E8DC;
+  --text-secondary:   #B0A090;
+  --text-muted:       #7A6A5A;
+  --text-on-dark:     #F0E8DC;
+
+  --border-default:   #3A2E20;
+  --border-strong:    #4A3E2C;
+  --border-subtle:    #2E2218;
+
+  --focus-ring:       #BC6D82;
+  --link-color:       #D9A0AC;
+
+  --status-processing-color:  #5a9fd4;
+  --status-finalize-color:    #d4a83a;
+  --status-hold-color:        #d4823a;
+  --status-efile-color:       #8a82d4;
+  --status-pickup-color:      #3ab4a0;
+  --status-logout-color:      #8a8580;
+  --status-rejected-color:    #d46a6a;
+
+  --surface-info:     #1a2a3d;
+  --surface-success:  #1a2d1a;
+  --surface-warning:  #2d2210;
+  --surface-danger:   #2d1a1a;
+  --text-info:        #90bde8;
+  --text-success:     #86c98a;
+  --text-warning:     #e8c47a;
+  --text-danger:      #e88a8a;
+  --border-info:      #2a4a6a;
+  --border-success:   #2a4a2a;
+  --border-warning:   #4a3a1a;
+  --border-danger:    #4a2a2a;
+
+  --dropdown-bg:      #2A1E12;
+  --dropdown-border:  #3A2E20;
+  --dropdown-shadow:  0 8px 24px rgba(0,0,0,0.50);
+
+  --table-header-bg:  #241A0E;
+  --table-header-text:#B0A090;
+  --table-row-hover:  #2E2218;
+  --table-border:     #3A2E20;
+  --table-divider:    #2E2218;
+
+  --input-bg:         #2A1E12;
+  --input-border:     #4A3E2C;
+  --input-text:       #F0E8DC;
+  --input-placeholder:#6A5A4A;
+  --input-focus-border:#BC6D82;
+
+  --scrollbar-track:  #1A1208;
+  --scrollbar-thumb:  #4A3020;
+}
+
+/* Force light even when OS is in dark mode */
+[data-theme="light"] {
+  --bg-page:          #FAF7F2;
+  --bg-card:          #FCFCFC;
+  --bg-card-hover:    #F5F0EA;
+  --bg-card-border:   #E0D9CF;
+  --nav-bg:           #3D1019;
+  --nav-bg-sub:       rgba(0,0,0,0.40);
+  --nav-border:       rgba(255,255,255,0.08);
+  --nav-text:         #D9B0B6;
+  --nav-text-active:  #F4DEE2;
+  --nav-hover-bg:     #54192A;
+  --nav-active-bg:    #54192A;
+  --nav-input-bg:     #54192A;
+  --nav-input-text:   #F4DEE2;
+  --text-primary:     #1C1208;
+  --text-secondary:   #5A4A3A;
+  --text-muted:       #8A7A6A;
+  --text-on-dark:     #FCFCFC;
+  --border-default:   #DDD4C8;
+  --border-strong:    #C5BAB0;
+  --border-subtle:    #EDE8E0;
+  --focus-ring:       #D9B8BF;
+  --link-color:       #6B2233;
+  --status-processing-color:  #3a7cb5;
+  --status-finalize-color:    #b5891a;
+  --status-hold-color:        #c2621a;
+  --status-efile-color:       #5A6AB0;
+  --status-pickup-color:      #1a8a7a;
+  --status-logout-color:      #7a7570;
+  --status-rejected-color:    #b53a3a;
+  --surface-info:     #eff6ff;
+  --surface-success:  #f0fdf4;
+  --surface-warning:  #fffbeb;
+  --surface-danger:   #fef2f2;
+  --text-info:        #1e4d8c;
+  --text-success:     #166534;
+  --text-warning:     #92400e;
+  --text-danger:      #991b1b;
+  --border-info:      #bfdbfe;
+  --border-success:   #bbf7d0;
+  --border-warning:   #fde68a;
+  --border-danger:    #fecaca;
+  --dropdown-bg:      #FCFCFC;
+  --dropdown-border:  #E0D9CF;
+  --dropdown-shadow:  0 8px 24px rgba(77,53,32,0.12);
+  --table-header-bg:  #FCFCFC;
+  --table-header-text:#5A4A3A;
+  --table-row-hover:  #F5F0EA;
+  --table-border:     #E0D9CF;
+  --table-divider:    #EDE8E0;
+  --input-bg:         #FCFCFC;
+  --input-border:     #C5BAB0;
+  --input-text:       #1C1208;
+  --input-placeholder:#9A8878;
+  --input-focus-border:#D9B8BF;
+  --scrollbar-track:  #F5F0EA;
+  --scrollbar-thumb:  #C5BAB0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PART 3 — TOKENISED RULES (hardcoded colors replaced with variables)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Base legibility ───────────────────────────────────────────────────── */
+body {
+  font-size: 1rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  background: var(--bg-page);
+  color: var(--text-primary);
+}
+
+/* ── Status row left-bar accent (5px — auto-adapts via CSS vars in dark mode) */
+tr.status-row           { box-shadow: inset 5px 0 0 0 transparent; }
+tr.status-PROCESSING    { box-shadow: inset 5px 0 0 0 var(--status-processing-dot); }
+tr.status-FINALIZE      { box-shadow: inset 5px 0 0 0 var(--status-finalize-dot); }
+tr.status-HOLD          { box-shadow: inset 5px 0 0 0 var(--status-hold-dot); }
+tr.status-EFILE-READY   { box-shadow: inset 5px 0 0 0 var(--status-efile-dot); }
+tr.status-PICKUP        { box-shadow: inset 5px 0 0 0 var(--status-pickup-dot); }
+tr.status-LOG-OUT       { box-shadow: inset 5px 0 0 0 var(--status-logout-dot); }
+tr.status-REJECTED      { box-shadow: inset 5px 0 0 0 var(--status-rejected-dot); }
 
 /* ── Nav links ─────────────────────────────────────────────────────────── */
 .nav-link {
   padding: 0.5rem 0.875rem;
   border-radius: 0.5rem;
-  font-size: 0.9375rem;     /* 15 px */
+  font-size: 0.9375rem;
   font-weight: 500;
-  color: #cbd5e1;           /* slate-300 — visible on dark bg */
+  color: var(--nav-text);
   text-decoration: none;
   transition: background 0.12s, color 0.12s;
   white-space: nowrap;
@@ -30,17 +403,14 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
   display: inline-flex;
   align-items: center;
 }
-.nav-link:hover  { background: #334155; color: #f1f5f9; }
-.nav-link.active { background: #334155; color: #ffffff; }
+.nav-link:hover  { background: var(--nav-hover-bg); color: var(--nav-text-active); }
+.nav-link.active { background: var(--nav-active-bg); color: var(--nav-text-active); }
 .nav-link:focus-visible {
-  outline: 2px solid #60a5fa;
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
-/* Header global search — layout/color here so it survives Tailwind purge
-   (`static/tw.min.css` only includes utilities seen at build time; many classes
-   in templates such as `pl-14`, `py-0`, arbitrary `leading-[3rem]` are absent,
-   which made search styling appear to “never change”). */
+/* ── Global search ──────────────────────────────────────────────────────── */
 #search-wrap {
   min-height: 3rem;
 }
@@ -55,27 +425,25 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
   font-weight: 400;
   line-height: 3rem;
   letter-spacing: 0.025em;
-  color: #fff;
-  background-color: rgb(51 65 85);
-  border: 1px solid rgba(71 85 105 0.8);
+  color: var(--nav-input-text);
+  background-color: var(--nav-input-bg);
+  border: 1px solid var(--nav-border);
   border-radius: 0.5rem;
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.22);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.15);
 }
-
-#global-search::placeholder {
-  color: rgb(203 213 225);
-}
-
+#global-search::placeholder { color: var(--nav-text); }
 #global-search:focus {
   outline: none;
-  border-color: rgba(96, 165, 250, 0.55);
-  box-shadow:
-    inset 0 1px 2px rgba(15, 23, 42, 0.22),
-    0 0 0 2px rgb(96 165 250);
+  border-color: var(--focus-ring);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.15), 0 0 0 2px var(--focus-ring);
 }
+#global-search:focus::placeholder { color: var(--nav-text); }
 
-#global-search:focus::placeholder {
-  color: rgb(148 163 184);
+/* ── Search results dropdown ─────────────────────────────────────────────── */
+#search-results {
+  background: var(--dropdown-bg);
+  border-color: var(--dropdown-border);
+  box-shadow: var(--dropdown-shadow);
 }
 
 /* ── Tools dropdown items ───────────────────────────────────────────────── */
@@ -84,14 +452,22 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #374151;
+  color: var(--text-secondary);
   text-decoration: none;
   transition: background 0.1s;
   white-space: nowrap;
 }
-.tools-item:hover       { background: #f1f5f9; color: #1e293b; }
-.tools-item-active      { background: #eef2ff; color: #4338ca; font-weight: 600; }
-.tools-item-active:hover{ background: #e0e7ff; }
+.tools-item:hover       { background: var(--bg-page); color: var(--text-primary); }
+.tools-item-active      { background: var(--color-primary-light); color: var(--color-primary-text); font-weight: 600; }
+.tools-item-active:hover{ background: var(--color-primary-border); }
+
+/* ── Tools dropdown panel ───────────────────────────────────────────────── */
+#tools-dropdown {
+  background: var(--dropdown-bg);
+  border-color: var(--dropdown-border);
+  box-shadow: var(--dropdown-shadow);
+}
+#tools-dropdown .border-slate-100 { border-color: var(--border-subtle); }
 
 /* ── Status badge ─────────────────────────────────────────────────────── */
 .status-badge {
@@ -99,7 +475,7 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
   align-items: center;
   padding: 0.5rem 0.9rem;
   border-radius: 9999px;
-  font-size: 0.8125rem;     /* 13 px */
+  font-size: 0.8125rem;
   font-weight: 700;
   border: 1px solid;
   cursor: pointer;
@@ -107,34 +483,79 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
   transition: box-shadow 0.12s;
   user-select: none;
   letter-spacing: 0.02em;
-  min-height: 2.75rem;      /* WCAG 2.5.5 — 44 px touch target */
+  min-height: 2.75rem;
 }
 .status-badge:hover        { box-shadow: 0 0 0 3px rgba(0,0,0,0.10); }
-.status-badge:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+.status-badge:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 
-/* ── Status dots ──────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════
+   PART 6 — STATUS DOT SHAPES (color + shape differentiation)
+   ══════════════════════════════════════════════════════════════════════════ */
 .status-dot {
   display: inline-block;
-  width: 11px;              /* was 7px — now large enough to see clearly */
-  height: 11px;
-  border-radius: 50%;
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
-  border: 1.5px solid rgba(0,0,0,0.08);  /* subtle ring adds definition */
 }
-.dot-blue   { background: #3b82f6; }
-.dot-amber  { background: #0ea5e9; }  /* PROCESSING — sky blue */
-.dot-orange { background: #eab308; }  /* FINALIZE  — yellow   */
-.dot-hold   { background: #f97316; }  /* HOLD      — orange   */
-.dot-indigo { background: #6366f1; }
-.dot-teal   { background: #0d9488; }
-.dot-violet { background: #7c3aed; }
-.dot-slate  { background: #64748b; }
-.dot-red    { background: #dc2626; }  /* REJECTED   — red     */
 
-/* Dashboard filter bar: horizontal pill rows use overflow-x-auto; clipping the x-axis
-   at rounded corners hides scrollbar/residual paint that reads as a stray dot/wedge.
-   overflow-y stays visible so vertical focus-outline spacing is less affected than with
-   overflow: hidden on both axes. */
+/* PROCESSING — circle */
+.dot-blue   { background: var(--color-primary);          border-radius: 50%; }
+.dot-amber  { background: var(--status-processing-dot);  border-radius: 50%; }
+
+/* FINALIZE — square */
+.dot-orange { background: var(--status-finalize-dot);    border-radius: 2px; }
+
+/* HOLD — diamond */
+.dot-hold   { background: var(--status-hold-dot);        border-radius: 2px; transform: rotate(45deg); }
+
+/* EFILE READY — rounded square */
+.dot-indigo { background: var(--status-efile-dot);       border-radius: 4px; }
+
+/* PICKUP — triangle */
+.dot-teal   {
+  background: var(--status-pickup-dot);
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.dot-violet { background: var(--status-pending-dot);     border-radius: 50%; }
+
+/* LOG OUT — pill/dash */
+.dot-slate  {
+  background: var(--status-logout-dot);
+  border-radius: 9999px;
+  height: 4px;
+  margin-top: 4px;
+}
+
+/* REJECTED — X shape */
+.dot-red {
+  background: transparent;
+  border-radius: 0;
+  position: relative;
+  width: 12px;
+  height: 12px;
+}
+.dot-red::before,
+.dot-red::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 2.5px;
+  background: var(--status-rejected-dot);
+  border-radius: 2px;
+}
+.dot-red::before { transform: translateY(-50%) rotate(45deg); }
+.dot-red::after  { transform: translateY(-50%) rotate(-45deg); }
+
+/* Problem 2c — min-width for status summary bar items so counts don't compress */
+.status-summary-item {
+  min-width: 7rem;
+}
+
+/* ── Filter bar ────────────────────────────────────────────────────────── */
 #filter-bar {
   position: relative;
   z-index: 1;
@@ -144,48 +565,46 @@ tr.status-REJECTED      { box-shadow: inset 4px 0 0 0 #dc2626; }
 .pill {
   padding: 0.5rem 0.9rem;
   border-radius: 9999px;
-  font-size: 0.875rem;      /* 14 px */
+  font-size: 0.875rem;
   font-weight: 500;
   text-decoration: none;
   border: 1px solid;
   transition: all 0.12s;
   white-space: nowrap;
-  min-height: 2.75rem;      /* WCAG 2.5.5 — 44 px touch target */
+  min-height: 2.75rem;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
 }
-.pill-active   { background: #1e293b; color: #fff;     border-color: #1e293b; }
-.pill-inactive { background: #fff;    color: #334155;  border-color: #cbd5e1; }
-.pill-inactive:hover { border-color: #64748b; color: #1e293b; background: #f8fafc; }
-.pill:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+.pill-active   { background: var(--color-primary); color: #ffffff; border-color: var(--color-primary); }
+.pill-inactive { background: var(--bg-card); color: var(--text-secondary); border-color: var(--border-strong); }
+.pill-inactive:hover { border-color: var(--color-primary-border); color: var(--color-primary-text); background: var(--color-primary-light); }
+.pill:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 
 /* ── Table helpers ────────────────────────────────────────────────────── */
 .th {
   padding: 0.75rem 0.875rem;
   text-align: left;
-  font-size: 0.75rem;       /* 12 px — min for all-caps headers */
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #334155;           /* slate-700 — was slate-500, now WCAG AA */
+  color: var(--table-header-text);
   white-space: nowrap;
-  background: #ffffff;
-  border-bottom: 2px solid #e2e8f0;
+  background: var(--table-header-bg);
+  border-bottom: 2px solid var(--table-border);
 }
 .td {
   padding: 0.75rem 0.875rem;
   vertical-align: middle;
-  font-size: 0.9375rem;     /* 15 px base for data cells */
+  font-size: 0.9375rem;
   line-height: 1.5;
 }
 .data-table tbody tr { transition: background 0.08s; }
 .data-table tbody tr { position: relative; z-index: 0; }
 
-/* Quick filter: class toggle is cheaper than per-row style.display; avoids sync layout cost. */
 tr[data-search].tr-filter-hidden { display: none; }
 
-/* Scroll panel: less scroll chaining to parent; smoother on touch / trackpads */
 #dashboard-table-wrap {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -193,7 +612,7 @@ tr[data-search].tr-filter-hidden { display: none; }
 
 thead.sticky tr th {
   box-shadow: 0 2px 4px -1px rgba(0,0,0,0.08);
-  backface-visibility: hidden; /* crisper stickies while scrolling */
+  backface-visibility: hidden;
 }
 
 /* ── Form badges ──────────────────────────────────────────────────────── */
@@ -201,13 +620,13 @@ thead.sticky tr th {
   display: inline-block;
   padding: 2px 7px;
   border-radius: 5px;
-  font-size: 0.75rem;       /* 12 px — was 9.6 px */
+  font-size: 0.75rem;
   font-weight: 700;
-  background: #e2e8f0;
-  color: #1e293b;           /* slate-900 — high contrast */
+  background: var(--border-default);
+  color: var(--text-primary);
   letter-spacing: 0.02em;
   line-height: 1.6;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-strong);
 }
 
 /* ── Editable cell ────────────────────────────────────────────────────── */
@@ -220,24 +639,24 @@ thead.sticky tr th {
   font-size: 0.9375rem;
 }
 .editable:hover {
-  background: #eff6ff;
-  box-shadow: 0 0 0 2px #93c5fd;
+  background: var(--color-primary-light);
+  box-shadow: 0 0 0 2px var(--color-primary-border);
 }
 .editable:focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--color-primary);
   outline-offset: 1px;
 }
 
 /* ── Section headers ──────────────────────────────────────────────────── */
 .section-header {
   padding: 0.75rem 1rem;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-  font-size: 0.75rem;       /* 12 px */
+  background: var(--bg-page);
+  border-bottom: 1px solid var(--border-default);
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: #334155;           /* slate-700 */
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -245,11 +664,11 @@ thead.sticky tr th {
 
 /* ── Field labels ─────────────────────────────────────────────────────── */
 .field-label {
-  font-size: 0.75rem;       /* 12 px */
+  font-size: 0.8125rem;   /* bumped per low-vision spec */
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #475569;           /* slate-600 — was slate-400 */
+  color: var(--text-secondary);
   margin-bottom: 3px;
 }
 
@@ -257,19 +676,19 @@ thead.sticky tr th {
 .action-btn {
   padding: 0.5rem 1rem;
   border-radius: 0.5rem;
-  font-size: 0.875rem;      /* 14 px */
+  font-size: 0.875rem;
   font-weight: 600;
   transition: all 0.12s;
   border: none;
   cursor: pointer;
-  min-height: 2.75rem;      /* WCAG 2.5.5 — 44 px touch target */
+  min-height: 2.75rem;
 }
 .action-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.action-btn:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+.action-btn:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 
 /* ── Risk / flag badges in table ──────────────────────────────────────── */
 .risk-badge {
-  font-size: 0.75rem;       /* 12 px — was text-[10px] */
+  font-size: 0.75rem;
   font-weight: 700;
   padding: 0.2rem 0.55rem;
   border-radius: 9999px;
@@ -277,36 +696,49 @@ thead.sticky tr th {
   display: inline-block;
   line-height: 1.4;
 }
-.risk-late   { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
-.risk-slow   { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.risk-late    { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+.risk-slow    { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
 .risk-contact { background: #ffedd5; color: #9a3412; border-color: #fdba74; }
 
 /* ── Scrollbar ────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #f8fafc; }
-::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #64748b; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { filter: brightness(0.85); }
+
+/* ── Reject dropdown ─────────────────────────────────────────────────── */
+#reject-dropdown {
+  background: var(--dropdown-bg);
+  border-color: var(--dropdown-border);
+  box-shadow: var(--dropdown-shadow);
+}
+#reject-bell:hover { background: var(--nav-hover-bg); }
+#tour-help-btn:hover { background: var(--nav-hover-bg); }
+
+/* ── Back to top ─────────────────────────────────────────────────────── */
+#back-to-top { background: var(--nav-hover-bg); border-color: var(--border-strong); }
+#back-to-top:hover { background: var(--nav-active-bg); }
+
+/* ── Logout link ─────────────────────────────────────────────────────── */
+.logout-link:hover { color: var(--nav-text-active) !important; background: var(--nav-hover-bg); }
 
 /* ── Focus-visible global ring ────────────────────────────────────────── */
 :focus-visible {
-  outline: 2px solid #3b82f6;
-  outline-offset: 2px;
+  outline: 3px solid var(--color-primary);
+  outline-offset: 3px;
 }
 
-/* ── WCAG 2.4.11: Focus Not Obscured — rows below sticky header remain visible ── */
-.data-table tbody tr {
-  scroll-margin-top: 6rem;   /* header (~88px) + filter-bar buffer */
-}
+/* ── WCAG 2.4.11 ─────────────────────────────────────────────────────── */
+.data-table tbody tr { scroll-margin-top: 6rem; }
 
-/* ── WCAG 1.4.3: helper/hint text — slate-500 (#64748b) on white = 4.6:1 ── */
-/* Replaces the failing slate-400 (#94a3b8 = 2.85:1) used in hints */
+/* ── Hint text ───────────────────────────────────────────────────────── */
 .hint-text {
-  color: #64748b;            /* slate-500 — WCAG AA compliant */
+  color: var(--text-muted);
   font-size: 0.75rem;
   margin-top: 0.25rem;
 }
 
-/* ── WCAG 2.5.5: minimum 44×44 px touch targets for small interactive elements ── */
+/* ── Touch targets ───────────────────────────────────────────────────── */
 .touch-target {
   min-height: 2.75rem;
   min-width: 2.75rem;
@@ -315,33 +747,31 @@ thead.sticky tr th {
   justify-content: center;
 }
 
-/* ── Inline validation messages (Section 5) ────────────────────────────── */
+/* ── Inline validation messages ─────────────────────────────────────── */
 .field-error {
-  color: #dc2626;            /* red-600 — 5.74:1 on white — WCAG AA */
+  color: var(--text-danger);
   font-size: 0.75rem;
   margin-top: 0.25rem;
   display: none;
 }
-.field-error.visible {
-  display: block;
-}
+.field-error.visible { display: block; }
 
-/* ── Flash animation ──────────────────────────────────────────────────── */
+/* ── Flash animation ─────────────────────────────────────────────────── */
 @keyframes flash-green {
   0%   { background-color: transparent; }
-  25%  { background-color: #dcfce7; }
+  25%  { background-color: var(--surface-success); }
   100% { background-color: transparent; }
 }
 .flash { animation: flash-green 0.7s ease; }
 
 /* ── Sortable column headers ──────────────────────────────────────────── */
 .sortable { cursor: pointer; user-select: none; }
-.sortable:hover { background: #f1f5f9; color: #0f172a; }
+.sortable:hover { background: var(--bg-page); color: var(--text-primary); }
 .sort-arrow::after { content: ''; margin-left: 4px; opacity: 0.35; font-size: 11px; }
 .sort-arrow.asc::after  { content: '▲'; opacity: 1; }
 .sort-arrow.desc::after { content: '▼'; opacity: 1; }
 
-/* Dashboard row select — large tap target, visible checked state */
+/* ── Dashboard row select ─────────────────────────────────────────────── */
 input.row-select {
   position: absolute;
   width: 1px;
@@ -354,14 +784,268 @@ input.row-select {
   border: 0;
 }
 input.row-select:focus + label {
-  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #3b82f6;
+  box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--focus-ring);
   border-radius: 0.5rem;
 }
 input.row-select:checked + label .row-select-skin {
-  background-color: #2563eb;
-  border-color: #1d4ed8;
+  background-color: var(--color-primary);
+  border-color: var(--color-primary-hover);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='white'%3E%3Cpath d='M13.25 3.5a.75.75 0 0 1 0 1.06L6.3 12.2a.75.75 0 0 1-1.12 0L2.2 8.4a.75.75 0 0 1 1.12-1.0l1.7 1.7 5.2-5.2a.75.75 0 0 1 1.06.02z'/%3E%3C/svg%3E");
   background-size: 0.75rem 0.75rem;
   background-position: center;
   background-repeat: no-repeat;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LOW VISION ADDITIONS — apply unconditionally in both light and dark
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Minimum touch target enforcement */
+button, [role="button"], a.nav-link, .pill, .status-badge {
+  min-height: 2.25rem;
+  min-width: 2.25rem;
+}
+
+/* Larger base text for labels */
+.intake-label, .field-label {
+  font-size: 0.8125rem;
+}
+
+/* High contrast focus ring */
+:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DARK MODE OVERRIDES
+   Overrides hardcoded Tailwind utility classes that resist CSS variable
+   inheritance. Each rule appears twice: once for the OS-preference path
+   and once for the manual [data-theme="dark"] toggle path.
+   !important is required because Tailwind static classes have no
+   specificity advantage — these selectors need !important to win.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── OS-preference path removed: dark mode requires explicit [data-theme="dark"] ── */
+/* @media (prefers-color-scheme: dark) block intentionally omitted */
+
+/* ── Manual [data-theme="dark"] path ───────────────────────────────────── */
+[data-theme="dark"] body                { background: var(--bg-page) !important; color: var(--text-primary) !important; }
+[data-theme="dark"] .bg-white           { background-color: var(--bg-card) !important; }
+[data-theme="dark"] .bg-slate-50,
+[data-theme="dark"] .bg-gray-50,
+[data-theme="dark"] .bg-slate-100,
+[data-theme="dark"] .bg-gray-100        { background-color: var(--bg-card-alt) !important; }
+[data-theme="dark"] .text-slate-800,
+[data-theme="dark"] .text-slate-900,
+[data-theme="dark"] .text-gray-800,
+[data-theme="dark"] .text-gray-900      { color: var(--text-primary) !important; }
+[data-theme="dark"] .text-slate-600,
+[data-theme="dark"] .text-slate-700,
+[data-theme="dark"] .text-gray-600,
+[data-theme="dark"] .text-gray-700      { color: var(--text-secondary) !important; }
+[data-theme="dark"] .text-slate-400,
+[data-theme="dark"] .text-slate-500,
+[data-theme="dark"] .text-gray-400,
+[data-theme="dark"] .text-gray-500      { color: var(--text-muted) !important; }
+[data-theme="dark"] .border-slate-200,
+[data-theme="dark"] .border-gray-200    { border-color: var(--border-default) !important; }
+[data-theme="dark"] .border-slate-100,
+[data-theme="dark"] .border-gray-100    { border-color: var(--border-subtle) !important; }
+[data-theme="dark"] .border-slate-300,
+[data-theme="dark"] .border-gray-300    { border-color: var(--border-strong) !important; }
+[data-theme="dark"] .divide-slate-100 > * + * { border-color: var(--border-subtle) !important; }
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="dark"] select,
+[data-theme="dark"] textarea            { background-color: var(--bg-input) !important; color: var(--text-primary) !important; border-color: var(--border-strong) !important; }
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder { color: var(--text-muted) !important; }
+[data-theme="dark"] #search-results,
+[data-theme="dark"] #reject-dropdown,
+[data-theme="dark"] #tools-dropdown,
+[data-theme="dark"] .status-menu,
+[data-theme="dark"] [id$="-results"],
+[data-theme="dark"] [class*="absolute"][class*="bg-white"],
+[data-theme="dark"] [class*="absolute"][class*="bg-slate"] { background-color: var(--bg-dropdown) !important; border-color: var(--border-default) !important; }
+[data-theme="dark"] thead th,
+[data-theme="dark"] .th                 { background-color: var(--bg-card) !important; color: var(--text-secondary) !important; border-color: var(--border-default) !important; }
+[data-theme="dark"] tbody tr:hover      { background-color: var(--bg-hover) !important; }
+[data-theme="dark"] #dashboard-table-wrap { background-color: var(--bg-card) !important; border-color: var(--border-default) !important; }
+[data-theme="dark"] .pill-inactive      { background-color: var(--bg-card) !important; color: var(--text-secondary) !important; border-color: var(--border-default) !important; }
+[data-theme="dark"] .pill-inactive:hover { background-color: var(--bg-hover) !important; }
+[data-theme="dark"] .overflow-y-auto,
+[data-theme="dark"] .overflow-x-auto   { background-color: var(--bg-card) !important; }
+[data-theme="dark"] .row-select-skin   { background-color: var(--bg-input) !important; border-color: var(--border-strong) !important; }
+[data-theme="dark"] .status-menu       { background-color: var(--bg-dropdown) !important; border-color: var(--border-default) !important; }
+[data-theme="dark"] .status-menu a,
+[data-theme="dark"] .status-menu button { color: var(--text-primary) !important; }
+[data-theme="dark"] .status-menu a:hover,
+[data-theme="dark"] .status-menu button:hover { background-color: var(--bg-hover) !important; }
+[data-theme="dark"] footer              { background-color: var(--bg-page) !important; border-color: var(--border-default) !important; }
+[data-theme="dark"] ::-webkit-scrollbar-track { background: var(--scrollbar-track) !important; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb) !important; }
+/* Status row accents */
+[data-theme="dark"] tr.status-PROCESSING  { box-shadow: inset 5px 0 0 0 var(--status-processing-dot) !important; }
+[data-theme="dark"] tr.status-FINALIZE    { box-shadow: inset 5px 0 0 0 var(--status-finalize-dot) !important; }
+[data-theme="dark"] tr.status-HOLD        { box-shadow: inset 5px 0 0 0 var(--status-hold-dot) !important; }
+[data-theme="dark"] tr.status-EFILE-READY { box-shadow: inset 5px 0 0 0 var(--status-efile-dot) !important; }
+[data-theme="dark"] tr.status-PICKUP      { box-shadow: inset 5px 0 0 0 var(--status-pickup-dot) !important; }
+[data-theme="dark"] tr.status-LOG-OUT     { box-shadow: inset 5px 0 0 0 var(--status-logout-dot) !important; }
+[data-theme="dark"] tr.status-REJECTED    { box-shadow: inset 5px 0 0 0 var(--status-rejected-dot) !important; }
+/* Status dots */
+[data-theme="dark"] .dot-amber  { background: var(--status-processing-dot) !important; }
+[data-theme="dark"] .dot-orange { background: var(--status-finalize-dot) !important; }
+[data-theme="dark"] .dot-hold   { background: var(--status-hold-dot) !important; }
+[data-theme="dark"] .dot-indigo { background: var(--status-efile-dot) !important; }
+[data-theme="dark"] .dot-teal   { background: var(--status-pickup-dot) !important; }
+[data-theme="dark"] .dot-slate  { background: var(--status-logout-dot) !important; }
+/* Semantic surfaces */
+[data-theme="dark"] .bg-amber-50        { background-color: #2d2210 !important; }
+[data-theme="dark"] .text-amber-700,
+[data-theme="dark"] .text-amber-800,
+[data-theme="dark"] .text-amber-900     { color: #e8c47a !important; }
+[data-theme="dark"] .border-amber-200,
+[data-theme="dark"] .border-amber-300   { border-color: #4a3a1a !important; }
+[data-theme="dark"] .bg-red-50          { background-color: #2d1a1a !important; }
+[data-theme="dark"] .text-red-600,
+[data-theme="dark"] .text-red-700,
+[data-theme="dark"] .text-red-800       { color: #e88a8a !important; }
+[data-theme="dark"] .border-red-100,
+[data-theme="dark"] .border-red-200     { border-color: #4a2a2a !important; }
+[data-theme="dark"] .bg-green-50        { background-color: #1a2d1a !important; }
+[data-theme="dark"] .text-green-500,
+[data-theme="dark"] .text-green-600,
+[data-theme="dark"] .text-green-700,
+[data-theme="dark"] .text-green-800     { color: #86c98a !important; }
+[data-theme="dark"] .border-green-200   { border-color: #2a4a2a !important; }
+[data-theme="dark"] .bg-blue-50         { background-color: #1a2a3d !important; }
+[data-theme="dark"] .text-blue-600,
+[data-theme="dark"] .text-blue-700,
+[data-theme="dark"] .text-blue-800      { color: #90bde8 !important; }
+[data-theme="dark"] .border-blue-200    { border-color: #2a4a6a !important; }
+[data-theme="dark"] .bg-indigo-50       { background-color: #1e1a3d !important; }
+[data-theme="dark"] .text-indigo-600,
+[data-theme="dark"] .text-indigo-700    { color: #a8a2e8 !important; }
+[data-theme="dark"] .form-badge         { background: #3a3830 !important; color: var(--text-primary) !important; border-color: var(--border-default) !important; }
+[data-theme="dark"] .editable:hover     { background: #3D1820 !important; box-shadow: 0 0 0 2px #5A2530 !important; }
+[data-theme="dark"] #back-to-top        { background-color: var(--bg-card-alt) !important; border-color: var(--border-strong) !important; }
+/* Intake form */
+[data-theme="dark"] .rounded-2xl.bg-white,
+[data-theme="dark"] .rounded-xl.bg-white { background-color: var(--bg-card) !important; }
+[data-theme="dark"] .intake-label       { color: var(--text-secondary) !important; }
+[data-theme="dark"] .intake-input,
+[data-theme="dark"] .intake-input-sm    { background-color: var(--bg-input) !important; color: var(--text-primary) !important; border-color: var(--border-strong) !important; }
+[data-theme="dark"] .dependent-row      { border-color: var(--border-subtle) !important; }
+[data-theme="dark"] .section-pill       { color: var(--text-muted) !important; border-color: var(--border-default) !important; }
+[data-theme="dark"] .section-pill.active { background-color: #3D1820 !important; border-color: var(--color-primary) !important; color: var(--text-primary) !important; }
+[data-theme="dark"] .fixed.bottom-0     { background-color: var(--bg-card) !important; border-color: var(--border-default) !important; }
+/* Theme toggle hover */
+#theme-toggle:hover                     { background-color: var(--bg-hover); }
+
+/* ── Part 4: Status badge utility classes ─────────────────────────────── */
+.sb-processing {
+  background-color: var(--status-processing-bg);
+  color:            var(--status-processing-text);
+  border-color:     var(--status-processing-border);
+}
+.sb-hold {
+  background-color: var(--status-hold-bg);
+  color:            var(--status-hold-text);
+  border-color:     var(--status-hold-border);
+}
+.sb-finalize {
+  background-color: var(--status-finalize-bg);
+  color:            var(--status-finalize-text);
+  border-color:     var(--status-finalize-border);
+}
+.sb-pickup {
+  background-color: var(--status-pickup-bg);
+  color:            var(--status-pickup-text);
+  border-color:     var(--status-pickup-border);
+}
+.sb-efile {
+  background-color: var(--status-efile-bg);
+  color:            var(--status-efile-text);
+  border-color:     var(--status-efile-border);
+}
+.sb-logout {
+  background-color: var(--status-logout-bg);
+  color:            var(--status-logout-text);
+  border-color:     var(--status-logout-border);
+}
+.sb-rejected {
+  background-color: var(--status-rejected-bg);
+  color:            var(--status-rejected-text);
+  border-color:     var(--status-rejected-border);
+}
+.sb-pending {
+  background-color: var(--status-pending-bg);
+  color:            var(--status-pending-text);
+  border-color:     var(--status-pending-border);
+}
+.sb-default {
+  background-color: var(--bg-card-alt, #f4f3f1);
+  color:            var(--text-muted, #6a6560);
+  border-color:     var(--border-default, #d0cdc8);
+}
+
+/* ── Part 5: Intake section header ────────────────────────────────────── */
+.intake-section-header {
+  background-color: var(--nav-bg);
+  color: #ffffff;
+  border-bottom: 1px solid var(--border-default);
+}
+[data-theme="dark"] .intake-section-header {
+  background-color: var(--nav-bg);
+  color: #ffffff;
+  border-bottom-color: var(--border-strong, var(--border-default));
+}
+
+/* ── Part 6: Primary action button ────────────────────────────────────── */
+.btn-primary {
+  background-color: var(--color-primary);
+  color: #ffffff;
+  border-color: var(--color-primary-hover);
+}
+.btn-primary:hover {
+  background-color: var(--color-primary-hover);
+}
+
+/* ── Part 7: Tour animations & button polish ───────────────────────────── */
+@keyframes tourFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Pulse ring on tour-highlighted element */
+@keyframes tourPulse {
+  0%   { box-shadow: 0 0 0 3px var(--color-primary, #c08040), 0 0 0 7px rgba(192,128,64,0.18), 0 0 0 9999px rgba(0,0,0,0.48); }
+  50%  { box-shadow: 0 0 0 5px var(--color-primary, #c08040), 0 0 0 10px rgba(192,128,64,0.10), 0 0 0 9999px rgba(0,0,0,0.48); }
+  100% { box-shadow: 0 0 0 3px var(--color-primary, #c08040), 0 0 0 7px rgba(192,128,64,0.18), 0 0 0 9999px rgba(0,0,0,0.48); }
+}
+[data-taxops-tour-hl] {
+  animation: tourPulse 2s ease-in-out infinite;
+}
+
+/* Countdown bar for presentation mode */
+@keyframes tourCountdown {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+/* Smooth hover on tour nav buttons */
+[data-taxops-tour="next"]:hover       { filter: brightness(1.1); }
+[data-taxops-tour="back"]:hover       { background: var(--nav-hover-bg) !important; }
+[data-taxops-tour="pause-play"]:hover { background: var(--nav-hover-bg) !important; }
+[data-taxops-tour="skip"]:hover,
+[data-taxops-tour="close-x"]:hover,
+[data-taxops-tour="modal-skip"]:hover { opacity: 1 !important; color: var(--text-primary) !important; }

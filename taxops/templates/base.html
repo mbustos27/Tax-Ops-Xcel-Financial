@@ -73,7 +73,7 @@
         {% set tools_active =
             active_page in ('upload','source_compare','import_audit','merge','efile_batch','audit_log',
                             'logout','efile','extension','payments','review','season_rollover','backup_admin','failed_docs','admin_users',
-                            'email_inbox')
+                            'email_inbox','sender_rules')
             or request.path.startswith('/email-inbox')
         %}
         {% if _has_any_tools %}
@@ -178,6 +178,10 @@
             <a href="{{ url_for('users.admin_users') }}"
                class="tools-item {% if active_page == 'admin_users' %}tools-item-active{% endif %}">
               {{ _('Staff Accounts') }}
+            </a>
+            <a href="{{ url_for('sender_rules.sender_rules_admin') }}"
+               class="tools-item {% if active_page == 'sender_rules' %}tools-item-active{% endif %}">
+              {{ _('Sender Rules') }}
             </a>
             <a href="{{ url_for('audit_log_admin') }}"
                class="tools-item {% if active_page == 'audit_log' %}tools-item-active{% endif %}">

@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Sender Rules — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="p-6 max-w-4xl mx-auto space-y-8">
+
+  <div>
+    <h1 class="text-2xl font-bold" style="color:var(--text-primary)">Sender Rules</h1>
+    <p class="text-sm mt-0.5" style="color:var(--text-secondary)">
+      Allow/block rules the email watcher checks before the built-in promotional list. An explicit allow always wins;
+      an explicit block is suppressed as <code>sender_rule_block</code>. Personal domains (Gmail, Yahoo, etc.) can only
+      be blocked at the address level, never the whole domain.
+    </p>
+  </div>
+
+  {# ── Add rule form ──────────────────────────────────────────────────────── #}
+  <section class="rounded-xl p-5 space-y-4" style="background:var(--card-bg);border:1px solid var(--border-subtle)">
+    <h2 class="text-sm font-bold uppercase tracking-wide" style="color:var(--text-secondary)">Add Rule</h2>
+
+    <div id="create-result" class="hidden rounded-lg px-4 py-2.5 text-sm font-medium"></div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      <div class="sm:col-span-2">
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-secondary)" for="new-domain">Domain or address</label>
+        <input id="new-domain" type="text" autocomplete="off" placeholder="e.g. vendor.com or client@gmail.com"
+               class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+               style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-secondary)" for="new-scope">Scope</label>
+        <select id="new-scope"
+                class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+          <option value="domain">Domain</option>
+          <option value="address">Address</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-secondary)" for="new-action">Action</label>
+        <select id="new-action"
+                class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+          <option value="block">Block</option>
+          <option value="allow">Allow</option>
+        </select>
+      </div>
+      <div class="sm:col-span-4">
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-secondary)" for="new-note">Note (optional)</label>
+        <input id="new-note" type="text" autocomplete="off" placeholder="Why this rule exists"
+               class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+               style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+      </div>
+    </div>
+
+    <button id="create-rule-btn" type="button"
+            class="px-5 py-2 rounded-lg text-sm font-semibold transition-opacity"
+            style="background:var(--btn-primary-bg);color:var(--btn-primary-text)">
+      Add rule
+    </button>
+  </section>
+
+  {# ── Rules table ────────────────────────────────────────────────────────── #}
+  <section class="rounded-xl overflow-hidden" style="border:1px solid var(--border-subtle)">
+    <div class="px-5 py-3 border-b" style="background:var(--bg-subtle);border-color:var(--border-subtle)">
+      <span class="text-xs font-bold tracking-widest uppercase" style="color:var(--text-secondary)">
+        {{ sender_rules|length }} rule{{ 's' if sender_rules|length != 1 else '' }}
+      </span>
+    </div>
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:var(--bg-subtle);border-bottom:1px solid var(--border-subtle)">
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Domain / Address</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Scope</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Action</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Note</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Created</th>
+          <th class="px-4 py-2.5"></th>
+        </tr>
+      </thead>
+      <tbody id="rules-tbody">
+        {% for r in sender_rules %}
+        <tr id="rule-row-{{ r.id }}" class="border-t" style="border-color:var(--border-subtle)">
+          <td class="px-4 py-3 font-mono text-xs" style="color:var(--text-primary)">{{ r.domain }}</td>
+          <td class="px-4 py-3" style="color:var(--text-secondary)">{{ r.rule_scope }}</td>
+          <td class="px-4 py-3">
+            <span class="text-xs px-2 py-0.5 rounded font-medium"
+                  style="{% if r.action == 'block' %}background:color-mix(in srgb,#dc2626 12%,transparent);color:#dc2626{% else %}background:color-mix(in srgb,#16a34a 12%,transparent);color:#16a34a{% endif %}">
+              {{ r.action }}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-xs" style="color:var(--text-secondary)">{{ r.note or '—' }}</td>
+          <td class="px-4 py-3 text-xs" style="color:var(--text-secondary)">
+            {{ (r.created_at or '')[:10] }} {{ r.created_by or '' }}
+          </td>
+          <td class="px-4 py-3">
+            <button onclick="deleteRule({{ r.id }}, this)"
+                    class="text-xs px-2 py-1 rounded font-medium"
+                    style="background:color-mix(in srgb,#6b7280 12%,transparent);color:#6b7280">
+              Remove
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="px-4 py-8 text-center text-sm italic" style="color:var(--text-secondary)">No sender rules yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<script>
+function showResult(el, ok, msg) {
+  el.className = 'rounded-lg px-4 py-2.5 text-sm font-medium';
+  el.style.background = ok ? '#d1fae5' : '#fee2e2';
+  el.style.color = ok ? '#065f46' : '#991b1b';
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+document.getElementById('create-rule-btn').addEventListener('click', async () => {
+  const res = document.getElementById('create-result');
+  const domain = document.getElementById('new-domain').value.trim();
+  const rule_scope = document.getElementById('new-scope').value;
+  const action = document.getElementById('new-action').value;
+  const note = document.getElementById('new-note').value.trim();
+  if (!domain) { showResult(res, false, 'Domain or address is required.'); return; }
+
+  const r = await _csrfFetch('/api/admin/sender-rules', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ domain, rule_scope, action, note }),
+  });
+  const d = await r.json();
+  if (d.success) {
+    location.reload();
+  } else {
+    showResult(res, false, d.error || 'Could not create rule.');
+  }
+});
+
+async function deleteRule(id, btn) {
+  if (!confirm('Remove this sender rule?')) return;
+  btn.disabled = true;
+  const r = await _csrfFetch(`/api/admin/sender-rules/${id}/delete`, {method: 'POST'});
+  const d = await r.json();
+  if (d.success) {
+    const row = document.getElementById(`rule-row-${id}`);
+    if (row) row.remove();
+  } else {
+    btn.disabled = false;
+    alert(d.error || 'Could not remove rule.');
+  }
+}
+</script>
+{% endblock %}

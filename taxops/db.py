@@ -10,7 +10,7 @@ from form_schema import CREATE_TABLE_FRAGMENTS_DOC7, get_form_alter_columns_by_t
 # DEBT-6: increment this integer whenever a new migration block is added to
 # _migrate_existing_tables.  The value is stored in app_settings and surfaced
 # via /health so ops can confirm a deploy applied all migrations.
-CURRENT_SCHEMA_VERSION = 10
+CURRENT_SCHEMA_VERSION = 11
 
 _log = logging.getLogger(__name__)
 
@@ -320,17 +320,11 @@ def init_db(conn: sqlite3.Connection) -> None:
           is_deleted        INTEGER NOT NULL DEFAULT 0
         );
 
-        CREATE TABLE IF NOT EXISTS email_classifications (
-          id              INTEGER PRIMARY KEY AUTOINCREMENT,
-          sender_email    TEXT,
-          sender_domain   TEXT,
-          subject_snippet TEXT,
-          classification  TEXT NOT NULL,
-          confirmed_by    TEXT,
-          confirmed_at    TEXT,
-          created_at      TEXT NOT NULL,
-          source          TEXT NOT NULL DEFAULT 'auto'
-        );
+        -- email_classifications: archived by Phase 2.2 (see _migrate_existing_tables,
+        -- "Phase 2.2" block below) — the 6-layer classifier that wrote to it is gone.
+        -- Not created for fresh installs; pre-existing rows live on as
+        -- archive_email_classifications for anyone doing archaeology
+        -- (see git tag pre-email-simplification).
 
         -- Staff sender allow/block rules. `domain` holds either a bare domain or a
         -- full address depending on `rule_scope` (added via migration below).
@@ -357,16 +351,8 @@ def init_db(conn: sqlite3.Connection) -> None:
           reviewed_at      TEXT
         );
 
-        CREATE TABLE IF NOT EXISTS domain_classifications (
-          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-          domain              TEXT NOT NULL UNIQUE,
-          classification      TEXT NOT NULL,
-          confidence_count    INTEGER NOT NULL DEFAULT 1,
-          last_seen           TEXT NOT NULL,
-          last_confirmed_by   TEXT,
-          last_confirmed_at   TEXT,
-          graduated           INTEGER NOT NULL DEFAULT 0
-        );
+        -- domain_classifications: archived by Phase 2.2 alongside email_classifications
+        -- (domain-graduation code path confirmed fully dead — no reader or writer).
 
         CREATE TABLE IF NOT EXISTS extraction_queue (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -465,17 +451,20 @@ def init_db(conn: sqlite3.Connection) -> None:
         -- Part 4: email processing log — tracks outcome and retry count per (uid, folder).
         -- Privacy rules: no email body, no full sender address, no SSN.
         CREATE TABLE IF NOT EXISTS email_processing_log (
-          id               INTEGER PRIMARY KEY AUTOINCREMENT,
-          message_uid      TEXT NOT NULL,
-          imap_folder      TEXT NOT NULL,
-          sender_domain    TEXT,
-          subject_snippet  TEXT,
-          outcome          TEXT NOT NULL,
-          attempt_count    INTEGER NOT NULL DEFAULT 1,
-          last_attempt_at  TEXT NOT NULL,
-          error_message    TEXT,
-          doc_id           INTEGER REFERENCES return_documents(id),
-          return_id        INTEGER REFERENCES returns(id),
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          message_uid         TEXT NOT NULL,
+          imap_folder         TEXT NOT NULL,
+          sender_domain       TEXT,
+          subject_snippet     TEXT,
+          outcome             TEXT NOT NULL,
+          attempt_count       INTEGER NOT NULL DEFAULT 1,
+          last_attempt_at     TEXT NOT NULL,
+          error_message       TEXT,
+          doc_id              INTEGER REFERENCES return_documents(id),
+          return_id           INTEGER REFERENCES returns(id),
+          -- Phase 2.1: which suppression layer fired (sender_rule_block,
+          -- known_promotional, drive_share) — NULL when not suppressed.
+          suppression_reason  TEXT,
           UNIQUE(message_uid, imap_folder)
         );
 
@@ -516,8 +505,6 @@ def init_db(conn: sqlite3.Connection) -> None:
         -- ACCOUNTING-1: fast queue status scans.
         CREATE INDEX IF NOT EXISTS idx_receipt_queue_status ON receipt_queue(status, created_at);
         CREATE INDEX IF NOT EXISTS idx_receipt_queue_doc    ON receipt_queue(return_document_id);
-        CREATE INDEX IF NOT EXISTS idx_email_class_email    ON email_classifications(sender_email);
-        CREATE INDEX IF NOT EXISTS idx_email_class_domain   ON email_classifications(sender_domain);
         CREATE INDEX IF NOT EXISTS idx_audit_log_user       ON audit_log(user_id);
         CREATE INDEX IF NOT EXISTS idx_returns_status_year  ON returns(client_status, tax_year);
         CREATE INDEX IF NOT EXISTS idx_returns_proc_year    ON returns(processor, tax_year);
@@ -865,15 +852,6 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "needs_calculation INTEGER NOT NULL DEFAULT 0",
             "cc_fee REAL",
         ],
-        "email_classifications": [
-            "reviewed_missed INTEGER NOT NULL DEFAULT 0",
-            "email_routed_ok INTEGER NOT NULL DEFAULT 0",
-            # EMAIL-6: fuzzy-match score (0–100) from name_matcher
-            "match_score INTEGER",
-            # EMAIL-7: matched client id; pending_review when score < ACCEPT_THRESHOLD
-            "matched_client_id INTEGER",
-            "match_status TEXT NOT NULL DEFAULT 'auto'",
-        ],
         "import_batches": [
             "row_count INTEGER DEFAULT 0",
             "success_count INTEGER DEFAULT 0",
@@ -913,6 +891,10 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             # suppression entries, hence the default.
             "action TEXT NOT NULL DEFAULT 'block'",
         ],
+        "email_processing_log": [
+            # Phase 2.1: records which suppression layer fired for skipped mail.
+            "suppression_reason TEXT",
+        ],
     }
 
     for table_name, columns in table_columns.items():
@@ -947,6 +929,25 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         if _known_count == 0:
             conn.execute("DROP TABLE known_sender_rules")
 
+    # Phase 2.2 (email system revamp): archive the legacy 6-layer-classifier
+    # tables. Confirmed dead — no live code path reads or writes either table
+    # (db_tools.py's gather_season_dataplane still SELECTs email_classifications
+    # for the since-deleted AI chat feature, but that module has no live caller
+    # and its _qf() helper degrades to [] on a missing table, so this rename is
+    # safe). RENAME, not DROP, so the historical rows (email_classifications had
+    # ~175, domain_classifications ~50 as of the Phase 1 audit) stay reachable
+    # for archaeology alongside the `pre-email-simplification` git tag.
+    for _legacy_table, _archive_table in (
+        ("email_classifications", "archive_email_classifications"),
+        ("domain_classifications", "archive_domain_classifications"),
+    ):
+        _legacy_exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (_legacy_table,),
+        ).fetchone()
+        if _legacy_exists:
+            conn.execute(f"ALTER TABLE {_legacy_table} RENAME TO {_archive_table}")
+
     # New-table migrations — safe to run on existing databases
     conn.execute(
         """
@@ -967,21 +968,9 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS email_classifications (
-          id              INTEGER PRIMARY KEY AUTOINCREMENT,
-          sender_email    TEXT,
-          sender_domain   TEXT,
-          subject_snippet TEXT,
-          classification  TEXT NOT NULL,
-          confirmed_by    TEXT,
-          confirmed_at    TEXT,
-          created_at      TEXT NOT NULL,
-          source          TEXT NOT NULL DEFAULT 'auto'
-        )
-        """
-    )
+    # email_classifications: archived by Phase 2.2 — see the rename block below.
+    # Not (re-)created here so a legacy install that has already been migrated
+    # stays migrated across restarts.
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS email_sender_rules (
@@ -1011,20 +1000,7 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS domain_classifications (
-          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-          domain              TEXT NOT NULL UNIQUE,
-          classification      TEXT NOT NULL,
-          confidence_count    INTEGER NOT NULL DEFAULT 1,
-          last_seen           TEXT NOT NULL,
-          last_confirmed_by   TEXT,
-          last_confirmed_at   TEXT,
-          graduated           INTEGER NOT NULL DEFAULT 0
-        )
-        """
-    )
+    # domain_classifications: archived by Phase 2.2 alongside email_classifications.
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS dashboard_saved_filters (
@@ -1123,8 +1099,6 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_missing_docs_open    ON missing_docs(return_id, is_resolved)",
         "CREATE INDEX IF NOT EXISTS idx_extraction_status    ON extraction_queue(status, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_extraction_return    ON extraction_queue(return_id)",
-        "CREATE INDEX IF NOT EXISTS idx_email_class_email    ON email_classifications(sender_email)",
-        "CREATE INDEX IF NOT EXISTS idx_email_class_domain   ON email_classifications(sender_domain)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_user       ON audit_log(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_returns_status_year  ON returns(client_status, tax_year)",
         "CREATE INDEX IF NOT EXISTS idx_returns_proc_year    ON returns(processor, tax_year)",
@@ -1195,17 +1169,18 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS email_processing_log (
-          id               INTEGER PRIMARY KEY AUTOINCREMENT,
-          message_uid      TEXT NOT NULL,
-          imap_folder      TEXT NOT NULL,
-          sender_domain    TEXT,
-          subject_snippet  TEXT,
-          outcome          TEXT NOT NULL,
-          attempt_count    INTEGER NOT NULL DEFAULT 1,
-          last_attempt_at  TEXT NOT NULL,
-          error_message    TEXT,
-          doc_id           INTEGER REFERENCES return_documents(id),
-          return_id        INTEGER REFERENCES returns(id),
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          message_uid         TEXT NOT NULL,
+          imap_folder         TEXT NOT NULL,
+          sender_domain       TEXT,
+          subject_snippet     TEXT,
+          outcome             TEXT NOT NULL,
+          attempt_count       INTEGER NOT NULL DEFAULT 1,
+          last_attempt_at     TEXT NOT NULL,
+          error_message       TEXT,
+          doc_id              INTEGER REFERENCES return_documents(id),
+          return_id           INTEGER REFERENCES returns(id),
+          suppression_reason  TEXT,
           UNIQUE(message_uid, imap_folder)
         )
         """

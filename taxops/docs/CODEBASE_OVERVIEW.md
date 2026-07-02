@@ -85,10 +85,10 @@ Schema version: **4** (checked at startup via `app_settings`, surfaced in `/heal
 | `return_documents` | Files attached to returns — path, hash, source, extraction status |
 | `extraction_queue` | Pending/completed LLM field-extraction jobs |
 | `email_inbox` | Holding area for IMAP attachments awaiting staff assignment to a return |
-| `email_processing_log` | Restart-safe IMAP UID dedup log — (uid, folder) → terminal outcome |
-| `email_sender_rules` | Staff allow/block rules for sender suppression (not yet wired into `mail_watcher.py` — see §6) |
-| `email_classifications` | **Dead table, not read/written by current code.** History from the pre-simplification 6-layer classifier. Scheduled for archival rename to `archive_email_classifications`; see `pre-email-simplification` git tag for the historical implementation |
-| `domain_classifications` | **Dead table, not read/written by current code.** Same era as above; scheduled for archival rename to `archive_domain_classifications` |
+| `email_processing_log` | Restart-safe IMAP UID dedup log — (uid, folder) → terminal outcome + `suppression_reason` |
+| `email_sender_rules` | Staff allow/block rules for sender suppression, wired into `mail_watcher.py` suppression (see §6); managed via `/admin/sender-rules` |
+| `archive_email_classifications` | **Dead, do not read/write.** Renamed from `email_classifications` (Phase 2.2) — history from the pre-simplification 6-layer classifier. See `pre-email-simplification` git tag for the historical implementation |
+| `archive_domain_classifications` | **Dead, do not read/write.** Renamed from `domain_classifications` (Phase 2.2) — same era as above |
 | `ai_chat_common_answers` | **Dead table** — disk cache for the removed AI chat assistant (see §5) |
 | `audit_log` | Immutable write audit trail with retention |
 | `app_settings` | Key-value store (schema_version, audit retention, etc.) |
@@ -167,12 +167,16 @@ mail-watcher poll cycle (every IMAP_POLL_INTERVAL, default 120s)
        └─ dedup: in-process memo (_processed_uids, FIFO-capped) →
                  email_processing_log (authoritative; terminal outcomes never re-fetched)
        └─ _fetch_message_data()          ← BODY.PEEK[] — never RFC822, never marks \Seen
-       └─ suppression (no LLM, no per-message DB read):
-            _is_promotional(domain)      ← KNOWN_PROMOTIONAL_DOMAINS / MASS_MAILING_PREFIXES
-            _is_drive_share(subject, body)
+       └─ _suppression_decision()        ← no LLM; ≤1 email_sender_rules SELECT per cycle
+                                            (_load_sender_rules), precedence:
+                                            staff allow > staff block > _is_drive_share()
+                                            > _is_promotional() (KNOWN_PROMOTIONAL_DOMAINS /
+                                            MASS_MAILING_PREFIXES) > default pass-through
        └─ _save_to_inbox()               ← saves .pdf/.jpg/.jpeg/.png parts to EMAIL_INBOX_DIR,
                                             inserts one email_inbox row per file (is_assigned=0)
        └─ email_processing_log upsert    ← outcome: success | skip | no_attachment | retry
+                                            + suppression_reason (sender_rule_block |
+                                            drive_share | known_promotional | NULL)
 ```
 
 **Staff assignment (`/email-inbox` UI):**
@@ -183,11 +187,18 @@ mail-watcher poll cycle (every IMAP_POLL_INTERVAL, default 120s)
    extraction, marks the `email_inbox` row `is_assigned=1`
 3. `POST /api/email-inbox/<id>/delete` soft-deletes (`is_deleted=1`) — the file stays on disk
 
-**Sender rules:** `email_sender_rules` holds staff allow/block rules but `_is_promotional()`
-does not currently consult it — suppression relies solely on the hardcoded
-`KNOWN_PROMOTIONAL_DOMAINS`/`MASS_MAILING_PREFIXES` config lists. Wiring the rules table back
-into suppression (with an allow > block > hardcoded-list precedence and a minimal admin UI to
-maintain it) is tracked as follow-up work.
+**Sender rules (Phase 2.1):** `email_sender_rules` (`rule_scope` domain|address, `action`
+allow|block) is loaded once per poll cycle by `_load_sender_rules()` and consulted by
+`_suppression_decision()` ahead of the hardcoded promotional lists. Personal email domains
+(`gmail.com`, etc.) can only be blocked at the address level — enforced both at suppression
+time and by the admin UI. Staff manage rules at `/admin/sender-rules`
+(`routes/sender_rules.py`, Admin-only: list/add/remove).
+
+**Manual-tagging indicator (Phase 2.3):** `utils.needs_manual_tagging(filename)` mirrors
+`extractor.py`'s image-skip condition (`.jpg/.jpeg/.png` + `EXTRACTOR_VISION_ENABLED=false`).
+`/api/email-inbox/items` and the `/email-inbox` page expose `needs_manual_tagging` per item;
+`/return/<id>` shows a "Needs manual tag" badge on documents with `extraction_status='skipped'`
+and no assigned form type.
 
 **Diagnostic log per poll cycle:**
 `Folder INBOX: 2 new of 5 unseen (3 already seen)`

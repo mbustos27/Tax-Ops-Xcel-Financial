@@ -86,6 +86,38 @@ def test_items_never_includes_file_path(client_logged_in, taxops_db_path, inbox_
     assert items and "file_path" not in items[0]
 
 
+def test_items_flags_image_needs_manual_tagging_when_vision_disabled(
+    client_logged_in, taxops_db_path, inbox_dir, monkeypatch
+):
+    """Phase 2.3: image attachments are flagged needs_manual_tagging=True when
+    EXTRACTOR_VISION_ENABLED is false, since extractor.py skips (never retries)
+    raster images in that mode."""
+    import config as cfg
+    monkeypatch.setattr(cfg, "EXTRACTOR_VISION_ENABLED", False)
+    _seed_inbox_item(taxops_db_path, 20, str(inbox_dir / "receipt.jpg"),
+                      filename="receipt.jpg", original_filename="receipt.jpg")
+    _seed_inbox_item(taxops_db_path, 21, str(inbox_dir / "w2.pdf"),
+                      filename="w2.pdf", original_filename="w2.pdf")
+
+    rv = client_logged_in.get("/api/email-inbox/items")
+    items = {i["id"]: i for i in rv.get_json()["items"]}
+    assert items[20]["needs_manual_tagging"] is True
+    assert items[21]["needs_manual_tagging"] is False
+
+
+def test_items_never_flags_manual_tagging_when_vision_enabled(
+    client_logged_in, taxops_db_path, inbox_dir, monkeypatch
+):
+    import config as cfg
+    monkeypatch.setattr(cfg, "EXTRACTOR_VISION_ENABLED", True)
+    _seed_inbox_item(taxops_db_path, 22, str(inbox_dir / "receipt.jpg"),
+                      filename="receipt.jpg", original_filename="receipt.jpg")
+
+    rv = client_logged_in.get("/api/email-inbox/items")
+    items = {i["id"]: i for i in rv.get_json()["items"]}
+    assert items[22]["needs_manual_tagging"] is False
+
+
 def test_items_requires_permission(client, taxops_db_path, inbox_dir):
     """Without login, the route must not return the inbox listing."""
     rv = client.get("/api/email-inbox/items")

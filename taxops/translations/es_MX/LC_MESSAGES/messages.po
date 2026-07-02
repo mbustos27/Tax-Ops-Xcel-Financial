@@ -4,9 +4,9 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: TaxOps\n"
+"Project-Id-Version:  TaxOps\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-22 10:00-0700\n"
+"POT-Creation-Date: 2026-05-22 10:32-0700\n"
 "PO-Revision-Date: 2026-05-22 10:00-0700\n"
 "Last-Translator: TaxOps Team\n"
 "Language: es_MX\n"
@@ -19,7 +19,9 @@ msgstr ""
 
 #: app.py:401
 msgid "CSRF token missing or invalid. Reload the page and try again."
-msgstr "Token de seguridad faltante o inválido. Recargue la página e intente de nuevo."
+msgstr ""
+"Token de seguridad faltante o inválido. Recargue la página e intente de "
+"nuevo."
 
 #: app.py:412
 #, python-format
@@ -42,144 +44,144 @@ msgstr "Cuenta no encontrada."
 msgid "New password must be different from the temporary password."
 msgstr "La nueva contraseña debe ser diferente a la contraseña temporal."
 
-#: app.py:1356
+#: app.py:1359
 msgid "Loading..."
 msgstr "Cargando..."
 
-#: app.py:1357
+#: app.py:1360
 msgid "Saving..."
 msgstr "Guardando..."
 
-#: app.py:1358
+#: app.py:1361
 msgid "Uploading..."
 msgstr "Subiendo..."
 
-#: app.py:1359
+#: app.py:1362
 msgid "Are you sure you want to delete this?"
 msgstr "¿Está seguro de que desea eliminar esto?"
 
-#: app.py:1360
+#: app.py:1363
 msgid "No results"
 msgstr "Sin resultados"
 
-#: app.py:1361
+#: app.py:1364
 msgid "Something went wrong. Please try again."
 msgstr "Ocurrió un error. Por favor intente de nuevo."
 
-#: app.py:1362
+#: app.py:1365
 msgid "Document uploaded successfully."
 msgstr "Documento subido exitosamente."
 
-#: app.py:1363
+#: app.py:1366
 msgid "Upload failed. Please try again."
 msgstr "Error al subir el archivo. Por favor intente de nuevo."
 
-#: app.py:1364
+#: app.py:1367
 msgid "Document deleted."
 msgstr "Documento eliminado."
 
-#: app.py:1365
+#: app.py:1368
 msgid "Classification saved."
 msgstr "Clasificación guardada."
 
-#: app.py:1366
+#: app.py:1369
 msgid "Your session has expired. Please sign in again."
 msgstr "Su sesión ha expirado. Por favor inicie sesión nuevamente."
 
-#: app.py:1368
+#: app.py:1371
 msgid "Find any client instantly"
-msgstr "Encuentra cualquier cliente al instante"
+msgstr "Encuentra a cualquier cliente al instante"
 
-#: app.py:1369
+#: app.py:1372
 msgid ""
 "Type a name or return number here. Results appear as you type. This is "
 "the fastest way to get to any client or return."
 msgstr ""
-"Escriba un nombre o número de declaración aquí. Los resultados aparecen "
-"mientras escribe. Esta es la forma más rápida de llegar a cualquier "
+"Escribe un nombre o número de declaración aquí. Los resultados aparecen "
+"mientras escribes. Esta es la forma más rápida de llegar a cualquier "
 "cliente o declaración."
 
-#: app.py:1370
+#: app.py:1373
 msgid "Track where every return stands"
-msgstr "Sigue el estado de cada declaración"
+msgstr "Da seguimiento al estado de cada declaración"
 
-#: app.py:1371
+#: app.py:1374
 msgid ""
 "These tabs filter by workflow status. PROCESSING means actively being "
 "worked. PICKUP means ready for the client. Click any tab to see only "
 "those returns."
 msgstr ""
-"Estas pestañas filtran por estado del proceso. EN PROCESO significa que "
-"se está trabajando activamente. LISTO PARA RECOGER significa que está "
-"listo para el cliente. Haga clic en cualquier pestaña para ver solo esas "
+"Estas pestañas filtran por estado del flujo de trabajo. PROCESSING "
+"significa que se está trabajando activamente. PICKUP significa que está "
+"lista para el cliente. Haz clic en cualquier pestaña para ver solo esas "
 "declaraciones."
 
-#: app.py:1372
+#: app.py:1375
 msgid "Every document in one place"
 msgstr "Todos los documentos en un solo lugar"
 
-#: app.py:1373
+#: app.py:1376
 msgid ""
 "W-2s, 1099s, and anything the client emails gets saved here "
 "automatically. You can also upload documents directly. Click any file to "
 "view it."
 msgstr ""
-"Los W-2, 1099 y todo lo que el cliente envíe por correo se guarda aquí "
-"automáticamente. También puede subir documentos directamente. Haga clic "
-"en cualquier archivo para verlo."
+"Los W-2, 1099 y cualquier documento que el cliente envíe por correo se "
+"guardan aquí automáticamente. También puedes subir documentos "
+"directamente. Haz clic en cualquier archivo para verlo."
 
-#: app.py:1374
+#: app.py:1377
 msgid "Change the return status"
-msgstr "Cambiar el estado de la declaración"
+msgstr "Cambia el estado de la declaración"
 
-#: app.py:1375
+#: app.py:1378
 msgid ""
 "Use this control to move the return through the workflow — from "
 "PROCESSING to FINALIZE to PICKUP — as you work it."
 msgstr ""
-"Use este control para mover la declaración por el flujo de trabajo — de "
-"EN PROCESO a FINALIZAR a LISTO PARA RECOGER — conforme la trabaja."
+"Usa este control para avanzar la declaración en el flujo de trabajo, de "
+"PROCESSING a FINALIZE y a PICKUP, conforme la vayas trabajando."
 
-#: app.py:1376
+#: app.py:1379
 msgid "Keep your team in sync"
-msgstr "Mantén a tu equipo sincronizado"
+msgstr "Mantén a tu equipo informado"
 
-#: app.py:1377
+#: app.py:1380
 msgid ""
 "Add notes visible to everyone on the team. Record what was discussed, "
 "what's outstanding, or anything the next person needs to know."
 msgstr ""
-"Agregue notas visibles para todo el equipo. Registre lo que se discutió, "
-"lo que está pendiente o cualquier cosa que la siguiente persona necesite "
+"Agrega notas visibles para todo el equipo. Registra lo que se habló, lo "
+"que sigue pendiente, o cualquier cosa que la siguiente persona necesite "
 "saber."
 
-#: app.py:1378
+#: app.py:1381
 msgid "Incoming client documents"
 msgstr "Documentos entrantes de clientes"
 
-#: app.py:1379
+#: app.py:1382
 msgid ""
 "When a client emails their documents they appear here. Review and confirm"
 " to attach them to the right return. The system matches clients "
 "automatically — you just verify."
 msgstr ""
-"Cuando un cliente envía sus documentos por correo aparecen aquí. Revise "
-"y confirme para adjuntarlos a la declaración correcta. El sistema "
-"empareja clientes automáticamente — usted solo verifica."
+"Cuando un cliente envía sus documentos por correo, aparecen aquí. "
+"Revísalos y confírmalos para vincularlos a la declaración correcta. El "
+"sistema relaciona a los clientes automáticamente; tú solo verificas."
 
-#: app.py:1380
+#: app.py:1383
 msgid "You are ready"
-msgstr "Está listo"
+msgstr "Estás listo"
 
-#: app.py:1381
+#: app.py:1384
 msgid ""
 "That covers the essentials. You can relaunch this tour anytime from the "
 "help icon in the top navigation. If you have questions check the runbook "
 "or ask your admin."
 msgstr ""
-"Eso cubre lo esencial. Puede volver a ver este recorrido en cualquier "
-"momento desde el ícono de ayuda en la navegación. Si tiene preguntas "
-"consulte el manual de operaciones o pregúntele a su administrador."
+"Eso cubre lo esencial. Puedes volver a iniciar este recorrido cuando "
+"quieras desde el ícono de ayuda en la barra de navegación superior. Si "
+"tienes dudas, consulta el manual o pregúntale a tu administrador."
 
 #: templates/base.html:48
 msgid "Dashboard"
@@ -197,7 +199,7 @@ msgstr "Cola de Entrega"
 msgid "E-File Queue"
 msgstr "Cola de E-File"
 
-#: templates/base.html:87
+#: templates/base.html:87 templates/payments.html:10
 msgid "Payments"
 msgstr "Pagos"
 
@@ -273,19 +275,1212 @@ msgstr "Privacidad: ACTIVADA"
 msgid "Privacy: OFF"
 msgstr "Privacidad: DESACTIVADA"
 
-#: templates/base.html:302
+#: templates/base.html:312
 msgid "Admin"
 msgstr "Administrador"
 
-#: templates/base.html:304
+#: templates/base.html:314
 msgid "Staff"
 msgstr "Personal"
 
-#: templates/base.html:314
+#: templates/base.html:324
 msgid "Sign out"
 msgstr "Cerrar sesión"
 
-#: templates/base.html:415
+#: templates/base.html:425
 msgid "Ops Runbook"
 msgstr "Manual de Operaciones"
+
+#: templates/dashboard.html:31
+msgid "Status:"
+msgstr "Estado:"
+
+#: templates/dashboard.html:33 templates/dashboard.html:47
+#: templates/dashboard.html:102
+msgid "All"
+msgstr "Todos"
+
+#: templates/dashboard.html:44
+msgid "Reject follow-up:"
+msgstr "Seguimiento de rechazos:"
+
+#: templates/dashboard.html:50
+msgid "Needs contact"
+msgstr "Necesita contacto"
+
+#: templates/dashboard.html:53
+msgid "Not contacted"
+msgstr "Sin contactar"
+
+#: templates/dashboard.html:54
+msgid "Contacted"
+msgstr "Contactado"
+
+#: templates/dashboard.html:55
+msgid "Follow-up needed"
+msgstr "Requiere seguimiento"
+
+#: templates/dashboard.html:56
+msgid "Resolved"
+msgstr "Resuelto"
+
+#: templates/dashboard.html:70
+msgid "Balance Due"
+msgstr "Saldo Pendiente"
+
+#: templates/dashboard.html:74
+#, fuzzy
+msgid "Late Intake"
+msgstr "+ Nuevo Cliente"
+
+#: templates/dashboard.html:78
+msgid "Slow Cycle"
+msgstr "Ciclo Lento"
+
+#: templates/dashboard.html:99
+msgid "Filter by preparer:"
+msgstr "Filtrar por preparador:"
+
+#: templates/dashboard.html:111
+msgid "selected"
+msgstr "seleccionado(s)"
+
+#: templates/dashboard.html:111
+msgid "persists between filters"
+msgstr "se mantiene entre filtros"
+
+#: templates/dashboard.html:114
+msgid "Select all visible"
+msgstr "Seleccionar todos visibles"
+
+#: templates/dashboard.html:118 templates/intake.html:125
+msgid "Clear"
+msgstr "Limpiar"
+
+#: templates/dashboard.html:121
+msgid "Quick filter…"
+msgstr "Filtro rápido…"
+
+#: templates/dashboard.html:134
+msgid "Export"
+msgstr "Exportar"
+
+#: templates/dashboard.html:141
+msgid "Saved:"
+msgstr "Guardados:"
+
+#: templates/dashboard.html:147
+msgid "Save current view…"
+msgstr "Guardar vista actual…"
+
+#: templates/dashboard.html:151
+msgid "None yet — narrow the list above, then save."
+msgstr "Ninguno aún — filtre la lista y luego guarde."
+
+#: templates/dashboard.html:184 templates/dashboard.html:236
+#: templates/payments.html:51
+msgid "Status"
+msgstr "Estado"
+
+#: templates/dashboard.html:193
+#, fuzzy
+msgid "Change status…"
+msgstr "Cambiar el estado de la declaración"
+
+#: templates/dashboard.html:198 templates/dashboard.html:237
+msgid "Preparer"
+msgstr "Preparador"
+
+#: templates/dashboard.html:231 templates/intake.html:76
+#: templates/payments.html:49 templates/review_queue.html:32
+msgid "Log #"
+msgstr "Log #"
+
+#: templates/dashboard.html:232
+msgid "TY"
+msgstr "AÑO"
+
+#: templates/dashboard.html:233 templates/payments.html:50
+#: templates/return_detail.html:548
+msgid "Client"
+msgstr "Cliente"
+
+#: templates/dashboard.html:234
+msgid "Forms"
+msgstr "Formularios"
+
+#: templates/dashboard.html:235
+msgid "Flags"
+msgstr "Indicadores"
+
+#: templates/dashboard.html:238
+msgid "Fee"
+msgstr "Honorario"
+
+#: templates/dashboard.html:239 templates/payments.html:58
+msgid "Balance"
+msgstr "Saldo"
+
+#: templates/dashboard.html:240
+#, fuzzy
+msgid "Intake"
+msgstr "+ Nuevo Cliente"
+
+#: templates/dashboard.html:393
+msgid "No returns found"
+msgstr "No se encontraron declaraciones"
+
+#: templates/dashboard.html:406
+msgid "Save filter view"
+msgstr "Guardar vista de filtros"
+
+#: templates/dashboard.html:407
+msgid "Name this preset. You can open it anytime from Saved below the filter bar."
+msgstr "Nombre este filtro. Puede abrirlo desde Guardados debajo de la barra."
+
+#: templates/dashboard.html:410
+msgid "Name"
+msgstr "Nombre"
+
+#: templates/dashboard.html:411
+msgid "e.g. My rejects / Q4 review"
+msgstr "Ej. Mis rechazados / Revisión T4"
+
+#: templates/dashboard.html:428 templates/dashboard.html:443
+#: templates/dashboard.html:458 templates/intake.html:601
+msgid "Cancel"
+msgstr "Cancelar"
+
+#: templates/dashboard.html:431
+msgid "Save"
+msgstr "Guardar"
+
+#: templates/dashboard.html:439
+msgid "Confirm status change"
+msgstr "Confirmar cambio de estado"
+
+#: templates/dashboard.html:447 templates/dashboard.html:462
+#: templates/review_queue.html:101
+msgid "Confirm"
+msgstr "Confirmar"
+
+#: templates/dashboard.html:454
+msgid "Confirm preparer assignment"
+msgstr "Confirmar asignación de preparador"
+
+#: templates/email_review.html:9
+#, fuzzy
+msgid "Email Classification Review"
+msgstr "Clasificación guardada."
+
+#: templates/email_review.html:11
+msgid ""
+"Each row needs an explicit confirmation: approve the suggestion, or tap a"
+" labeled alternative (no stray dropdown submits). Promotional inbox still"
+" supports bulk confirm."
+msgstr ""
+
+#: templates/email_review.html:60
+#, fuzzy
+msgid "Pending Review"
+msgstr "Revisión de Correos"
+
+#: templates/email_review.html:60
+msgid "Low-confidence email matches"
+msgstr "Coincidencias de correo con baja confianza"
+
+#: templates/email_review.html:63
+msgid "Confirm to accept the attachment, or reject to discard it."
+msgstr "Confirme para aceptar el adjunto o rechace para descartarlo."
+
+#: templates/email_review.html:78
+msgid "Promotional emails"
+msgstr "Correos promocionales"
+
+#: templates/email_review.html:82
+msgid "Unconfirmed promotional — rarely need individual review."
+msgstr "Promocionales sin confirmar — raramente requieren revisión individual."
+
+#: templates/email_review.html:87 templates/email_review.html:741
+#: templates/email_review.html:745 templates/email_review.html:750
+msgid "Confirm all as promotional"
+msgstr "Confirmar todos como promocionales"
+
+#: templates/email_review.html:102
+msgid "View confirmed emails from today"
+msgstr "Ver correos confirmados hoy"
+
+#: templates/email_review.html:107
+msgid "Already confirmed today"
+msgstr "Ya confirmados hoy"
+
+#: templates/email_review.html:108
+msgid "Read-only. No further action needed."
+msgstr "Solo lectura. No se requiere acción adicional."
+
+#: templates/intake.html:2
+#, fuzzy
+msgid "New Intake"
+msgstr "+ Nuevo Cliente"
+
+#: templates/intake.html:13 templates/intake.html:894
+#, fuzzy
+msgid "New Client Intake"
+msgstr "+ Nuevo Cliente"
+
+#: templates/intake.html:14
+msgid "Income Tax Client Information"
+msgstr "Información del Cliente de Impuestos"
+
+#: templates/intake.html:16 templates/intake.html:721
+#, fuzzy
+msgid "Re-intake"
+msgstr "+ Nuevo Cliente"
+
+#: templates/intake.html:21 templates/intake.html:605
+msgid "Save & Create Return"
+msgstr "Guardar y Crear Declaración"
+
+#: templates/intake.html:32
+msgid "Returning Client? Search to pre-fill"
+msgstr "¿Cliente existente? Busque para prellenar"
+
+#: templates/intake.html:37
+msgid "Type last name or first name…"
+msgstr "Escriba apellido o nombre…"
+
+#: templates/intake.html:49
+msgid "✕ Clear — New Client"
+msgstr "✕ Limpiar — Nuevo Cliente"
+
+#: templates/intake.html:54
+msgid "Client Habit Profile"
+msgstr "Perfil de Hábitos del Cliente"
+
+#: templates/intake.html:62
+msgid "A — Log & Interview Info"
+msgstr "A — Registro e Información de Entrevista"
+
+#: templates/intake.html:67
+msgid "Tax Year"
+msgstr "Año Fiscal"
+
+#: templates/intake.html:76
+#, fuzzy
+msgid "auto"
+msgstr "Registro de Auditoría"
+
+#: templates/intake.html:78
+msgid "Assigned on save"
+msgstr "Asignado al guardar"
+
+#: templates/intake.html:83
+msgid "Prior Year Log #"
+msgstr "Log # Año Anterior"
+
+#: templates/intake.html:84
+msgid "e.g. 24"
+msgstr "Ej. 24"
+
+#: templates/intake.html:88
+msgid "Interview Date"
+msgstr "Fecha de Entrevista"
+
+#: templates/intake.html:93
+msgid "Interviewed By"
+msgstr "Entrevistado Por"
+
+#: templates/intake.html:95 templates/intake.html:247 templates/intake.html:380
+#: templates/intake.html:422
+msgid "— select —"
+msgstr "— seleccionar —"
+
+#: templates/intake.html:103
+msgid "Client Type"
+msgstr "Tipo de Cliente"
+
+#: templates/intake.html:106
+msgid "Return"
+msgstr "Reingreso"
+
+#: templates/intake.html:109 templates/review_queue.html:114
+msgid "New"
+msgstr "Nuevo"
+
+#: templates/intake.html:115
+msgid "Referred By"
+msgstr "Referido Por"
+
+#: templates/intake.html:118
+msgid "Search client name…"
+msgstr "Buscar nombre de cliente…"
+
+#: templates/intake.html:135
+msgid "Referral"
+msgstr "Referido"
+
+#: templates/intake.html:139 templates/intake.html:335
+#: templates/intake.html:347 templates/intake.html:448
+msgid "Yes"
+msgstr "Sí"
+
+#: templates/intake.html:150
+msgid "B — Taxpayer & Spouse"
+msgstr "B — Contribuyente y Cónyuge"
+
+#: templates/intake.html:156
+msgid "Taxpayer"
+msgstr "Contribuyente"
+
+#: templates/intake.html:159 templates/intake.html:201
+msgid "Last Name"
+msgstr "Apellido"
+
+#: templates/intake.html:160 templates/intake.html:202
+msgid "Last"
+msgstr "Apellido"
+
+#: templates/intake.html:163 templates/intake.html:205
+msgid "First Name"
+msgstr "Nombre"
+
+#: templates/intake.html:164 templates/intake.html:206
+msgid "First"
+msgstr "Nombre"
+
+#: templates/intake.html:167 templates/intake.html:209
+#: templates/intake.html:278
+msgid "Date of Birth"
+msgstr "Fecha de Nacimiento"
+
+#: templates/intake.html:171 templates/intake.html:213
+#: templates/intake.html:276
+msgid "SSN Last 4"
+msgstr "Últimos 4 del SSN"
+
+#: templates/intake.html:176 templates/intake.html:218
+msgid "Occupation"
+msgstr "Ocupación"
+
+#: templates/intake.html:180
+msgid "Home Phone"
+msgstr "Teléfono de Casa"
+
+#: templates/intake.html:184 templates/intake.html:222
+msgid "Cell"
+msgstr "Celular"
+
+#: templates/intake.html:188 templates/intake.html:230
+msgid "Email"
+msgstr "Correo Electrónico"
+
+#: templates/intake.html:198
+msgid "Spouse"
+msgstr "Cónyuge"
+
+#: templates/intake.html:226
+msgid "Work Phone"
+msgstr "Teléfono de Trabajo"
+
+#: templates/intake.html:241
+msgid "Address"
+msgstr "Dirección"
+
+#: templates/intake.html:242
+msgid "Street, City, State, ZIP"
+msgstr "Calle, Ciudad, Estado, ZIP"
+
+#: templates/intake.html:245
+msgid "Filing Status"
+msgstr "Estado Civil Fiscal"
+
+#: templates/intake.html:264
+msgid "C — Dependents"
+msgstr "C — Dependientes"
+
+#: templates/intake.html:267
+msgid "+ Add Row"
+msgstr "+ Agregar Fila"
+
+#: templates/intake.html:275
+msgid "Full Name"
+msgstr "Nombre Completo"
+
+#: templates/intake.html:277
+msgid "Relationship"
+msgstr "Parentesco"
+
+#: templates/intake.html:279
+msgid "Medi-Cal"
+msgstr "Medi-Cal"
+
+#: templates/intake.html:292
+msgid "SON"
+msgstr "HIJO"
+
+#: templates/intake.html:293
+msgid "DAUGHTER"
+msgstr "HIJA"
+
+#: templates/intake.html:294
+#, fuzzy
+msgid "PARENT"
+msgstr "Pagos"
+
+#: templates/intake.html:295
+msgid "OTHER"
+msgstr "OTRO"
+
+#: templates/intake.html:314
+msgid "D — Insurance & Digital Assets"
+msgstr "D — Seguro y Activos Digitales"
+
+#: templates/intake.html:319
+#, fuzzy
+msgid "Insurance Coverage"
+msgstr "Comparar Fuentes"
+
+#: templates/intake.html:332
+msgid "Digital Assets"
+msgstr "Activos Digitales"
+
+#: templates/intake.html:338 templates/intake.html:350
+msgid "No"
+msgstr "No"
+
+#: templates/intake.html:344
+msgid "Overtime"
+msgstr "Horas Extra"
+
+#: templates/intake.html:362
+msgid "E — Banking Information"
+msgstr "E — Información Bancaria"
+
+#: templates/intake.html:366
+msgid "Bank Name"
+msgstr "Nombre del Banco"
+
+#: templates/intake.html:370
+msgid "Routing #"
+msgstr "# de Ruta"
+
+#: templates/intake.html:374
+#, fuzzy
+msgid "Account #"
+msgstr "Cuentas del Personal"
+
+#: templates/intake.html:378
+#, fuzzy
+msgid "Account Type"
+msgstr "Cuenta no encontrada."
+
+#: templates/intake.html:381
+msgid "Checking"
+msgstr "Cuenta Corriente"
+
+#: templates/intake.html:382
+#, fuzzy
+msgid "Savings"
+msgstr "Guardando..."
+
+#: templates/intake.html:391
+msgid "F — Forms & Return Type"
+msgstr "F — Formularios y Tipo de Declaración"
+
+#: templates/intake.html:416
+msgid "G — Processing"
+msgstr "G — Procesamiento"
+
+#: templates/intake.html:420
+msgid "Processor"
+msgstr "Procesador"
+
+#: templates/intake.html:429
+msgid "Promise Date"
+msgstr "Fecha Prometida"
+
+#: templates/intake.html:433
+msgid "Delivered By"
+msgstr "Entregado Por"
+
+#: templates/intake.html:434
+msgid "Initials"
+msgstr "Iniciales"
+
+#: templates/intake.html:437
+msgid "Date Signatures Emailed"
+msgstr "Fecha de Firmas Enviadas"
+
+#: templates/intake.html:441
+msgid "Date Reports Emailed"
+msgstr "Fecha de Reportes Enviados"
+
+#: templates/intake.html:445 templates/return_detail.html:107
+msgid "Verified"
+msgstr "Verificado"
+
+#: templates/intake.html:458
+msgid "H — Fees & Payment"
+msgstr "H — Honorarios y Pago"
+
+#: templates/intake.html:463 templates/payments.html:52
+#: templates/return_detail.html:438
+msgid "Total Fee"
+msgstr "Honorario Total"
+
+#: templates/intake.html:471
+#, fuzzy
+msgid "Accounting Fee"
+msgstr "Cuenta no encontrada."
+
+#: templates/intake.html:478
+msgid "W-7 Fee"
+msgstr "Honorario W-7"
+
+#: templates/intake.html:485
+msgid "1099s Fee"
+msgstr "Honorario de 1099s"
+
+#: templates/intake.html:492
+msgid "License Processing"
+msgstr "Procesamiento de Licencia"
+
+#: templates/intake.html:499
+msgid "Reprocess / Reprint"
+msgstr "Reprocesar / Reimprimir"
+
+#: templates/intake.html:506
+msgid "Discount (coupon)"
+msgstr "Descuento (cupón)"
+
+#: templates/intake.html:513
+msgid "Special Discount"
+msgstr "Descuento Especial"
+
+#: templates/intake.html:522
+msgid "Down Payment / Deposit"
+msgstr "Anticipo / Depósito"
+
+#: templates/intake.html:529 templates/payments.html:53
+#: templates/return_detail.html:439
+msgid "Fee Paid"
+msgstr "Honorario Pagado"
+
+#: templates/intake.html:536
+#, fuzzy
+msgid "Receipt # (1)"
+msgstr "Cola de Recibos"
+
+#: templates/intake.html:540
+#, fuzzy
+msgid "Receipt # (2)"
+msgstr "Cola de Recibos"
+
+#: templates/intake.html:551
+msgid "I — Estimates & Refunds"
+msgstr "I — Estimados y Reembolsos"
+
+#: templates/intake.html:555
+msgid "Estimate — IRS"
+msgstr "Estimado — IRS"
+
+#: templates/intake.html:562
+msgid "Estimate — State"
+msgstr "Estimado — Estado"
+
+#: templates/intake.html:569
+msgid "Final — IRS"
+msgstr "Final — IRS"
+
+#: templates/intake.html:576
+msgid "Final — State"
+msgstr "Final — Estado"
+
+#: templates/intake.html:588
+msgid "J — Notes"
+msgstr "J — Notas"
+
+#: templates/intake.html:594
+msgid "Special notes, instructions, or flags…"
+msgstr "Notas especiales, instrucciones o indicadores…"
+
+#: templates/intake.html:681
+msgid "will create new"
+msgstr "se creará nuevo"
+
+#: templates/login.html:6
+#, fuzzy
+msgid "Sign In"
+msgstr "Cerrar sesión"
+
+#: templates/login.html:23 templates/login.html:66
+#, fuzzy
+msgid "Sign in"
+msgstr "Cerrar sesión"
+
+#: templates/login.html:24
+msgid "Internal use only — authorised staff only."
+msgstr "Solo uso interno — exclusivo para personal autorizado."
+
+#: templates/login.html:38
+msgid "Username"
+msgstr "Usuario"
+
+#: templates/login.html:45
+msgid "Enter username"
+msgstr "Ingrese usuario"
+
+#: templates/login.html:50
+msgid "Password"
+msgstr "Contraseña"
+
+#: templates/login.html:57
+msgid "Enter password"
+msgstr "Ingrese contraseña"
+
+#: templates/payments.html:11
+msgid "Fee tracking for"
+msgstr "Seguimiento de honorarios para"
+
+#: templates/payments.html:19
+msgid "Balance due only"
+msgstr "Solo con saldo pendiente"
+
+#: templates/payments.html:29
+msgid "Total Billed"
+msgstr "Total Facturado"
+
+#: templates/payments.html:33
+msgid "Collected"
+msgstr "Cobrado"
+
+#: templates/payments.html:37
+msgid "Outstanding"
+msgstr "Pendiente"
+
+#: templates/payments.html:54 templates/return_detail.html:440
+msgid "CC Fee"
+msgstr "Honorario CC"
+
+#: templates/payments.html:57 templates/return_detail.html:441
+#, fuzzy
+msgid "Receipt #"
+msgstr "Cola de Recibos"
+
+#: templates/return_detail.html:14
+#, fuzzy
+msgid "Back"
+msgstr "Respaldo"
+
+#: templates/return_detail.html:57
+msgid "Client profile"
+msgstr "Perfil del cliente"
+
+#: templates/return_detail.html:71
+msgid "Pickup workflow"
+msgstr "Flujo de Entrega"
+
+#: templates/return_detail.html:80
+msgid "Print sticker"
+msgstr "Imprimir etiqueta"
+
+#: templates/return_detail.html:90
+msgid "Quick flags"
+msgstr "Indicadores rápidos"
+
+#: templates/return_detail.html:108
+msgid "Transfer"
+msgstr "Transferencia"
+
+#: templates/return_detail.html:109
+msgid "Amended"
+msgstr "Enmendada"
+
+#: templates/return_detail.html:110
+msgid "Extension"
+msgstr "Extensión"
+
+#: templates/return_detail.html:112
+msgid "TY25 Transfer"
+msgstr "Transf. AÑ25"
+
+#: templates/return_detail.html:113
+msgid "TY26 Transfer"
+msgstr "Transf. AÑ26"
+
+#: templates/return_detail.html:118
+#, fuzzy
+msgid "E-filed"
+msgstr "Cola de E-File"
+
+#: templates/return_detail.html:138
+msgid "Workflow"
+msgstr "Flujo de trabajo"
+
+#: templates/return_detail.html:182
+msgid "Client contact"
+msgstr "Contacto con cliente"
+
+#: templates/return_detail.html:184
+#, fuzzy
+msgid "Needs client contact"
+msgstr "Encuentra cualquier cliente al instante"
+
+#: templates/return_detail.html:187 templates/return_detail.html:500
+msgid "Notes"
+msgstr "Notas"
+
+#: templates/return_detail.html:191
+msgid "Contact status"
+msgstr "Estado de contacto"
+
+#: templates/return_detail.html:200
+msgid "Last contacted"
+msgstr "Último contacto"
+
+#: templates/return_detail.html:211
+msgid "Draft follow-up email"
+msgstr "Borrador de correo de seguimiento"
+
+#: templates/return_detail.html:259
+msgid "Return Info"
+msgstr "Información de Declaración"
+
+#: templates/return_detail.html:324
+#, fuzzy
+msgid "Missing Documents"
+msgstr "Documentos entrantes de clientes"
+
+#: templates/return_detail.html:327
+msgid "open"
+msgstr "abierto(s)"
+
+#: templates/return_detail.html:380
+msgid "Return Forms"
+msgstr "Formularios de Declaración"
+
+#: templates/return_detail.html:414
+#, fuzzy
+msgid "Payment"
+msgstr "Pagos"
+
+#: templates/return_detail.html:417
+msgid "PAID IN FULL"
+msgstr "PAGADO COMPLETAMENTE"
+
+#: templates/return_detail.html:420
+msgid "BALANCE DUE"
+msgstr "SALDO PENDIENTE"
+
+#: templates/return_detail.html:449
+#, fuzzy
+msgid "Documents"
+msgstr "Documento eliminado."
+
+#: templates/return_detail.html:453
+msgid "File(s)"
+msgstr "Archivo(s)"
+
+#: templates/return_detail.html:458
+msgid "Type"
+msgstr "Tipo"
+
+#: templates/return_detail.html:470
+#, fuzzy
+msgid "Upload"
+msgstr "Subiendo..."
+
+#: templates/return_detail.html:486
+#, fuzzy
+msgid "Document Data"
+msgstr "Documento eliminado."
+
+#: templates/return_detail.html:488
+#, fuzzy
+msgid "No document data yet. Run"
+msgstr "Documento eliminado."
+
+#: templates/return_detail.html:488
+msgid "Extract fields"
+msgstr "Extraer campos"
+
+#: templates/return_detail.html:488
+msgid "on a tagged document to populate this section."
+msgstr "en un documento etiquetado para llenar esta sección."
+
+#: templates/return_detail.html:502
+msgid "Add a note… (Ctrl+Enter to save)"
+msgstr "Agregar nota… (Ctrl+Enter para guardar)"
+
+#: templates/return_detail.html:507
+msgid "Save Note"
+msgstr "Guardar Nota"
+
+#: templates/return_detail.html:524
+msgid "History"
+msgstr "Historial"
+
+#: templates/return_detail.html:541
+msgid "No history yet"
+msgstr "Sin historial aún"
+
+#: templates/review_queue.html:9
+#, fuzzy
+msgid "Import Match Review"
+msgstr "Importar CSV"
+
+#: templates/review_queue.html:11
+msgid ""
+"These rows had uncertain name matches. Confirm, re-link, or create as new"
+" clients."
+msgstr ""
+
+#: templates/review_queue.html:23
+msgid "All caught up — no pending reviews."
+msgstr "Todo al día — sin revisiones pendientes."
+
+#: templates/review_queue.html:24
+msgid "Future CSV imports will add items here when a match is uncertain."
+msgstr "Las importaciones CSV futuras agregarán elementos aquí cuando una coincidencia sea incierta."
+
+#: templates/review_queue.html:33
+msgid "CSV Name"
+msgstr "Nombre CSV"
+
+#: templates/review_queue.html:35
+msgid "Proposed DB Match"
+msgstr "Coincidencia Propuesta"
+
+#: templates/review_queue.html:36
+msgid "Score"
+msgstr "Puntaje"
+
+#: templates/review_queue.html:37
+msgid "Year"
+msgstr "Año"
+
+#: templates/review_queue.html:38
+msgid "Action"
+msgstr "Acción"
+
+#: templates/review_queue.html:108
+msgid "Link"
+msgstr "Enlazar"
+
+#: app.py (tour modal button chrome)
+msgid "Guided Tour"
+msgstr "Recorrido guiado"
+
+msgid "Skip tour"
+msgstr "Omitir recorrido"
+
+msgid "Start tour"
+msgstr "Iniciar recorrido"
+
+msgid "Present"
+msgstr "Presentar"
+
+msgid "Back"
+msgstr "Atrás"
+
+msgid "Next"
+msgstr "Siguiente"
+
+#: app.py (tour step 1 — workflow overview)
+msgid "How a return flows through TaxOps"
+msgstr "Cómo fluye una declaración en TaxOps"
+
+msgid "One client visit, start to finish"
+msgstr "Una visita de cliente, de principio a fin"
+
+msgid "Intake"
+msgstr "Admisión"
+
+msgid "Client walks in. Fill the intake form — personal info, documents, fees, and any missing items."
+msgstr "El cliente llega. Llena el formulario de admisión: datos personales, documentos, honorarios y pendientes."
+
+msgid "Collect documents"
+msgstr "Recolección de documentos"
+
+msgid "Upload W-2s, 1099s, and everything else directly to the return. Tag each file so it stays findable."
+msgstr "Sube los W-2, 1099 y todo lo demás directamente a la declaración. Etiqueta cada archivo para encontrarlo fácilmente."
+
+msgid "Process"
+msgstr "Proceso"
+
+msgid "Preparer opens Drake and works the return. Status stays PROCESSING until complete."
+msgstr "El preparador abre Drake y trabaja la declaración. El estado permanece en PROCESSING hasta terminar."
+
+msgid "Finalize"
+msgstr "Finalizar"
+
+msgid "Done in Drake. Mark FINALIZE — signals ready for review or client signature."
+msgstr "Listo en Drake. Marca FINALIZE — indica que está listo para revisión o firma del cliente."
+
+msgid "Deliver"
+msgstr "Entrega"
+
+msgid "Counter pickup → mark PICKUP. Electronic filing → mark EFILE READY to queue for transmission."
+msgstr "Recoger en mostrador → marca PICKUP. Envío electrónico → marca EFILE READY para la cola de transmisión."
+
+msgid "Close"
+msgstr "Cierre"
+
+msgid "Client picks up their copy or the batch gets transmitted. Return is done."
+msgstr "El cliente recoge su copia o el lote se transmite. La declaración queda cerrada."
+
+#: app.py (tour modal)
+msgid "Welcome to TaxOps"
+msgstr "Bienvenido a TaxOps"
+
+msgid "A quick tour for your whole team"
+msgstr "Un recorrido rápido para todo el equipo"
+
+msgid "Find any client in under 2 seconds"
+msgstr "Encuentra a cualquier cliente en menos de 2 segundos"
+
+msgid "Track every return from intake to pickup"
+msgstr "Da seguimiento a cada declaración desde la admisión hasta la entrega"
+
+msgid "Manage documents, fees, missing items, and e-file"
+msgstr "Administra documentos, honorarios, pendientes y el e-file"
+
+msgid "Power features: bulk actions, saved views, receipt tracking"
+msgstr "Funciones avanzadas: acciones masivas, vistas guardadas, control de recibos"
+
+#: app.py (tour steps 3–4 — dashboard unlabeled controls)
+msgid "IRS rejection alerts"
+msgstr "Alertas de rechazo del IRS"
+
+msgid ""
+"This bell lights up when any e-filed return has been rejected by the IRS. "
+"Open it to see which returns need correction — don't let a rejection sit."
+msgstr ""
+"Esta campana se ilumina cuando el IRS rechaza alguna declaración enviada "
+"electrónicamente. Ábrela para ver qué declaraciones necesitan corrección "
+"— no dejes un rechazo sin atender."
+
+msgid "Problem filters"
+msgstr "Filtros de problemas"
+
+msgid ""
+"These flag buttons filter for returns with active issues — balance due, "
+"late intake, or slow processing cycle. One click shows only those returns."
+msgstr ""
+"Estos botones filtran las declaraciones con problemas activos: saldo "
+"pendiente, admisión tardía o ciclo lento. Un clic muestra solo esas "
+"declaraciones."
+
+#: app.py (tour steps 5–7 — client profile)
+msgid "The client record"
+msgstr "El expediente del cliente"
+
+msgid ""
+"Click here from any return to see the full client record — contact info, "
+"every return at a glance, and multi-year comparison."
+msgstr ""
+"Haz clic aquí desde cualquier declaración para ver el expediente completo "
+"del cliente: datos de contacto, todas sus declaraciones y comparación "
+"entre años."
+
+msgid "Edit contact info"
+msgstr "Edita la información de contacto"
+
+msgid ""
+"Update address, phone, email, and filing status here — changes apply to "
+"every return for this client, not just the latest year."
+msgstr ""
+"Actualiza dirección, teléfono, correo y tipo de declaración aquí — los "
+"cambios se aplican a todas las declaraciones del cliente, no solo la más "
+"reciente."
+
+msgid "Multi-year comparison"
+msgstr "Comparación entre años"
+
+msgid ""
+"Pick 2–3 tax years to compare income, deductions, and fees side-by-side. "
+"Useful for spotting year-over-year changes or walking a client through "
+"their history."
+msgstr ""
+"Selecciona 2 o 3 años fiscales para comparar ingresos, deducciones y "
+"honorarios en paralelo. Útil para detectar cambios año con año o repasar "
+"el historial con el cliente."
+
+#: app.py (tour step 3 — intake)
+msgid "Start a new engagement"
+msgstr "Inicia un nuevo expediente"
+
+msgid ""
+"The intake form is your TaxOps version of the paper client worksheet — "
+"personal info, document checklist, fees, and missing items, all in one "
+"place before Drake is ever opened."
+msgstr ""
+"El formulario de admisión es tu versión en TaxOps de la hoja de trabajo "
+"en papel del cliente: datos personales, lista de documentos, honorarios y "
+"pendientes, todo en un solo lugar antes de abrir Drake."
+
+#: app.py (tour step 4 — reintake)
+msgid "Re-intake a returning client"
+msgstr "Vuelve a dar de alta a un cliente que regresa"
+
+msgid ""
+"For a returning client, search their name here before you fill anything "
+"in. TaxOps pre-fills what it already knows from last year — no "
+"re-entering the same info every season."
+msgstr ""
+"Para un cliente que regresa, busca su nombre aquí antes de capturar nada. "
+"TaxOps llena automáticamente lo que ya sabe del año anterior, sin volver "
+"a capturar la misma información cada temporada."
+
+#: app.py (tour step 6 — doc upload)
+msgid "Add documents to this return"
+msgstr "Agrega documentos a esta declaración"
+
+msgid ""
+"Upload directly here instead of a shared drive folder — the file stays "
+"attached to this return. Use bulk upload to send a whole client packet at "
+"once."
+msgstr ""
+"Sube los documentos aquí en lugar de usar una carpeta compartida; el "
+"archivo queda vinculado a esta declaración. Usa la carga masiva para "
+"enviar el paquete completo de un cliente de una sola vez."
+
+#: app.py (tour step 7 — missing docs)
+msgid "Track what the client still owes you"
+msgstr "Da seguimiento a lo que el cliente todavía te debe"
+
+msgid ""
+"Add missing items here instead of keeping a sticky note or mental list. "
+"Your whole team sees the same checklist and can check things off as the "
+"client brings them in."
+msgstr ""
+"Agrega aquí los documentos pendientes en lugar de una nota adhesiva o de "
+"memoria. Todo el equipo ve la misma lista y puede ir marcando conforme el "
+"cliente los entrega."
+
+#: app.py (tour step 15 — return action sidebar)
+msgid "Return shortcuts"
+msgstr "Acciones rápidas de la declaración"
+
+msgid ""
+"Print a routing sticker, download the intake sheet as a PDF, or cancel "
+"the return from this panel. When a return reaches PICKUP or EFILE READY a "
+"direct action button also appears here."
+msgstr ""
+"Imprime una etiqueta de enrutamiento, descarga la hoja de admisión en PDF "
+"o cancela la declaración desde este panel. Cuando una declaración llega a "
+"PICKUP o EFILE READY, aquí también aparece un botón de acción directa."
+
+#: app.py (tour step 10 — bulk actions)
+msgid "Update many returns at once"
+msgstr "Actualiza varias declaraciones a la vez"
+
+msgid ""
+"Check this box to select every visible return, then use the bulk bar that "
+"appears to change status or assign a preparer across all of them — no "
+"one-by-one clicking."
+msgstr ""
+"Marca esta casilla para seleccionar todas las declaraciones visibles y usa "
+"la barra de acciones masivas que aparece para cambiar el estado o asignar "
+"un preparador en todas a la vez, sin hacerlo una por una."
+
+#: app.py (tour step 11 — saved filters)
+msgid "Save your daily view"
+msgstr "Guarda tu vista del día"
+
+msgid ""
+"If you filter the dashboard the same way every shift, save it here. Your "
+"saved views appear as quick-pick chips so you don't rebuild the same "
+"filters every time."
+msgstr ""
+"Si filtras el tablero de la misma forma en cada turno, guárdalo aquí. Tus "
+"vistas guardadas aparecen como accesos rápidos para que no tengas que "
+"volver a armar los mismos filtros cada vez."
+
+#: app.py (tour step 12 — pickup queue)
+msgid "Pickup queue"
+msgstr "Cola de entrega"
+
+msgid ""
+"Everything flagged PICKUP lives here — your TaxOps version of the paper "
+"pickup log. Filter by name or log number to find a client fast."
+msgstr ""
+"Todo lo marcado como PICKUP vive aquí: tu versión en TaxOps del registro "
+"de entregas en papel. Filtra por nombre o número de declaración para "
+"encontrar a un cliente rápidamente."
+
+#: app.py (tour step 13 — efile queue)
+msgid "E-file queue"
+msgstr "Cola de e-file"
+
+msgid ""
+"Returns ready to transmit show up here — the electronic version of "
+"pulling the e-file pile. Select returns and create a batch to send them "
+"all at once."
+msgstr ""
+"Las declaraciones listas para transmitir aparecen aquí: la versión "
+"electrónica de juntar el montón para e-file. Selecciona las declaraciones "
+"y crea un lote para enviarlas todas a la vez."
+
+#: app.py (tour step 18 — export)
+msgid "Export to Excel"
+msgstr "Exportar a Excel"
+
+msgid ""
+"Downloads the full filtered set — whatever is visible in the table right "
+"now, including any active status or preparer filters. Good for end-of-day "
+"reports or handing a list to someone."
+msgstr ""
+"Descarga el conjunto completo filtrado — todo lo que se ve en la tabla en "
+"este momento, incluyendo los filtros de estado o preparador activos. Útil "
+"para reportes de fin del día o para pasar una lista a alguien."
+
+#: app.py (tour step 14 — receipt tracking)
+msgid "Receipt tracking"
+msgstr "Control de recibos"
+
+msgid ""
+"Upload receipts here instead of a separate spreadsheet. TaxOps reads them "
+"with OCR, suggests a category, and queues them for QuickBooks export once "
+"a staff member approves."
+msgstr ""
+"Sube los recibos aquí en lugar de usar una hoja de cálculo separada. "
+"TaxOps los lee con OCR, sugiere una categoría y los deja en cola para "
+"exportarlos a QuickBooks una vez que un miembro del equipo los aprueba."
+
+#: app.py (tour step 23 — year picker)
+msgid "Change the filing season"
+msgstr "Cambia el año fiscal"
+
+msgid ""
+"Switch tax years here and every return, stat, and export updates to match. "
+"Use it to check prior seasons or confirm nothing was left open."
+msgstr ""
+"Cambia el año fiscal aquí y todas las declaraciones, estadísticas y "
+"exportaciones se actualizan. Úsalo para revisar temporadas anteriores o "
+"confirmar que no quedó nada abierto."
+
+#: app.py (tour step 15 — privacy mode)
+msgid "Hide sensitive info in one click"
+msgstr "Oculta información sensible con un clic"
+
+msgid ""
+"Client at your desk or screen visible in the office? Toggle Privacy to "
+"mask names and numbers instantly — one click to hide, one more to restore."
+msgstr ""
+"¿Hay un cliente en tu escritorio o tu pantalla está visible en la "
+"oficina? Activa Privacy para ocultar nombres y números al instante, un "
+"clic para ocultar y otro para mostrar de nuevo."
+
+#: templates/base.html
+msgid "Sender Rules"
+msgstr "Reglas de Remitentes"
+
+#: templates/email_inbox.html
+msgid "Image — will need manual tagging"
+msgstr "Imagen — requiere etiquetado manual"
+
+#: app.py (JS translation key: needs_manual_tag)
+msgid "Needs manual tag"
+msgstr "Necesita etiquetado manual"
 

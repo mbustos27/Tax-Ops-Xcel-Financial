@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 
+# idx_email_class_email / idx_email_class_domain were dropped from this list
+# in Phase 2.2 (email system revamp): email_classifications was archived
+# (renamed to archive_email_classifications) and init_db no longer creates
+# either the table or its indexes on fresh installs.
 _EXPECTED_INDEXES = {
     "idx_return_docs_return",
     "idx_return_docs_type",
@@ -11,8 +15,6 @@ _EXPECTED_INDEXES = {
     "idx_missing_docs_open",
     "idx_extraction_status",
     "idx_extraction_return",
-    "idx_email_class_email",
-    "idx_email_class_domain",
     "idx_audit_log_user",
     "idx_returns_status_year",
     "idx_returns_proc_year",

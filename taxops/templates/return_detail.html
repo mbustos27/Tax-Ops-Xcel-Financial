@@ -2563,7 +2563,8 @@
   function _docNeedsAttention(d) {
     return (
       (d.source === 'email' && (d.doc_type === 'unknown' || !d.doc_type)) ||
-      d.extraction_status === 'needs_review'
+      d.extraction_status === 'needs_review' ||
+      (d.extraction_status === 'skipped' && (d.doc_type === 'unknown' || !d.doc_type))
     );
   }
 
@@ -2590,11 +2591,18 @@
              Review extraction</button>
           <span class="text-[10px] font-bold uppercase tracking-wide text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Needs review</span>`
         : '';
+      // Phase 2.3: image attachments skipped by the extractor (vision disabled)
+      // stay flagged until staff assign a real doc_type.
+      const needsManualTag = doc.extraction_status === 'skipped' && (curDt === 'unknown' || !doc.doc_type);
+      const manualTagUi = needsManualTag
+        ? `<span class="text-[10px] font-bold uppercase tracking-wide text-slate-600 bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-full">${_escapeHtml(t('needs_manual_tag'))}</span>`
+        : '';
       return `<div data-doc-row data-doc-id="${doc.id}" class="flex flex-col gap-1 px-3 py-2.5 border-b border-[var(--border-subtle)] last:border-b-0 text-sm">
         <div class="flex flex-wrap items-center gap-3">
           <div class="flex-1 min-w-0 flex flex-wrap items-center gap-2">
             <span class="font-medium text-slate-800 truncate">${fn}</span>
             ${reviewUi}
+            ${manualTagUi}
           </div>
           <span class="shrink-0">${buildDocTypeDropdown(doc.id, curDt)}</span>
           <span class="text-slate-500 text-xs whitespace-nowrap">${_docSourceLabel(doc.source)}</span>
@@ -2622,11 +2630,12 @@
   function _updateDocIndicator(docs) {
     const untagged = docs.filter(d => d.source === 'email' && d.doc_type === 'unknown');
     const extRev = docs.filter(d => d.extraction_status === 'needs_review');
+    const manualTag = docs.filter(d => d.extraction_status === 'skipped' && (d.doc_type === 'unknown' || !d.doc_type));
     const indicator = document.getElementById('doc-email-indicator');
     const countEl   = document.getElementById('doc-email-count');
     const filterBtn = document.getElementById('doc-filter-btn');
     if (!indicator || !countEl) return;
-    if (untagged.length > 0 || extRev.length > 0) {
+    if (untagged.length > 0 || extRev.length > 0 || manualTag.length > 0) {
       const parts = [];
       if (untagged.length > 0) {
         const n = untagged.length;
@@ -2642,6 +2651,12 @@
         const e = extRev.length;
         parts.push(
           `${e} extraction${e === 1 ? '' : 's'} need${e === 1 ? 's' : ''} review`
+        );
+      }
+      if (manualTag.length > 0) {
+        const m = manualTag.length;
+        parts.push(
+          `${m} image${m === 1 ? '' : 's'} need${m === 1 ? 's' : ''} manual tagging`
         );
       }
       countEl.innerHTML = parts.join(' · ') + ' — see list below';

@@ -269,3 +269,15 @@ msgstr ""
 msgid "Ops Runbook"
 msgstr ""
 
+#: templates/base.html
+msgid "Sender Rules"
+msgstr ""
+
+#: templates/email_inbox.html
+msgid "Image — will need manual tagging"
+msgstr ""
+
+#: app.py (JS translation key: needs_manual_tag)
+msgid "Needs manual tag"
+msgstr ""
+

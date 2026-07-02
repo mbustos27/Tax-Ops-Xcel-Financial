@@ -6,12 +6,16 @@ email_inbox holding table for staff assignment via the /email-inbox UI.
 
 Design (simplified from prior 6-layer classifier):
   1. Connect to IMAP, fetch UNSEEN messages from configured folders.
-  2. Suppress clearly promotional senders (config list + subdomain
-     prefix match) — no LLM, no DB reads.
-  3. Suppress Google Drive share notifications (no attachment to save).
-  4. Save every remaining attachment to EMAIL_INBOX_DIR on disk and
+  2. Decide suppression per message via _suppression_decision(), in
+     precedence order (Phase 2.1, amended):
+       staff explicit ALLOW > staff explicit BLOCK
+         > Google Drive share notification (_is_drive_share)
+         > hardcoded promotional lists (_is_promotional).
+     Sender rules are loaded once per poll cycle (one SELECT), never
+     per-message.
+  3. Save every remaining attachment to EMAIL_INBOX_DIR on disk and
      insert a row into email_inbox with is_assigned=0.
-  5. Staff assign attachments to returns via /email-inbox in the UI.
+  4. Staff assign attachments to returns via /email-inbox in the UI.
 
 Privacy rules enforced here:
   - IMAP_PASS is never logged, printed, or stored anywhere
@@ -261,10 +265,12 @@ def _poll_once_inner(app) -> None:
     Phase 0 — Connect + scan folders. 'skip' folders are noted.
               'full_processing' folders → collect messages.
     Phase 1 — Fetch and parse collected messages.
-    Phase 2+3 — For each message:
-        - Suppress promotional senders (2-layer config check, no LLM).
-        - Suppress Drive share notifications.
-        - Save remaining attachments to email_inbox holding area.
+    Phase 2+3 — For each message, _suppression_decision() applies, in
+        precedence order: staff allow > staff block (email_sender_rules,
+        loaded once per cycle — see _load_sender_rules) > Drive-share
+        notification > hardcoded promotional lists. Anything not
+        suppressed has its attachments saved to the email_inbox holding
+        area.
     """
     from config import (
         IMAP_HOST, IMAP_PORT, IMAP_USER, IMAP_PASS,
@@ -275,6 +281,9 @@ def _poll_once_inner(app) -> None:
     folders_to_check = GMAIL_CATEGORY_FOLDERS if USE_GMAIL_CATEGORIES else {
         folder: "full_processing" for folder in IMAP_FOLDERS
     }
+
+    # Phase 2.1: one rules SELECT per poll cycle, never per message.
+    rules_cache = _load_sender_rules()
 
     imap = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
     try:
@@ -376,33 +385,28 @@ def _poll_once_inner(app) -> None:
             subject = (msg.get("subject") or "")[:100]
 
             try:
-                # ── Intentional-skip paths (promotional / drive-share) ────
-                if _is_promotional(domain):
-                    logger.info(f"Promotional suppressed: {domain}")
+                # ── Intentional-skip paths, in precedence order: staff allow >
+                # staff block > drive-share > hardcoded promotional lists ──
+                suppressed, suppression_reason = _suppression_decision(
+                    msg.get("sender_email") or "", domain, rules_cache,
+                    subject=msg.get("subject") or "", body_text=msg.get("body_text") or "",
+                )
+                if suppressed:
+                    logger.info(f"Suppressed ({suppression_reason}): {domain}")
                     outcome = OUTCOME_SKIP
                     # Log write failure handling — see audit finding C3.
                     try:
-                        _upsert_processing_log(uid_str, folder, domain, subject, outcome)
+                        _upsert_processing_log(
+                            uid_str, folder, domain, subject, outcome,
+                            suppression_reason=suppression_reason,
+                        )
                         _add_uid_to_memo(folder, uid_str)
                     except Exception as log_exc:
                         logger.error(
-                            "Log write failed for uid=%s after skip (promotional) — will retry: %s",
-                            uid_str, log_exc,
+                            "Log write failed for uid=%s after skip (%s) — will retry: %s",
+                            uid_str, suppression_reason, log_exc,
                         )
                         # Do NOT add to memo — retry on next poll
-                    continue
-
-                if _is_drive_share(msg["subject"], msg.get("body_text", "")):
-                    logger.info(f"Drive share from {domain} — skipped (no attachment to save)")
-                    outcome = OUTCOME_SKIP
-                    try:
-                        _upsert_processing_log(uid_str, folder, domain, subject, outcome)
-                        _add_uid_to_memo(folder, uid_str)
-                    except Exception as log_exc:
-                        logger.error(
-                            "Log write failed for uid=%s after skip (drive-share) — will retry: %s",
-                            uid_str, log_exc,
-                        )
                     continue
 
                 # ── Dry run: log what would happen, write nothing at all ──
@@ -471,6 +475,7 @@ def _upsert_processing_log(
     error_message: str | None = None,
     doc_id: int | None = None,
     return_id: int | None = None,
+    suppression_reason: str | None = None,
 ) -> None:
     """Upsert a row in email_processing_log after each message is processed."""
     from db import get_connection
@@ -482,13 +487,14 @@ def _upsert_processing_log(
                 INSERT INTO email_processing_log
                     (message_uid, imap_folder, sender_domain, subject_snippet,
                      outcome, attempt_count, last_attempt_at, error_message,
-                     doc_id, return_id)
-                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                     doc_id, return_id, suppression_reason)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
                 ON CONFLICT(message_uid, imap_folder) DO UPDATE SET
-                    attempt_count    = attempt_count + 1,
-                    last_attempt_at  = excluded.last_attempt_at,
-                    outcome          = excluded.outcome,
-                    error_message    = excluded.error_message
+                    attempt_count       = attempt_count + 1,
+                    last_attempt_at     = excluded.last_attempt_at,
+                    outcome             = excluded.outcome,
+                    error_message       = excluded.error_message,
+                    suppression_reason  = excluded.suppression_reason
                 """,
                 (
                     uid_str[:64],
@@ -500,6 +506,7 @@ def _upsert_processing_log(
                     (error_message or "")[:200] or None,
                     doc_id,
                     return_id,
+                    suppression_reason,
                 ),
             )
             conn.commit()
@@ -588,6 +595,116 @@ def _is_drive_share(subject: str, body_text: str) -> bool:
     """Return True if the email is a Google Drive share notification."""
     combined = (subject + " " + (body_text or "")).lower()
     return any(indicator in combined for indicator in _DRIVE_INDICATORS)
+
+
+# ── Staff sender rules (Phase 2.1) ────────────────────────────────────────────
+# email_sender_rules holds staff allow/block decisions. Loaded once per poll
+# cycle (never per-message) so suppression stays LLM-free and does at most one
+# rules SELECT per cycle, matching the pre-existing performance profile.
+
+def _load_sender_rules() -> dict:
+    """Load staff allow/block sender rules for this poll cycle.
+
+    Returns a dict of frozensets: allow_domains, allow_addresses,
+    block_domains, block_addresses (all lowercased). Never raises — returns
+    all-empty sets on any DB error so suppression falls through to the
+    hardcoded KNOWN_PROMOTIONAL_DOMAINS / MASS_MAILING_PREFIXES layer.
+    """
+    empty = {
+        "allow_domains": frozenset(), "allow_addresses": frozenset(),
+        "block_domains": frozenset(), "block_addresses": frozenset(),
+    }
+    from db import get_connection
+    try:
+        conn = get_connection()
+        try:
+            rows = conn.execute(
+                "SELECT domain, rule_scope, action FROM email_sender_rules"
+            ).fetchall()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"Failed to load email_sender_rules — suppression falls back to hardcoded lists: {e}")
+        return empty
+
+    allow_domains: set = set()
+    allow_addresses: set = set()
+    block_domains: set = set()
+    block_addresses: set = set()
+    bucket_by_key = {
+        ("domain", "allow"): allow_domains,
+        ("domain", "block"): block_domains,
+        ("address", "allow"): allow_addresses,
+        ("address", "block"): block_addresses,
+    }
+    for row in rows:
+        value = (row["domain"] or "").strip().lower()
+        if not value:
+            continue
+        scope = (row["rule_scope"] or "domain").strip().lower()
+        action = (row["action"] or "block").strip().lower()
+        bucket = bucket_by_key.get((scope, action))
+        if bucket is not None:
+            bucket.add(value)
+
+    return {
+        "allow_domains": frozenset(allow_domains),
+        "allow_addresses": frozenset(allow_addresses),
+        "block_domains": frozenset(block_domains),
+        "block_addresses": frozenset(block_addresses),
+    }
+
+
+def _suppression_decision(
+    sender_email: str,
+    domain: str,
+    rules: dict,
+    subject: str = "",
+    body_text: str = "",
+) -> tuple[bool, "str | None"]:
+    """Decide whether a message should be suppressed, and why.
+
+    Precedence (per Phase 2.1 spec, amended):
+      1. Explicit staff ALLOW (address or domain)  -> never suppress, not
+         even for a Drive-share notification or a hardcoded promotional
+         domain.
+      2. Explicit staff BLOCK (address, or domain — domain-level blocks are
+         ignored for PERSONAL_EMAIL_DOMAINS as a defensive backstop; the
+         rules UI is also expected to refuse creating them) -> suppress,
+         reason 'sender_rule_block'.
+      3. _is_drive_share() (Google Drive share notification) -> suppress,
+         reason 'drive_share'.
+      4. Hardcoded KNOWN_PROMOTIONAL_DOMAINS / MASS_MAILING_PREFIXES
+         (_is_promotional) -> suppress, reason 'known_promotional'.
+      5. Default -> pass through.
+
+    subject/body_text default to "" so existing callers that only care
+    about the allow/block/promotional layers (e.g. direct unit tests) don't
+    need to pass them — an empty subject/body never matches _is_drive_share.
+    """
+    from config import PERSONAL_EMAIL_DOMAINS
+    addr = (sender_email or "").strip().lower()
+    dom = (domain or "").strip().lower()
+    parts = dom.split(".")
+    base = ".".join(parts[-2:]) if len(parts) >= 2 else dom
+
+    if addr and addr in rules["allow_addresses"]:
+        return False, None
+    if base and base in rules["allow_domains"]:
+        return False, None
+
+    if addr and addr in rules["block_addresses"]:
+        return True, "sender_rule_block"
+    if base and base in rules["block_domains"] and base not in PERSONAL_EMAIL_DOMAINS:
+        return True, "sender_rule_block"
+
+    if _is_drive_share(subject, body_text):
+        return True, "drive_share"
+
+    if _is_promotional(domain):
+        return True, "known_promotional"
+
+    return False, None
 
 
 # ── Promotional suppression (2-layer, no LLM, no DB) ─────────────────────────

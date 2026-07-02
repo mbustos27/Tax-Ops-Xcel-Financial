@@ -883,18 +883,6 @@ def gather_season_dataplane(db: sqlite3.Connection, year: int) -> dict[str, Any]
     )
     imports_dict = dict(im_row) if im_row else {}
 
-    email_classifications_year = _qf(
-        """
-        SELECT classification, COUNT(*) AS n
-        FROM email_classifications
-        WHERE strftime('%Y', created_at) = ?
-        GROUP BY classification
-        ORDER BY n DESC
-        LIMIT 36
-        """,
-        (ys,),
-    )
-
     efile_batches_by_status = _qf(
         """
         SELECT COALESCE(TRIM(status), '(unknown)') AS batch_status_label, COUNT(*) AS n
@@ -921,7 +909,6 @@ def gather_season_dataplane(db: sqlite3.Connection, year: int) -> dict[str, Any]
         "efile_items_by_ack_status": efile_items_by_ack_status,
         "efile_batches_by_status": efile_batches_by_status,
         "import_batches_calendar_year": imports_dict,
-        "email_classifications_year": email_classifications_year,
     }
 
 
@@ -996,20 +983,6 @@ def compact_llm_dataplane(
 
     md = dp.get("missing_docs") if isinstance(dp.get("missing_docs"), dict) else {}
 
-    em_cls: list[dict[str, Any]] = []
-    ec_rows = dp.get("email_classifications_year")
-    if isinstance(ec_rows, list):
-        for r in ec_rows[:hist_cap]:
-            if not isinstance(r, dict):
-                continue
-            cf = r.get("classification")
-            em_cls.append(
-                {
-                    "c": str(cf if cf is not None else "")[:80],
-                    "n": int(r.get("n") or 0),
-                }
-            )
-
     slim: dict[str, Any] = {
         "y": int(dp.get("season_year") or 0),
         "forms": {
@@ -1032,7 +1005,6 @@ def compact_llm_dataplane(
         "ef_ack": _thin(dp.get("efile_items_by_ack_status"), "ack_status_label", "n"),
         "ef_bat": _thin(dp.get("efile_batches_by_status"), "batch_status_label", "n"),
         "imp_cy": imb_out,
-        "em_cls": em_cls,
     }
 
     return slim

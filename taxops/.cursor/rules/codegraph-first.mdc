@@ -1,0 +1,48 @@
+---
+description: Use the codegraph MCP before reading or editing any Python file
+alwaysApply: true
+---
+
+# Use codegraph MCP before touching code
+
+The `user-codegraph` MCP is indexed across all 145 Python files in this repo.
+**Always query it before reading files or writing code.**
+
+## Tool selection
+
+| Intent | Tool |
+|--------|------|
+| Starting any task — "what does X do / what calls Y?" | `codegraph_context` (primary) |
+| Look up a specific symbol by name | `codegraph_search` |
+| Find what calls a function | `codegraph_callers` |
+| Find what a function calls | `codegraph_callees` |
+| Blast-radius before a refactor | `codegraph_impact` |
+| List files in a folder | `codegraph_files` |
+
+## Workflow
+
+1. **Before reading any file** — call `codegraph_context` with the task description first.
+   The result usually contains enough code snippets to act without further reads.
+
+2. **Before editing** — call `codegraph_callers` on any function you're changing
+   to know what else will be affected.
+
+3. **Never grep first** — `codegraph_search` is faster and returns kind + location + signature.
+
+## Examples
+
+```
+# Starting a task
+codegraph_context(task="fix _save_attachments to include match_score")
+
+# Finding a symbol
+codegraph_search(query="_dispatch_classified_message", kind="function")
+
+# Impact of changing _update_domain_cache
+codegraph_impact(symbol="_update_domain_cache")
+```
+
+## What NOT to do
+
+- Don't call `codegraph_explore` for narrow questions — it's expensive; use `codegraph_context`.
+- Don't query the index immediately after editing a file — the watcher needs ~1 second to sync.
