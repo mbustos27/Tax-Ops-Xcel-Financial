@@ -1,0 +1,435 @@
+{% extends "base.html" %}
+{% block title %}Email Inbox — Tax Log {{ current_year }}{% endblock %}
+
+{% block content %}
+<div class="max-w-screen-xl mx-auto px-4 py-6">
+
+  <!-- Page header -->
+  <div class="flex items-center justify-between mb-5">
+    <div>
+      <h1 class="text-xl font-bold" style="color:var(--text-primary)">Email Inbox</h1>
+      <p class="text-sm mt-0.5" style="color:var(--text-muted)">
+        Attachments received by email. Click one to preview and assign it to a return.
+      </p>
+    </div>
+    <span id="count-badge"
+          class="text-sm font-semibold px-3 py-1 rounded-full"
+          style="background:var(--badge-bg);color:var(--badge-text)">
+      {{ unassigned_count }} unassigned
+    </span>
+  </div>
+
+  <!-- Two-panel layout -->
+  <div class="flex flex-col lg:flex-row gap-5">
+
+    <!-- ── LEFT PANEL — Inbox queue ──────────────────────────────────────── -->
+    <div class="flex-1 min-w-0">
+      <div class="rounded-xl shadow-sm border overflow-hidden"
+           style="background:var(--card-bg);border-color:var(--border-subtle)">
+        <div class="px-5 py-3 border-b flex items-center justify-between"
+             style="background:var(--section-header-bg);border-color:var(--border-subtle)">
+          <span class="text-xs font-bold tracking-widest uppercase"
+                style="color:var(--text-muted)">Inbox Queue</span>
+        </div>
+
+        <div id="inbox-list" class="divide-y" style="border-color:var(--border-subtle)">
+          {% if inbox_items %}
+            {% for item in inbox_items %}
+            <div class="inbox-card px-5 py-4 cursor-pointer hover:opacity-90 transition-opacity"
+                 data-id="{{ item.id }}"
+                 data-filename="{{ item.filename | e }}"
+                 data-original="{{ (item.original_filename or item.filename) | e }}"
+                 data-sender="{{ (item.sender_email or '') | e }}"
+                 data-subject="{{ (item.subject_snippet or '') | e }}"
+                 data-received="{{ item.received_at | e }}"
+                 onclick="selectCard(this)"
+                 style="border-color:var(--border-subtle)">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <p class="font-semibold text-sm truncate" style="color:var(--text-primary)">
+                    {{ item.original_filename or item.filename }}
+                  </p>
+                  <p class="text-xs mt-0.5 truncate" style="color:var(--text-muted)">
+                    {{ item.sender_email or '(no sender)' }}
+                  </p>
+                  {% if item.subject_snippet %}
+                  <p class="text-xs mt-0.5 truncate" style="color:var(--text-muted)" title="{{ item.subject_snippet | e }}">
+                    {{ item.subject_snippet[:60] }}{% if item.subject_snippet|length > 60 %}…{% endif %}
+                  </p>
+                  {% endif %}
+                  <p class="text-xs mt-1" style="color:var(--text-muted)">
+                    <span class="relative-time" data-ts="{{ item.received_at }}">{{ item.received_at }}</span>
+                  </p>
+                </div>
+                <div class="flex flex-col items-end gap-2 shrink-0">
+                  <a href="/api/email-inbox/{{ item.id }}/file"
+                     target="_blank"
+                     onclick="event.stopPropagation()"
+                     class="text-xs font-medium px-2 py-1 rounded"
+                     style="background:var(--btn-secondary-bg);color:var(--btn-secondary-text)">
+                    Preview
+                  </a>
+                  <button type="button"
+                          onclick="event.stopPropagation(); dismissItem({{ item.id }}, this)"
+                          class="text-xs px-2 py-1 rounded border"
+                          style="border-color:var(--border-subtle);color:var(--text-muted)">
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+          <div id="empty-state" class="py-16 text-center" style="color:var(--text-muted)">
+            <svg class="mx-auto mb-3 w-10 h-10 opacity-30" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/>
+            </svg>
+            <p class="text-sm font-medium">No unassigned attachments.</p>
+            <p class="text-xs mt-1">New email attachments will appear here automatically.</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT PANEL — Assignment ──────────────────────────────────────── -->
+    <div class="lg:w-96 shrink-0">
+      <div class="rounded-xl shadow-sm border sticky top-20"
+           style="background:var(--card-bg);border-color:var(--border-subtle)">
+        <div class="px-5 py-3 border-b"
+             style="background:var(--section-header-bg);border-color:var(--border-subtle)">
+          <span class="text-xs font-bold tracking-widest uppercase"
+                style="color:var(--text-muted)">Assign to Return</span>
+        </div>
+        <div class="p-5">
+
+          <!-- No selection state -->
+          <div id="no-selection" class="py-8 text-center" style="color:var(--text-muted)">
+            <svg class="mx-auto mb-3 w-8 h-8 opacity-30" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59"/>
+            </svg>
+            <p class="text-sm">Select an attachment from the left to assign it.</p>
+          </div>
+
+          <!-- Selection state (hidden until card selected) -->
+          <div id="assignment-panel" class="hidden space-y-4">
+
+            <!-- Selected file details -->
+            <div class="rounded-lg p-3" style="background:var(--bg-subtle);border:1px solid var(--border-subtle)">
+              <p id="sel-filename" class="font-semibold text-sm truncate" style="color:var(--text-primary)"></p>
+              <p id="sel-sender"   class="text-xs mt-0.5 truncate" style="color:var(--text-muted)"></p>
+              <p id="sel-subject"  class="text-xs mt-0.5 truncate" style="color:var(--text-muted)"></p>
+            </div>
+
+            <!-- Client search -->
+            <div>
+              <label class="block text-xs font-semibold mb-1" style="color:var(--text-secondary)">
+                Search Client
+              </label>
+              <div class="relative">
+                <input id="client-search"
+                       type="text"
+                       autocomplete="off"
+                       placeholder="Last name, first name…"
+                       class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                       style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)"
+                       oninput="debouncedClientSearch(this.value)">
+                <ul id="client-dropdown"
+                    class="hidden absolute left-0 right-0 top-full mt-1 rounded-lg shadow-lg border z-20 overflow-auto max-h-48"
+                    style="background:var(--dropdown-bg);border-color:var(--dropdown-border)">
+                </ul>
+              </div>
+            </div>
+
+            <!-- Returns for selected client -->
+            <div id="returns-section" class="hidden">
+              <label class="block text-xs font-semibold mb-1" style="color:var(--text-secondary)">
+                Select Return
+              </label>
+              <ul id="returns-list" class="space-y-1.5">
+              </ul>
+            </div>
+
+            <!-- Success message (shown briefly after assign) -->
+            <div id="assign-success"
+                 class="hidden rounded-lg px-3 py-2 text-sm font-medium"
+                 style="background:#d1fae5;color:#065f46">
+            </div>
+
+            <!-- Assign button -->
+            <button id="assign-btn"
+                    type="button"
+                    disabled
+                    onclick="doAssign()"
+                    class="w-full py-2.5 rounded-xl text-sm font-semibold transition-opacity disabled:opacity-40"
+                    style="background:var(--btn-primary-bg);color:var(--btn-primary-text)">
+              Assign to Return
+            </button>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  let _selectedCardEl = null;
+  let _selectedItemId = null;
+  let _selectedReturnId = null;
+  let _selectedReturnLabel = '';
+  let _selectedClientName = '';
+  let _clientSearchTimer = null;
+
+  // ── Relative timestamps ──────────────────────────────────────────────────
+  function relTime(isoStr) {
+    if (!isoStr) return '';
+    const now = Date.now();
+    const ts  = new Date(isoStr.endsWith('Z') ? isoStr : isoStr + 'Z').getTime();
+    const sec = Math.floor((now - ts) / 1000);
+    if (isNaN(sec) || sec < 0) return isoStr;
+    if (sec < 60)      return 'just now';
+    if (sec < 3600)    return `${Math.floor(sec / 60)} min ago`;
+    if (sec < 86400)   return `${Math.floor(sec / 3600)} hr ago`;
+    return `${Math.floor(sec / 86400)} day${Math.floor(sec / 86400) > 1 ? 's' : ''} ago`;
+  }
+  document.querySelectorAll('.relative-time').forEach(el => {
+    el.textContent = relTime(el.dataset.ts);
+  });
+
+  // ── Card selection ────────────────────────────────────────────────────────
+  window.selectCard = function (el) {
+    if (_selectedCardEl) {
+      _selectedCardEl.style.outline = '';
+      _selectedCardEl.style.outlineOffset = '';
+    }
+    el.style.outline = '2px solid #3b82f6';
+    el.style.outlineOffset = '-2px';
+    _selectedCardEl = el;
+    _selectedItemId = parseInt(el.dataset.id);
+
+    document.getElementById('sel-filename').textContent = el.dataset.original || el.dataset.filename;
+    document.getElementById('sel-sender').textContent   = el.dataset.sender || '';
+    document.getElementById('sel-subject').textContent  = el.dataset.subject || '';
+
+    document.getElementById('no-selection').classList.add('hidden');
+    document.getElementById('assignment-panel').classList.remove('hidden');
+
+    // Reset client/return selection when switching cards
+    document.getElementById('client-search').value = '';
+    document.getElementById('client-dropdown').classList.add('hidden');
+    document.getElementById('returns-section').classList.add('hidden');
+    document.getElementById('assign-success').classList.add('hidden');
+    _selectedReturnId = null;
+    _selectedClientName = '';
+    document.getElementById('assign-btn').disabled = true;
+  };
+
+  // ── Dismiss ───────────────────────────────────────────────────────────────
+  window.dismissItem = async function (itemId, btn) {
+    btn.disabled = true;
+    try {
+      const r = await _csrfFetch(`/api/email-inbox/${itemId}/delete`, { method: 'POST' });
+      if (!r.ok) throw new Error('server error');
+      const card = btn.closest('.inbox-card');
+      if (card) card.remove();
+      _updateCountBadge(-1);
+      if (_selectedItemId === itemId) {
+        _selectedItemId = null;
+        _selectedCardEl = null;
+        document.getElementById('no-selection').classList.remove('hidden');
+        document.getElementById('assignment-panel').classList.add('hidden');
+      }
+      _checkEmptyState();
+    } catch (e) {
+      btn.disabled = false;
+      alert('Could not dismiss attachment. Try again.');
+    }
+  };
+
+  // ── Client search ─────────────────────────────────────────────────────────
+  window.debouncedClientSearch = function (val) {
+    clearTimeout(_clientSearchTimer);
+    if (val.trim().length < 2) {
+      document.getElementById('client-dropdown').classList.add('hidden');
+      return;
+    }
+    _clientSearchTimer = setTimeout(() => _doClientSearch(val.trim()), 220);
+  };
+
+  async function _doClientSearch(q) {
+    try {
+      const r   = await fetch(`/api/clients/search?q=${encodeURIComponent(q)}`);
+      const data = await r.json();
+      const ul   = document.getElementById('client-dropdown');
+      ul.innerHTML = '';
+      const clients = data.clients || data.results || [];
+      if (!clients.length) {
+        ul.innerHTML = '<li class="px-3 py-2 text-xs" style="color:var(--text-muted)">No matches</li>';
+        ul.classList.remove('hidden');
+        return;
+      }
+      clients.forEach(c => {
+        const li = document.createElement('li');
+        li.className = 'px-3 py-2 text-sm cursor-pointer hover:opacity-75';
+        li.style.color = 'var(--text-primary)';
+        const label = c.display_name || `${c.last_name}, ${c.first_name}`;
+        li.textContent = label;
+        li.addEventListener('click', () => {
+          document.getElementById('client-search').value = label;
+          document.getElementById('client-dropdown').classList.add('hidden');
+          _selectedClientName = label;
+          _loadClientReturns(c.id, label);
+        });
+        ul.appendChild(li);
+      });
+      ul.classList.remove('hidden');
+    } catch (e) {
+      console.error('Client search error', e);
+    }
+  }
+
+  // Close dropdown on outside click
+  document.addEventListener('click', e => {
+    const dd = document.getElementById('client-dropdown');
+    if (dd && !dd.contains(e.target) && e.target.id !== 'client-search') {
+      dd.classList.add('hidden');
+    }
+  });
+
+  // ── Load returns for a selected client ───────────────────────────────────
+  async function _loadClientReturns(clientId, clientName) {
+    const section = document.getElementById('returns-section');
+    const ul      = document.getElementById('returns-list');
+    ul.innerHTML  = '<li class="text-xs py-1" style="color:var(--text-muted)">Loading…</li>';
+    section.classList.remove('hidden');
+    _selectedReturnId = null;
+    document.getElementById('assign-btn').disabled = true;
+
+    try {
+      const r    = await fetch(`/api/clients/${clientId}/returns`);
+      const data = await r.json();
+      ul.innerHTML = '';
+      const returns = data.returns || [];
+      if (!returns.length) {
+        ul.innerHTML = '<li class="text-xs py-1" style="color:var(--text-muted)">No returns found</li>';
+        return;
+      }
+      returns.forEach(ret => {
+        const li = document.createElement('li');
+        li.className = 'return-option rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors';
+        li.style.borderColor = 'var(--border-subtle)';
+        li.style.color = 'var(--text-primary)';
+        const yearLabel = ret.tax_year ? `TY${ret.tax_year}` : '—';
+        const logLabel  = ret.log_number ? `LOG #${ret.log_number}` : `id=${ret.id}`;
+        li.textContent  = `${yearLabel} — ${logLabel} — ${ret.client_status || ''}`;
+        li.addEventListener('click', () => {
+          document.querySelectorAll('.return-option').forEach(o => {
+            o.style.outline = '';
+            o.style.background = '';
+          });
+          li.style.outline    = '2px solid #3b82f6';
+          li.style.background = 'var(--bg-subtle)';
+          _selectedReturnId    = ret.id;
+          _selectedReturnLabel = `${clientName} (${yearLabel})`;
+          document.getElementById('assign-btn').disabled = false;
+        });
+        ul.appendChild(li);
+      });
+    } catch (e) {
+      ul.innerHTML = '<li class="text-xs py-1 text-red-500">Error loading returns</li>';
+    }
+  }
+
+  // ── Assign ────────────────────────────────────────────────────────────────
+  window.doAssign = async function () {
+    if (!_selectedItemId || !_selectedReturnId) return;
+    const btn = document.getElementById('assign-btn');
+    btn.disabled = true;
+    btn.textContent = 'Assigning…';
+    try {
+      const r = await _csrfFetch(`/api/email-inbox/${_selectedItemId}/assign`, {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json'},
+        body:    JSON.stringify({ return_id: _selectedReturnId }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'server error');
+
+      // Remove card from list
+      if (_selectedCardEl) _selectedCardEl.remove();
+      _updateCountBadge(-1);
+      _checkEmptyState();
+
+      // Show success
+      const msg = document.getElementById('assign-success');
+      msg.textContent = `Assigned to ${_selectedReturnLabel}`;
+      msg.classList.remove('hidden');
+      setTimeout(() => msg.classList.add('hidden'), 4000);
+
+      // Reset panel
+      _selectedItemId = null;
+      _selectedCardEl = null;
+      _selectedReturnId = null;
+      document.getElementById('no-selection').classList.remove('hidden');
+      document.getElementById('assignment-panel').classList.add('hidden');
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Assign to Return';
+      alert(`Assignment failed: ${e.message}`);
+    }
+  };
+
+  // ── Count badge helpers ────────────────────────────────────────────────────
+  function _updateCountBadge(delta) {
+    const badge = document.getElementById('count-badge');
+    if (!badge) return;
+    const m = badge.textContent.match(/(\d+)/);
+    if (m) {
+      const n = Math.max(0, parseInt(m[1]) + delta);
+      badge.textContent = `${n} unassigned`;
+    }
+  }
+
+  function _checkEmptyState() {
+    const list   = document.getElementById('inbox-list');
+    const cards  = list ? list.querySelectorAll('.inbox-card') : [];
+    const empty  = document.getElementById('empty-state');
+    if (cards.length === 0) {
+      if (!empty) {
+        const div = document.createElement('div');
+        div.id = 'empty-state';
+        div.className = 'py-16 text-center';
+        div.style.color = 'var(--text-muted)';
+        div.innerHTML = '<p class="text-sm font-medium">No unassigned attachments.</p>';
+        if (list) list.appendChild(div);
+      }
+    }
+  }
+
+  // ── Auto-refresh badge every 90 s ────────────────────────────────────────
+  setInterval(async () => {
+    try {
+      const r    = await fetch('/api/email-inbox/items');
+      const data = await r.json();
+      const n    = (data.items || []).length;
+      const badge = document.getElementById('count-badge');
+      if (badge) badge.textContent = `${n} unassigned`;
+    } catch (_) {}
+  }, 90000);
+
+  // ── _csrfFetch helper (matches app-wide pattern) ───────────────────────────
+  function _csrfFetch(url, opts = {}) {
+    const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const headers = Object.assign({'X-CSRFToken': token}, opts.headers || {});
+    return fetch(url, Object.assign({}, opts, {headers}));
+  }
+}());
+</script>
+{% endblock %}

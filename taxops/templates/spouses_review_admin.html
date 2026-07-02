@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Spouse Review — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="p-6 max-w-5xl mx-auto space-y-6">
+
+  <!-- Header -->
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold" style="color:var(--text-primary)">Spouse Match Review</h1>
+      <p class="text-sm mt-0.5" style="color:var(--text-secondary)">
+        From the Drake TY2025 MFJ export. Confirm correct matches — confirmed spouses prefill intake automatically.
+      </p>
+    </div>
+    <div class="flex flex-wrap gap-2 items-center text-sm">
+      <span class="px-3 py-1 rounded-full font-medium"
+            style="background:color-mix(in srgb,var(--accent-yellow,#f59e0b) 15%,transparent);color:var(--accent-yellow,#d97706)">
+        {{ total_review }} pending
+      </span>
+      <span class="px-3 py-1 rounded-full font-medium"
+            style="background:color-mix(in srgb,var(--accent-green,#10b981) 15%,transparent);color:var(--accent-green,#059669)">
+        {{ total_clean }} confirmed
+      </span>
+    </div>
+  </div>
+
+  {% if rows %}
+  <div class="flex items-center justify-between">
+    <p class="text-sm" style="color:var(--text-secondary)">
+      Review each match below. <strong style="color:var(--text-primary)">✓ Correct</strong> clears the flag and enables intake prefill. <strong style="color:var(--text-primary)">✕ Wrong</strong> removes the record.
+    </p>
+    <button onclick="confirmAll()" id="btn-confirm-all"
+            class="px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+            style="background:color-mix(in srgb,var(--accent-green,#10b981) 15%,transparent);color:var(--accent-green,#059669);border:1px solid color-mix(in srgb,var(--accent-green,#10b981) 25%,transparent)">
+      ✓ Confirm All
+    </button>
+  </div>
+
+  <div class="rounded-xl overflow-hidden" style="border:1px solid var(--border-subtle)">
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:var(--bg-subtle);border-bottom:1px solid var(--border-subtle)">
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Drake Name</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">→ TaxLog Client</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Spouse</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">DOB</th>
+          <th class="text-right px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Conf.</th>
+          <th class="px-4 py-2.5"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr id="srow-{{ row.id }}" style="border-top:1px solid var(--border-subtle)">
+          <td class="px-4 py-3 text-sm" style="color:var(--text-secondary);max-width:180px">
+            {{ row.taxpayer_name or '—' }}
+          </td>
+          <td class="px-4 py-3">
+            <a href="/clients/{{ row.client_id }}" target="_blank"
+               class="font-semibold hover:underline"
+               style="color:var(--accent-blue,#3b82f6)">
+              {{ row.client_last }}, {{ row.client_first }}
+            </a>
+          </td>
+          <td class="px-4 py-3 font-medium" style="color:var(--text-primary)">
+            {{ row.first_name }}
+            {% if row.middle_initial %} {{ row.middle_initial }}.{% endif %}
+            {{ row.derived_last_name or row.last_name or '' }}
+            {% if not row.last_name %}
+            <span class="ml-1 text-xs px-1.5 py-0.5 rounded"
+                  style="background:color-mix(in srgb,var(--accent-yellow,#f59e0b) 15%,transparent);color:var(--accent-yellow,#d97706)">
+              derived
+            </span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 tabular-nums text-sm" style="color:var(--text-secondary)">
+            {{ row.date_of_birth or '—' }}
+          </td>
+          <td class="px-4 py-3 text-right tabular-nums" style="color:var(--text-secondary)">
+            {{ '%.0f%%'|format((row.match_confidence or 0) * 100) }}
+          </td>
+          <td class="px-4 py-3">
+            <div class="flex gap-2 justify-end">
+              <button onclick="confirmSpouse({{ row.id }}, this)"
+                      class="px-3 py-1 rounded-lg text-xs font-semibold transition-colors"
+                      style="background:color-mix(in srgb,var(--accent-green,#10b981) 15%,transparent);color:var(--accent-green,#059669);border:1px solid color-mix(in srgb,var(--accent-green,#10b981) 25%,transparent)">
+                ✓ Correct
+              </button>
+              <button onclick="rejectSpouse({{ row.id }}, this)"
+                      class="px-3 py-1 rounded-lg text-xs font-semibold transition-colors"
+                      style="background:color-mix(in srgb,var(--accent-red,#ef4444) 15%,transparent);color:var(--accent-red,#dc2626);border:1px solid color-mix(in srgb,var(--accent-red,#ef4444) 25%,transparent)">
+                ✕ Wrong
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+  <div class="text-center py-16" style="color:var(--text-secondary)">
+    <div class="text-4xl mb-3">✓</div>
+    <p class="text-lg font-semibold">
+      {% if total_clean > 0 %}
+        All {{ total_clean }} spouse records confirmed — prefill is live.
+      {% else %}
+        No spouse import data yet.
+        <p class="text-sm mt-2 font-mono"
+           style="background:var(--bg-subtle);display:inline-block;padding:4px 12px;border-radius:6px">
+          python scripts\import_spouse_info.py
+        </p>
+      {% endif %}
+    </p>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+const _csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+async function _post(url) {
+  const r = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': _csrf } });
+  return r.json();
+}
+function _fadeRow(id) {
+  const row = document.getElementById('srow-' + id);
+  if (row) { row.style.transition = 'opacity .3s'; row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }
+}
+async function confirmSpouse(id, btn) {
+  btn.disabled = true;
+  const d = await _post(`/api/admin/spouses/${id}/confirm`);
+  if (d.ok) { _fadeRow(id); }
+  else { btn.disabled = false; alert(d.error || 'Error'); }
+}
+async function rejectSpouse(id, btn) {
+  if (!confirm('Remove this spouse record? This cannot be undone.')) return;
+  btn.disabled = true;
+  const d = await _post(`/api/admin/spouses/${id}/reject`);
+  if (d.ok) { _fadeRow(id); }
+  else { btn.disabled = false; alert(d.error || 'Error'); }
+}
+async function confirmAll() {
+  const btn = document.getElementById('btn-confirm-all');
+  if (!confirm('Confirm all pending spouse matches as correct?')) return;
+  if (btn) btn.disabled = true;
+  const d = await _post('/api/admin/spouses/confirm-all');
+  if (d.ok) { location.reload(); }
+  else { if (btn) btn.disabled = false; alert(d.error || 'Error'); }
+}
+</script>
+{% endblock %}

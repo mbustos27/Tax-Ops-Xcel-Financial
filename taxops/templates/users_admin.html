@@ -1,7 +1,17 @@
 {% extends "base.html" %}
-{% block title %}User Management — TaxOps{% endblock %}
+{% block title %}User Management — Tax Log{% endblock %}
 
 {% block content %}
+<style>
+  .role-badge-admin        { background:#ede9fe; color:#6d28d9; border-color:#c4b5fd; }
+  .role-badge-preparer     { background:#d1fae5; color:#065f46; border-color:#6ee7b7; }
+  .role-badge-receptionist { background:#dbeafe; color:#1e40af; border-color:#93c5fd; }
+
+  .role-sel-admin        { background:#ede9fe; color:#6d28d9; border-color:#c4b5fd; }
+  .role-sel-preparer     { background:#d1fae5; color:#065f46; border-color:#6ee7b7; }
+  .role-sel-receptionist { background:#dbeafe; color:#1e40af; border-color:#93c5fd; }
+  .role-sel-saving       { background:#fef9c3; color:#854d0e; border-color:#fde047; }
+</style>
 <div class="max-w-4xl mx-auto px-4 py-6 space-y-6 pb-24">
 
   <div>
@@ -33,8 +43,9 @@
         <label class="block text-xs font-semibold text-slate-600 mb-1" for="new-role">Role</label>
         <select id="new-role"
                 class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-          <option value="staff">Staff</option>
-          <option value="admin">Admin</option>
+          <option value="receptionist">Receptionist — front desk, intake, pickup queue</option>
+          <option value="preparer">Preparer — full return access, fees, e-file</option>
+          <option value="admin">Admin — all access including settings &amp; staff</option>
         </select>
       </div>
       <div>
@@ -81,10 +92,23 @@
             {% endif %}
           </td>
           <td class="px-5 py-3">
-            {% if u.role == 'admin' %}
-            <span class="text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200 rounded-full px-2 py-0.5">Admin</span>
+            {% set _self = (u.username == session.get('username', '')) %}
+            {% if _self %}
+              {# Can't change your own role — show badge only #}
+              <span class="role-badge role-badge-{{ u.role }} text-xs font-semibold rounded-full px-2 py-0.5 border">
+                {{ {'admin':'Admin','preparer':'Preparer','receptionist':'Receptionist'}.get(u.role, u.role|capitalize) }}
+              </span>
             {% else %}
-            <span class="text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-2 py-0.5">Staff</span>
+            <select class="role-select text-xs font-semibold border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-300 role-sel-{{ u.role }}"
+                    data-uid="{{ u.id }}"
+                    data-original="{{ u.role }}">
+              <option value="receptionist" {% if u.role == 'receptionist' %}selected{% endif %}>Receptionist</option>
+              <option value="preparer"     {% if u.role == 'preparer'     %}selected{% endif %}>Preparer</option>
+              <option value="admin"        {% if u.role == 'admin'        %}selected{% endif %}>Admin</option>
+              {% if u.role not in ('receptionist','preparer','admin') %}
+              <option value="{{ u.role }}" selected>{{ u.role|capitalize }} (legacy)</option>
+              {% endif %}
+            </select>
             {% endif %}
           </td>
           <td class="px-5 py-3">
@@ -219,6 +243,36 @@
       const d = await r.json();
       if (d.success) location.reload();
       else alert(d.error || 'Could not reactivate.');
+    });
+  });
+
+  // ── Change role ─────────────────────────────────────────────────────────────
+  document.querySelectorAll('.role-select').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const uid      = sel.dataset.uid;
+      const original = sel.dataset.original;
+      const newRole  = sel.value;
+      const res      = document.getElementById('reset-result');
+
+      // Colour feedback while saving
+      sel.className = sel.className.replace(/role-sel-\S+/g, '') + ' role-sel-saving';
+
+      const r = await _csrfFetch(`/api/admin/users/${uid}/change-role`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: newRole }),
+      });
+      const d = await r.json();
+
+      if (d.success) {
+        sel.dataset.original = newRole;
+        sel.className = sel.className.replace(/role-sel-\S+/g, '') + ` role-sel-${newRole}`;
+        showResult(res, true, `Role changed to ${newRole}.`);
+      } else {
+        sel.value = original; // revert
+        sel.className = sel.className.replace(/role-sel-\S+/g, '') + ` role-sel-${original}`;
+        showResult(res, false, d.error || 'Could not change role.');
+      }
     });
   });
 

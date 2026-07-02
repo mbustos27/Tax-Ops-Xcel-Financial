@@ -102,6 +102,12 @@ INCOMING_DIR  = str(_HERE / "data" / "incoming")
 PROCESSED_DIR = str(_HERE / "data" / "processed")
 ERROR_DIR     = str(_HERE / "data" / "error")
 
+APP_NAME = "Tax Log"
+
+# Staff who conduct client interviews at intake.
+# Order is displayed as-is in the dropdown.
+INTERVIEWERS: list[str] = ["Marlin", "Lorena", "Armida", "Sandra", "Lucy", "Moises"]
+
 # "demo" shows a banner in the UI; anything else is production
 APP_ENV = os.environ.get("TAXOPS_ENV", "production").lower()
 
@@ -251,6 +257,10 @@ OLLAMA_EXTRACT_TIMEOUT_VISION = int(
 )
 
 DOCUMENTS_BASE_PATH = os.environ.get("DOCUMENTS_BASE_PATH", str(_HERE / "documents"))
+EMAIL_INBOX_DIR = os.environ.get(
+    "EMAIL_INBOX_DIR",
+    str(_HERE / "documents" / "email_inbox")
+)
 
 # MULTIYEAR-3 — YoY highlight thresholds for GET /api/clients/<id>/years
 def _mf_env(name: str, default: str) -> float:
@@ -517,7 +527,20 @@ ACCOUNTING_CONFIDENCE_MEDIUM: float = _acc_float("ACCOUNTING_CONFIDENCE_MEDIUM",
 ACCOUNTING_MAX_ATTEMPTS: int = int(os.environ.get("ACCOUNTING_MAX_ATTEMPTS", "3"))
 
 # ── RBAC ─────────────────────────────────────────────────────────────────────
-ROLE_HIERARCHY: dict[str, int] = {"staff": 0, "preparer": 1, "admin": 2}
+ROLE_HIERARCHY: dict[str, int] = {"receptionist": 0, "preparer": 1, "admin": 2}
+
+# Named feature-level permissions that allow targeted cross-role access.
+# Each key maps to the set of roles that may exercise that feature.
+# Admin and preparer are always included; receptionist gains the two expansions below.
+# Add new entries here — never scatter role-string checks across routes.
+ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
+    # Receptionist may view and work the pickup queue and e-file queue.
+    "can_manage_efile_queue":      frozenset({"receptionist", "preparer", "admin"}),
+    # Extension queue: preparers and admin file extensions; receptionist view-only via batch.
+    "can_manage_extension_queue":  frozenset({"preparer", "admin"}),
+    # Email inbox is admin-only until the workflow is fully hardened.
+    "can_use_email_tools":         frozenset({"admin"}),
+}
 
 
 def _parse_taxops_users_map() -> dict[str, dict]:
@@ -540,7 +563,7 @@ def _parse_taxops_users_map() -> dict[str, dict]:
                 continue
             username, password, role = parts[0].strip(), parts[1].strip(), parts[2].strip().lower()
             if role not in ROLE_HIERARCHY:
-                role = "staff"
+                role = "receptionist"
             if username:
                 result[username] = {"password": password, "role": role}
     if not result:

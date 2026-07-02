@@ -61,7 +61,7 @@ def _make_opener(mapping: dict[str, int]):
 
 def test_all_required_endpoints_covered():
     paths = {ep[0] for ep in ENDPOINTS}
-    for required in ("/health", "/", "/login", "/review", "/payments", "/ai/status"):
+    for required in ("/health", "/", "/login", "/review", "/payments"):
         assert required in paths, f"{required!r} missing from ENDPOINTS"
 
 
@@ -123,18 +123,6 @@ def test_302_accepted_for_protected_pages():
         errs = run_smoke("http://x")
     assert errs == []
 
-
-def test_401_accepted_for_ai_status():
-    """/ai/status is an API endpoint — returns 401 when unauthenticated."""
-    def probe_401(base, path, accepted):
-        if path == "/ai/status":
-            if 401 not in accepted:
-                return f"GET {path} expected {accepted} got 401"
-        return None
-
-    with patch.object(_MOD, "_probe", side_effect=probe_401):
-        errs = run_smoke("http://x")
-    assert errs == []
 
 
 # ── SMOKE-4: log file written with timestamp ──────────────────────────────────

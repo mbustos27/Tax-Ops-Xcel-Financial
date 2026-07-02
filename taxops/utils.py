@@ -209,3 +209,17 @@ class ImportStats:
     updated_returns: int = 0
     events_created: int = 0
     notes_created: int = 0
+    # ImportResult extensions (safe defaults preserve backward compat)
+    source: str = ""
+    filename: str = ""
+    rows_skipped: int = 0
+    errors: "list[str]" = None  # type: ignore[assignment]
+    duration_seconds: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.errors is None:
+            self.errors = []
+
+
+# Alias used by new code; old code continues to reference ImportStats.
+ImportResult = ImportStats

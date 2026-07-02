@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Recovered Clients — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="p-6 max-w-5xl mx-auto space-y-6">
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold" style="color:var(--text-primary)">Recovered Clients</h1>
+      <p class="text-sm mt-0.5" style="color:var(--text-secondary)">
+        These client names were lost during the database recovery. Enter the correct name for each and click Save.
+        Use the intake date and preparer columns to look them up in your records.
+      </p>
+    </div>
+    <span class="px-3 py-1 rounded-full text-sm font-medium"
+          style="background:color-mix(in srgb,var(--accent-yellow,#f59e0b) 15%,transparent);color:var(--accent-yellow,#d97706)">
+      {{ rows|length }} remaining
+    </span>
+  </div>
+
+  {% if rows %}
+  <div class="rounded-xl overflow-hidden" style="border:1px solid var(--border-subtle)">
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:var(--bg-subtle);border-bottom:1px solid var(--border-subtle)">
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Last name</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">First name</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Intake</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Preparer</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Status</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Year</th>
+          <th class="px-4 py-2.5"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr id="rcrow-{{ row.client_id }}" style="border-top:1px solid var(--border-subtle)">
+          <td class="px-3 py-2">
+            <input id="rc-last-{{ row.client_id }}" type="text" placeholder="Last name"
+                   class="w-full rounded-lg border px-2 py-1.5 text-sm"
+                   style="border-color:var(--border-subtle);background:var(--bg-input,#fff);color:var(--text-primary)"
+                   value="{{ row.last_input or '' }}"/>
+          </td>
+          <td class="px-3 py-2">
+            <input id="rc-first-{{ row.client_id }}" type="text" placeholder="First name"
+                   class="w-full rounded-lg border px-2 py-1.5 text-sm"
+                   style="border-color:var(--border-subtle);background:var(--bg-input,#fff);color:var(--text-primary)"
+                   value="{{ row.first_input or '' }}"/>
+          </td>
+          <td class="px-3 py-2 tabular-nums text-xs" style="color:var(--text-secondary);white-space:nowrap">
+            {{ row.intake_date or '—' }}
+          </td>
+          <td class="px-3 py-2 text-xs" style="color:var(--text-secondary)">
+            {{ row.processor or '—' }}
+          </td>
+          <td class="px-3 py-2 text-xs" style="color:var(--text-secondary)">
+            {{ row.client_status or '—' }}
+          </td>
+          <td class="px-3 py-2 tabular-nums text-xs" style="color:var(--text-secondary)">
+            {{ row.tax_year or '—' }}
+          </td>
+          <td class="px-3 py-2">
+            <div class="flex gap-2 items-center">
+              <button onclick="saveClient({{ row.client_id }}, this)"
+                      class="px-3 py-1 rounded-lg text-xs font-semibold transition-colors"
+                      style="background:color-mix(in srgb,var(--accent-blue,#3b82f6) 15%,transparent);color:var(--accent-blue,#2563eb);border:1px solid color-mix(in srgb,var(--accent-blue,#3b82f6) 25%,transparent)">
+                Save
+              </button>
+              <a href="/clients/{{ row.client_id }}" target="_blank"
+                 class="px-2 py-1 rounded-lg text-xs transition-colors"
+                 style="color:var(--text-secondary);border:1px solid var(--border-subtle)">
+                Profile
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+  <div class="text-center py-16" style="color:var(--text-secondary)">
+    <div class="text-4xl mb-3">✓</div>
+    <p class="text-lg font-semibold">All recovered clients have been named.</p>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+const _csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+async function saveClient(clientId, btn) {
+  const last  = document.getElementById('rc-last-'  + clientId)?.value.trim();
+  const first = document.getElementById('rc-first-' + clientId)?.value.trim();
+  if (!last) { alert('Last name is required.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  const r = await fetch(`/api/admin/recovered-clients/${clientId}/rename`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf },
+    body: JSON.stringify({ last_name: last, first_name: first || null }),
+  });
+  const d = await r.json();
+
+  if (d.ok) {
+    const row = document.getElementById('rcrow-' + clientId);
+    if (row) {
+      row.style.transition = 'opacity .3s';
+      row.style.opacity = '0';
+      setTimeout(() => row.remove(), 300);
+    }
+    // Update remaining count badge
+    const badge = document.querySelector('[style*="accent-yellow"]');
+    if (badge) {
+      const n = parseInt(badge.textContent) - 1;
+      badge.textContent = n + ' remaining';
+    }
+  } else {
+    btn.disabled = false;
+    btn.textContent = 'Save';
+    alert(d.error || 'Error saving');
+  }
+}
+</script>
+{% endblock %}

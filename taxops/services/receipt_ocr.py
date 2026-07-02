@@ -56,7 +56,7 @@ def _to_b64(image_path: str) -> str:
     ext = os.path.splitext(image_path)[1].lower()
     if ext == ".pdf":
         try:
-            from ai_routes import _pdf_to_image_b64
+            from form_store import _pdf_to_image_b64
             return _pdf_to_image_b64(image_path)
         except Exception as exc:
             log.warning("PDF→image conversion failed for %s: %s", image_path, exc)

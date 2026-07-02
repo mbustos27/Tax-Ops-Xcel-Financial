@@ -196,9 +196,10 @@ def return_documents_upload(return_id: int):
                 """
                 INSERT INTO return_documents (
                   return_id, filename, original_filename, doc_type, source,
-                  file_path, file_size_bytes, file_hash, uploaded_by, uploaded_at, notes, is_deleted
+                  file_path, file_size_bytes, file_hash, uploaded_by, uploaded_at, notes, is_deleted,
+                  match_confirmed, match_score, match_method
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, NULL, 'manual')
                 """,
                 (
                     return_id, candidate, original_filename, doc_type, "walk_in",
@@ -211,7 +212,7 @@ def return_documents_upload(return_id: int):
 
             # ACCOUNTING-10: auto-enqueue receipts to receipt_queue (still requires staff review).
             if doc_type == "receipt":
-                _enqueue_receipt(doc_id, dest_path)
+                _enqueue_receipt(doc_id, full_path)
 
             # DOC-HARD-5: emit intake audit trail entry.
             _intake_audit(
@@ -235,7 +236,7 @@ def return_documents_upload(return_id: int):
             def _bg_classify():
                 try:
                     with app_obj.app_context():
-                        from ai_routes import _classify_document
+                        from form_store import _classify_document
                         _classify_document(doc_id, only_if_still_unknown=True)
                 except Exception as exc:
                     log.error("Background classify failed for doc %s: %s", doc_id, exc)
@@ -354,8 +355,9 @@ def return_documents_bulk_upload(return_id: int):
                     """
                     INSERT INTO return_documents (
                       return_id, filename, original_filename, doc_type, source,
-                      file_path, file_size_bytes, file_hash, uploaded_by, uploaded_at, notes, is_deleted
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                      file_path, file_size_bytes, file_hash, uploaded_by, uploaded_at, notes, is_deleted,
+                      match_confirmed, match_score, match_method
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, NULL, 'manual')
                     """,
                     (
                         return_id, candidate, original_filename, doc_type, "walk_in",
@@ -391,7 +393,7 @@ def return_documents_bulk_upload(return_id: int):
                 def _bg_classify(_doc_id=doc_id):
                     try:
                         with app_obj.app_context():
-                            from ai_routes import _classify_document
+                            from form_store import _classify_document
                             _classify_document(_doc_id, only_if_still_unknown=True)
                     except Exception as exc:
                         log.error("Background classify failed for doc %s: %s", _doc_id, exc)
@@ -623,7 +625,7 @@ def return_document_sync_drake(return_id: int, doc_id: int):
 @login_required
 def return_document_confirm_extraction(return_id: int, doc_id: int):
     """Staff confirms queued extraction marked needs_review."""
-    from ai_routes import _form_table_to_doc_type, _save_form_data
+    from form_store import _form_table_to_doc_type, _save_form_data
     from extractor import _resolve_detected_table
 
     reviewer = session.get("username") or "staff"

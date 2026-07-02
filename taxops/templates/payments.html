@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Payments — TaxOps {{ current_year }}{% endblock %}
+{% block title %}Payments — Tax Log {{ current_year }}{% endblock %}
 
 {% block content %}
 <div class="space-y-4">
@@ -7,8 +7,8 @@
   <!-- Header -->
   <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-lg font-bold text-slate-800">Payments</h1>
-      <p class="text-sm text-slate-400 mt-0.5">Fee tracking for {{ current_year }}</p>
+      <h1 class="text-lg font-bold text-slate-800">{{ _('Payments') }}</h1>
+      <p class="text-sm text-slate-400 mt-0.5">{{ _('Fee tracking for') }} {{ current_year }}</p>
     </div>
     <div class="flex items-center gap-3">
       <label class="flex items-center gap-2 cursor-pointer select-none">
@@ -16,7 +16,7 @@
                onchange="window.location='/payments?year={{ current_year }}'+(this.checked?'&balance_only=1':'')"
                {% if balance_only %}checked{% endif %}
                class="rounded border-slate-300 text-blue-600 focus:ring-blue-400">
-        <span class="text-sm text-slate-600 font-medium">Balance due only</span>
+        <span class="text-sm text-slate-600 font-medium">{{ _('Balance due only') }}</span>
       </label>
       <input id="table-filter" type="text" placeholder="Quick filter…"
              class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400 w-36">
@@ -26,15 +26,15 @@
   <!-- Summary cards -->
   <div class="grid grid-cols-3 gap-4">
     <div class="bg-white rounded-xl border border-slate-200 p-4">
-      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Total Billed</div>
+      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">{{ _('Total Billed') }}</div>
       <div class="text-2xl font-black text-slate-800 mt-1 tabular-nums">${{ "{:,.2f}".format(totals.billed) }}</div>
     </div>
     <div class="bg-white rounded-xl border border-slate-200 p-4">
-      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Collected</div>
+      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">{{ _('Collected') }}</div>
       <div class="text-2xl font-black text-green-600 mt-1 tabular-nums">${{ "{:,.2f}".format(totals.collected) }}</div>
     </div>
     <div class="bg-white rounded-xl border border-slate-200 p-4">
-      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Outstanding</div>
+      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">{{ _('Outstanding') }}</div>
       <div class="text-2xl font-black {{ 'text-red-600' if totals.outstanding > 0 else 'text-slate-400' }} mt-1 tabular-nums">
         ${{ "{:,.2f}".format(totals.outstanding) }}
       </div>
@@ -46,16 +46,16 @@
     <table class="data-table w-full text-sm">
       <thead class="bg-slate-50 border-b border-slate-200 sticky top-[88px] z-10">
         <tr>
-          <th class="th w-16">Log #</th>
-          <th class="th">Client</th>
-          <th class="th w-28">Status</th>
-          <th class="th text-right w-24">Total Fee</th>
-          <th class="th text-right w-24">Fee Paid</th>
-          <th class="th text-right w-20">CC Fee</th>
+          <th class="th w-16">{{ _('Log #') }}</th>
+          <th class="th">{{ _('Client') }}</th>
+          <th class="th w-28">{{ _('Status') }}</th>
+          <th class="th text-right w-24">{{ _('Total Fee') }}</th>
+          <th class="th text-right w-24">{{ _('Fee Paid') }}</th>
+          <th class="th text-right w-20">{{ _('CC Fee') }}</th>
           <th class="th w-28">Zelle / CK #</th>
           <th class="th w-28">Cash / QPay</th>
-          <th class="th w-24">Receipt #</th>
-          <th class="th text-right w-28">Balance</th>
+          <th class="th w-24">{{ _('Receipt #') }}</th>
+          <th class="th text-right w-28">{{ _('Balance') }}</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100">

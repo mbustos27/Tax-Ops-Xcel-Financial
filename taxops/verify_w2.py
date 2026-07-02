@@ -27,7 +27,7 @@ _TAXOPS_ROOT = Path(__file__).resolve().parent
 if str(_TAXOPS_ROOT) not in sys.path:
     sys.path.insert(0, str(_TAXOPS_ROOT))
 
-from ai_routes import _coerce_sql_integer_field, _save_form_data  # noqa: E402
+from form_store import _coerce_sql_integer_field, _save_form_data  # noqa: E402
 from db import init_db  # noqa: E402
 from extractor import _DOCUMENT_EXTRACT_ALLOWED_KEYS, _irs_form_extraction_block  # noqa: E402
 from form_schema import FORM_INTEGER_COLUMNS, FORM_TABLE_INSERT_COLUMNS  # noqa: E402

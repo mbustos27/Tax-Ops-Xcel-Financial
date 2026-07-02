@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ _('Reports') }} — TaxOps {{ report_year }}{% endblock %}
+{% block title %}{{ _('Reports') }} — Tax Log {{ report_year }}{% endblock %}
 
 {% block content %}
 <div class="max-w-screen-2xl mx-auto px-4 py-6 space-y-6">
@@ -154,7 +154,7 @@
             <tr class="border-b border-slate-100">
               <th class="th text-left">{{ _('Status') }}</th>
               <th class="th text-right">{{ _('Count') }}</th>
-              <th class="th text-right">{{ _('% of Total') }}</th>
+              <th class="th text-right">% of Total</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">

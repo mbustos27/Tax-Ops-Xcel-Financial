@@ -19,15 +19,17 @@ def seeded_conn():
     conn.executescript(
         """
         INSERT INTO clients (id, last_name, first_name, display_name)
-        VALUES (1, 'Smith', 'A', NULL);
+        VALUES (1, 'Smith', 'A', NULL),
+               (2, 'Jones', 'B', NULL),
+               (3, 'Lee',   'C', NULL);
 
         INSERT INTO returns (
             id, client_id, log_number, tax_year, processor,
             verified, client_status, intake_date
         ) VALUES
             (101, 1, '1', 2025, 'Maria Garcia', 0, 'PROCESSING', '2026-03-01'),
-            (102, 1, '2', 2025, 'Maria Garcia', 0, 'PROCESSING', '2026-03-05'),
-            (103, 1, '3', 2025, 'Lee Tran',      0, 'HOLD',       '2026-04-01');
+            (102, 2, '2', 2025, 'Maria Garcia', 0, 'PROCESSING', '2026-03-05'),
+            (103, 3, '3', 2025, 'Lee Tran',      0, 'HOLD',       '2026-04-01');
 
         INSERT INTO payments (return_id, total_fee, fee_paid)
         VALUES (103, 150, 75);

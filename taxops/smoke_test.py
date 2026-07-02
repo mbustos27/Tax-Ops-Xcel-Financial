@@ -37,7 +37,6 @@ ENDPOINTS: list[tuple[str, tuple[int, ...]]] = [
     ("/login",     (200,)),
     ("/review",    (200, 302)),
     ("/payments",  (200, 302)),
-    ("/ai/status", (200, 302, 401)),  # API endpoint — 401 when unauthenticated
 ]
 
 

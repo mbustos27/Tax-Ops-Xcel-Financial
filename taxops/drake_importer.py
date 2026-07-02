@@ -33,6 +33,7 @@ import csv
 import io
 import json
 import sqlite3
+import time
 from typing import Any, Dict, List, Optional
 
 from config import CSMDATA_SOURCE, DRAKE_SOURCE, DRAKE_STATUS_MAP, DRAKE_TYPE_FORMS
@@ -40,7 +41,7 @@ from events import create_status_events
 from name_matcher import find_client as fuzzy_find_client, ACCEPT_THRESHOLD, strip_spouse, split_spouse_name_chunk
 from normalizer import normalize_currency, normalize_date, normalize_string, normalize_tax_year, is_locked_status
 from preparer import normalize_preparer
-from utils import ImportStats, now
+from utils import ImportStats, ImportResult, now
 
 # ---------------------------------------------------------------------------
 # Format signatures — keys are canonical (upper-cased) header names
@@ -48,6 +49,46 @@ from utils import ImportStats, now
 
 _CSM_SIGNATURE  = {"CLIENT NAME", "PREPARER", "STARTED", "COMPLETED"}
 _TAXOPS_SIGNATURE = {"TAXPAYER LAST NAME", "DATE STARTED", "E-FILED"}
+
+# ---------------------------------------------------------------------------
+# Canonical Drake field mapping (CSM_DATA format)
+# Read from actual CSMDATA.csv headers — do not modify without checking the file.
+# ---------------------------------------------------------------------------
+
+DRAKE_FIELD_MAP: Dict[str, str] = {
+    # Drake CSM Data column name → TaxOps internal name
+    "ID (Last 4)":     "ssn_last4",       # "XXXXX1234" → last 4 digits only
+    "Client Name":     "last_name",        # "LAST, FIRST" → split into last/first
+    "Type":            "return_type",      # 1040 / 1120 / 1120S / 1065 / 990 / 1041
+    "Preparer":        "processor",
+    "Status":          "client_status",    # See DRAKE_STATUS_MAP in config.py
+    "Started":         "intake_date",
+    "Completed":       "logout_date",
+    "Last Change":     "updated_date",
+    "Changed By":      "note",             # Stored as a note, not a column
+    "Refund":          "refund_amount",    # Client's tax refund — internal reference only
+    "BalDue":          "_skip",            # Client's IRS balance — not stored
+    "Total Bill":      "total_fee",        # Our service fee
+    "Bank Deposits":   "bank_deposit",
+    "Client Payments": "_skip",            # Internal Drake discount — never reflects cash received
+    "Amount Owed":     "_skip",            # Derived; not stored
+}
+
+# TAX_OPS format (drake_YYYY.csv) field mapping
+DRAKE_TAXOPS_FIELD_MAP: Dict[str, str] = {
+    "Taxpayer Last Name":  "last_name",
+    "Taxpayer First Name": "first_name",
+    "Return Type":         "return_type",   # 1040 / EXT / 4868
+    "Filing Status":       "_skip",         # IRS filing status 1-5 — not workflow status
+    "Date Started":        "intake_date",
+    "Date Completed":      "logout_date",
+    "Date Changed":        "updated_date",
+    "E-Filed":             "efile_flag",    # YES/NO → bool
+    "Fed Ack Date":        "ack_date",
+    "Balance Due":         "_skip",         # Client's IRS balance — not stored
+    "Refund":              "refund_amount",
+    "Bal Due - BILL":      "total_fee",     # Our service fee
+}
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +101,7 @@ def process_drake_csv(
     batch_id: int,
     source_file: str,
     tax_year: int,
-) -> ImportStats:
+) -> ImportResult:
     reader, fmt = _open_and_detect(csv_path)
     if fmt == "UNKNOWN":
         raise ValueError(
@@ -69,7 +110,11 @@ def process_drake_csv(
         )
 
     source_label = CSMDATA_SOURCE if fmt == "CSM_DATA" else DRAKE_SOURCE
-    stats = ImportStats()
+    stats = ImportResult(
+        source=source_label,
+        filename=source_file,
+    )
+    _t0 = time.monotonic()
 
     for row_number, row in enumerate(reader, start=2):
         if _is_totals_row(row):
@@ -128,7 +173,9 @@ def process_drake_csv(
         except Exception as exc:
             _insert_import_row(conn, batch_id, row_number, row, "ERROR", str(exc))
             stats.error_count += 1
+            stats.errors.append(f"Row {row_number}: {exc}")
 
+    stats.duration_seconds = time.monotonic() - _t0
     return stats
 
 

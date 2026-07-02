@@ -5,6 +5,7 @@ import io
 import json
 import re
 import sqlite3
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
@@ -35,7 +36,40 @@ from name_matcher import (
     split_joint_first_column,
     split_spouse_name_chunk,
 )
-from utils import ImportStats, now
+from utils import ImportStats, ImportResult, now
+
+# ---------------------------------------------------------------------------
+# Canonical tax-log CSV field mapping
+# Read from actual "TAX LOG 2025 Live.csv" / "TAXOPS.csv" headers.
+# ---------------------------------------------------------------------------
+
+TAX_LOG_FIELD_MAP: Dict[str, str] = {
+    # Tax-log column header → TaxOps DB field
+    "LOG 2025":              "log_number",       # Intake season sequence number
+    "LOG 2024":              "log_number",        # Prior-season reference
+    "LAST":                  "last_name",
+    "FIRST":                 "first_name",
+    "TAX PAYER NAME (S)":    "display_name",
+    "YR":                    "tax_year",
+    "PROCESSOR":             "processor",
+    "VERIFIED":              "verified",
+    "CLIENT STATUS":         "client_status",
+    "INT'D":                 "intake_date",
+    "25 TRANSF":             "transfer_2025_flag",
+    "26 TRANSF":             "transfer_2026_flag",
+    "EMAIL":                 "email_marker",
+    "DATE EMAILED":          "date_emailed",
+    "PICK UP":               "pickup_date",
+    "LOG OUT":               "logout_date",
+    "TOTAL FEE":             "total_fee",
+    "RECEIPT #":             "receipt_number",
+    "FEE PAID":              "fee_paid",
+    "CC FEE":                "cc_fee",
+    "ZELLE/CHECK":           "zelle_or_check_ref",
+    "CASH/QPAY":             "cash_or_qpay_ref",
+    "Referral":              "referral_flag",
+    "Referred By":           "referred_by",
+}
 
 _LOG_COL_RE = re.compile(r"^LOG (20\d{2})$")
 
@@ -253,8 +287,9 @@ def _manual_csv_layout(csv_path: str):
     all_rows = list(csv.reader(io.StringIO(text)))
     return names, all_rows, result.data_start_index, result
 
-def process_csv(conn: sqlite3.Connection, csv_path: str, batch_id: int, source_file: str) -> ImportStats:
-    stats = ImportStats()
+def process_csv(conn: sqlite3.Connection, csv_path: str, batch_id: int, source_file: str) -> ImportResult:
+    stats = ImportResult(source=MANUAL_LOG_SOURCE, filename=source_file)
+    _t0 = time.monotonic()
     prep = prepare_manual_csv(csv_path, tax_year_hint=None)
     returns_cache: Dict[int, List[sqlite3.Row]] = {}
 
@@ -333,6 +368,8 @@ def process_csv(conn: sqlite3.Connection, csv_path: str, batch_id: int, source_f
         except Exception as exc:
             _insert_import_row(conn, batch_id, row_number, row, "ERROR", str(exc))
             stats.error_count += 1
+            stats.errors.append(f"Row {row_number}: {exc}")
+    stats.duration_seconds = time.monotonic() - _t0
     return stats
 
 
@@ -611,10 +648,18 @@ def _upsert_client(conn: sqlite3.Connection, data: Dict[str, Any], forced_client
     if forced_client_id is not None:
         existing = dict(conn.execute("SELECT * FROM clients WHERE id = ?", (forced_client_id,)).fetchone() or {})
     if existing is None:
-        row = conn.execute(
-            "SELECT * FROM clients WHERE lower(last_name)=lower(?) AND lower(first_name)=lower(?) LIMIT 1",
-            (data["last_name"], data["first_name"]),
-        ).fetchone()
+        fn = data.get("first_name")
+        if fn:
+            row = conn.execute(
+                "SELECT * FROM clients WHERE lower(last_name)=lower(?) AND lower(first_name)=lower(?) LIMIT 1",
+                (data["last_name"], fn),
+            ).fetchone()
+        else:
+            # Business / no-first-name records: NULL != NULL in SQL, so must use IS NULL
+            row = conn.execute(
+                "SELECT * FROM clients WHERE lower(last_name)=lower(?) AND (first_name IS NULL OR first_name='') LIMIT 1",
+                (data["last_name"],),
+            ).fetchone()
         existing = dict(row) if row else None
 
     if existing is None:

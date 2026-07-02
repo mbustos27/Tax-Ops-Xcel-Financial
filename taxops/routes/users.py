@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 users_bp = Blueprint("users", __name__)
 
 _MIN_PASSWORD_LEN = 8
-_ALLOWED_ROLES = frozenset({"admin", "staff"})
+_ALLOWED_ROLES = frozenset({"admin", "preparer", "receptionist"})
 
 
 def _admin_required(f):
@@ -147,6 +147,37 @@ def api_admin_reactivate_user(user_id: int):
         conn.commit()
         logger.info("Admin reactivated user id=%s by=%s", user_id, session.get("username"))
         return jsonify({"success": True})
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        conn.close()
+
+
+@users_bp.post("/api/admin/users/<int:user_id>/change-role")
+@_admin_required
+def api_admin_change_role(user_id: int):
+    current_username = session.get("username")
+    data = request.get_json(silent=True) or {}
+    new_role = (data.get("role") or "").strip().lower()
+    if new_role not in _ALLOWED_ROLES:
+        return jsonify({"error": f"role must be one of {sorted(_ALLOWED_ROLES)}"}), 400
+
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT username FROM auth_users WHERE id = ?", (user_id,)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "User not found"}), 404
+        if row["username"] == current_username:
+            return jsonify({"error": "You cannot change your own role"}), 400
+        conn.execute("UPDATE auth_users SET role = ? WHERE id = ?", (new_role, user_id))
+        conn.commit()
+        logger.info(
+            "Admin changed role for user id=%s to %s by=%s", user_id, new_role, current_username
+        )
+        return jsonify({"success": True, "role": new_role})
     except Exception as exc:
         conn.rollback()
         return jsonify({"error": str(exc)}), 500

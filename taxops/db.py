@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 from typing import Dict, List, Optional
 
@@ -9,7 +10,30 @@ from form_schema import CREATE_TABLE_FRAGMENTS_DOC7, get_form_alter_columns_by_t
 # DEBT-6: increment this integer whenever a new migration block is added to
 # _migrate_existing_tables.  The value is stored in app_settings and surfaced
 # via /health so ops can confirm a deploy applied all migrations.
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 10
+
+_log = logging.getLogger(__name__)
+
+# EMAIL-INBOX-SCHEMA: single source of truth for the email_inbox table definition.
+# Referenced by both init_db() and _migrate_existing_tables() to prevent drift.
+_EMAIL_INBOX_CREATE_SQL = """
+CREATE TABLE IF NOT EXISTS email_inbox (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  sender_email        TEXT,
+  sender_domain       TEXT,
+  subject_snippet     TEXT,
+  filename            TEXT NOT NULL,
+  original_filename   TEXT,
+  file_path           TEXT NOT NULL,
+  file_size_bytes     INTEGER,
+  received_at         TEXT NOT NULL,
+  assigned_return_id  INTEGER REFERENCES returns(id),
+  assigned_by         TEXT,
+  assigned_at         TEXT,
+  is_assigned         INTEGER NOT NULL DEFAULT 0,
+  is_deleted          INTEGER NOT NULL DEFAULT 0
+)
+"""
 
 
 def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
@@ -221,6 +245,32 @@ def init_db(conn: sqlite3.Connection) -> None:
           FOREIGN KEY (return_id) REFERENCES returns(id)
         );
 
+        CREATE TABLE IF NOT EXISTS extension_batches (
+          id               INTEGER PRIMARY KEY,
+          filing_date      TEXT NOT NULL,
+          notes            TEXT,
+          transmitted_at   TEXT,
+          status           TEXT NOT NULL DEFAULT 'open',
+          created_at       TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS extension_batch_items (
+          id               INTEGER PRIMARY KEY,
+          batch_id         INTEGER NOT NULL,
+          return_id        INTEGER NOT NULL,
+          log_number       TEXT,
+          client_name      TEXT,
+          tax_year         INTEGER,
+          filing_date      TEXT,
+          ack_status       TEXT NOT NULL DEFAULT 'pending',
+          ack_date         TEXT,
+          rejection_reason TEXT,
+          created_at       TEXT NOT NULL,
+          FOREIGN KEY (batch_id)  REFERENCES extension_batches(id),
+          FOREIGN KEY (return_id) REFERENCES returns(id),
+          UNIQUE (batch_id, return_id)
+        );
+
         CREATE TABLE IF NOT EXISTS efile_batches (
           id               INTEGER PRIMARY KEY,
           transmission_date TEXT NOT NULL,
@@ -409,8 +459,28 @@ def init_db(conn: sqlite3.Connection) -> None:
           failed_attempts  INTEGER NOT NULL DEFAULT 0,
           locked_until     TEXT
         );
+
+        -- Part 4: email processing log — tracks outcome and retry count per (uid, folder).
+        -- Privacy rules: no email body, no full sender address, no SSN.
+        CREATE TABLE IF NOT EXISTS email_processing_log (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          message_uid      TEXT NOT NULL,
+          imap_folder      TEXT NOT NULL,
+          sender_domain    TEXT,
+          subject_snippet  TEXT,
+          outcome          TEXT NOT NULL,
+          attempt_count    INTEGER NOT NULL DEFAULT 1,
+          last_attempt_at  TEXT NOT NULL,
+          error_message    TEXT,
+          doc_id           INTEGER REFERENCES return_documents(id),
+          return_id        INTEGER REFERENCES returns(id),
+          UNIQUE(message_uid, imap_folder)
+        );
+
+        -- EMAIL-INBOX: created via _EMAIL_INBOX_CREATE_SQL constant (see top of file).
         """
     )
+    conn.execute(_EMAIL_INBOX_CREATE_SQL)
     for _form_sql in CREATE_TABLE_FRAGMENTS_DOC7.values():
         conn.execute(_form_sql.strip())
     _migrate_existing_tables(conn)
@@ -456,6 +526,199 @@ def init_db(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _delete_return_children(conn: sqlite3.Connection, return_id: int) -> None:
+    """Delete all child rows that reference returns.id so the return can be safely removed."""
+    for table in (
+        "notes", "status_events", "return_forms", "missing_docs",
+        "dependents", "return_documents", "extraction_queue",
+        "efile_batch_items", "review_queue",
+    ):
+        fk_col = "return_id"
+        try:
+            conn.execute(f"DELETE FROM {table} WHERE {fk_col} = ?", (return_id,))
+        except sqlite3.OperationalError:
+            pass
+    # payments table uses return_id too
+    conn.execute("DELETE FROM payments WHERE return_id = ?", (return_id,))
+
+
+def _merge_client_fields(conn: sqlite3.Connection, kept_id: int, discard: Dict) -> None:
+    """Copy any non-NULL field from discard into kept_id only when kept_id has NULL there."""
+    skip = {"id", "created_at", "updated_at", "last_name", "first_name", "ssn_last4"}
+    updates = {}
+    kept = dict(conn.execute("SELECT * FROM clients WHERE id = ?", (kept_id,)).fetchone() or {})
+    for col, val in discard.items():
+        if col in skip or val is None:
+            continue
+        if kept.get(col) is None:
+            updates[col] = val
+    if updates:
+        set_clause = ", ".join(f"{c} = ?" for c in updates)
+        conn.execute(
+            f"UPDATE clients SET {set_clause}, updated_at = datetime('now') WHERE id = ?",
+            list(updates.values()) + [kept_id],
+        )
+
+
+def _merge_return_fields(conn: sqlite3.Connection, kept_id: int, discard: Dict) -> None:
+    """Fill NULL fields on kept return from discard return (import fills gaps only)."""
+    skip = {"id", "client_id", "tax_year", "created_at", "updated_at"}
+    updates = {}
+    kept = dict(conn.execute("SELECT * FROM returns WHERE id = ?", (kept_id,)).fetchone() or {})
+    for col, val in discard.items():
+        if col in skip or val is None:
+            continue
+        if kept.get(col) is None:
+            updates[col] = val
+    if updates:
+        set_clause = ", ".join(f"{c} = ?" for c in updates)
+        conn.execute(
+            f"UPDATE returns SET {set_clause}, updated_at = datetime('now') WHERE id = ?",
+            list(updates.values()) + [kept_id],
+        )
+
+
+def _deduplicate_existing_records(conn: sqlite3.Connection) -> int:
+    """
+    One-time cleanup of duplicate client and return records created by the old
+    importer.  Keeps the client with the most returns (ties resolved by highest
+    id), reassigns or merges conflicting returns, then deletes the extras.
+
+    Safe to run multiple times — exits cleanly when no duplicates exist.
+    Returns the count of client rows removed.
+    """
+    removed = 0
+
+    # Identify duplicate groups: same lower(last_name), lower(first_name), ssn_last4
+    dupe_groups = conn.execute(
+        """
+        SELECT lower(last_name)                    AS ln,
+               lower(COALESCE(first_name, ''))     AS fn,
+               COALESCE(ssn_last4, '')             AS ssn,
+               COUNT(*)                            AS cnt
+        FROM clients
+        GROUP BY lower(last_name),
+                 lower(COALESCE(first_name, '')),
+                 COALESCE(ssn_last4, '')
+        HAVING COUNT(*) > 1
+        """
+    ).fetchall()
+
+    for grp in dupe_groups:
+        # Rank members: most returns first, then highest id
+        members = conn.execute(
+            """
+            SELECT c.id, COUNT(r.id) AS ret_count
+            FROM clients c
+            LEFT JOIN returns r ON r.client_id = c.id
+            WHERE lower(c.last_name)                = ?
+              AND lower(COALESCE(c.first_name, '')) = ?
+              AND COALESCE(c.ssn_last4, '')         = ?
+            GROUP BY c.id
+            ORDER BY ret_count DESC, c.id DESC
+            """,
+            (grp["ln"], grp["fn"], grp["ssn"]),
+        ).fetchall()
+
+        if len(members) < 2:
+            continue
+
+        kept_id = members[0]["id"]
+        kept_client = dict(
+            conn.execute("SELECT * FROM clients WHERE id = ?", (kept_id,)).fetchone()
+        )
+        to_remove = [m["id"] for m in members[1:]]
+
+        for discard_id in to_remove:
+            discard_client = dict(
+                conn.execute("SELECT * FROM clients WHERE id = ?", (discard_id,)).fetchone()
+            )
+
+            # Merge non-null contact fields from discarded client into kept
+            _merge_client_fields(conn, kept_id, discard_client)
+
+            # Reassign or merge returns
+            for dr in conn.execute(
+                "SELECT * FROM returns WHERE client_id = ?", (discard_id,)
+            ).fetchall():
+                dr_dict = dict(dr)
+                conflict = conn.execute(
+                    "SELECT * FROM returns WHERE client_id = ? AND tax_year = ?",
+                    (kept_id, dr_dict["tax_year"]),
+                ).fetchone()
+
+                if conflict:
+                    # Merge non-null fields into kept return, then remove duplicate
+                    _merge_return_fields(conn, conflict["id"], dr_dict)
+                    _delete_return_children(conn, dr_dict["id"])
+                    conn.execute("DELETE FROM returns WHERE id = ?", (dr_dict["id"],))
+                    _log.info(
+                        "Deduplicated return: %s tax_year=%s — kept id=%s, removed id=%s",
+                        kept_client.get("last_name"),
+                        dr_dict["tax_year"],
+                        conflict["id"],
+                        dr_dict["id"],
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE returns SET client_id = ? WHERE id = ?",
+                        (kept_id, dr_dict["id"]),
+                    )
+                    _log.info(
+                        "Reassigned return id=%s (tax_year=%s) from client %s → %s",
+                        dr_dict["id"],
+                        dr_dict["tax_year"],
+                        discard_id,
+                        kept_id,
+                    )
+
+            # Reassign review_queue references
+            conn.execute(
+                "UPDATE review_queue SET proposed_client_id = ? WHERE proposed_client_id = ?",
+                (kept_id, discard_id),
+            )
+            conn.execute(
+                "UPDATE review_queue SET resolved_client_id = ? WHERE resolved_client_id = ?",
+                (kept_id, discard_id),
+            )
+
+            # Reassign all other tables that reference clients(id) via client_id.
+            # For tables with a UNIQUE constraint on client_id (spouses,
+            # client_spouse_import) delete the discard row when kept already has one.
+            for tbl in ("client_dependents", "client_billing"):
+                conn.execute(
+                    f"UPDATE {tbl} SET client_id = ? WHERE client_id = ?",
+                    (kept_id, discard_id),
+                )
+            for tbl in ("spouses", "client_spouse_import"):
+                kept_has = conn.execute(
+                    f"SELECT 1 FROM {tbl} WHERE client_id = ?", (kept_id,)
+                ).fetchone()
+                if kept_has:
+                    conn.execute(
+                        f"DELETE FROM {tbl} WHERE client_id = ?", (discard_id,)
+                    )
+                else:
+                    conn.execute(
+                        f"UPDATE {tbl} SET client_id = ? WHERE client_id = ?",
+                        (kept_id, discard_id),
+                    )
+
+            conn.execute("DELETE FROM clients WHERE id = ?", (discard_id,))
+            _log.info(
+                "Deduplicated client: %s %s — kept id=%s, removed id=%s",
+                kept_client.get("last_name"),
+                kept_client.get("first_name") or "",
+                kept_id,
+                discard_id,
+            )
+            removed += 1
+
+    if removed:
+        _log.info("Deduplication complete: removed %d duplicate client rows.", removed)
+    return removed
+
+
 def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
     table_columns: Dict[str, List[str]] = {
         "clients": [
@@ -481,6 +744,8 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "address TEXT",
             "is_new_client INTEGER DEFAULT 0",
             "prior_year_log TEXT",
+            # ID type: 1=SSN, 2=ITIN, NULL=unknown
+            "id_type INTEGER",
         ],
         "returns": [
             "processor TEXT",
@@ -526,7 +791,19 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             # pickup workflow
             "signatures_given INTEGER DEFAULT 0",
             "signatures_received INTEGER DEFAULT 0",
+            "signatures_given_method TEXT",
+            "signatures_received_method TEXT",
             "adjusted_gross_income REAL",
+            # LIFE-1: cancellation tracking
+            "cancelled_fee REAL",
+            "cancelled_reason TEXT",
+            "cancelled_at TEXT",
+            # Extension filing track (separate from is_extension which marks return type)
+            "extension_requested INTEGER NOT NULL DEFAULT 0",
+            "extension_filed_date TEXT",
+            "extension_ack_status TEXT",
+            "extension_ack_date TEXT",
+            "extension_due_date TEXT",
         ],
         "payments": [
             "refund_amount REAL",
@@ -544,6 +821,15 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "receipt2_number TEXT",
             # pickup workflow
             "payment_method TEXT",
+            "check_number TEXT",
+            # LIFE-1: store original fee before cancellation for reversal
+            "cancelled_fee REAL",
+        ],
+        "dependents": [
+            # DEP-1: soft-delete so removal from current return doesn't touch history
+            "is_deleted INTEGER NOT NULL DEFAULT 0",
+            # DEP-3: Medicare status
+            "on_medicare INTEGER NOT NULL DEFAULT 0",
         ],
         "review_queue": [
             "batch_id INTEGER",
@@ -565,6 +851,13 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         "efile_batches": [
             "transmitted_at TEXT",
             "notes TEXT",
+        ],
+        "extension_batches": [
+            "transmitted_at TEXT",
+            "notes TEXT",
+        ],
+        "extension_batch_items": [
+            "rejection_reason TEXT",
         ],
         "efile_batch_items": [
             "needs_calculation INTEGER NOT NULL DEFAULT 0",
@@ -593,6 +886,15 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         ],
         "return_documents": [
             "file_hash TEXT",
+            # Email-match provenance — Fix 2: track whether a staff member has
+            # confirmed this document is on the correct return.
+            # DEFAULT 1 so all existing walk-in rows are treated as confirmed.
+            "match_confirmed INTEGER NOT NULL DEFAULT 1",
+            # Fuzzy-match confidence from name_matcher (0.0–1.0 scale).
+            # NULL for walk-in uploads.
+            "match_score REAL",
+            # 'fuzzy', 'exact', 'manual', or NULL for walk-in uploads.
+            "match_method TEXT",
         ],
         "auth_users": [
             # ONBOARD-1: forces password change on first login / after admin reset
@@ -600,6 +902,7 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             # ONBOARD-4: orientation screen shown exactly once after first password change
             "has_seen_orientation INTEGER NOT NULL DEFAULT 0",
         ],
+        # ← end auth_users
     }
 
     for table_name, columns in table_columns.items():
@@ -612,6 +915,14 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
                 except sqlite3.OperationalError as exc:
                     if "duplicate column" not in str(exc).lower():
                         raise
+
+    # ONBOARD-4: one-time seed — users who already have a login history have used the app
+    # before and should not see the orientation screen on their next visit after this deploy.
+    # Idempotent: once has_seen_orientation is set to 1 the WHERE clause will not match again.
+    conn.execute(
+        "UPDATE auth_users SET has_seen_orientation = 1 "
+        "WHERE has_seen_orientation = 0 AND last_login_at IS NOT NULL"
+    )
 
     # Rename legacy email_sender_rules → known_sender_rules (DOC-3 epic name; one-time).
     _rule_tables = [
@@ -868,6 +1179,171 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_receipt_queue_doc ON receipt_queue(return_document_id)"
     )
+    # Part 4: email processing log — new-table migration for existing databases.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS email_processing_log (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          message_uid      TEXT NOT NULL,
+          imap_folder      TEXT NOT NULL,
+          sender_domain    TEXT,
+          subject_snippet  TEXT,
+          outcome          TEXT NOT NULL,
+          attempt_count    INTEGER NOT NULL DEFAULT 1,
+          last_attempt_at  TEXT NOT NULL,
+          error_message    TEXT,
+          doc_id           INTEGER REFERENCES return_documents(id),
+          return_id        INTEGER REFERENCES returns(id),
+          UNIQUE(message_uid, imap_folder)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_email_proc_log_outcome "
+        "ON email_processing_log(outcome, last_attempt_at)"
+    )
+    # EMAIL-INBOX: new-table migration for existing databases (audit finding C2).
+    conn.execute(_EMAIL_INBOX_CREATE_SQL)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_email_inbox_unassigned "
+        "ON email_inbox(is_assigned, is_deleted, received_at)"
+    )
+
+    # IMPORT-DEDUP: clean historical duplicates before adding the unique index.
+    # Safe to run multiple times (idempotent).
+    _deduplicate_existing_records(conn)
+
+    # IMPORT-DEDUP: unique constraint — one active (non-cancelled) return per client per year.
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_returns_unique_client_year
+        ON returns(client_id, tax_year)
+        WHERE client_status != 'CANCELLED'
+        """
+    )
+
+    # DEP-IMPORT: client-level dependents imported from Drake for TY2026 prefill
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS client_dependents (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          client_id             INTEGER NOT NULL REFERENCES clients(id),
+          drake_dependent_id    TEXT,
+          taxpayer_name         TEXT,
+          last_name             TEXT,
+          first_name            TEXT NOT NULL,
+          date_of_birth         TEXT,
+          relationship          TEXT,
+          is_claimed_dependent  INTEGER NOT NULL DEFAULT 1,
+          hoh_qualifier_only    INTEGER NOT NULL DEFAULT 0,
+          source                TEXT DEFAULT 'TY2025 Drake import',
+          match_confidence      REAL,
+          needs_review          INTEGER NOT NULL DEFAULT 0,
+          confirmed_at_intake   INTEGER NOT NULL DEFAULT 0,
+          removed_for_ty2026    INTEGER NOT NULL DEFAULT 0,
+          created_at            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    # Add taxpayer_name column to existing deployments
+    try:
+        conn.execute("ALTER TABLE client_dependents ADD COLUMN taxpayer_name TEXT")
+    except Exception:
+        pass
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_client_deps_client ON client_dependents(client_id)"
+    )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_client_deps_drake_dedup
+        ON client_dependents(client_id, drake_dependent_id)
+        WHERE drake_dependent_id IS NOT NULL
+        """
+    )
+
+    # SPOUSE-IMPORT: staging table for Drake married-filer spouse data
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS client_spouse_import (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          client_id             INTEGER NOT NULL REFERENCES clients(id),
+          taxpayer_name         TEXT,
+          spouse_last_name      TEXT,
+          spouse_first_name     TEXT NOT NULL,
+          spouse_dob            TEXT,
+          filing_status         TEXT,
+          source                TEXT DEFAULT 'TY2025 Drake import',
+          match_confidence      REAL,
+          needs_review          INTEGER NOT NULL DEFAULT 0,
+          applied_at            TEXT,
+          created_at            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_spouse_import_client ON client_spouse_import(client_id)"
+    )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_spouse_import_dedup
+        ON client_spouse_import(client_id)
+        """
+    )
+
+    # SPOUSES: client-level spouse table from Drake TY2025 Purple Sheet export
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS spouses (
+          id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+          client_id            INTEGER NOT NULL REFERENCES clients(id),
+          drake_spouse_id      TEXT,
+          taxpayer_name        TEXT,
+          last_name            TEXT,
+          first_name           TEXT NOT NULL,
+          middle_initial       TEXT,
+          date_of_birth        TEXT,
+          derived_last_name    TEXT,
+          source               TEXT DEFAULT 'TY2025 Drake import',
+          match_confidence     REAL,
+          needs_review         INTEGER NOT NULL DEFAULT 0,
+          confirmed_at_intake  INTEGER NOT NULL DEFAULT 0,
+          created_at           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_spouses_one_per_client ON spouses(client_id)"
+    )
+    # Add taxpayer_name to existing deployments
+    try:
+        conn.execute("ALTER TABLE spouses ADD COLUMN taxpayer_name TEXT")
+    except Exception:
+        pass
+
+    # ID type for spouses (1=SSN, 2=ITIN)
+    try:
+        conn.execute("ALTER TABLE spouses ADD COLUMN id_type INTEGER")
+    except Exception:
+        pass
+
+    # Outstanding billing balance — point-in-time snapshots from Drake
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS client_billing (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id      INTEGER NOT NULL REFERENCES clients(id),
+            balance_due    REAL,
+            balance_as_of  DATE,
+            source         TEXT DEFAULT 'TY2025 Drake import',
+            created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_client_billing_snapshot "
+        "ON client_billing(client_id, balance_as_of)"
+    )
+
     # DEBT-6: stamp the schema version so /health can confirm migrations ran.
     set_schema_version(conn, CURRENT_SCHEMA_VERSION)
     conn.commit()

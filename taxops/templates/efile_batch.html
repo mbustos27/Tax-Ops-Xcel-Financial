@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}E-file Batch #{{ batch.id }} — TaxOps{% endblock %}
+{% block title %}E-file Batch #{{ batch.id }} — Tax Log{% endblock %}
 
 {% block content %}
 <div class="max-w-6xl mx-auto px-4 py-6 space-y-5">
@@ -592,12 +592,17 @@
     });
   });
 
-  window.closeAcceptModal = closeAcceptModal;
-  window.closeRejectModal = closeRejectModal;
-  window.showAcceptModal = showAcceptModal;
-  window.showRejectDetail = showRejectDetail;
-  window.submitAccept = submitAccept;
-  window.toggleExportMenu = toggleExportMenu;
+  window.closeAcceptModal  = closeAcceptModal;
+  window.closeRejectModal  = closeRejectModal;
+  window.showAcceptModal   = showAcceptModal;
+  window.showRejectDetail  = showRejectDetail;
+  window.submitAccept      = submitAccept;
+  window.submitReject      = submitReject;
+  window.toggleExportMenu  = toggleExportMenu;
+  window.markTransmitted   = markTransmitted;
+  window.markLogOut        = markLogOut;
+  window.toggleFlag        = toggleFlag;
+  window.setAck            = setAck;
 })();
 </script>
 {% endblock %}

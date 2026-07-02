@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Pickup Workflow — {{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %} — TaxOps{% endblock %}
+{% block title %}Pickup Workflow — {{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %} — Tax Log{% endblock %}
 
 {% block content %}
 {% set r = ret %}
@@ -14,9 +14,7 @@
   <div class="flex items-start justify-between gap-4">
     <div>
       <a href="/return/{{ r.id }}" class="text-xs text-blue-500 hover:underline">&larr; Back to return</a>
-      <h1 class="text-xl font-bold text-slate-800 mt-1">
-        Pickup / Final Signature
-      </h1>
+      <h1 class="text-xl font-bold text-slate-800 mt-1">Pickup / Final Signature</h1>
       <p class="text-sm text-slate-500 mt-0.5">
         {% if r.log_number %}<span class="font-mono font-black text-slate-700">Log #{{ r.log_number }}</span> &mdash;{% endif %}
         {{ r.last_name }}{% if r.first_name %}, {{ r.first_name }}{% endif %}
@@ -39,9 +37,9 @@
   </div>
   {% endif %}
 
-  {# ── Progress checklist ─────────────────────────────────────────────── #}
+  {# ── Completion checklist ────────────────────────────────────────────── #}
   {% set chk_sigs  = r.signatures_given and r.signatures_received %}
-  {% set chk_pay   = r.payment_method and r.fee_paid and r.fee_paid > 0 %}
+  {% set chk_pay   = (r.payment_method and (r.fee_paid and r.fee_paid > 0)) or r.payment_method == 'QB Billing' %}
   {% set chk_rcpt  = r.receipt_number %}
   {% set all_done  = chk_sigs and chk_pay and chk_rcpt %}
 
@@ -53,21 +51,27 @@
           {% if chk_sigs %}bg-green-100 text-green-600{% else %}bg-slate-100 text-slate-400{% endif %}">
           {% if chk_sigs %}&#10003;{% else %}1{% endif %}
         </span>
-        Signatures received
+        Signatures
+        {% if r.signatures_given_method or r.signatures_received_method %}
+        <span class="text-xs text-slate-400 ml-1">
+          ({{ {'in_person':'in person','email':'email'}.get(r.signatures_given_method,'') }}
+          / {{ {'in_person':'in person','email':'email'}.get(r.signatures_received_method,'') }})
+        </span>
+        {% endif %}
       </div>
       <div class="flex items-center gap-2 text-sm {% if chk_pay %}text-green-700{% else %}text-slate-400{% endif %}">
         <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
           {% if chk_pay %}bg-green-100 text-green-600{% else %}bg-slate-100 text-slate-400{% endif %}">
           {% if chk_pay %}&#10003;{% else %}2{% endif %}
         </span>
-        Payment collected
+        {% if r.payment_method == 'QB Billing' %}QB billed{% else %}Payment collected{% endif %}
       </div>
       <div class="flex items-center gap-2 text-sm {% if chk_rcpt %}text-green-700{% else %}text-slate-400{% endif %}">
         <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
           {% if chk_rcpt %}bg-green-100 text-green-600{% else %}bg-slate-100 text-slate-400{% endif %}">
           {% if chk_rcpt %}&#10003;{% else %}3{% endif %}
         </span>
-        Receipt # entered
+        {% if r.receipt_number == 'QB' %}QB invoice pending{% else %}Receipt # entered{% endif %}
       </div>
       {% if all_done %}
       <div class="ml-auto text-xs font-semibold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-200">
@@ -81,94 +85,126 @@
   <form method="POST" action="/pickup/{{ r.id }}" class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    {# Signatures section #}
+    {# ── Signatures ─────────────────────────────────────────────────── #}
     <div class="p-5 space-y-4">
       <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Signatures</p>
       <div class="flex flex-col sm:flex-row gap-4">
-        <label class="flex items-center gap-3 cursor-pointer select-none flex-1 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors
-          {% if r.signatures_given %}bg-blue-50 border-blue-200{% endif %}">
-          <input type="checkbox" name="signatures_given" value="1" class="w-4 h-4 accent-blue-600"
-                 {% if r.signatures_given %}checked{% endif %}>
-          <div>
-            <div class="text-sm font-semibold text-slate-700">Forms given to client</div>
-            <div class="text-xs text-slate-400">Signature pages handed out</div>
-          </div>
-        </label>
-        <label class="flex items-center gap-3 cursor-pointer select-none flex-1 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors
-          {% if r.signatures_received %}bg-green-50 border-green-200{% endif %}">
-          <input type="checkbox" name="signatures_received" value="1" class="w-4 h-4 accent-green-600"
-                 {% if r.signatures_received %}checked{% endif %}>
-          <div>
-            <div class="text-sm font-semibold text-slate-700">Forms signed &amp; returned</div>
-            <div class="text-xs text-slate-400">Client has signed all required forms</div>
-          </div>
-        </label>
+
+        {# Forms given to client #}
+        <div class="flex-1">
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Forms given to client</label>
+          <select name="signatures_given_method" id="sig-given"
+                  onchange="onSigChange()"
+                  class="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300
+                    {% if r.signatures_given %}border-blue-300 bg-blue-50{% else %}border-slate-200{% endif %}">
+            <option value="" {% if not r.signatures_given_method %}selected{% endif %}>— not yet —</option>
+            <option value="in_person" {% if r.signatures_given_method == 'in_person' %}selected{% endif %}>Handed in person</option>
+            <option value="email"     {% if r.signatures_given_method == 'email' %}selected{% endif %}>Sent by email</option>
+          </select>
+        </div>
+
+        {# Forms signed & returned #}
+        <div class="flex-1">
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">Forms signed &amp; returned</label>
+          <select name="signatures_received_method" id="sig-received"
+                  onchange="onSigChange()"
+                  class="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300
+                    {% if r.signatures_received %}border-green-300 bg-green-50{% else %}border-slate-200{% endif %}">
+            <option value="" {% if not r.signatures_received_method %}selected{% endif %}>— not yet —</option>
+            <option value="in_person" {% if r.signatures_received_method == 'in_person' %}selected{% endif %}>Signed &amp; returned in person</option>
+            <option value="email"     {% if r.signatures_received_method == 'email' %}selected{% endif %}>Signed &amp; returned by email</option>
+          </select>
+        </div>
+
       </div>
     </div>
 
-    {# Payment section #}
+    {# ── Payment ─────────────────────────────────────────────────────── #}
     <div class="p-5 space-y-4">
       <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Payment</p>
 
-      {# Payment method #}
+      {# Payment method pills #}
       <div>
         <label class="block text-xs font-medium text-slate-500 mb-1.5">Payment Method</label>
         <div class="flex flex-wrap gap-2" id="method-group">
-          {% for m in ['Cash','Zelle','Card/Visa','Other'] %}
+          {% for m in ['Cash','Zelle','Card/Visa','Check','QB Billing'] %}
           <label class="method-option flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 cursor-pointer text-sm font-medium
             hover:border-blue-300 hover:bg-blue-50 transition-colors
             {% if r.payment_method == m %}bg-blue-50 border-blue-400 text-blue-700{% else %}text-slate-600{% endif %}">
             <input type="radio" name="payment_method" value="{{ m }}" class="sr-only"
                    {% if r.payment_method == m %}checked{% endif %}
                    onchange="onMethodChange()">
-            {{ m }}
+            {% if m == 'QB Billing' %}&#128203; QB Billing{% else %}{{ m }}{% endif %}
           </label>
           {% endfor %}
         </div>
       </div>
 
-      {# Fee fields #}
-      <div class="grid grid-cols-2 gap-4">
-        <div>
-          <label for="total_fee" class="block text-xs font-medium text-slate-500 mb-1">Base Tax Prep Fee</label>
-          <div class="relative">
-            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-            <input type="number" step="0.01" min="0" name="total_fee" id="total_fee"
-                   value="{{ '%.2f'|format(r.total_fee) if r.total_fee else '' }}"
-                   oninput="recalc()"
-                   class="w-full pl-6 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
-                   placeholder="0.00">
+      {# Check number — shown when Check selected #}
+      <div id="check-number-box" class="{% if r.payment_method != 'Check' %}hidden{% endif %}">
+        <label for="check_number" class="block text-xs font-medium text-slate-500 mb-1">Check Number</label>
+        <input type="text" name="check_number" id="check_number"
+               value="{{ r.check_number or '' }}"
+               class="w-full sm:w-48 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono"
+               placeholder="e.g. 1234">
+      </div>
+
+      {# QB Billing notice — shown when QB Billing selected #}
+      <div id="qb-notice" class="{% if r.payment_method != 'QB Billing' %}hidden{% endif %}
+                                  bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+        <span class="font-semibold">&#128203; Accounting client</span> — fee will be invoiced through QuickBooks directly.
+        Enter the total fee below for records. Receipt # is set to <strong>QB</strong> automatically — replace with the QB invoice number once it's created.
+      </div>
+
+      {# Fee fields — hidden for QB Billing #}
+      <div id="fee-fields">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label for="total_fee" class="block text-xs font-medium text-slate-500 mb-1">
+              <span id="fee-label">Base Tax Prep Fee</span>
+            </label>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+              <input type="number" step="0.01" min="0" name="total_fee" id="total_fee"
+                     value="{{ '%.2f'|format(r.total_fee) if r.total_fee else '' }}"
+                     oninput="recalc()"
+                     class="w-full pl-6 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+                     placeholder="0.00">
+            </div>
+          </div>
+          <div id="cc-fee-box" class="{% if r.payment_method != 'Card/Visa' %}opacity-40 pointer-events-none{% endif %}">
+            <label class="block text-xs font-medium text-slate-500 mb-1">
+              Card Fee ({{ (card_fee_rate * 100)|int }}%)
+            </label>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+              <input type="text" id="cc_fee_display" readonly
+                     value="{{ '%.2f'|format(r.cc_fee) if r.cc_fee else '0.00' }}"
+                     class="w-full pl-6 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-500">
+            </div>
           </div>
         </div>
-        <div id="cc-fee-box" class="{% if r.payment_method != 'Card/Visa' %}opacity-40 pointer-events-none{% endif %}">
-          <label class="block text-xs font-medium text-slate-500 mb-1">
-            Card Fee ({{ (card_fee_rate * 100)|int }}%)
-          </label>
-          <div class="relative">
-            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-            <input type="text" id="cc_fee_display" readonly
-                   value="{{ '%.2f'|format(r.cc_fee) if r.cc_fee else '0.00' }}"
-                   class="w-full pl-6 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-500">
-          </div>
+
+        <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between mt-4" id="total-row">
+          <span class="text-sm font-semibold text-slate-600" id="total-label">Total Collected</span>
+          <span id="total-display" class="text-xl font-black text-slate-800 tabular-nums">
+            ${{ '%.2f'|format((r.total_fee or 0) + (r.cc_fee or 0)) }}
+          </span>
+          <input type="hidden" name="fee_paid" id="fee_paid_hidden"
+                 value="{{ ((r.total_fee or 0) + (r.cc_fee or 0)) }}">
         </div>
       </div>
 
-      <div class="bg-slate-50 rounded-xl p-4 flex items-center justify-between">
-        <span class="text-sm font-semibold text-slate-600">Total Collected</span>
-        <span id="total-display" class="text-xl font-black text-slate-800 tabular-nums">
-          ${{ '%.2f'|format((r.total_fee or 0) + (r.cc_fee or 0)) }}
-        </span>
-        <input type="hidden" name="fee_paid" id="fee_paid_hidden"
-               value="{{ ((r.total_fee or 0) + (r.cc_fee or 0)) }}">
-      </div>
     </div>
 
-    {# QuickBooks + date section #}
+    {# ── Receipt & Date ──────────────────────────────────────────────── #}
     <div class="p-5 space-y-4">
-      <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">QuickBooks &amp; Date</p>
+      <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Receipt &amp; Date</p>
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label for="receipt_number" class="block text-xs font-medium text-slate-500 mb-1">QuickBooks Receipt #</label>
+          <label for="receipt_number" class="block text-xs font-medium text-slate-500 mb-1">
+            <span id="receipt-label">QuickBooks Receipt #</span>
+          </label>
           <input type="text" name="receipt_number" id="receipt_number"
                  value="{{ r.receipt_number or '' }}"
                  class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono"
@@ -189,7 +225,7 @@
       </div>
     </div>
 
-    {# Submit #}
+    {# ── Submit ──────────────────────────────────────────────────────── #}
     <div class="p-5 flex items-center justify-between gap-4">
       <p id="ready-hint" class="text-xs text-slate-400"></p>
       <button type="submit"
@@ -215,65 +251,106 @@
   }
 
   function recalc() {
-    const base    = parseFloat(document.getElementById('total_fee').value) || 0;
     const method  = getMethod();
     const isCard  = method === 'Card/Visa';
+    const isQB    = method === 'QB Billing';
+    const base    = parseFloat(document.getElementById('total_fee').value) || 0;
     const ccFee   = isCard ? Math.round(base * CARD_FEE_RATE * 100) / 100 : 0;
-    const total   = Math.round((base + ccFee) * 100) / 100;
+    const total   = isQB ? 0 : Math.round((base + ccFee) * 100) / 100;
 
     document.getElementById('cc_fee_display').value = ccFee.toFixed(2);
-    document.getElementById('total-display').textContent = '$' + total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    document.getElementById('fee_paid_hidden').value = total;
+    document.getElementById('total-display').textContent =
+      isQB ? 'Invoiced via QB' : '$' + total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('fee_paid_hidden').value = isQB ? 0 : total;
 
     const box = document.getElementById('cc-fee-box');
     box.classList.toggle('opacity-40', !isCard);
     box.classList.toggle('pointer-events-none', !isCard);
 
+    // Label tweaks
+    document.getElementById('total-label').textContent   = isQB ? 'Amount to Invoice'  : 'Total Collected';
+    document.getElementById('fee-label').textContent     = isQB ? 'Fee (for QB invoice)' : 'Base Tax Prep Fee';
+    document.getElementById('receipt-label').textContent = isQB ? 'QB Invoice / Ref #'  : 'QuickBooks Receipt #';
+
     updateReadyHint(base, total);
   }
 
   function onMethodChange() {
-    // Update visual highlight on method labels
+    const method  = getMethod();
+    const isQB    = method === 'QB Billing';
+    const isChk   = method === 'Check';
+    const rcptEl  = document.getElementById('receipt_number');
+
+    // Update pill highlights
     document.querySelectorAll('.method-option').forEach(lbl => {
       const inp = lbl.querySelector('input[type="radio"]');
-      lbl.classList.toggle('bg-blue-50', inp.checked);
+      lbl.classList.toggle('bg-blue-50',     inp.checked);
       lbl.classList.toggle('border-blue-400', inp.checked);
-      lbl.classList.toggle('text-blue-700', inp.checked);
-      lbl.classList.toggle('text-slate-600', !inp.checked);
+      lbl.classList.toggle('text-blue-700',   inp.checked);
+      lbl.classList.toggle('text-slate-600',  !inp.checked);
     });
+
+    // Toggle check number field
+    document.getElementById('check-number-box').classList.toggle('hidden', !isChk);
+
+    // Toggle QB notice
+    document.getElementById('qb-notice').classList.toggle('hidden', !isQB);
+
+    // Auto-fill receipt with "QB" for QB Billing; clear auto-fill if switching away
+    if (isQB && !rcptEl.value.trim()) {
+      rcptEl.value = 'QB';
+    } else if (!isQB && rcptEl.value.trim() === 'QB') {
+      rcptEl.value = '';
+    }
+
+    recalc();
+  }
+
+  function onSigChange() {
+    const given    = document.getElementById('sig-given');
+    const received = document.getElementById('sig-received');
+    given.className    = given.value
+      ? given.className.replace('border-slate-200','border-blue-300').replace('bg-white','bg-blue-50') + ' border-blue-300 bg-blue-50'
+      : given.className.replace('border-blue-300','border-slate-200').replace('bg-blue-50','');
+    received.className = received.value
+      ? received.className.replace('border-slate-200','border-green-300').replace('bg-white','bg-green-50') + ' border-green-300 bg-green-50'
+      : received.className.replace('border-green-300','border-slate-200').replace('bg-green-50','');
     recalc();
   }
 
   function updateReadyHint(base, total) {
-    const sigs    = document.querySelector('input[name="signatures_given"]')?.checked &&
-                    document.querySelector('input[name="signatures_received"]')?.checked;
-    const method  = getMethod();
-    const receipt = document.getElementById('receipt_number').value.trim();
-    const hint    = document.getElementById('ready-hint');
-    const missing = [];
-    if (!sigs)             missing.push('signatures');
-    if (!method || !total) missing.push('payment method + fee');
-    if (!receipt)          missing.push('receipt #');
-    if (missing.length === 0) {
+    const method   = getMethod();
+    const isQB     = method === 'QB Billing';
+    const sigsOk   = !!document.getElementById('sig-given').value &&
+                     !!document.getElementById('sig-received').value;
+    const payOk    = isQB || (method && total > 0);
+    const receipt  = document.getElementById('receipt_number').value.trim();
+    const hint     = document.getElementById('ready-hint');
+    const missing  = [];
+    if (!sigsOk) missing.push('signature method');
+    if (!payOk)  missing.push('payment method + fee');
+    if (!receipt) missing.push('receipt # (enter QB for QuickBooks billing)');
+    const clean = missing.filter(Boolean);
+    if (clean.length === 0) {
       hint.textContent = '✓ All required — will advance to EFILE READY on save.';
       hint.className   = 'text-xs text-green-600 font-medium';
     } else {
-      hint.textContent = 'Still needed: ' + missing.join(', ');
+      hint.textContent = 'Still needed: ' + clean.join(', ');
       hint.className   = 'text-xs text-slate-400';
     }
   }
 
-  // Wire receipt + sig changes to hint update
+  // Wire events
   document.getElementById('receipt_number').addEventListener('input', recalc);
-  document.querySelectorAll('input[name="signatures_given"], input[name="signatures_received"]').forEach(el =>
-    el.addEventListener('change', recalc)
-  );
+  document.getElementById('sig-given').addEventListener('change', recalc);
+  document.getElementById('sig-received').addEventListener('change', recalc);
 
   // Init
   recalc();
 
   window.onMethodChange = onMethodChange;
-  window.recalc = recalc;
+  window.onSigChange    = onSigChange;
+  window.recalc         = recalc;
 })();
 </script>
 {% endblock %}

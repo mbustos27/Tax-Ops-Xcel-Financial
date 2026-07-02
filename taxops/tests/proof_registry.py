@@ -263,9 +263,6 @@ PROOF_BY_TEST_NAME: dict[str, list[str]] = {
     "test_worker_does_not_overwrite_staff_doc_type": [
         "After _save_form_data, doc_type is only updated when still unknown/empty (staff 1099 unchanged).",
     ],
-    "test_manual_extract_route_tags_unknown": [
-        "POST /ai/documents/<id>/extract tags unknown documents W-2 after save (same guard as worker).",
-    ],
     "test_classify_shim_respects_only_unknown": [
         "_classify_document_using_row(only_if_still_unknown=True) returns inferred type but does not overwrite non-unknown doc_type.",
     ],
@@ -318,5 +315,94 @@ PROOF_BY_TEST_NAME: dict[str, list[str]] = {
     ],
     "test_waitress_package_available": [
         "The waitress WSGI dependency is installed so production `python app.py` can serve outside FLASK_DEBUG mode.",
+    ],
+    # Import deduplication tests
+    "test_reimport_does_not_create_duplicate_client": [
+        "drake_importer._upsert_client returns the same client_id on second call — no duplicate row created.",
+    ],
+    "test_reimport_does_not_create_duplicate_return": [
+        "drake_importer._upsert_return returns same return_id on second call — no duplicate return.",
+    ],
+    "test_business_name_null_first_name_no_duplicate": [
+        "Business clients with NULL first_name match on lower(last_name) alone — & in name handled correctly.",
+    ],
+    "test_business_name_no_duplicate_via_manual_log_importer": [
+        "importer._upsert_client uses IS NULL branch for NULL first_name — root-cause bug is fixed.",
+    ],
+    "test_merge_does_not_overwrite_manual_data": [
+        "Reimport does not overwrite manually set processor — MANUAL_WINS field priority is enforced.",
+    ],
+    "test_merge_fills_empty_fields": [
+        "Import fills NULL ack_date on existing return — gap-fill merge works correctly.",
+    ],
+    "test_dedup_cleanup_keeps_client_with_most_returns": [
+        "_deduplicate_existing_records keeps the client with the most returns, removes the lesser duplicate.",
+    ],
+    "test_dedup_cleanup_reassigns_non_conflicting_returns": [
+        "Returns from discarded client are moved to kept client when no tax-year conflict.",
+    ],
+    "test_dedup_cleanup_merges_non_null_fields": [
+        "Non-null contact fields from discarded client are merged into kept client before deletion.",
+    ],
+    "test_dedup_is_idempotent": [
+        "_deduplicate_existing_records run on a clean DB removes 0 rows without error.",
+    ],
+    "test_drake_status_normalization": [
+        "All Drake status codes found in real CSMDATA.csv (incl. EF Pending, Updated From 2024) map correctly.",
+    ],
+    "test_import_result_has_required_fields": [
+        "ImportResult carries source, filename, errors, duration_seconds with correct defaults.",
+    ],
+    "test_import_result_counts_correctly": [
+        "ImportResult.created_clients and updated_clients are incremented correctly after a mixed import.",
+    ],
+    "test_unique_constraint_blocks_duplicate_return": [
+        "idx_returns_unique_client_year raises IntegrityError on duplicate client+year insert.",
+    ],
+    "test_unique_constraint_allows_cancelled_duplicate": [
+        "CANCELLED returns are excluded from unique constraint — a new PROCESSING return for same year is allowed.",
+    ],
+    # ── RBAC-1: receptionist efile/email access ───────────────────────────────
+    "test_receptionist_can_view_efile_queue": [
+        "Receptionist GET /efile-queue returns 200 — route decorator changed from role_required to permission_required.",
+    ],
+    "test_receptionist_can_view_logout_queue": [
+        "Receptionist GET /logout-queue returns 200 — Pickup Queue is now accessible to receptionist.",
+    ],
+    "test_receptionist_can_export_efile_queue": [
+        "Receptionist GET /efile-queue/export returns 200 — CSV export is accessible to receptionist.",
+    ],
+    "test_receptionist_can_view_email_inbox": [
+        "Receptionist GET /email-inbox returns 200 — email inbox is now accessible to receptionist.",
+    ],
+    "test_receptionist_can_list_email_inbox_items": [
+        "Receptionist GET /api/email-inbox/items returns 200 — email items API is accessible to receptionist.",
+    ],
+    "test_receptionist_not_in_any_extra_permissions": [
+        "Receptionist is in exactly the two expected ROLE_PERMISSIONS keys — no accidental scope creep.",
+    ],
+    "test_receptionist_rank_still_below_preparer": [
+        "ROLE_HIERARCHY rank for receptionist is still 0 (< preparer 1) — role_required guards still fire for all other routes.",
+    ],
+    "test_preparer_still_accesses_efile_queue": [
+        "Preparer GET /efile-queue returns 200 — preparer behavior unchanged.",
+    ],
+    "test_preparer_blocked_from_email_inbox": [
+        "Preparer GET /email-inbox returns 403 — email tools are admin-only.",
+    ],
+    "test_has_permission_receptionist_efile": [
+        "has_permission('can_manage_efile_queue') returns True and 'can_use_email_tools' returns False for receptionist role.",
+    ],
+    "test_has_permission_unknown_permission_always_false": [
+        "has_permission() returns False for unknown permission strings — no accidental grants.",
+    ],
+    "test_role_permissions_config_contains_both_keys": [
+        "ROLE_PERMISSIONS defines both can_manage_efile_queue and can_use_email_tools keys.",
+    ],
+    "test_role_permissions_all_three_roles_have_efile": [
+        "All three roles (receptionist, preparer, admin) are in can_manage_efile_queue.",
+    ],
+    "test_only_admin_has_email_tools": [
+        "Only admin is in can_use_email_tools; receptionist and preparer are excluded.",
     ],
 }

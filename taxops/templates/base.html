@@ -1,30 +1,38 @@
 <!DOCTYPE html>
 <html lang="{{ 'es' if current_locale == 'es_MX' else 'en' }}">
 <head>
+  <!-- Part 5: anti-FOWT theme application before CSS loads -->
+  <script>
+    (function(){
+      var s = localStorage.getItem('taxops-theme');
+      if (s === 'dark') document.documentElement.setAttribute('data-theme','dark');
+      else document.documentElement.setAttribute('data-theme','light');
+    })();
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}TaxOps {{ current_year }}{% endblock %}</title>
+  <title>{% block title %}{{ app_name }} {{ current_year }}{% endblock %}</title>
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='tw.min.css') }}?v={{ config.APP_VERSION }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ config.APP_VERSION }}">
 </head>
-<body class="bg-slate-50 text-slate-800 h-screen overflow-hidden flex flex-col" data-year="{{ current_year }}">
+<body class="h-screen overflow-hidden flex flex-col" style="background:var(--bg-page);color:var(--text-primary)" data-year="{{ current_year }}">
 
   <!-- ── Header ─────────────────────────────────────────────────────────── -->
-  <header id="site-header" class="bg-slate-800 shadow-lg sticky top-0 z-30">
+  <header id="site-header" class="shadow-lg sticky top-0 z-30" style="background:var(--nav-bg)">
     <div class="max-w-screen-2xl mx-auto px-4 py-3 flex flex-nowrap items-center gap-4 min-w-0">
 
       <!-- Brand -->
       <a href="/" class="flex items-center gap-2 shrink-0">
-        <div class="w-9 h-9 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold text-base select-none">T</div>
-        <span class="font-bold text-white text-lg tracking-tight">TaxOps</span>
-        <span class="text-slate-400 text-sm font-mono font-semibold">{{ current_year }}</span>
+        <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-base select-none" style="background:var(--color-primary)">T</div>
+        <span class="font-bold text-white text-lg tracking-tight">{{ app_name }}</span>
+        <span class="text-sm font-mono font-semibold" style="color:var(--nav-text)">{{ current_year }}</span>
       </a>
 
       <!-- Global Search -->
       <div class="relative flex-1 min-w-0" id="search-wrap">
         <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none z-10">
-          <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5" style="color:var(--nav-text)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
         </div>
@@ -37,31 +45,38 @@
           class="block w-full min-w-0"
         >
         <div id="search-results"
-             class="hidden absolute top-full left-0 right-0 mt-1 w-full bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50 max-h-80 overflow-y-auto min-w-[min(100%,28rem)]">
+             class="hidden absolute top-full left-0 right-0 mt-1 w-full rounded-xl shadow-2xl overflow-hidden z-50 max-h-80 overflow-y-auto min-w-[min(100%,28rem)]"
+             style="background:var(--dropdown-bg);border:1px solid var(--dropdown-border)">
         </div>
       </div>
 
-      <!-- Nav + bell + session -->
+      <!-- Nav + controls -->
       <div class="flex items-center gap-3 shrink-0 flex-nowrap">
       <nav class="flex items-center gap-1 shrink-0 flex-nowrap" aria-label="{{ _('Main navigation') }}">
         <a href="/?year={{ current_year }}" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">
           {{ _('Dashboard') }}
         </a>
 
-        <a href="/reports?year={{ current_year }}" class="nav-link {% if active_page == 'reports' %}active{% endif %}">
+        <!-- Reports nav hidden until reports are functional -->
+        <!-- <a href="/reports?year={{ current_year }}" class="nav-link {% if active_page == 'reports' %}active{% endif %}">
           {{ _('Reports') }}
-        </a>
+        </a> -->
 
-        <!-- Tools dropdown (queues & utility pages consolidated to free header space for search) -->
-        {% set _role = session.get('role', 'staff') %}
+        <!-- Tools dropdown -->
+        {% set _role = get_effective_role() %}
         {% set _is_preparer = _role in ('preparer', 'admin') %}
         {% set _is_admin = _role == 'admin' %}
+        {% set _can_efile = has_permission('can_manage_efile_queue') %}
+        {% set _can_extension = has_permission('can_manage_extension_queue') %}
+        {% set _can_email_tools = has_permission('can_use_email_tools') %}
+        {% set _has_any_tools = _is_preparer or _can_efile or _can_extension or _can_email_tools %}
         {% set tools_active =
             active_page in ('upload','source_compare','import_audit','merge','efile_batch','audit_log',
-                            'logout','efile','payments','review','ai_chat','season_rollover','backup_admin','failed_docs','admin_users')
-            or request.path.startswith('/email-review')
+                            'logout','efile','extension','payments','review','season_rollover','backup_admin','failed_docs','admin_users',
+                            'email_inbox')
+            or request.path.startswith('/email-inbox')
         %}
-        {% if _is_preparer %}
+        {% if _has_any_tools %}
         <div class="relative" id="tools-menu-wrap">
           <button id="tools-btn"
                   type="button"
@@ -76,7 +91,9 @@
             </svg>
           </button>
           <div id="tools-dropdown"
-               class="hidden absolute left-0 top-full mt-1 min-w-[16rem] w-max max-w-[min(calc(100vw-2rem),22rem)] bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+               class="hidden absolute left-0 top-full mt-1 min-w-[16rem] w-max max-w-[min(calc(100vw-2rem),22rem)] rounded-xl shadow-lg py-1 z-50"
+               style="background:var(--dropdown-bg);border:1px solid var(--dropdown-border)">
+            {% if _can_efile %}
             <a href="/logout-queue?year={{ current_year }}"
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'logout' %}tools-item-active{% endif %}">
               <span>{{ _('Pickup Queue') }}</span>
@@ -90,14 +107,32 @@
               <span>{{ _('E-File Queue') }}</span>
               {% set ec = status_counts.get('EFILE READY', 0) %}
               {% if ec > 0 %}
-              <span class="shrink-0 bg-indigo-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ ec }}</span>
+              <span class="shrink-0 text-white text-xs font-bold rounded-full px-2 py-0.5" style="background:#5A6AB0">{{ ec }}</span>
               {% endif %}
             </a>
+            {% endif %}
+            {% if _can_extension %}
+            <a href="/extension-queue?year={{ current_year }}"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'extension' %}tools-item-active{% endif %}">
+              <span>{{ _('Extension Queue') }}</span>
+            </a>
+            {% endif %}
+            {% if _can_email_tools %}
+            <a href="/email-inbox"
+               class="tools-item {% if request.path.startswith('/email-inbox') or active_page == 'email_inbox' %}tools-item-active{% endif %} flex items-center justify-between gap-3">
+              <span>{{ _('Email Inbox') }}</span>
+              {% set ei = unassigned_email_count | default(0) %}
+              {% if ei > 0 %}
+              <span class="shrink-0 bg-blue-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ ei }}</span>
+              {% endif %}
+            </a>
+            {% endif %}
+
+            {% if _is_admin %}
             <a href="/payments?year={{ current_year }}"
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'payments' %}tools-item-active{% endif %}">
               <span>{{ _('Payments') }}</span>
             </a>
-            {% if _is_admin %}
             <a href="/review"
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'review' %}tools-item-active{% endif %}">
               <span>{{ _('Review') }}</span>
@@ -105,27 +140,14 @@
               <span class="shrink-0 bg-amber-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ pending_review_count }}</span>
               {% endif %}
             </a>
-            {% endif %}
-            <a href="/ai/chat?year={{ current_year }}"
-               class="tools-item {% if active_page == 'ai_chat' %}tools-item-active{% endif %}">
-              {{ _('AI Assistant') }}
-            </a>
-            <a href="/email-review"
-               class="tools-item {% if request.path.startswith('/email-review') %}tools-item-active{% endif %} flex items-center justify-between gap-3">
-              <span>{{ _('Email Review') }}</span>
-              {# Section 4: unread email-doc badge — count populated by JS polling below #}
-              <span id="email-unread-badge"
-                    class="hidden shrink-0 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
-                           text-[10px] font-bold bg-amber-500 text-white rounded-full leading-none">
-              </span>
-            </a>
-
-            {% if _is_admin %}
-            <div class="my-1 border-t border-slate-100"></div>
-
+            <div class="my-1 border-t" style="border-color:var(--border-subtle)"></div>
             <a href="/efile-batch"
                class="tools-item {% if active_page == 'efile_batch' %}tools-item-active{% endif %}">
               {{ _('E-file Batches') }}
+            </a>
+            <a href="/extension-batch"
+               class="tools-item {% if active_page == 'extension_batch' %}tools-item-active{% endif %}">
+              {{ _('Extension Batches') }}
             </a>
             <a href="/upload"
                class="tools-item {% if active_page == 'upload' %}tools-item-active{% endif %}">
@@ -175,6 +197,46 @@
               </span>
               {% endif %}
             </a>
+            {% if dep_review_count and dep_review_count > 0 %}
+            <a href="{{ url_for('dependents_review_admin') }}"
+               class="tools-item {% if active_page == 'dependents_review' %}tools-item-active{% endif %} relative">
+              {{ _('Dep. Review') }}
+              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-amber-500 text-white rounded-full leading-none">
+                {{ dep_review_count }}
+              </span>
+            </a>
+            {% endif %}
+            <a href="{{ url_for('spouses_review_admin') }}"
+               class="tools-item {% if active_page == 'spouses_review' %}tools-item-active{% endif %} relative">
+              {{ _('Spouses') }}
+              {% if spouse_review_count and spouse_review_count > 0 %}
+              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-purple-500 text-white rounded-full leading-none">
+                {{ spouse_review_count }}
+              </span>
+              {% endif %}
+            </a>
+            {% if recovered_client_count and recovered_client_count > 0 %}
+            <a href="{{ url_for('recovered_clients_admin') }}"
+               class="tools-item {% if active_page == 'recovered_clients' %}tools-item-active{% endif %} relative">
+              {{ _('Recovered') }}
+              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-orange-500 text-white rounded-full leading-none">
+                {{ recovered_client_count }}
+              </span>
+            </a>
+            {% endif %}
+            {% if audit_alert_count and audit_alert_count > 0 %}
+            <a href="{{ url_for('audit_alerts_admin') }}"
+               class="tools-item {% if active_page == 'audit_alerts' %}tools-item-active{% endif %} relative">
+              {{ _('Audit Alerts') }}
+              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-red-600 text-white rounded-full leading-none">
+                {{ audit_alert_count }}
+              </span>
+            </a>
+            {% endif %}
             {% if can_run_season_rollover %}
             <a href="{{ url_for('season_rollover_admin') }}"
                class="tools-item {% if active_page == 'season_rollover' %}tools-item-active{% endif %}">
@@ -190,220 +252,307 @@
         </div>
         {% endif %}
 
-        <a href="/intake" class="nav-link {% if active_page == 'intake' %}active{% endif %}">
+        <a href="/intake" id="nav-new-intake" class="nav-link {% if active_page == 'intake' %}active{% endif %}">
           {{ _('+ New Intake') }}
         </a>
       </nav>
 
-      <!-- ── TOUR-3: Help / relaunch tour icon ──────────────────────────── -->
-      <button id="tour-help-btn"
-              aria-label="Relaunch onboarding tour"
-              title="Relaunch tour (resets completion so auto-launch fires again on next dashboard visit)"
-              class="flex items-center justify-center w-10 h-10 rounded-full
-                     hover:bg-slate-700 transition-colors shrink-0 focus-visible:outline
-                     focus-visible:outline-2 focus-visible:outline-blue-400">
-        <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round"
-                d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-        </svg>
-      </button>
+      <!-- Zone 3/4 divider -->
+      <div aria-hidden="true" style="width:1px;height:1.25rem;background:var(--nav-border);align-self:center;flex-shrink:0;margin:0 0.25rem"></div>
 
-      <!-- ── Reject alert bell ────────────────────────────────────────────── -->
-      <div class="relative shrink-0" id="reject-bell-wrap">
-        <button id="reject-bell"
-                aria-label="Rejected returns"
-                aria-expanded="false"
-                aria-haspopup="true"
-                aria-controls="reject-dropdown"
-                title="Rejected returns"
-                class="relative flex items-center justify-center w-10 h-10 rounded-full
-                       hover:bg-slate-700 transition-colors focus-visible:outline
-                       focus-visible:outline-2 focus-visible:outline-blue-400">
-          <!-- Bell icon -->
-          <svg class="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <!-- Zone 4 — Utility controls (de-emphasized at 0.8125rem) -->
+      <div class="flex items-center gap-1.5 shrink-0 flex-nowrap" style="font-size:0.8125rem">
+
+        <!-- Help (?) — reduced size -->
+        <button id="tour-help-btn"
+                aria-label="Relaunch onboarding tour"
+                title="Relaunch tour"
+                class="flex items-center justify-center w-7 h-7 rounded-full transition-colors shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                style="color:var(--nav-text)">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round"
-                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                  d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
-          {% if rejected_count > 0 %}
-          <span class="absolute top-1 right-1 min-w-[1.1rem] h-[1.1rem] bg-red-500 text-white
-                        text-xs font-bold rounded-full flex items-center justify-center px-0.5
-                        ring-2 ring-slate-800 leading-none">
-            {{ rejected_count }}
-          </span>
-          {% endif %}
         </button>
 
-        <!-- Dropdown panel -->
-        <div id="reject-dropdown"
-             class="hidden absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-2xl
-                    border border-slate-200 overflow-hidden z-50">
-          <div class="flex items-center justify-between px-4 py-3 bg-red-50 border-b border-red-100">
-            <span class="font-bold text-red-700 text-sm flex items-center gap-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                      d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-              </svg>
-              Rejected Returns
-            </span>
-            <span class="text-xs text-red-500 font-semibold">{{ rejected_count }} total</span>
-          </div>
-
-          {% if rejected_returns %}
-          <ul class="max-h-96 overflow-y-auto divide-y divide-slate-100">
-            {% for r in rejected_returns %}
-            <li>
-              <a href="/return/{{ r.id }}"
-                 class="flex items-start gap-3 px-4 py-3 hover:bg-red-50 transition-colors group">
-                <span class="mt-0.5 w-2 h-2 rounded-full bg-red-500 shrink-0 ring-2 ring-red-100"></span>
-                <div class="flex-1 min-w-0">
-                  <div class="font-semibold text-slate-800 text-sm truncate group-hover:text-red-700">
-                    {% if privacy_mode %}
-                      Client {{ r.client_id }}
-                    {% else %}
-                      {{ r.last_name }}{% if r.first_name %}, {{ r.first_name }}{% endif %}
-                    {% endif %}
-                  </div>
-                  <div class="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
-                    {% if r.log_number %}
-                    <span class="font-mono font-bold text-slate-700">LOG {{ r.log_number }}</span>
-                    <span class="text-slate-300">·</span>
-                    {% endif %}
-                    <span>TY{{ r.tax_year }}</span>
-                    {% if r.processor %}
-                    <span class="text-slate-300">·</span>
-                    <span>{{ preparer_list_label(r.processor) }}</span>
-                    {% endif %}
-                  </div>
-                </div>
-                <svg class="w-4 h-4 text-slate-300 group-hover:text-red-400 shrink-0 mt-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
-                </svg>
-              </a>
-            </li>
-            {% endfor %}
-          </ul>
-          {% else %}
-          <div class="px-4 py-8 text-center">
-            <svg class="w-10 h-10 text-slate-200 mx-auto mb-2" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        <!-- Reject alert bell — reduced size -->
+        <div class="relative shrink-0" id="reject-bell-wrap">
+          <button id="reject-bell"
+                  aria-label="Rejected returns"
+                  aria-expanded="false"
+                  aria-haspopup="true"
+                  aria-controls="reject-dropdown"
+                  title="Rejected returns"
+                  class="relative flex items-center justify-center w-7 h-7 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                  style="color:var(--nav-text)">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
             </svg>
-            <p class="text-sm text-slate-400 font-medium">No rejected returns</p>
-          </div>
-          {% endif %}
-        </div>
-      </div>
+            {% if rejected_count > 0 %}
+            <span class="absolute -top-0.5 -right-0.5 min-w-[1rem] h-4 bg-red-500 text-white
+                          text-[10px] font-bold rounded-full flex items-center justify-center px-0.5
+                          leading-none" style="box-shadow:0 0 0 2px var(--nav-bg)">
+              {{ rejected_count }}
+            </span>
+            {% endif %}
+          </button>
 
-      <!-- Year picker + logout -->
-      <div class="flex items-center gap-3 shrink-0 flex-nowrap border-l border-slate-700/60 pl-3 ml-1">
+          <!-- Reject dropdown panel — unchanged -->
+          <div id="reject-dropdown"
+               class="hidden absolute right-0 top-full mt-2 w-80 rounded-xl shadow-2xl overflow-hidden z-50">
+            <div class="flex items-center justify-between px-4 py-3 border-b"
+                 style="background:var(--surface-danger);border-color:var(--border-danger)">
+              <span class="font-bold text-sm flex items-center gap-2" style="color:var(--text-danger)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                </svg>
+                Rejected Returns
+              </span>
+              <span class="text-xs font-semibold" style="color:var(--text-danger)">{{ rejected_count }} total</span>
+            </div>
+
+            {% if rejected_returns %}
+            <ul class="max-h-96 overflow-y-auto divide-y" style="background:var(--dropdown-bg);border-color:var(--border-subtle)">
+              {% for r in rejected_returns %}
+              <li style="border-color:var(--border-subtle)">
+                <a href="/return/{{ r.id }}"
+                   class="flex items-start gap-3 px-4 py-3 transition-colors group"
+                   style="color:inherit"
+                   onmouseover="this.style.background='var(--surface-danger)'"
+                   onmouseout="this.style.background=''">
+                  <span class="mt-0.5 w-2 h-2 rounded-full bg-red-500 shrink-0 ring-2 ring-red-100"></span>
+                  <div class="flex-1 min-w-0">
+                    <div class="font-semibold text-sm truncate" style="color:var(--text-primary)">
+                      {% if privacy_mode %}
+                        Client {{ r.client_id }}
+                      {% else %}
+                        {{ r.last_name }}{% if r.first_name %}, {{ r.first_name }}{% endif %}
+                      {% endif %}
+                    </div>
+                    <div class="flex items-center gap-2 mt-0.5 text-xs" style="color:var(--text-muted)">
+                      {% if r.log_number %}
+                      <span class="font-mono font-bold" style="color:var(--text-secondary)">LOG {{ r.log_number }}</span>
+                      <span style="color:var(--border-default)">·</span>
+                      {% endif %}
+                      <span>TY{{ r.tax_year }}</span>
+                      {% if r.processor %}
+                      <span style="color:var(--border-default)">·</span>
+                      <span>{{ preparer_list_label(r.processor) }}</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <svg class="w-4 h-4 shrink-0 mt-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--border-strong)">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                  </svg>
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <div class="px-4 py-8 text-center" style="background:var(--dropdown-bg)">
+              <svg class="w-10 h-10 mx-auto mb-2" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color:var(--border-default)">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <p class="text-sm font-medium" style="color:var(--text-muted)">No rejected returns</p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Theme toggle — reduced size -->
+        <button id="theme-toggle"
+                aria-label="Toggle color theme"
+                title="Toggle color theme"
+                class="flex items-center justify-center w-7 h-7 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                style="color:var(--nav-text)">
+          <!-- icon injected by JS -->
+        </button>
+
+        <!-- Privacy toggle — de-emphasized -->
         <button id="privacy-toggle"
                 type="button"
                 data-enabled="{{ '1' if privacy_mode else '0' }}"
-                class="text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.75rem] whitespace-nowrap
-                       {% if privacy_mode %}
-                       bg-red-50 text-red-700 border-red-300 hover:bg-red-100
-                       {% else %}
-                       bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600
-                       {% endif %}">
+                class="text-xs font-medium rounded px-2 py-1 border transition-colors whitespace-nowrap
+                       {% if privacy_mode %}bg-red-50 text-red-700 border-red-300 hover:bg-red-100{% endif %}">
           {% if privacy_mode %}{{ _('Privacy: ON') }}{% else %}{{ _('Privacy: OFF') }}{% endif %}
         </button>
 
-        <div class="flex items-center gap-1.5">
-          <span class="text-slate-400 text-xs font-medium">Season</span>
-          <select id="year-picker" class="bg-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 border-0 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer min-h-[2.25rem]">
+        <!-- Season picker — de-emphasized -->
+        <div class="flex items-center gap-1">
+          <span class="text-xs font-medium hidden md:inline" style="color:var(--nav-text)">Season</span>
+          <select id="year-picker"
+                  class="text-xs rounded px-2 py-0.5 border-0 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer"
+                  style="background:var(--nav-input-bg);color:var(--nav-input-text)">
             {% for y in [2023, 2024, 2025, 2026] %}
             <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
             {% endfor %}
           </select>
         </div>
 
-        <!-- I18N-6: language toggle pill -->
+        <!-- Language toggle -->
         <button id="lang-toggle"
                 type="button"
                 data-locale="{{ current_locale }}"
                 title="{{ 'Switch to English' if current_locale == 'es_MX' else 'Cambiar a Español' }}"
                 aria-label="{{ 'Switch to English' if current_locale == 'es_MX' else 'Cambiar a Español' }}"
-                class="text-xs font-bold rounded-full px-2.5 py-1 border transition-colors whitespace-nowrap
-                       bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600 min-h-[2.75rem]">
+                class="text-[11px] font-bold rounded-full px-2 py-0.5 border transition-colors whitespace-nowrap"
+                style="background:var(--nav-input-bg);color:var(--nav-text);border-color:var(--border-strong)">
           {{ 'EN' if current_locale == 'es_MX' else 'ES' }}
         </button>
 
-        <!-- ONBOARD-3: current user + role badge + sign-out -->
-        <div class="flex items-center gap-2 text-sm text-slate-300">
+        <!-- Preview-as-role (admin only, muted) -->
+        {% if session.get('role') == 'admin' and not session.get('preview_role') %}
+        <div class="flex items-center gap-1 pl-2" style="border-left:1px solid var(--nav-border)">
+          <span class="text-[11px] font-medium hidden md:inline whitespace-nowrap" style="color:var(--nav-text)">Preview:</span>
+          <form method="POST" action="/admin/preview-role" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="role" value="receptionist">
+            <button type="submit"
+                    class="text-[11px] font-medium px-1.5 py-0.5 rounded border transition-colors whitespace-nowrap"
+                    style="border-color:var(--border-strong);color:var(--nav-text)">
+              Recept.
+            </button>
+          </form>
+          <form method="POST" action="/admin/preview-role" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="role" value="preparer">
+            <button type="submit"
+                    class="text-[11px] font-medium px-1.5 py-0.5 rounded border transition-colors whitespace-nowrap"
+                    style="border-color:var(--border-strong);color:var(--nav-text)">
+              Preparer
+            </button>
+          </form>
+        </div>
+        {% endif %}
+
+        <!-- User + role badge + sign-out -->
+        <div class="flex items-center gap-1.5 pl-2" style="border-left:1px solid var(--nav-border);color:var(--nav-text)">
           {% if current_user_name %}
-          <span class="hidden md:inline font-medium text-slate-200">{{ current_user_name }}</span>
+          <span class="hidden md:inline font-medium text-xs" style="color:var(--nav-text-active)">{{ current_user_name }}</span>
           {% if current_user_role == 'admin' %}
-          <span class="hidden md:inline text-[10px] font-bold bg-violet-500/30 text-violet-200 border border-violet-500/40 rounded-full px-2 py-0.5">{{ _('Admin') }}</span>
+          <span class="hidden lg:inline text-[10px] font-bold bg-violet-500/30 text-violet-200 border border-violet-500/40 rounded-full px-1.5 py-0.5">{{ _('Admin') }}</span>
+          {% elif current_user_role == 'preparer' %}
+          <span class="hidden lg:inline text-[10px] font-bold rounded-full px-1.5 py-0.5" style="background:var(--nav-hover-bg);color:var(--nav-text);border:1px solid var(--border-strong)">{{ _('Preparer') }}</span>
           {% else %}
-          <span class="hidden md:inline text-[10px] font-bold bg-slate-600 text-slate-300 border border-slate-500 rounded-full px-2 py-0.5">{{ _('Staff') }}</span>
+          <span class="hidden lg:inline text-[10px] font-bold rounded-full px-1.5 py-0.5" style="background:var(--nav-hover-bg);color:var(--nav-text);border:1px solid var(--border-strong)">{{ _('Recept.') }}</span>
           {% endif %}
           {% endif %}
           <a href="/logout"
-             class="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors px-2.5 py-2 rounded-lg hover:bg-slate-700 min-h-[2.25rem]"
+             class="logout-link flex items-center gap-1 transition-colors px-2 py-1 rounded"
+             style="color:var(--nav-text);font-size:0.8125rem"
              title="Sign out">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"/>
             </svg>
             <span class="hidden sm:inline">{{ _('Sign out') }}</span>
           </a>
         </div>
+
       </div>
       </div>
     </div>
 
     <!-- Status summary bar -->
-    <div class="bg-slate-900/70 border-t border-slate-700/40">
-      <div class="max-w-screen-2xl mx-auto px-4 py-2 flex items-center gap-5 overflow-x-auto text-sm">
-        {% for s in status_flow %}
-        <a href="/?status={{ s }}&year={{ current_year }}"
-           class="flex items-center gap-2 whitespace-nowrap hover:opacity-90 transition-opacity group"
-           aria-label="{{ s }}: {{ status_counts.get(s, 0) }} {{ _('returns') }}">
-          <span class="status-dot {{ status_dot.get(s, 'dot-slate') }}" aria-hidden="true"></span>
-          <span class="text-slate-300 group-hover:text-white transition-colors">{{ s }}</span>
-          <span class="font-bold text-white tabular-nums text-base" aria-hidden="true">{{ status_counts.get(s, 0) }}</span>
-        </a>
-        {% endfor %}
+    <div style="background:var(--nav-bg-sub);border-top:1px solid var(--nav-border)">
+      <div class="max-w-screen-2xl mx-auto px-4">
 
-        <div class="w-px h-4 bg-slate-700 mx-1 shrink-0"></div>
+        <!-- Row 1: status dots + total count -->
+        <div class="py-2 flex items-center gap-4 overflow-x-auto text-sm">
+          {% for s in status_flow %}
+          <a href="/?status={{ s }}&year={{ current_year }}"
+             class="status-summary-item flex items-center gap-1.5 whitespace-nowrap hover:opacity-90 transition-opacity group"
+             aria-label="{{ s }}: {{ status_counts.get(s, 0) }} {{ _('returns') }}">
+            <span class="status-dot {{ status_dot.get(s, 'dot-slate') }}" aria-hidden="true"></span>
+            <span class="text-xs transition-colors" style="color:var(--nav-text)">{{ s }}</span>
+            <span class="font-bold tabular-nums" style="color:var(--nav-text-active)" aria-hidden="true">{{ status_counts.get(s, 0) }}</span>
+          </a>
+          {% endfor %}
 
-        <span class="text-slate-300 whitespace-nowrap">
-          Total <span class="font-bold text-white text-base">{{ status_counts.values() | sum }}</span>
-        </span>
+          <div class="w-px h-4 shrink-0" style="background:var(--nav-border)"></div>
 
-        <div class="ml-auto flex items-center gap-5 whitespace-nowrap">
-          <span class="text-slate-300">
-            Billed <span class="font-bold text-white">${{ "{:,.0f}".format(totals.billed) }}</span>
+          <span class="whitespace-nowrap ml-auto shrink-0 text-xs" style="color:var(--nav-text)">
+            Total <span class="font-bold tabular-nums" style="color:var(--nav-text-active)">{{ status_counts.values() | sum }}</span>
           </span>
-          <span class="text-slate-300">
-            Collected <span class="font-bold text-green-400">${{ "{:,.0f}".format(totals.collected) }}</span>
+        </div>
+
+        <!-- Row 2: financial totals (admin only) -->
+        {% if get_effective_role() == "admin" %}
+        <div class="pb-1.5 flex items-center justify-end gap-5 text-xs whitespace-nowrap flex-wrap">
+          <span style="color:var(--nav-text)">
+            Billed
+            <span class="font-bold" style="color:var(--nav-text-active)"
+                  title="${{ "{:,.0f}".format(totals.billed | float) }}">
+              {{ totals.billed | compact_currency }}
+            </span>
           </span>
-          <span class="text-slate-300">
+          <span style="color:var(--nav-text)">
+            Collected
+            <span class="font-bold" style="color:var(--text-success)"
+                  title="${{ "{:,.0f}".format(totals.collected | float) }}">
+              {{ totals.collected | compact_currency }}
+            </span>
+          </span>
+          <span style="color:var(--nav-text)">
             Outstanding
-            <span class="font-bold {{ 'text-red-400' if totals.outstanding > 0 else 'text-slate-400' }}">
-              ${{ "{:,.0f}".format(totals.outstanding) }}
+            <span class="font-bold"
+                  style="color:{{ 'var(--text-danger)' if totals.outstanding > 0 else 'var(--text-muted)' }}"
+                  title="${{ "{:,.0f}".format(totals.outstanding | float) }}">
+              {{ totals.outstanding | compact_currency }}
             </span>
           </span>
         </div>
+        {% endif %}
+
       </div>
     </div>
   </header>
+
+  <!-- ── Preview-as-role banner ────────────────────────────────────────── -->
+  {% if session.get('preview_role') %}
+  <div class="w-full border-b sticky top-[88px] z-20"
+       style="background:var(--surface-warning);border-color:var(--border-warning)"
+       role="alert"
+       aria-live="polite">
+    <div class="max-w-screen-2xl mx-auto px-4 py-2 flex items-center justify-between gap-4 flex-wrap text-sm">
+      <span class="font-medium" style="color:var(--text-warning)">
+        <strong class="font-bold capitalize">Previewing as {{ session.get('preview_role') }}</strong>
+        — this is how the app looks to a {{ session.get('preview_role') }} user.
+        <span class="font-semibold">Your actions are still real.</span>
+      </span>
+      <form method="POST" action="/admin/exit-preview" class="shrink-0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit"
+                class="text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap"
+                style="background:var(--bg-card);border-color:var(--border-warning);color:var(--text-warning)">
+          Exit preview
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- ── PROD-6 client error boundary ─────────────────────────────────── -->
   <div id="client-error-boundary"
        class="hidden fixed bottom-6 right-6 left-6 sm:left-auto z-[60] max-w-lg"
        role="alert"
        aria-live="assertive">
-    <div class="rounded-xl border border-amber-300 bg-amber-50 shadow-2xl px-4 py-3 flex flex-col gap-3 pointer-events-auto">
+    <div class="rounded-xl shadow-2xl px-4 py-3 flex flex-col gap-3 pointer-events-auto"
+         style="background:var(--surface-warning);border:1px solid var(--border-warning)">
       <div class="flex gap-3">
-        <div class="mt-0.5 shrink-0 w-9 h-9 rounded-lg bg-amber-200 flex items-center justify-center text-amber-900 font-bold select-none">!</div>
+        <div class="mt-0.5 shrink-0 w-9 h-9 rounded-lg flex items-center justify-center font-bold select-none"
+             style="background:var(--border-warning);color:var(--text-warning)">!</div>
         <div class="min-w-0 flex-1">
-          <p class="font-bold text-amber-950 text-sm">Something went wrong in the browser</p>
-          <p id="client-error-boundary-detail" class="text-xs text-amber-900 mt-1 leading-snug"></p>
+          <p class="font-bold text-sm" style="color:var(--text-warning)">Something went wrong in the browser</p>
+          <p id="client-error-boundary-detail" class="text-xs mt-1 leading-snug" style="color:var(--text-warning)"></p>
         </div>
       </div>
       <div class="flex flex-wrap gap-2 justify-end">
         <button type="button" id="client-error-boundary-dismiss"
-                class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-amber-400 text-amber-900 hover:bg-amber-100">
+                class="text-xs font-semibold px-3 py-1.5 rounded-lg border"
+                style="background:var(--bg-card);border-color:var(--border-warning);color:var(--text-warning)">
           Dismiss
         </button>
         <button type="button" id="client-error-boundary-reload"
@@ -422,7 +571,7 @@
   </div>
   {% endif %}
 
-  <!-- ── Main (footer is inside <main> so the dashboard flex/scroll model cannot clip it) ── -->
+  <!-- ── Main ──────────────────────────────────────────────────────────── -->
   <main id="main-content"
         class="flex-1 min-h-0 flex flex-col {% block main_class %}overflow-y-auto{% endblock %}">
     <div class="max-w-screen-2xl mx-auto w-full px-4 py-5 {% block content_class %}{% endblock %}">
@@ -430,8 +579,8 @@
       {% if messages %}
       <div class="mb-4 space-y-2" role="alert">
         {% for category, msg in messages %}
-        <div class="rounded-lg px-4 py-2 text-sm font-medium
-          {% if category == 'success' %}bg-green-50 text-green-800 border border-green-200{% elif category == 'error' %}bg-red-50 text-red-800 border border-red-200{% else %}bg-slate-50 text-slate-800 border border-slate-200{% endif %}">
+        <div class="rounded-lg px-4 py-2 text-sm font-medium border"
+             style="{% if category == 'success' %}background:var(--surface-success);color:var(--text-success);border-color:var(--border-success){% elif category == 'error' %}background:var(--surface-danger);color:var(--text-danger);border-color:var(--border-danger){% else %}background:var(--bg-card);color:var(--text-primary);border-color:var(--border-default){% endif %}">
           {{ msg }}
         </div>
         {% endfor %}
@@ -440,12 +589,12 @@
       {% endwith %}
       {% block content %}{% endblock %}
     </div>
-    <footer class="mt-auto shrink-0 border-t border-slate-200 bg-slate-100/90 py-2 px-4">
-      <div class="max-w-screen-2xl mx-auto text-center text-[11px] text-slate-500 select-none space-x-3">
-        <span title="TaxOps">&copy; {{ current_year }} Moises Bustos</span>
+    <footer class="mt-auto shrink-0 py-2 px-4" style="border-top:1px solid var(--border-default);background:var(--bg-page)">
+      <div class="max-w-screen-2xl mx-auto text-center text-[11px] select-none space-x-3" style="color:var(--text-muted)">
+        <span title="{{ app_name }}">&copy; {{ current_year }} Moises Bustos</span>
         <span aria-hidden="true">·</span>
         <a href="{{ url_for('admin_runbook') }}"
-           class="hover:text-slate-700 hover:underline transition-colors">
+           class="hover:underline transition-colors" style="color:var(--text-muted)">
           {{ _('Ops Runbook') }}
         </a>
       </div>
@@ -460,9 +609,8 @@
           style="display:none"
           class="fixed bottom-14 right-6 z-50
                  w-12 h-12 rounded-full shadow-lg
-                 bg-slate-700 hover:bg-slate-600 active:bg-slate-500
                  text-white flex items-center justify-center
-                 transition-all duration-200 border-2 border-slate-500
+                 transition-all duration-200 border-2
                  focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400">
     <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/>
@@ -473,9 +621,6 @@
   <script>
 (function () {
 
-      /** Fetch with timeout — avoids perpetual “Loading…” if the server hangs.
-       *  When the timer fires, `fetch` rejects with AbortError whose message is often
-       *  “signal is aborted without reason” (no AbortSignal reason). Flag timeouts so callers get a clear error. */
       function _fetchWithTimeout(url, options, timeoutMs) {
         var ms = timeoutMs || 45000;
         var ctrl = new AbortController();
@@ -503,7 +648,6 @@
           });
       }
 
-      /** API calls return 401 JSON when the session expired (not an HTML redirect). */
       function _authJson(r) {
         if (r.status === 401) {
           window.location.href =
@@ -522,7 +666,7 @@
             throw new Error(
               'Server returned a web page instead of JSON (HTTP ' + r.status + '). ' +
               'Open DevTools → Network, click the failing request; if HTML is from TaxOps login, refresh and sign in again. ' +
-              'If it persists, check the server/process log — the POST /ai/chat handler may have errored.'
+              'If it persists, check the server/process log for errors.'
             );
           }
           var body;
@@ -580,10 +724,21 @@
       function renderState(enabled) {
         btn.dataset.enabled = enabled ? '1' : '0';
         btn.textContent = enabled ? 'Privacy: ON' : 'Privacy: OFF';
-        btn.className = enabled
-          ? 'text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.75rem] whitespace-nowrap bg-red-50 text-red-700 border-red-300 hover:bg-red-100'
-          : 'text-sm font-semibold rounded-lg px-3 py-2 border transition-colors min-h-[2.75rem] whitespace-nowrap bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600';
+        if (enabled) {
+          btn.className = 'text-xs font-medium rounded px-2 py-1 border transition-colors whitespace-nowrap bg-red-50 text-red-700 border-red-300 hover:bg-red-100';
+          btn.style.background = '';
+          btn.style.color = '';
+          btn.style.borderColor = '';
+        } else {
+          btn.className = 'text-xs font-medium rounded px-2 py-1 border transition-colors whitespace-nowrap';
+          btn.style.background = 'var(--nav-input-bg)';
+          btn.style.color = 'var(--nav-text)';
+          btn.style.borderColor = 'var(--border-strong)';
+        }
       }
+
+      // Init state on page load
+      renderState(btn.dataset.enabled === '1');
 
       btn.addEventListener('click', async () => {
         const current = btn.dataset.enabled === '1';
@@ -635,7 +790,6 @@
         if (open) closeRejectDropdown(); else openRejectDropdown();
       });
 
-      // Close when clicking outside or pressing Escape
       document.addEventListener('click', (e) => {
         if (!wrap.contains(e.target)) closeRejectDropdown();
       });
@@ -691,7 +845,7 @@
       });
     })();
   </script>
-  <!-- Section 4: email unread-document badge polling (60 s interval, logged-in users only) -->
+  <!-- Section 4: email unread-document badge polling -->
   {% if current_user_name %}
   <script>
   (function () {
@@ -737,6 +891,239 @@
       });
     })();
   </script>
+
+  <!-- Part 5: Theme toggle -->
+  <script>
+  (function () {
+    const STORAGE_KEY = 'taxops-theme';
+    const html = document.documentElement;
+    const btn = document.getElementById('theme-toggle');
+
+    const ICONS = {
+      light: '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path stroke-linecap="round" d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>',
+      dark:  '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>',
+    };
+
+    const CYCLE  = ['light', 'dark'];
+    const LABELS = { light: 'Light', dark: 'Dark' };
+
+    function getStored() {
+      var s = localStorage.getItem(STORAGE_KEY);
+      return (s === 'dark') ? 'dark' : 'light';
+    }
+
+    function applyTheme(mode) {
+      html.setAttribute('data-theme', mode === 'dark' ? 'dark' : 'light');
+      if (btn) {
+        btn.innerHTML = ICONS[mode] || ICONS.light;
+        btn.title = 'Theme: ' + (LABELS[mode] || 'Light');
+      }
+    }
+
+    function cycleTheme() {
+      const current = getStored();
+      const next = CYCLE[(CYCLE.indexOf(current) + 1) % CYCLE.length];
+      localStorage.setItem(STORAGE_KEY, next);
+      applyTheme(next);
+    }
+
+    applyTheme(getStored());
+    if (btn) btn.addEventListener('click', cycleTheme);
+  })();
+  </script>
+
   {% block scripts %}{% endblock %}
+
+{% if dev_console or current_user_role == 'admin' %}
+<!-- ── Dev Console (only rendered when FLASK_DEBUG=1) ────────────────────── -->
+<style>
+  #dev-console-wrap {
+    position: fixed; bottom: 0; right: 0; z-index: 99999;
+    width: 480px; max-width: 98vw;
+    font-family: 'Consolas', 'Menlo', monospace; font-size: 11px;
+    display: flex; flex-direction: column;
+    box-shadow: -2px -2px 16px rgba(0,0,0,.35);
+    border-top: 2px solid #f59e0b;
+    border-left: 2px solid #f59e0b;
+    border-radius: 8px 0 0 0;
+    background: #0f1117;
+    color: #e2e8f0;
+    transition: height .15s ease;
+  }
+  #dev-console-wrap.dc-collapsed { height: 32px; overflow: hidden; }
+  #dev-console-header {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 8px; background: #1a1f2e;
+    border-radius: 8px 0 0 0; cursor: pointer; user-select: none;
+    border-bottom: 1px solid #2d3348;
+    flex-shrink: 0;
+  }
+  #dev-console-header .dc-title { flex: 1; font-weight: 700; color: #f59e0b; font-size: 11px; letter-spacing: .05em; }
+  #dev-console-header .dc-badge {
+    background: #dc2626; color: #fff; border-radius: 9px;
+    padding: 0 5px; font-size: 10px; font-weight: 700; min-width: 16px; text-align: center;
+    display: none;
+  }
+  #dev-console-header .dc-badge.dc-badge-warn { background: #d97706; }
+  #dev-console-header button {
+    background: none; border: none; color: #94a3b8; cursor: pointer;
+    padding: 1px 4px; border-radius: 3px; font-size: 11px; line-height: 1;
+  }
+  #dev-console-header button:hover { background: #2d3348; color: #fff; }
+  #dev-console-log {
+    overflow-y: auto; flex: 1; height: 260px; padding: 4px 0;
+  }
+  .dc-entry {
+    display: flex; gap: 6px; padding: 2px 8px;
+    border-bottom: 1px solid #1e2235; line-height: 1.5;
+    word-break: break-all;
+  }
+  .dc-entry:hover { background: #1a1f2e; }
+  .dc-ts { color: #475569; flex-shrink: 0; font-size: 10px; padding-top: 1px; }
+  .dc-lvl { flex-shrink: 0; font-weight: 700; font-size: 10px; padding-top: 1px; width: 32px; }
+  .dc-msg { flex: 1; white-space: pre-wrap; }
+  .dc-error .dc-lvl { color: #f87171; }
+  .dc-error .dc-msg { color: #fca5a5; }
+  .dc-warn  .dc-lvl { color: #fbbf24; }
+  .dc-warn  .dc-msg { color: #fde68a; }
+  .dc-info  .dc-lvl { color: #60a5fa; }
+  .dc-info  .dc-msg { color: #bfdbfe; }
+  .dc-log   .dc-lvl { color: #94a3b8; }
+  .dc-log   .dc-msg { color: #cbd5e1; }
+</style>
+
+<div id="dev-console-wrap" class="dc-collapsed">
+  <div id="dev-console-header" onclick="dcToggle()">
+    <svg width="13" height="13" fill="none" stroke="#f59e0b" stroke-width="2" viewBox="0 0 24 24">
+      <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+    </svg>
+    <span class="dc-title">DEV CONSOLE</span>
+    <span id="dc-badge" class="dc-badge">0</span>
+    <span style="color:#475569;font-size:10px" title="Toggle with backtick `">` to toggle</span>
+    <button onclick="event.stopPropagation();dcClear()" title="Clear">✕ clear</button>
+  </div>
+  <div id="dev-console-log"></div>
+</div>
+
+<script>
+(function () {
+  const MAX_ENTRIES = 500;
+  const wrap  = document.getElementById("dev-console-wrap");
+  const log   = document.getElementById("dev-console-log");
+  const badge = document.getElementById("dc-badge");
+  let errorCount = 0;
+  let warnCount  = 0;
+  let entries    = 0;
+  let autoScroll = true;
+
+  function dcTs() {
+    const d = new Date();
+    return d.toTimeString().slice(0, 8) + "." + String(d.getMilliseconds()).padStart(3, "0");
+  }
+
+  function dcSerialize(args) {
+    return Array.from(args).map(a => {
+      if (a === null) return "null";
+      if (a === undefined) return "undefined";
+      if (typeof a === "string") return a;
+      if (a instanceof Error) return a.stack || a.message;
+      try { return JSON.stringify(a, null, 2); } catch { return String(a); }
+    }).join(" ");
+  }
+
+  window.dcAddEntry = function(level, msg) {
+    if (entries >= MAX_ENTRIES) {
+      const first = log.querySelector(".dc-entry");
+      if (first) first.remove();
+    } else {
+      entries++;
+    }
+
+    const row = document.createElement("div");
+    row.className = "dc-entry dc-" + level;
+    row.innerHTML =
+      `<span class="dc-ts">${dcTs()}</span>` +
+      `<span class="dc-lvl">${level.toUpperCase()}</span>` +
+      `<span class="dc-msg">${msg.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</span>`;
+    log.appendChild(row);
+
+    if (level === "error") {
+      errorCount++;
+      badge.textContent = errorCount;
+      badge.className = "dc-badge";
+      badge.style.display = "inline-block";
+    } else if (level === "warn" && errorCount === 0) {
+      warnCount++;
+      badge.textContent = warnCount;
+      badge.className = "dc-badge dc-badge-warn";
+      badge.style.display = "inline-block";
+    }
+
+    if (autoScroll) log.scrollTop = log.scrollHeight;
+  };
+
+  // Intercept console methods
+  const _orig = { log: console.log, warn: console.warn, error: console.error, info: console.info, debug: console.debug };
+  ["log","warn","error","info","debug"].forEach(lvl => {
+    console[lvl] = function(...args) {
+      _orig[lvl].apply(console, args);
+      dcAddEntry(lvl === "debug" ? "log" : lvl, dcSerialize(args));
+    };
+  });
+
+  // Global JS errors
+  window.addEventListener("error", e => {
+    const msg = `${e.message}\n  at ${e.filename}:${e.lineno}:${e.colno}` +
+                (e.error && e.error.stack ? "\n" + e.error.stack : "");
+    dcAddEntry("error", msg);
+  });
+
+  // Unhandled promise rejections
+  window.addEventListener("unhandledrejection", e => {
+    const msg = "Unhandled Promise: " + (e.reason instanceof Error
+      ? (e.reason.stack || e.reason.message)
+      : String(e.reason));
+    dcAddEntry("error", msg);
+  });
+
+  // Auto-scroll toggle
+  log.addEventListener("scroll", () => {
+    autoScroll = log.scrollTop + log.clientHeight >= log.scrollHeight - 10;
+  });
+
+  // Toggle open/closed
+  window.dcToggle = function () {
+    wrap.classList.toggle("dc-collapsed");
+    if (!wrap.classList.contains("dc-collapsed")) {
+      // Reset badge when opened
+      errorCount = 0; warnCount = 0;
+      badge.style.display = "none";
+      autoScroll = true;
+      log.scrollTop = log.scrollHeight;
+    }
+  };
+
+  window.dcClear = function () {
+    log.innerHTML = "";
+    entries = 0; errorCount = 0; warnCount = 0;
+    badge.style.display = "none";
+  };
+
+  // Backtick shortcut — use e.code so it works on all keyboard layouts
+  document.addEventListener("keydown", e => {
+    if (e.code === "Backquote" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const tag = (document.activeElement || {}).tagName || "";
+      if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        dcToggle();
+      }
+    }
+  }, true); // capture phase so other handlers can't block it
+
+  dcAddEntry("info", "Dev console ready — FLASK_DEBUG=1");
+})();
+</script>
+{% endif %}
 </body>
 </html>

@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}Extension Queue — Tax Log {{ current_year }}{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <div class="flex items-center justify-between gap-4 flex-wrap">
+    <div>
+      <h1 class="text-lg font-bold" style="color:var(--text-primary)">Extension Queue</h1>
+      <p class="text-sm mt-0.5" style="color:var(--text-muted)">Returns with pending extension requests &mdash; {{ today }}</p>
+    </div>
+    <div class="flex items-center gap-3 flex-wrap">
+
+      <!-- Sort toggle -->
+      <div class="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+        <a href="/extension-queue?year={{ current_year }}&sort=log"
+           class="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors
+                  {% if sort == 'log' %}bg-white text-slate-800 shadow-sm{% else %}text-slate-500 hover:text-slate-700{% endif %}">
+          Log #
+        </a>
+        <a href="/extension-queue?year={{ current_year }}&sort=name"
+           class="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors
+                  {% if sort == 'name' %}bg-white text-slate-800 shadow-sm{% else %}text-slate-500 hover:text-slate-700{% endif %}">
+          Last Name
+        </a>
+      </div>
+
+      <!-- Quick filter -->
+      <input id="table-filter" type="text" placeholder="Quick filter…"
+             class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 w-36"
+             style="--tw-ring-color:var(--color-primary-border)">
+
+      <!-- Count -->
+      <span class="text-sm" style="color:var(--text-muted)">
+        <span id="sel-count" class="font-bold" style="color:var(--text-primary)">0</span> / {{ returns | length }} selected
+      </span>
+
+      <!-- View Batches -->
+      <a href="/extension-batch"
+         class="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 border rounded-lg transition-colors"
+         style="border-color:var(--color-primary-border);color:var(--color-primary-text);background:var(--color-primary-light)">
+        View Batches
+      </a>
+    </div>
+  </div>
+
+  <!-- ── Create Batch panel (shown when rows are selected) ─────────────── -->
+  <form id="batch-form" method="POST" action="/extension-batch/create">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div id="batch-panel"
+         class="hidden rounded-xl px-5 py-4 flex items-center gap-4 flex-wrap border"
+         style="background:var(--color-primary-light);border-color:var(--color-primary-border)">
+      <div class="flex-1 min-w-0">
+        <span class="font-semibold text-sm" style="color:var(--color-primary-text)">
+          Create Extension Batch
+        </span>
+        <span id="batch-sel-label" class="text-sm ml-2" style="color:var(--color-primary)">0 returns selected</span>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <label class="text-xs font-medium" style="color:var(--color-primary-text)">
+          Filing Date
+          <input type="date" name="filing_date" value="{{ today }}"
+                 class="ml-2 text-xs border rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1"
+                 style="border-color:var(--color-primary-border);--tw-ring-color:var(--color-primary-border)">
+        </label>
+        <label class="text-xs font-medium" style="color:var(--color-primary-text)">
+          Notes
+          <input type="text" name="notes" placeholder="Optional batch notes"
+                 class="ml-2 text-xs border rounded-lg px-2 py-1 bg-white w-44 focus:outline-none focus:ring-1"
+                 style="border-color:var(--color-primary-border);--tw-ring-color:var(--color-primary-border)">
+        </label>
+        <button type="submit" class="btn-primary px-4 py-1.5 text-xs font-bold rounded-lg shadow-sm">
+          Create Batch
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Table ──────────────────────────────────────────────────────────── -->
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <table class="data-table w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th class="th w-8 text-center">
+              <input type="checkbox" id="select-all" class="rounded cursor-pointer">
+            </th>
+            <th class="th w-14">
+              <a href="/extension-queue?year={{ current_year }}&sort=log"
+                 class="hover:text-slate-900 {% if sort == 'log' %}font-bold{% endif %}"
+                 style="{% if sort == 'log' %}color:var(--color-primary){% endif %}">Log #</a>
+            </th>
+            <th class="th">
+              <a href="/extension-queue?year={{ current_year }}&sort=name"
+                 class="hover:text-slate-900 {% if sort == 'name' %}font-bold{% endif %}"
+                 style="{% if sort == 'name' %}color:var(--color-primary){% endif %}">Client</a>
+            </th>
+            <th class="th w-10 text-center">TY</th>
+            <th class="th w-28">Preparer</th>
+            <th class="th w-24">Status</th>
+            <th class="th w-24">Filed Date</th>
+            <th class="th w-28 text-center">Ext. Status</th>
+            <th class="th w-10 text-center">Action</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for r in returns %}
+          <tr class="hover:bg-slate-50/80 transition-colors"
+              data-search="{{ r.log_number }} {{ r.last_name }} {{ r.first_name }} {{ r.processor }}">
+
+            <!-- Checkbox -->
+            <td class="td text-center">
+              <input type="checkbox" name="return_ids" value="{{ r.id }}"
+                     class="row-check rounded cursor-pointer">
+            </td>
+
+            <!-- Log # -->
+            <td class="td">
+              <a href="/return/{{ r.id }}"
+                 class="font-mono font-black text-base tracking-tight"
+                 style="color:var(--color-primary)">
+                {{ r.log_number or '—' }}
+              </a>
+            </td>
+
+            <!-- Client -->
+            <td class="td">
+              <div class="font-semibold text-slate-800">
+                {{ r.last_name }}{% if r.first_name %}, {{ r.first_name }}{% endif %}
+              </div>
+              {% if r.display_name and r.display_name != (r.last_name ~ ', ' ~ r.first_name) %}
+              <div class="text-xs text-slate-400">{{ r.display_name }}</div>
+              {% endif %}
+            </td>
+
+            <!-- Tax year -->
+            <td class="td text-center">
+              <span class="text-xs font-mono text-slate-600">{{ r.tax_year }}</span>
+            </td>
+
+            <!-- Preparer -->
+            <td class="td text-xs text-slate-600">{{ r.processor or '—' }}</td>
+
+            <!-- Return status -->
+            <td class="td">
+              <span class="status-badge {{ r.badge_class }}">{{ r.client_status or '—' }}</span>
+            </td>
+
+            <!-- Extension filed date -->
+            <td class="td text-xs text-slate-600 tabular-nums">
+              {{ r.extension_filed_date or '—' }}
+            </td>
+
+            <!-- Ext. ACK status -->
+            <td class="td text-center">
+              {% if r.extension_ack_status == 'rejected' %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                &#10007; Rejected
+              </span>
+              {% elif r.extension_filed_date %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-500">
+                Pending ACK
+              </span>
+              {% else %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
+                Not Filed
+              </span>
+              {% endif %}
+            </td>
+
+            <!-- Open -->
+            <td class="td text-center">
+              <a href="/return/{{ r.id }}"
+                 class="text-xs font-semibold hover:underline"
+                 style="color:var(--color-primary)">Open</a>
+            </td>
+
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="9" class="px-6 py-16 text-center">
+              <div class="text-5xl mb-3">&#10003;</div>
+              <div class="font-semibold text-slate-500 text-base">No pending extension requests</div>
+              <div class="text-sm text-slate-400 mt-1">Mark a return as &ldquo;Extension Requested&rdquo; from its detail page to add it here.</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+
+  <!-- ── Summary bar ────────────────────────────────────────────────────── -->
+  {% if returns %}
+  <div class="bg-white rounded-xl border border-slate-200 px-5 py-3 flex items-center gap-6 text-sm flex-wrap">
+    <span class="text-slate-500">
+      <span class="font-bold text-slate-800">{{ returns | length }}</span> total pending
+    </span>
+    {% set not_filed = returns | selectattr('extension_filed_date', 'none') | list %}
+    {% set rejected  = returns | selectattr('extension_ack_status', 'equalto', 'rejected') | list %}
+    {% if not_filed %}
+    <span class="text-amber-600 font-medium">&#9888; {{ not_filed | length }} not yet filed</span>
+    {% endif %}
+    {% if rejected %}
+    <span class="text-red-600 font-medium">&#10007; {{ rejected | length }} rejected — need re-filing</span>
+    {% endif %}
+    {% if not not_filed and not rejected %}
+    <span class="text-green-600 font-medium">&#10003; All filed, awaiting ACK</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const filterInput = document.getElementById('table-filter');
+  const selectAll   = document.getElementById('select-all');
+  const batchPanel  = document.getElementById('batch-panel');
+  const selCountEl  = document.getElementById('sel-count');
+  const batchSelLbl = document.getElementById('batch-sel-label');
+
+  function updateSelectionUI() {
+    const checked = document.querySelectorAll('.row-check:checked');
+    const n = checked.length;
+    selCountEl.textContent = n;
+    batchSelLbl.textContent = n + ' return' + (n !== 1 ? 's' : '') + ' selected';
+    batchPanel.classList.toggle('hidden', n === 0);
+    selectAll.indeterminate = n > 0 && n < document.querySelectorAll('.row-check').length;
+    selectAll.checked = n > 0 && n === document.querySelectorAll('.row-check').length;
+  }
+
+  document.querySelectorAll('.row-check').forEach(cb => cb.addEventListener('change', updateSelectionUI));
+
+  selectAll.addEventListener('change', () => {
+    document.querySelectorAll('.row-check').forEach(cb => {
+      if (cb.closest('tr').style.display !== 'none') cb.checked = selectAll.checked;
+    });
+    updateSelectionUI();
+  });
+
+  if (filterInput) {
+    filterInput.addEventListener('input', () => {
+      const q = filterInput.value.toLowerCase();
+      document.querySelectorAll('tbody tr[data-search]').forEach(row => {
+        row.style.display = row.dataset.search.toLowerCase().includes(q) ? '' : 'none';
+      });
+      updateSelectionUI();
+    });
+  }
+})();
+</script>
+{% endblock %}

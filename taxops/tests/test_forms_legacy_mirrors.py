@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from flask import Flask
 
-from ai_routes import _save_form_data
+from form_store import _save_form_data
 from db import get_connection, init_db
 from form_schema import FORM_LEGACY_MIRROR_COLUMNS
 

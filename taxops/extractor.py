@@ -42,6 +42,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re as _re
 import threading
 import time
 from typing import Any
@@ -328,7 +329,7 @@ def _table_from_form_type_hint(raw: str | None) -> str | None:
 
 
 def _resolve_detected_table(doc_type_db: str | None, fields: dict) -> str | None:
-    from ai_routes import _detect_form_type
+    from form_store import _detect_form_type
 
     hint_table = _table_from_form_type_hint(fields.get("form_type"))
     if hint_table:
@@ -337,7 +338,7 @@ def _resolve_detected_table(doc_type_db: str | None, fields: dict) -> str | None
 
 
 def _process_item(conn, item: dict) -> None:
-    from ai_routes import (
+    from form_store import (
         _apply_extraction_doc_tag,
         _form_table_to_doc_type,
         _save_form_data,
@@ -394,6 +395,26 @@ def _process_item(conn, item: dict) -> None:
 
     try:
         fields, method = _extract_fields(file_path, filename)
+
+        if method == "image_skipped":
+            conn.execute(
+                """
+                UPDATE extraction_queue
+                SET status = 'skipped',
+                    extraction_method = 'image_skipped',
+                    error_message = 'Image file — vision extraction disabled. Tag manually.',
+                    processed_at = ?
+                WHERE id = ?
+                """,
+                (get_now(), item_id),
+            )
+            conn.commit()
+            logger.info(
+                "Skipped vision extraction for %s — image files are tagged manually",
+                filename,
+            )
+            return
+
         if not fields:
             # DOC-HARD-2: retry up to MAX_ATTEMPTS before permanently failing.
             new_attempts = item["attempts"] + 1  # DB already incremented
@@ -756,7 +777,7 @@ def _extract_fields(
     use the presence of fields as a proxy for confidence — always call
     _compute_confidence(fields, detected_type) explicitly.
     """
-    from ai_routes import _extract_pdf_text, _image_to_b64, _pdf_to_image_b64
+    from form_store import _extract_pdf_text, _image_to_b64, _pdf_to_image_b64
     from utils import scrub_ssn_from_dict
 
     try:
@@ -765,16 +786,28 @@ def _extract_fields(
         if ext == ".pdf":
             pdf_text = _extract_pdf_text(file_path)
             if pdf_text:
-                method = "text"
-                prompt = _build_text_prompt(pdf_text, filename)
-                raw = _extract_json_retry_on_timeout(
-                    filename,
-                    prompt=prompt,
-                    model=OLLAMA_EXTRACT_MODEL_TEXT,
-                    image_b64=None,
-                    timeout=OLLAMA_EXTRACT_TIMEOUT_TEXT,
-                )
+                # Step 1: native regex parse — no LLM, instant for standard IRS forms.
+                native = _native_extract_fields(pdf_text, filename)
+                if native:
+                    method = "native"
+                    raw = native
+                else:
+                    # Step 2: text LLM — slower but handles non-standard layouts.
+                    method = "text"
+                    prompt = _build_text_prompt(pdf_text, filename)
+                    logger.info(
+                        "Extraction: native parse insufficient for %s — using text LLM",
+                        filename,
+                    )
+                    raw = _extract_json_retry_on_timeout(
+                        filename,
+                        prompt=prompt,
+                        model=OLLAMA_EXTRACT_MODEL_TEXT,
+                        image_b64=None,
+                        timeout=OLLAMA_EXTRACT_TIMEOUT_TEXT,
+                    )
             else:
+                # Step 3: vision LLM — scanned / image-only PDF, no embedded text.
                 method = "vision"
                 image_b64 = _pdf_to_image_b64(file_path)
                 prompt = _build_vision_prompt()
@@ -791,6 +824,13 @@ def _extract_fields(
                 )
 
         elif ext in (".jpg", ".jpeg", ".png"):
+            from config import EXTRACTOR_VISION_ENABLED
+            if not EXTRACTOR_VISION_ENABLED:
+                logger.info(
+                    "Skipped vision extraction for %s — image files are tagged manually",
+                    filename,
+                )
+                return None, "image_skipped"
             method = "vision"
             image_b64 = _image_to_b64(file_path)
             prompt = _build_vision_prompt()
@@ -865,6 +905,354 @@ def _build_vision_prompt() -> str:
         "structure for that form type. Do not return multiple structures. "
         "Return JSON only — no other text."
     )
+
+
+# ── Native PDF field extractor — no LLM required ─────────────────────────────
+#
+# Tries regex/pattern matching on machine-extracted text before touching Ollama.
+# Works well for ADP / Paychex / IRS-generated PDFs that embed text.
+# Falls through to the text-LLM when < _NATIVE_PARSE_MIN_FIELDS data fields found.
+# Vision-LLM path is unchanged — still used when pdfplumber/fitz find no text.
+
+# Minimum non-metadata fields required to accept native parse result.
+_NATIVE_PARSE_MIN_FIELDS = 3
+
+# Money: bare number with optional commas and up to 2 decimal places.
+_MONEY_PAT = _re.compile(r'(?<!\d)([\d,]{1,12}(?:\.\d{1,2})?)(?!\d)')
+
+# SSN (XXX-XX-XXXX) / EIN (XX-XXXXXXX) — never extract, never store.
+_ID_SKIP = _re.compile(r'^\d{3}-\d{2}-\d{4}$|^\d{2}-\d{7}$')
+
+# Valid US state / territory abbreviations for W-2 box 15 validation.
+_US_STATE_ABBR = frozenset(
+    "AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN "
+    "MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA "
+    "WA WV WI WY DC PR VI GU AS MP".split()
+)
+
+
+def _nv_money(text: str, label_re: str, window: int = 150) -> str | None:
+    """Return the first plausible monetary amount in `window` chars after `label_re`.
+
+    Uses finditer so a bare single-digit (e.g. the '2' in '2 Federal income tax')
+    does not block the real value on the next line.
+    """
+    m = _re.search(label_re, text, _re.I | _re.S)
+    if not m:
+        return None
+    snippet = text[m.end(): m.end() + window]
+    for vm in _MONEY_PAT.finditer(snippet):
+        raw = vm.group(1).replace(",", "")
+        # Skip bare integers ≤ 4 digits with no decimal (years, box numbers, zip codes)
+        if len(raw.replace(".", "")) <= 4 and "." not in raw:
+            continue
+        try:
+            if float(raw) >= 1_000_000_000:
+                continue
+        except ValueError:
+            continue
+        return raw
+    return None
+
+
+def _nv_line(text: str, label_re: str) -> str | None:
+    """Return the first useful non-blank line after `label_re`, skipping SSN/EIN."""
+    m = _re.search(label_re + r"[^\n]*\n", text, _re.I)
+    if not m:
+        return None
+    for line in text[m.end():].splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if _ID_SKIP.match(line):
+            continue
+        if len(line) >= 3:
+            return line[:80]
+    return None
+
+
+def _nv_year(text: str) -> str | None:
+    """Extract the most-common tax year (2015-2029) from text."""
+    hits = _re.findall(r"(?:^|\s)(20[1-2]\d)(?:\s|$)", text, _re.M)
+    if hits:
+        from collections import Counter
+        return Counter(hits).most_common(1)[0][0]
+    m = _re.search(r"\b(20[1-2]\d)\b", text)
+    return m.group(1) if m else None
+
+
+def _native_parse_w2(text: str) -> dict:
+    f: dict = {}
+    # Employer name: after box "c" label
+    for pat in (r"[cC]\s*Employer.{0,8}name", r"Employer.{0,8}name"):
+        v = _nv_line(text, pat)
+        if v:
+            f["employer_name"] = v
+            break
+    v = _nv_money(text, r"1\s+Wages[,\s]+tips")
+    if v:
+        f["box1_wages_tips_other"] = v
+    v = _nv_money(text, r"2\s+Federal\s+income\s+tax\s+withheld")
+    if v:
+        f["box2_federal_income_tax_withheld"] = v
+    v = _nv_money(text, r"3\s+Social\s+security\s+wages")
+    if v:
+        f["box3_social_security_wages"] = v
+    v = _nv_money(text, r"4\s+Social\s+security\s+tax\s+withheld")
+    if v:
+        f["box4_social_security_tax_withheld"] = v
+    v = _nv_money(text, r"5\s+Medicare\s+wages")
+    if v:
+        f["box5_medicare_wages_tips"] = v
+    v = _nv_money(text, r"6\s+Medicare\s+tax\s+withheld")
+    if v:
+        f["box6_medicare_tax_withheld"] = v
+    v = _nv_money(text, r"16\s+State\s+wages")
+    if v:
+        f["box16_state_wages"] = v
+    v = _nv_money(text, r"17\s+State\s+income\s+tax")
+    if v:
+        f["box17_state_income_tax"] = v
+    # State abbreviation: look on the line AFTER "15 State" or inline after whitespace,
+    # but only accept known US state abbreviations to avoid matching "ER" from "Employer".
+    for sm in _re.finditer(r"\b([A-Z]{2})\b", text):
+        candidate = sm.group(1).upper()
+        if candidate in _US_STATE_ABBR:
+            # Confirm it appears near a "15" / "State" label
+            nearby_start = max(0, sm.start() - 120)
+            nearby = text[nearby_start: sm.start()]
+            if _re.search(r"15\s+State|State.*ID", nearby, _re.I):
+                f["box15_state"] = candidate
+                break
+
+    # Cross-validate: federal tax withheld (box2) must be less than gross wages (box1).
+    # If equal or greater, the side-by-side PDF layout confused the parser — return
+    # without these fields so the caller falls through to the text LLM.
+    b1 = f.get("box1_wages_tips_other")
+    b2 = f.get("box2_federal_income_tax_withheld")
+    if b1 and b2:
+        try:
+            if float(b2) >= float(b1):
+                f.pop("box1_wages_tips_other", None)
+                f.pop("box2_federal_income_tax_withheld", None)
+                f.pop("box3_social_security_wages", None)
+                f.pop("box4_social_security_tax_withheld", None)
+                f.pop("box5_medicare_wages_tips", None)
+                f.pop("box6_medicare_tax_withheld", None)
+        except ValueError:
+            pass
+
+    return f
+
+
+def _native_parse_1099nec(text: str) -> dict:
+    f: dict = {}
+    v = _nv_line(text, r"PAYER.{0,6}[Ss]?\s*name")
+    if v:
+        f["payer_name"] = v
+    v = _nv_money(text, r"1\s+Nonemployee\s+comp")
+    if v:
+        f["box1_nonemployee_compensation"] = v
+    v = _nv_money(text, r"4\s+Federal\s+income\s+tax\s+withheld")
+    if v:
+        f["box4_federal_income_tax_withheld"] = v
+    v = _nv_money(text, r"5\s+State\s+tax\s+withheld")
+    if v:
+        f["box5_state_tax_withheld"] = v
+    sm = _re.search(r"6\s+State[^\n]{0,20}([A-Z]{2})", text, _re.I)
+    if sm:
+        f["box6_state"] = sm.group(1).upper()
+    return f
+
+
+def _native_parse_1099misc(text: str) -> dict:
+    f: dict = {}
+    v = _nv_line(text, r"PAYER.{0,6}[Ss]?\s*name")
+    if v:
+        f["payer_name"] = v
+    v = _nv_money(text, r"1\s+Rents")
+    if v:
+        f["box1_rents"] = v
+    v = _nv_money(text, r"2\s+Royalties")
+    if v:
+        f["box2_royalties"] = v
+    v = _nv_money(text, r"3\s+Other\s+income")
+    if v:
+        f["box3_other_income"] = v
+    v = _nv_money(text, r"4\s+Federal\s+income\s+tax\s+withheld")
+    if v:
+        f["box4_federal_income_tax_withheld"] = v
+    return f
+
+
+def _native_parse_1099int(text: str) -> dict:
+    f: dict = {}
+    v = _nv_line(text, r"PAYER.{0,6}[Ss]?\s*name")
+    if v:
+        f["payer_name"] = v
+    v = _nv_money(text, r"1\s+Interest\s+income")
+    if v:
+        f["box1_interest_income"] = v
+    v = _nv_money(text, r"4\s+Federal\s+income\s+tax\s+withheld")
+    if v:
+        f["box4_federal_income_tax_withheld"] = v
+    v = _nv_money(text, r"8\s+Tax.exempt\s+interest")
+    if v:
+        f["box8_tax_exempt_interest"] = v
+    return f
+
+
+def _native_parse_1099div(text: str) -> dict:
+    f: dict = {}
+    v = _nv_line(text, r"PAYER.{0,6}[Ss]?\s*name")
+    if v:
+        f["payer_name"] = v
+    v = _nv_money(text, r"1a\s+Total\s+ordinary\s+dividends")
+    if v:
+        f["box1a_total_ordinary_dividends"] = v
+    v = _nv_money(text, r"1b\s+Qualified\s+dividends")
+    if v:
+        f["box1b_qualified_dividends"] = v
+    v = _nv_money(text, r"2a\s+Total\s+capital\s+gain")
+    if v:
+        f["box2a_total_capital_gain"] = v
+    v = _nv_money(text, r"4\s+Federal\s+income\s+tax\s+withheld")
+    if v:
+        f["box4_federal_income_tax_withheld"] = v
+    return f
+
+
+def _native_parse_paystub(text: str) -> dict:
+    f: dict = {}
+    # Employee name
+    for pat in (r"Employee\s*(?:Name)?[:\s]+([A-Za-z]+(?: [A-Za-z]+)+)",
+                r"Pay\s+To[:\s]+([A-Za-z]+(?: [A-Za-z]+)+)"):
+        m = _re.search(pat, text, _re.I)
+        if m:
+            f["employee_name"] = m.group(1).strip()[:60]
+            break
+    # Employer name
+    for pat in (r"Company\s*(?:Name)?[:\s]+([^\n]{3,60})",
+                r"Employer[:\s]+([^\n]{3,60})"):
+        m = _re.search(pat, text, _re.I)
+        if m:
+            f["employer_name"] = m.group(1).strip()[:60]
+            break
+    # Gross/Net pay this period
+    for pat in (r"(?:Current\s+)?Gross\s+Pay[:\s$]*([\d,]+(?:\.\d{2})?)",
+                r"Gross\s+Earnings[:\s$]*([\d,]+(?:\.\d{2})?)"):
+        m = _re.search(pat, text, _re.I)
+        if m:
+            f["gross_pay_this_period"] = m.group(1).replace(",", "")
+            break
+    for pat in (r"Net\s+Pay[:\s$]*([\d,]+(?:\.\d{2})?)",
+                r"Net\s+Amount[:\s$]*([\d,]+(?:\.\d{2})?)"):
+        m = _re.search(pat, text, _re.I)
+        if m:
+            f["net_pay_this_period"] = m.group(1).replace(",", "")
+            break
+    # YTD gross / net
+    for pat in (r"(?:YTD|Year.to.Date)\s+Gross[:\s$]*([\d,]+(?:\.\d{2})?)",
+                r"Gross\s+YTD[:\s$]*([\d,]+(?:\.\d{2})?)"):
+        m = _re.search(pat, text, _re.I)
+        if m:
+            f["ytd_gross"] = m.group(1).replace(",", "")
+            break
+    for pat in (r"(?:YTD|Year.to.Date)\s+Net[:\s$]*([\d,]+(?:\.\d{2})?)",
+                r"Net\s+YTD[:\s$]*([\d,]+(?:\.\d{2})?)"):
+        m = _re.search(pat, text, _re.I)
+        if m:
+            f["ytd_net"] = m.group(1).replace(",", "")
+            break
+    # Overtime
+    if _re.search(r"\bovertime\b|\bOT\s+hours\b", text, _re.I):
+        f["has_overtime"] = True
+        m = _re.search(r"Overtime\s+Hours?[:\s$]*([\d,]+(?:\.\d{2})?)", text, _re.I)
+        if m:
+            f["overtime_hours"] = m.group(1).replace(",", "")
+        m = _re.search(r"Overtime\s+(?:Pay|Amount)[:\s$]*([\d,]+(?:\.\d{2})?)", text, _re.I)
+        if m:
+            f["overtime_pay"] = m.group(1).replace(",", "")
+    # Pay period dates
+    pp = _re.search(
+        r"(?:Pay\s+)?Period[:\s]+(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})\s*(?:[-–]|to|thru)\s*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})",
+        text, _re.I,
+    )
+    if pp:
+        f["pay_period_start"] = pp.group(1)
+        f["pay_period_end"] = pp.group(2)
+    pd_m = _re.search(r"(?:Pay|Check)\s+Date[:\s]+(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})", text, _re.I)
+    if pd_m:
+        f["pay_date"] = pd_m.group(1)
+    return f
+
+
+def _native_extract_fields(text: str, filename: str = "") -> dict | None:
+    """Parse IRS tax form fields from machine-extracted PDF text — no LLM required.
+
+    Returns a fields dict using the same keys as the LLM extractor, or None if
+    fewer than _NATIVE_PARSE_MIN_FIELDS data fields are found (caller falls through
+    to the text LLM).
+
+    Privacy: SSN / EIN / TIN lines are never matched or stored.
+    """
+    tl = text.lower()
+    fn = (filename or "").lower()
+
+    is_w2      = bool(_re.search(r"\bw[-\u2011\u2013]?2\b|wage and tax statement", tl) or _re.search(r"\bw2\b|\bw-2\b", fn))
+    is_1099nec  = bool(_re.search(r"1099[-\u2013]?nec\b|nonemployee comp", tl))
+    is_1099misc = bool(_re.search(r"1099[-\u2013]?misc\b|miscellaneous\s+income", tl))
+    is_1099int  = bool(_re.search(r"1099[-\u2013]?int\b|interest income", tl))
+    is_1099div  = bool(_re.search(r"1099[-\u2013]?div\b|dividends and distributions", tl))
+    is_paystub  = bool(_re.search(
+        r"pay\s*(?:stub|period|check)|check\s*stub|ytd\s+gross|year[- ]to[- ]date|earnings\s+statement",
+        tl,
+    ))
+
+    if not any([is_w2, is_1099nec, is_1099misc, is_1099int, is_1099div, is_paystub]):
+        return None  # unrecognised form — let LLM decide
+
+    fields: dict = {}
+    year = _nv_year(text)
+    if year:
+        fields["tax_year"] = year
+
+    if is_w2:
+        fields["form_type"] = "W-2"
+        fields.update(_native_parse_w2(text))
+    elif is_1099nec:
+        fields["form_type"] = "1099-NEC"
+        fields.update(_native_parse_1099nec(text))
+    elif is_1099misc:
+        fields["form_type"] = "1099-MISC"
+        fields.update(_native_parse_1099misc(text))
+    elif is_1099int:
+        fields["form_type"] = "1099-INT"
+        fields.update(_native_parse_1099int(text))
+    elif is_1099div:
+        fields["form_type"] = "1099-DIV"
+        fields.update(_native_parse_1099div(text))
+    elif is_paystub:
+        fields["form_type"] = "PAYSTUB"
+        fields.update(_native_parse_paystub(text))
+
+    meta = {"form_type", "tax_year"}
+    data_fields = {k: v for k, v in fields.items() if k not in meta and v not in (None, "", False)}
+    if len(data_fields) < _NATIVE_PARSE_MIN_FIELDS:
+        logger.debug(
+            "Native parse: only %d data field(s) for %s — falling through to text LLM",
+            len(data_fields),
+            filename or "(unknown)",
+        )
+        return None
+
+    logger.info(
+        "Native parse succeeded for %s: form=%s fields=%d (no LLM used)",
+        filename or "(unknown)",
+        fields.get("form_type"),
+        len(data_fields),
+    )
+    return fields
 
 
 def _field_truthy(fields: dict, key: str) -> bool:

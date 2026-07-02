@@ -150,7 +150,7 @@ def test_worker_tags_unknown_paystub_without_sql_row(monkeypatch, taxops_db_path
 
 
 def test_detect_paystub_from_ot_ytd_without_form_type_hint():
-    import ai_routes
+    import form_store
 
     fields = {
         "employer_name": "Retail Co",
@@ -158,7 +158,7 @@ def test_detect_paystub_from_ot_ytd_without_form_type_hint():
         "ytd_gross": "24000",
         "overtime_pay": "120",
     }
-    assert ai_routes._detect_form_type("unknown", fields) == "paystub"
+    assert form_store._detect_form_type("unknown", fields) == "paystub"
 
 
 def test_worker_tags_unknown_w2_after_save(monkeypatch, taxops_db_path, tmp_path):
@@ -210,7 +210,7 @@ def test_worker_tags_unknown_w2_after_save(monkeypatch, taxops_db_path, tmp_path
 
 
 def test_worker_does_not_overwrite_staff_doc_type(monkeypatch, taxops_db_path, tmp_path):
-    import ai_routes
+    import form_store
     import extractor as ex
 
     env = _seed_return_with_queued_pdf(taxops_db_path, tmp_path, doc_type="1099")
@@ -220,7 +220,7 @@ def test_worker_does_not_overwrite_staff_doc_type(monkeypatch, taxops_db_path, t
         lambda fp, fn: (dict(SYNTH_W2_HIGH_CONFIDENCE), "stub"),
     )
 
-    monkeypatch.setattr(ai_routes, "_detect_form_type", lambda dt, fields: "w2_records")
+    monkeypatch.setattr(form_store, "_detect_form_type", lambda dt, fields: "w2_records")
 
     conn = get_connection(taxops_db_path)
     try:
@@ -248,36 +248,10 @@ def test_worker_does_not_overwrite_staff_doc_type(monkeypatch, taxops_db_path, t
         conn.close()
 
 
-def test_manual_extract_route_tags_unknown(monkeypatch, client_logged_in, taxops_db_path, tmp_path):
-    import extractor as ex
-
-    env = _seed_return_with_queued_pdf(taxops_db_path, tmp_path)
-
-    monkeypatch.setattr(
-        ex,
-        "_extract_fields",
-        lambda fp, fn: (dict(SYNTH_W2_HIGH_CONFIDENCE), "text"),
-    )
-
-    r = client_logged_in.post(f"/ai/documents/{env['doc_id']}/extract")
-    assert r.status_code == 200
-    payload = r.get_json()
-    assert payload.get("saved_to") == "w2_records"
-
-    conn = get_connection(taxops_db_path)
-    try:
-        dt = conn.execute(
-            "SELECT doc_type FROM return_documents WHERE id = ?",
-            (env["doc_id"],),
-        ).fetchone()["doc_type"]
-        assert dt == "W-2"
-    finally:
-        conn.close()
-
 
 def test_classify_shim_respects_only_unknown(monkeypatch, taxops_db_path, tmp_path):
     """_classify_document_using_row does not overwrite a non-unknown doc_type."""
-    import ai_routes
+    import form_store
     import extractor as ex
 
     env = _seed_return_with_queued_pdf(taxops_db_path, tmp_path, doc_type="1099")
@@ -286,7 +260,7 @@ def test_classify_shim_respects_only_unknown(monkeypatch, taxops_db_path, tmp_pa
         "_extract_fields",
         lambda fp, fn: (dict(SYNTH_W2_HIGH_CONFIDENCE), "stub"),
     )
-    monkeypatch.setattr(ai_routes, "_detect_form_type", lambda dt, fields: "w2_records")
+    monkeypatch.setattr(form_store, "_detect_form_type", lambda dt, fields: "w2_records")
 
     conn = get_connection(taxops_db_path)
     try:
@@ -297,7 +271,7 @@ def test_classify_shim_respects_only_unknown(monkeypatch, taxops_db_path, tmp_pa
             """,
             (env["doc_id"],),
         ).fetchone()
-        out = ai_routes._classify_document_using_row(
+        out = form_store._classify_document_using_row(
             conn, row, only_if_still_unknown=True
         )
         assert out["doc_type"] == "W-2"

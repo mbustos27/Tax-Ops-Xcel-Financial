@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}E-File Ready Queue — TaxOps {{ current_year }}{% endblock %}
+{% block title %}E-File Ready Queue — Tax Log {{ current_year }}{% endblock %}
 
 {% block content %}
 <div class="space-y-4">
@@ -54,6 +54,7 @@
 
   <!-- ── Create Batch panel (shown when rows are selected) ─────────────── -->
   <form id="batch-form" method="POST" action="/efile-batch/create">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div id="batch-panel"
          class="hidden bg-indigo-50 border border-indigo-200 rounded-xl px-5 py-4 flex items-center gap-4 flex-wrap">
       <div class="flex-1 min-w-0">
@@ -111,13 +112,18 @@
         </thead>
         <tbody class="divide-y divide-slate-100">
           {% for r in returns %}
-          <tr class="hover:bg-slate-50/80 transition-colors"
+          <tr class="hover:bg-slate-50/80 transition-colors {% if r.in_batch_id %}opacity-60{% endif %}"
               data-search="{{ r.log_number }} {{ r.last_name }} {{ r.first_name }} {{ r.processor }}">
 
-            <!-- Checkbox -->
+            <!-- Checkbox — disabled if already in an active batch -->
             <td class="td text-center">
+              {% if r.in_batch_id %}
+              <span title="Already in Batch #{{ r.in_batch_id }} ({{ r.in_batch_status }})"
+                    class="text-slate-300 cursor-not-allowed select-none text-xs">&#8212;</span>
+              {% else %}
               <input type="checkbox" name="return_ids" value="{{ r.id }}"
                      class="row-check rounded cursor-pointer">
+              {% endif %}
             </td>
 
             <!-- Log # -->
@@ -130,8 +136,17 @@
 
             <!-- Client -->
             <td class="td">
-              <div class="font-semibold text-slate-800">
+              <div class="font-semibold text-slate-800 flex items-center gap-2">
                 {{ r.last_name }}{% if r.first_name %}, {{ r.first_name }}{% endif %}
+                {% if r.in_batch_id %}
+                <a href="/efile-batch/{{ r.in_batch_id }}"
+                   class="text-xs font-semibold px-1.5 py-0.5 rounded
+                          {% if r.in_batch_status == 'transmitted' %}bg-green-100 text-green-700{% else %}bg-indigo-100 text-indigo-700{% endif %}"
+                   title="View batch">
+                  Batch #{{ r.in_batch_id }}
+                  {% if r.in_batch_status == 'transmitted' %}&check;{% endif %}
+                </a>
+                {% endif %}
               </div>
               {% if r.display_name and r.display_name != (r.last_name ~ ', ' ~ r.first_name) %}
               <div class="text-xs text-slate-400">{{ r.display_name }}</div>

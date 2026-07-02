@@ -10,6 +10,17 @@ import functools
 from flask import abort, g, jsonify, redirect, request, session, url_for
 
 
+def get_effective_role() -> str:
+    """Return the role currently governing UI access and route guards.
+
+    When an admin is using the preview-as-role feature, ``preview_role`` is set
+    and takes precedence so the entire app behaves as if that role is active.
+    All role_required / view_only_for decorators and template guards call this
+    function so preview works automatically everywhere.
+    """
+    return session.get("preview_role") or session.get("role", "receptionist")
+
+
 def login_required(f):
     """Decorator: redirect unauthenticated users to /login; return 401 JSON for API paths.
 
@@ -46,7 +57,7 @@ def role_required(min_role: str):
         @login_required
         def wrapper(*args, **kwargs):
             from config import ROLE_HIERARCHY
-            user_role = session.get("role", "staff")
+            user_role = get_effective_role()
             if ROLE_HIERARCHY.get(user_role, 0) < ROLE_HIERARCHY.get(min_role, 0):
                 p = request.path or ""
                 if p.startswith("/api/") or p.startswith("/ai/"):
@@ -67,8 +78,39 @@ def view_only_for(max_role: str):
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
             from config import ROLE_HIERARCHY
-            user_role = session.get("role", "staff")
+            user_role = get_effective_role()
             g.view_only = ROLE_HIERARCHY.get(user_role, 0) <= ROLE_HIERARCHY.get(max_role, 0)
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def has_permission(permission: str) -> bool:
+    """Return True if the current effective role has the named permission.
+
+    Consults ``ROLE_PERMISSIONS`` in config; unknown permissions always return False.
+    Safe to call from templates via the ``has_permission`` Jinja global.
+    """
+    from config import ROLE_PERMISSIONS
+    return get_effective_role() in ROLE_PERMISSIONS.get(permission, frozenset())
+
+
+def permission_required(permission: str):
+    """Decorator factory: allow access iff current role has the named permission.
+
+    Uses ``ROLE_PERMISSIONS`` from config as the single source of truth.
+    API paths (/api/*, /ai/*) receive 403 JSON; HTML routes get abort(403).
+    Implicitly wraps login_required.
+    """
+    def decorator(f):
+        @functools.wraps(f)
+        @login_required
+        def wrapper(*args, **kwargs):
+            if not has_permission(permission):
+                p = request.path or ""
+                if p.startswith("/api/") or p.startswith("/ai/"):
+                    return jsonify({"error": "forbidden", "required_permission": permission}), 403
+                abort(403)
             return f(*args, **kwargs)
         return wrapper
     return decorator

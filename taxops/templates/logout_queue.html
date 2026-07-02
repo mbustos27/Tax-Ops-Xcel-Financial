@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Pickup Queue — TaxOps {{ current_year }}{% endblock %}
+{% block title %}Pickup Queue — Tax Log {{ current_year }}{% endblock %}
 
 {% block content %}
-<div class="space-y-4">
+<div class="space-y-4" id="pickup-queue-wrap">
 
   {% if success %}
   <div class="bg-green-50 border border-green-200 text-green-800 rounded-xl px-4 py-3 text-sm font-medium flex items-center gap-2">
@@ -22,6 +22,21 @@
         <span class="font-bold text-slate-800">{{ returns | length }}</span> files
       </span>
     </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="flex items-start gap-3 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 flex-wrap">
+    <span class="font-semibold text-slate-600 shrink-0">All returns here are at <span class="text-teal-700">PICKUP</span> status.</span>
+    <span class="text-slate-400">&#8212;</span>
+    <span>
+      <span class="inline-flex items-center gap-1 font-mono bg-teal-600 text-white text-xs px-1.5 py-0.5 rounded">Pickup&#8594;</span>
+      opens the pickup workflow to collect signatures &amp; payment.
+    </span>
+    <span class="text-slate-400">&#8212;</span>
+    <span>
+      <span class="inline-flex items-center gap-1 font-mono bg-indigo-600 text-white text-xs px-1.5 py-0.5 rounded">E-File Ready</span>
+      advances the return to the E-File queue &mdash; it disappears from here once clicked.
+    </span>
   </div>
 
   <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">

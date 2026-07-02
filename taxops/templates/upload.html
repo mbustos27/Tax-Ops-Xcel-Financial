@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Import CSV — TaxOps {{ current_year }}{% endblock %}
+{% block title %}Import CSV — Tax Log {{ current_year }}{% endblock %}
 
 {% block content %}
 <div class="space-y-5" id="upload-page">
@@ -346,6 +346,7 @@
   }
 
   window.resetUpload = resetUpload;
+  window.confirmImport = confirmImport;
 })();
 </script>
 {% endblock %}

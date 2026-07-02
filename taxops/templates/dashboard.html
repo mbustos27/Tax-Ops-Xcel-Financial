@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — TaxOps {{ current_year }}{% endblock %}
+{% block title %}Dashboard — Tax Log {{ current_year }}{% endblock %}
 
 {# Dashboard uses its own scroll model — only the table rows scroll #}
 {% block main_class %}overflow-hidden{% endblock %}
@@ -7,11 +7,12 @@
 
 {% block content %}
 {# Outer column — fills the viewport below the header, nothing scrolls here #}
+{% set _hide_financial = get_effective_role() == 'receptionist' %}
 <div class="flex flex-col gap-3 h-full min-h-0">
 
   <!-- ── Filter bar — static, never moves ──────────────────────────────── -->
   <div id="filter-bar"
-       class="bg-white rounded-xl border border-slate-200 px-4 py-3 space-y-2.5 shadow-sm flex-shrink-0">
+       class="rounded-xl px-4 py-3 space-y-2.5 shadow-sm flex-shrink-0" style="background:var(--bg-card);border:1px solid var(--border-default)">
 
     {% set active_form = filters.form or '' %}
     {# Shared query tail: keep preparer, flags, and form when switching status or other filters #}
@@ -28,7 +29,7 @@
 
     <!-- Row 1: status pills -->
     <div id="status-pills" class="flex items-center gap-1.5 flex-nowrap overflow-x-auto" role="navigation" aria-label="{{ _('Filter by status') }}">
-      <span class="text-sm font-medium text-slate-500 shrink-0" id="status-filter-label">{{ _('Status:') }}</span>
+      <span class="text-sm font-medium shrink-0" style="color:var(--text-muted)" id="status-filter-label">{{ _('Status:') }}</span>
       <a href="/?year={{ current_year }}{{ persist }}"
          class="pill shrink-0 {% if not filters.status %}pill-active{% else %}pill-inactive{% endif %}"
          {% if not filters.status %}aria-current="page"{% endif %}>{{ _('All') }}</a>
@@ -42,8 +43,8 @@
     </div>
 
     {% if filters.status and 'REJECTED' in filters.status %}
-    <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto border-t border-slate-100 pt-2.5">
-      <span class="text-sm font-medium text-slate-500 shrink-0">{{ _('Reject follow-up:') }}</span>
+    <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto border-t pt-2.5" style="border-color:var(--border-subtle)">
+      <span class="text-sm font-medium shrink-0" style="color:var(--text-muted)">{{ _('Reject follow-up:') }}</span>
       {% set rbase = '/?year=' ~ current_year ~ '&status=' ~ ('REJECTED'|urlencode) ~ pproc ~ pbal ~ plate ~ pslow ~ pform %}
       <a href="{{ rbase }}"
          class="pill shrink-0 {% if not filters.reject_contact %}pill-active{% else %}pill-inactive{% endif %}">{{ _('All') }}</a>
@@ -66,42 +67,52 @@
     {% endif %}
 
     <!-- Row 2: flag buttons + form pills -->
-    <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto border-t border-slate-100 pt-2.5">
+    <div id="alert-filter-pills" class="flex items-center gap-1.5 flex-nowrap overflow-x-auto border-t pt-2.5" style="border-color:var(--border-subtle)">
+      <span class="text-xs font-medium shrink-0" style="color:var(--text-muted)">{{ _('Flags:') }}</span>
+      {% if not _hide_financial %}
       <button onclick="applyFilter('balance_due', '{{ '' if filters.balance_due else '1' }}')"
-              class="pill shrink-0 {% if filters.balance_due %}bg-red-600 text-white border-red-600{% else %}pill-inactive{% endif %}">
+              class="pill shrink-0 {% if filters.balance_due %}bg-red-600 text-white border-red-600{% else %}pill-inactive{% endif %}"
+              {% if not filters.balance_due %}style="background:var(--bg-page)"{% endif %}>
         💰 {{ _('Balance Due') }}
       </button>
+      {% endif %}
       <button onclick="applyFilter('late_intake', '{{ '' if filters.late_intake else '1' }}')"
-              class="pill shrink-0 {% if filters.late_intake %}bg-amber-500 text-white border-amber-500{% else %}pill-inactive{% endif %}">
+              class="pill shrink-0 {% if filters.late_intake %}bg-amber-500 text-white border-amber-500{% else %}pill-inactive{% endif %}"
+              {% if not filters.late_intake %}style="background:var(--bg-page)"{% endif %}>
         ⏰ {{ _('Late Intake') }}
       </button>
       <button onclick="applyFilter('slow_cycle', '{{ '' if filters.slow_cycle else '1' }}')"
-              class="pill shrink-0 {% if filters.slow_cycle %}bg-rose-600 text-white border-rose-600{% else %}pill-inactive{% endif %}">
+              class="pill shrink-0 {% if filters.slow_cycle %}bg-rose-600 text-white border-rose-600{% else %}pill-inactive{% endif %}"
+              {% if not filters.slow_cycle %}style="background:var(--bg-page)"{% endif %}>
         🐢 {{ _('Slow Cycle') }}
       </button>
 
-      <div class="w-px h-5 bg-slate-200 shrink-0 mx-1"></div>
+      <div class="w-px h-5 shrink-0 mx-1" style="background:var(--border-default)"></div>
 
-      <span class="text-sm font-medium text-slate-500 shrink-0">Form:</span>
-      <a href="{{ base }}" class="pill shrink-0 {% if not active_form %}pill-active{% else %}pill-inactive{% endif %}">All</a>
+      <span class="text-xs font-medium shrink-0" style="color:var(--text-muted)">{{ _('Form:') }}</span>
+      <a href="{{ base }}"
+         class="pill shrink-0 text-xs {% if not active_form %}pill-active{% else %}pill-inactive{% endif %}"
+         {% if not active_form %}{% else %}style="background:transparent"{% endif %}>All</a>
       {% for col, label in [
         ('form_1040','1040'),('form_1120','1120'),('form_1120s','1120S'),
         ('form_1065_llc','1065'),('form_990_1041','990/1041'),
         ('is_amended','1040X'),('has_w7','W-7'),('is_extension','EXT')
       ] %}
       <a href="{{ base }}&form={{ col|urlencode }}"
-         class="pill shrink-0 {% if active_form == col %}pill-active{% else %}pill-inactive{% endif %}">
+         class="pill shrink-0 text-xs {% if active_form == col %}pill-active{% else %}pill-inactive{% endif %}"
+         {% if active_form != col %}style="background:transparent"{% endif %}>
         {{ label }}
       </a>
       {% endfor %}
     </div>
 
-    <!-- Row 3: preparer + quick filter -->
-    <div class="flex items-center gap-2 flex-nowrap border-t border-slate-100 pt-2.5">
-      <span class="text-sm font-medium text-slate-500 shrink-0">{{ _('Filter by preparer:') }}</span>
+    <!-- Row 3: preparer + selection controls + saved presets (toolbar) -->
+    <div class="flex items-center gap-2 flex-nowrap flex-wrap -mx-4 px-4 py-2"
+         style="background:var(--bg-card);border-top:1px solid var(--border-subtle)">
+      <span class="text-sm font-medium shrink-0" style="color:var(--text-muted)">{{ _('Filter by preparer:') }}</span>
       <select onchange="applyFilter('processor', this.value)"
               aria-label="{{ _('Filter by preparer') }}"
-              class="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 shrink-0 min-w-[12rem] max-w-[20rem]">
+              class="text-sm rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 shrink-0 min-w-[12rem] max-w-[20rem]" style="border:1px solid var(--border-default);color:var(--text-primary);background:var(--input-bg)">
         <option value="">{{ _('All') }}</option>
         {% for p in processors %}
         <option value="{{ p }}" {% if filters.processor == p %}selected{% endif %}>{{ preparer_list_label(p) }}</option>
@@ -109,21 +120,54 @@
       </select>
 
       <div class="ml-auto flex items-center flex-wrap gap-x-2 gap-y-1 justify-end shrink-0">
-        <div class="flex items-center gap-1.5 text-sm" title="Selection is kept when you change status, form, or preparer filters (this browser tab)">
-          <span id="selected-count" class="font-semibold text-blue-600 tabular-nums">0</span>
+        <div class="flex items-center gap-1.5 text-sm flex-wrap" title="Selection is kept when you change status, form, or preparer filters (this browser tab)">
+          <span id="selected-count" class="font-semibold tabular-nums" style="color:var(--color-primary)">0</span>
           <span class="text-slate-500">{{ _('selected') }} <span class="text-slate-400 font-normal">({{ _('persists between filters') }})</span></span>
           <button type="button" id="btn-select-all-visible"
-                  class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100">
+                  class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border"
+                  style="background:var(--color-primary-light);color:var(--color-primary-text);border-color:var(--color-primary-border)">
             {{ _('Select all visible') }}
           </button>
           <button type="button" id="btn-clear-row-selection"
-                  class="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">
+                  class="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-[var(--table-row-hover)]">
             {{ _('Clear') }}
           </button>
+          <!-- Saved presets — inline after Clear with divider -->
+          <div class="w-px h-4 shrink-0" style="background:var(--border-default)"></div>
+          <button type="button" id="btn-save-dashboard-filter"
+                  class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-violet-50"
+                  {% if dashboard_snapshot_has_meaningful %}title="Save this filter combination for later"
+                  {% else %}title="Pick at least one dashboard filter — or type 2+ characters in Quick filter — to save"
+                  {% endif %}>
+            {{ _('Save current view\u2026') }}
+          </button>
+          <div id="saved-filter-pills" class="flex flex-wrap items-center gap-1.5">
+            {% if not saved_dashboard_filters %}
+            <span class="text-xs text-slate-400">{{ _('None yet') }}</span>
+            {% endif %}
+            {% for sf in saved_dashboard_filters %}
+            <span class="saved-filter-chip inline-flex items-stretch shrink-0 rounded-lg shadow-sm overflow-hidden divide-x" style="background:var(--bg-card);border:1px solid var(--border-default)"
+                  data-filter-id="{{ sf.id }}">
+              <a href="/?{{ sf.query_string }}" class="px-2.5 py-1 text-xs font-medium max-w-[14rem] truncate" style="color:var(--text-primary)"
+                 title="{{ 'Shared with staff — ' if sf.is_shared }}Apply saved filters">{{ sf.name }}</a>
+              {% if sf.is_shared %}
+              <span class="inline-flex items-center px-1.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-800 bg-indigo-50 whitespace-nowrap" title="Visible to everyone">Staff</span>
+              {% endif %}
+              {% if sf.can_set_default %}
+              <button type="button" class="saved-filter-star px-1.5 py-1 text-xs text-amber-600 hover:bg-amber-50 whitespace-nowrap"
+                      title="{{ 'Your default dashboard' if sf.is_default else 'Set as my default' }}"
+                      aria-pressed="{{ 'true' if sf.is_default else 'false' }}">{{ '★' if sf.is_default else '☆' }}</button>
+              {% endif %}
+              {% if sf.can_delete %}
+              <button type="button" class="saved-filter-del px-1.5 py-1 text-xs text-slate-400 hover:bg-red-50 hover:text-red-600 font-bold leading-none" title="Delete saved view" aria-label="Delete {{ sf.name }}">×</button>
+              {% endif %}
+            </span>
+            {% endfor %}
+          </div>
         </div>
         <input id="table-filter" type="text" placeholder="{{ _('Quick filter\u2026') }}"
-               class="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 w-44">
-        <span class="text-sm text-slate-500 whitespace-nowrap">
+               class="text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 w-44" style="border:1px solid var(--border-default);color:var(--text-primary);background:var(--input-bg)">
+        <span class="text-sm whitespace-nowrap" style="color:var(--text-muted)">
           <span id="row-count">{{ returns | length }}</span> / <span id="total-count">{{ total_count }}</span> {{ _('returns') }}
         </span>
         <a id="export-btn"
@@ -139,48 +183,14 @@
       </div>
     </div>
 
-    <!-- Row 4: saved filter presets -->
-    <div class="flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-slate-100 pt-2.5">
-      <span class="text-sm font-medium text-slate-500 shrink-0">{{ _('Saved:') }}</span>
-      <button type="button" id="btn-save-dashboard-filter"
-              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-violet-50"
-              {% if dashboard_snapshot_has_meaningful %}title="Save this filter combination for later"
-              {% else %}title="Pick at least one dashboard filter — or type 2+ characters in Quick filter — to save"
-              {% endif %}>
-        {{ _('Save current view\u2026') }}
-      </button>
-      <div id="saved-filter-pills" class="flex flex-wrap items-center gap-1.5 min-w-0 flex-1">
-        {% if not saved_dashboard_filters %}
-        <span class="text-xs text-slate-400">{{ _('None yet — narrow the list above, then save.') }}</span>
-        {% endif %}
-        {% for sf in saved_dashboard_filters %}
-        <span class="saved-filter-chip inline-flex items-stretch shrink-0 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden divide-x divide-slate-100"
-              data-filter-id="{{ sf.id }}">
-          <a href="/?{{ sf.query_string }}" class="px-2.5 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 max-w-[14rem] truncate"
-             title="{{ 'Shared with staff — ' if sf.is_shared }}Apply saved filters">{{ sf.name }}</a>
-          {% if sf.is_shared %}
-          <span class="inline-flex items-center px-1.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-800 bg-indigo-50 whitespace-nowrap" title="Visible to everyone">Staff</span>
-          {% endif %}
-          {% if sf.can_set_default %}
-          <button type="button" class="saved-filter-star px-1.5 py-1 text-xs text-amber-600 hover:bg-amber-50 whitespace-nowrap"
-                  title="{{ 'Your default dashboard' if sf.is_default else 'Set as my default' }}"
-                  aria-pressed="{{ 'true' if sf.is_default else 'false' }}">{{ '★' if sf.is_default else '☆' }}</button>
-          {% endif %}
-          {% if sf.can_delete %}
-          <button type="button" class="saved-filter-del px-1.5 py-1 text-xs text-slate-400 hover:bg-red-50 hover:text-red-600 font-bold leading-none" title="Delete saved view" aria-label="Delete {{ sf.name }}">×</button>
-          {% endif %}
-        </span>
-        {% endfor %}
-      </div>
-    </div>
-
   </div>
 
   <!-- ── Bulk actions toolbar (shows when ≥1 row selected in this tab/year) ── -->
   <div id="bulk-actions-bar"
        style="display: none;"
-       class="bulk-actions-bar flex-shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 shadow-sm">
-    <span class="text-sm font-semibold text-blue-950 shrink-0">
+       class="bulk-actions-bar flex-shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-4 py-3 shadow-sm"
+       style="border-color:var(--color-primary-border);background:var(--color-primary-light)">
+    <span class="text-sm font-semibold shrink-0" style="color:var(--color-primary-text)">
       <span id="bulk-actions-count" class="tabular-nums">0</span> selected — bulk actions
     </span>
     <div class="flex flex-wrap items-center gap-2">
@@ -192,11 +202,12 @@
         {% endfor %}
       </select>
       <button type="button" id="btn-bulk-status-open"
-              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-900 hover:bg-blue-50 whitespace-nowrap">
+              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border whitespace-nowrap"
+              style="background:var(--bg-card);border-color:var(--color-primary-border);color:var(--color-primary-text)">
         {{ _('Change status\u2026') }}
       </button>
     </div>
-    <div class="hidden sm:block w-px h-6 bg-blue-200 shrink-0" aria-hidden="true"></div>
+    <div class="hidden sm:block w-px h-6 shrink-0" style="background:var(--color-primary-border)" aria-hidden="true"></div>
     <div class="flex flex-wrap items-center gap-2">
       <span class="text-xs font-medium text-slate-600 shrink-0">{{ _('Preparer') }}</span>
       <select id="bulk-preparer-pick"
@@ -207,30 +218,23 @@
         {% endfor %}
       </select>
       <button type="button" id="btn-bulk-preparer-open"
-              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-900 hover:bg-blue-50 whitespace-nowrap">
+              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border whitespace-nowrap"
+              style="background:var(--bg-card);border-color:var(--color-primary-border);color:var(--color-primary-text)">
         Assign preparer…
       </button>
     </div>
   </div>
 
-  <!-- ── Email classification reminder (hidden when nothing to act on) ─── -->
-  <div id="email-review-indicator" class="hidden items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 flex-shrink-0">
-    <div class="flex-1 min-w-0 space-y-0.5" id="email-review-lines"></div>
-    <a href="/email-review"
-       class="shrink-0 text-xs font-semibold text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-400 rounded-lg px-2.5 py-1 transition-all whitespace-nowrap self-center">
-      Review →
-    </a>
-  </div>
-
   <!-- ── Returns table — only this div scrolls ────────────────────────── -->
-  <div id="dashboard-table-wrap" class="rounded-xl border border-slate-200 flex-1 min-h-0 overflow-y-auto bg-white outline-none" tabindex="-1">
+  <div id="dashboard-table-wrap" class="rounded-t-xl flex-1 min-h-0 overflow-y-auto outline-none" tabindex="-1"
+       style="background:var(--bg-card);border:1px solid var(--table-border);border-bottom:0">
     <table class="data-table w-full text-sm" id="returns-table" aria-label="{{ _('Returns') }}" aria-live="polite" aria-busy="false">
       <caption class="sr-only">{{ _('Tax returns table. Use arrow keys to navigate rows.') }}</caption>
       <thead class="sticky top-0 z-10">
         <tr>
           <th class="th w-9 text-center pl-1 rounded-tl-xl">
             <input type="checkbox" id="table-select-all" title="Select all visible rows" aria-label="Select all visible"
-                   class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-400">
+                   class="w-4 h-4 rounded border-slate-300" style="accent-color:var(--color-primary)">
           </th>
           <th class="th w-16 sortable" data-col="log" data-type="num">{{ _('Log #') }} <span class="sort-arrow"></span></th>
           <th class="th w-16 text-center sortable" data-col="taxyear" data-type="num">{{ _('TY') }} <span class="sort-arrow"></span></th>
@@ -239,10 +243,13 @@
           <th class="th w-36">{{ _('Flags') }}</th>
           <th class="th w-40 sortable" data-col="status" data-type="status">{{ _('Status') }} <span class="sort-arrow"></span></th>
           <th class="th w-28 sortable" data-col="preparer" data-type="str">{{ _('Preparer') }} <span class="sort-arrow"></span></th>
+          {% if not _hide_financial %}
           <th class="th text-right w-24 sortable" data-col="fee" data-type="num">{{ _('Fee') }} <span class="sort-arrow"></span></th>
           <th class="th text-right w-28 sortable" data-col="balance" data-type="num">{{ _('Balance') }} <span class="sort-arrow"></span></th>
+          {% endif %}
           <th class="th w-28 sortable" data-col="intake" data-type="str">{{ _('Intake') }} <span class="sort-arrow"></span></th>
-          <th class="th text-center w-10 rounded-tr-xl">✓</th>
+          <th class="th text-center w-10">✓</th>
+          <th class="th w-9 rounded-tr-xl"></th>
         </tr>
       </thead>
       <tbody class="divide-y divide-slate-100">
@@ -254,8 +261,7 @@
             data-name="{{ r.last_name }},{{ r.first_name or '' }}"
             data-status="{{ r.client_status or '' }}"
             data-preparer="{{ r.processor or '' }}"
-            data-fee="{{ r.total_fee or 0 }}"
-            data-balance="{{ r.balance or 0 }}"
+            {% if not _hide_financial %}data-fee="{{ r.total_fee or 0 }}" data-balance="{{ r.balance or 0 }}"{% endif %}
             data-intake="{{ r.intake_date or '' }}"
             data-return-id="{{ r.id }}"
             onclick="if(!event.target.closest('.status-dropdown,.editable,.row-select-label')) window.location='/return/{{ r.id }}'">
@@ -327,14 +333,14 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
                 </svg>
               </button>
-              <div class="status-menu hidden absolute left-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-20 min-w-max py-1 overflow-hidden">
+              <div class="status-menu hidden py-1" style="min-width:max-content">
                 {% for s in status_flow %}
                 <button onclick="setStatus({{ r.id }}, '{{ s }}', this)"
-                        class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs hover:bg-slate-50 transition-colors
+                        class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs hover:bg-[var(--table-row-hover)] transition-colors
                                {% if s == r.client_status %}font-bold text-slate-900 bg-slate-50{% else %}text-slate-700{% endif %}">
                   <span class="status-dot {{ status_dot.get(s,'dot-slate') }} shrink-0"></span>
                   {{ s }}
-                  {% if s == r.client_status %}<span class="ml-auto text-blue-500">✓</span>{% endif %}
+                  {% if s == r.client_status %}<span class="ml-auto" style="color:var(--color-primary)">✓</span>{% endif %}
                 </button>
                 {% endfor %}
               </div>
@@ -350,6 +356,7 @@
             </span>
           </td>
 
+          {% if not _hide_financial %}
           <!-- Fee -->
           <td class="td text-right">
             {% if r.total_fee %}
@@ -371,6 +378,7 @@
             <span class="text-slate-300">—</span>
             {% endif %}
           </td>
+          {% endif %}
 
           <!-- Intake date -->
           <td class="td">
@@ -383,16 +391,28 @@
                   data-return-id="{{ r.id }}" data-field="verified"
                   data-type="bool" data-value="{{ '1' if r.verified else '0' }}">
               {% if r.verified %}
-              <span class="text-green-500 font-bold text-lg">✓</span>
+              <span style="color:var(--text-success);font-size:1rem;font-weight:700">✓</span>
               {% else %}
-              <span class="text-slate-200 text-lg">○</span>
+              <span style="color:var(--border-default);font-size:1rem">○</span>
               {% endif %}
             </span>
+          </td>
+          <td class="td text-center" onclick="event.stopPropagation()">
+            <button type="button" class="note-quick-btn"
+                    data-return-id="{{ r.id }}"
+                    data-client="{{ r.last_name }}{% if r.first_name %}, {{ r.first_name }}{% endif %}"
+                    onclick="openNoteModal({{ r.id }}, this.dataset.client)"
+                    title="{{ _('Add note') }}"
+                    aria-label="{{ _('Add note') }}">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            </button>
           </td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="12" class="px-6 py-16 text-center">
+          <td colspan="{{ 11 if _hide_financial else 13 }}" class="px-6 py-16 text-center">
             <div class="text-5xl mb-3">📂</div>
             <div class="font-semibold text-slate-500 text-base">{{ _('No returns found') }}</div>
             <div class="text-sm text-slate-400 mt-1">Import a CSV or adjust your filters</div>
@@ -401,38 +421,21 @@
         {% endfor %}
       </tbody>
     </table>
+    <!-- Intersection sentinel — when visible, loads the next page -->
+    <div id="scroll-sentinel" style="height:1px;margin-bottom:1px"></div>
   </div>
 
-  <!-- ── Pagination controls ──────────────────────────────────────────────── -->
-  <div id="dashboard-pagination"
-       class="flex items-center justify-between gap-4 px-4 py-2.5 bg-white rounded-xl border border-slate-200 shadow-sm flex-shrink-0 flex-wrap">
-    <div class="flex items-center gap-2">
-      <button id="pag-prev"
-              class="pill pill-inactive disabled:opacity-40 disabled:cursor-not-allowed"
-              {% if not has_prev %}disabled{% endif %}
-              onclick="loadPage({{ page - 1 }})">
-        ← {{ _('Prev') }}
-      </button>
-      <span id="pag-indicator" class="text-sm text-slate-600 font-medium tabular-nums whitespace-nowrap">
-        {{ _('Page') }} {{ page }} {{ _('of') }} <span id="pag-total-pages">{{ total_pages }}</span>
-      </span>
-      <button id="pag-next"
-              class="pill pill-inactive disabled:opacity-40 disabled:cursor-not-allowed"
-              {% if not has_next %}disabled{% endif %}
-              onclick="loadPage({{ page + 1 }})">
-        {{ _('Next') }} →
-      </button>
+  <!-- ── Infinite scroll footer ──────────────────────────────────────────── -->
+  <div id="dashboard-scroll-footer"
+       style="background:var(--bg-card);border:1px solid var(--border-default);border-top:0;padding:0.5rem 1rem;border-radius:0 0 0.75rem 0.75rem;display:flex;align-items:center;justify-content:center;gap:0.75rem;min-height:2.25rem;flex-shrink:0">
+    <div id="scroll-spinner" class="hidden flex items-center gap-2 text-xs" style="color:var(--text-muted)">
+      <svg class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+      </svg>
+      {{ _('Loading more…') }}
     </div>
-    <div class="flex items-center gap-2">
-      <span class="text-sm text-slate-500 whitespace-nowrap">{{ _('Per page:') }}</span>
-      <select id="pag-per-page"
-              class="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-              onchange="loadPage(1, parseInt(this.value))">
-        <option value="25"  {% if per_page == 25  %}selected{% endif %}>25</option>
-        <option value="50"  {% if per_page == 50  %}selected{% endif %}>50</option>
-        <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
-      </select>
-    </div>
+    <span id="scroll-end-msg" class="hidden text-xs" style="color:var(--text-muted)">— {{ _('all returns loaded') }} —</span>
   </div>
 
   <!-- ── Save filter preset + bulk confirm overlays ─────────────────────── -->
@@ -453,17 +456,17 @@
         </label>
         {% if can_publish_shared_dashboard_filters %}
         <label class="flex items-start gap-2 cursor-pointer select-none">
-          <input id="save-dash-filter-shared" type="checkbox" class="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-400"/>
-          <span class="text-sm text-slate-700">Publish for <strong class="font-semibold text-indigo-900">all staff</strong> (shared preset).</span>
+          <input id="save-dash-filter-shared" type="checkbox" class="mt-1 rounded border-slate-300" style="accent-color:var(--color-primary)"/>
+          <span class="text-sm text-slate-700">Publish for <strong class="font-semibold" style="color:var(--color-primary-text)">all staff</strong> (shared preset).</span>
         </label>
         {% endif %}
         <p id="save-dash-filter-error" class="hidden text-sm text-red-600"></p>
       </div>
       <div class="mt-6 flex flex-wrap gap-2 justify-end">
-        <button type="button" id="save-dash-filter-cancel" class="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">
+        <button type="button" id="save-dash-filter-cancel" class="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-[var(--table-row-hover)]">
           {{ _('Cancel') }}
         </button>
-        <button type="button" id="save-dash-filter-submit" class="px-4 py-2 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 border border-violet-700">
+        <button type="button" id="save-dash-filter-submit" class="btn-primary px-4 py-2 text-sm font-semibold rounded-lg text-white border">
           {{ _('Save') }}
         </button>
       </div>
@@ -475,12 +478,12 @@
       <h3 id="bulk-status-modal-title" class="text-lg font-bold text-slate-900">{{ _('Confirm status change') }}</h3>
       <p id="bulk-status-modal-summary" class="text-sm text-slate-600 mt-2 leading-relaxed"></p>
       <div class="mt-5 flex flex-wrap gap-2 justify-end">
-        <button type="button" class="bulk-modal-cancel px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">
+        <button type="button" class="bulk-modal-cancel px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-[var(--table-row-hover)]">
           {{ _('Cancel') }}
         </button>
         <button type="button" id="bulk-status-modal-commit"
-                class="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 border border-blue-700">
-          {{ _('Confirm') }}
+                class="btn-primary px-4 py-2 text-sm font-semibold rounded-lg text-white border">
+                {{ _('Confirm') }}
         </button>
       </div>
     </div>
@@ -490,12 +493,12 @@
       <h3 id="bulk-preparer-modal-title" class="text-lg font-bold text-slate-900">{{ _('Confirm preparer assignment') }}</h3>
       <p id="bulk-preparer-modal-summary" class="text-sm text-slate-600 mt-2 leading-relaxed"></p>
       <div class="mt-5 flex flex-wrap gap-2 justify-end">
-        <button type="button" class="bulk-modal-cancel px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">
+        <button type="button" class="bulk-modal-cancel px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-[var(--table-row-hover)]">
           {{ _('Cancel') }}
         </button>
         <button type="button" id="bulk-preparer-modal-commit"
-                class="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 border border-blue-700">
-          {{ _('Confirm') }}
+                class="btn-primary px-4 py-2 text-sm font-semibold rounded-lg text-white border">
+                {{ _('Confirm') }}
         </button>
       </div>
     </div>
@@ -507,30 +510,149 @@
     <div id="dashboard-bulk-toast-inner" class="rounded-xl border px-4 py-3 shadow-2xl text-sm pointer-events-auto"></div>
   </div>
 
+  <!-- ── Quick-note modal (shared, reused per row) ──────────────────────── -->
+  <div id="qnote-backdrop" class="hidden fixed inset-0 z-[9800] flex items-center justify-center"
+       style="background:rgba(0,0,0,0.35)" onclick="if(event.target===this)closeNoteModal()">
+    <div id="qnote-card" style="background:var(--bg-card);border:1px solid var(--border-default);border-radius:1rem;
+                                 padding:1.25rem;width:min(420px,92vw);box-shadow:0 24px 64px rgba(0,0,0,.2);
+                                 animation:tourFadeIn 150ms ease both">
+      <div class="flex items-start justify-between gap-2 mb-3">
+        <div>
+          <p class="text-[10px] font-semibold uppercase tracking-wide" style="color:var(--text-muted)">{{ _('Quick note') }}</p>
+          <h2 id="qnote-title" class="text-sm font-bold mt-0.5" style="color:var(--text-primary)"></h2>
+        </div>
+        <button onclick="closeNoteModal()" class="text-slate-400 hover:text-slate-600 flex-shrink-0 mt-0.5"
+                aria-label="{{ _('Close') }}">&times;</button>
+      </div>
+      <textarea id="qnote-input" rows="3"
+                placeholder="{{ _('Type a note… (Ctrl+Enter to save)') }}"
+                class="w-full text-sm rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2"
+                style="border:1px solid var(--border-default);background:var(--input-bg);color:var(--text-primary);
+                       focus-ring-color:var(--color-primary)"></textarea>
+      <div id="qnote-error" class="hidden text-xs text-red-600 mt-1"></div>
+      <div class="flex justify-end gap-2 mt-3">
+        <button onclick="closeNoteModal()"
+                class="text-xs px-3 py-1.5 rounded-lg border"
+                style="border-color:var(--border-default);color:var(--text-muted);background:var(--bg-page)">
+          {{ _('Cancel') }}
+        </button>
+        <button id="qnote-save-btn" onclick="saveQuickNote()"
+                class="text-xs font-semibold px-4 py-1.5 rounded-lg text-white"
+                style="background:var(--color-primary)">
+          {{ _('Save Note') }}
+        </button>
+      </div>
+    </div>
+  </div>
+
 </div>
 {% endblock %}
 
 {% block scripts %}
+<style>
+  .note-quick-btn {
+    display:inline-flex;align-items:center;justify-content:center;
+    width:1.75rem;height:1.75rem;border-radius:.375rem;border:none;
+    background:transparent;cursor:pointer;opacity:.2;transition:opacity .15s,background .15s;
+    color:var(--text-muted,#64748b);
+  }
+  tr:hover .note-quick-btn, .note-quick-btn:focus { opacity:1; background:var(--table-row-hover,#f8fafc); }
+</style>
 <script>
-/* ── Dashboard pagination globals (injected server-side) ─────────────────── */
-window.__statusFlow   = {{ status_flow | tojson }};
-window.__statusDotMap = {{ status_dot  | tojson }};
-window.__pagState     = { page: {{ page }}, per_page: {{ per_page }}, total_pages: {{ total_pages }}, total_count: {{ total_count }} };
+/* ── Quick-note modal ────────────────────────────────────────────────────── */
+(function () {
+  let _returnId = null;
+
+  window.openNoteModal = function (returnId, clientName) {
+    _returnId = returnId;
+    document.getElementById('qnote-title').textContent = clientName || ('Return #' + returnId);
+    const ta = document.getElementById('qnote-input');
+    ta.value = '';
+    document.getElementById('qnote-error').classList.add('hidden');
+    document.getElementById('qnote-backdrop').classList.remove('hidden');
+    requestAnimationFrame(() => ta.focus());
+  };
+
+  window.closeNoteModal = function () {
+    document.getElementById('qnote-backdrop').classList.add('hidden');
+    _returnId = null;
+  };
+
+  window.saveQuickNote = async function () {
+    if (!_returnId) return;
+    const ta  = document.getElementById('qnote-input');
+    const err = document.getElementById('qnote-error');
+    const btn = document.getElementById('qnote-save-btn');
+    const text = ta.value.trim();
+    if (!text) { ta.focus(); return; }
+
+    btn.disabled = true;
+    btn.textContent = '{{ _("Saving…") }}';
+    err.classList.add('hidden');
+
+    try {
+      const resp = await _csrfFetch(`/api/return/${_returnId}/note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        closeNoteModal();
+        // Flash the row so the user can see something happened
+        const row = document.querySelector(`tr[data-return-id="${_returnId}"]`);
+        if (row && typeof flash === 'function') flash(row);
+        // Brief toast
+        const toastInner = document.getElementById('dashboard-bulk-toast-inner');
+        const toast      = document.getElementById('dashboard-bulk-toast');
+        if (toast && toastInner) {
+          toastInner.style.cssText = 'background:#f0fdf4;border-color:#86efac;color:#166534';
+          toastInner.textContent   = '{{ _("Note saved") }}';
+          toast.style.opacity = '1'; toast.style.transform = 'translateY(0)';
+          setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateY(0.5rem)'; }, 2200);
+        }
+      } else if (data.error === 'Duplicate note') {
+        err.textContent = '{{ _("That note already exists on this return.") }}';
+        err.classList.remove('hidden');
+      } else {
+        err.textContent = data.error || '{{ _("Could not save note.") }}';
+        err.classList.remove('hidden');
+      }
+    } catch (e) {
+      err.textContent = '{{ _("Network error — please try again.") }}';
+      err.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '{{ _("Save Note") }}';
+    }
+  };
+
+  // Keyboard: Ctrl+Enter saves, Escape closes
+  document.addEventListener('keydown', function (e) {
+    const backdrop = document.getElementById('qnote-backdrop');
+    if (!backdrop || backdrop.classList.contains('hidden')) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeNoteModal(); }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveQuickNote(); }
+  });
+})();
 </script>
 <script>
-/* ── AJAX pagination engine ──────────────────────────────────────────────── */
+/* ── Dashboard globals (injected server-side) ────────────────────────────── */
+window.__statusFlow   = {{ status_flow | tojson }};
+window.__statusDotMap = {{ status_dot  | tojson }};
+window.__pagState     = { page: {{ page }}, per_page: {{ per_page }}, total_pages: {{ total_pages }}, total_count: {{ total_count }}, loading: false, shownCount: {{ returns | length }} };
+window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
+</script>
+<script>
+/* ── Infinite-scroll engine ──────────────────────────────────────────────── */
 (function () {
 
-  /* Re-usable HTML escaping — falls back to the global escHtml from app.js */
-  function _esc(s) {
-    return escHtml(String(s == null ? '' : s));
-  }
+  function _esc(s) { return escHtml(String(s == null ? '' : s)); }
 
   function _renderReturnRow(r) {
     const yr = parseInt(document.body.dataset.year || new Date().getFullYear(), 10);
     const scl = (r.client_status || '').replace(/ /g, '-');
     const badgeCls = r.badge_class || 'bg-slate-100 text-slate-500 border-slate-200';
-    const dotCls   = r.color       || 'dot-slate';
 
     const formBadges = (r.forms || []).map(b => `<span class="form-badge">${_esc(b)}</span>`).join('');
 
@@ -543,9 +665,9 @@ window.__pagState     = { page: {{ page }}, per_page: {{ per_page }}, total_page
 
     const statusItems = (window.__statusFlow || []).map(s =>
       `<button onclick="setStatus(${r.id},'${_esc(s)}',this)"
-          class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs hover:bg-slate-50 transition-colors${s === r.client_status ? ' font-bold text-slate-900 bg-slate-50' : ' text-slate-700'}">
+          class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs hover:bg-[var(--table-row-hover)] transition-colors${s === r.client_status ? ' font-bold text-slate-900 bg-slate-50' : ' text-slate-700'}">
         <span class="status-dot ${(window.__statusDotMap || {})[s] || 'dot-slate'} shrink-0"></span>
-        ${_esc(s)}${s === r.client_status ? '<span class="ml-auto text-blue-500">✓</span>' : ''}
+        ${_esc(s)}${s === r.client_status ? '<span class="ml-auto" style="color:var(--color-primary)">✓</span>' : ''}
       </button>`).join('');
 
     const feeHtml = r.total_fee
@@ -600,65 +722,66 @@ window.__pagState     = { page: {{ page }}, per_page: {{ per_page }}, total_page
             ${_esc(r.client_status || 'NO STATUS')}
             <svg class="w-2.5 h-2.5 opacity-40 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
           </button>
-          <div class="status-menu hidden absolute left-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-20 min-w-max py-1 overflow-hidden">${statusItems}</div>
+          <div class="status-menu hidden py-1" style="min-width:max-content">${statusItems}</div>
         </div>
       </td>
       <td class="td"><span class="editable text-slate-700 text-xs" data-return-id="${r.id}" data-field="processor" data-value="${_esc(r.processor || '')}" data-placeholder="Preparer">${prepLabel}</span></td>
       <td class="td text-right">${feeHtml}</td>
       <td class="td text-right">${balHtml}</td>
       <td class="td"><span class="text-xs text-slate-500 tabular-nums">${_esc(r.intake_date || '—')}</span></td>
-      <td class="td text-center"><span class="editable cursor-pointer select-none" data-return-id="${r.id}" data-field="verified" data-type="bool" data-value="${r.verified ? '1' : '0'}">${r.verified ? '<span class="text-green-500 font-bold text-lg">✓</span>' : '<span class="text-slate-200 text-lg">○</span>'}</span></td>
+      <td class="td text-center"><span class="editable cursor-pointer select-none" data-return-id="${r.id}" data-field="verified" data-type="bool" data-value="${r.verified ? '1' : '0'}">${r.verified ? '<span style="color:var(--text-success);font-size:1rem;font-weight:700">✓</span>' : '<span style="color:var(--border-default);font-size:1rem">○</span>'}</span></td>
+      <td class="td text-center" onclick="event.stopPropagation()">
+        <button type="button" class="note-quick-btn"
+                data-return-id="${r.id}"
+                data-client="${_esc(ln)}${fn ? ', ' + _esc(fn) : ''}"
+                onclick="openNoteModal(${r.id}, this.dataset.client)"
+                title="Add note" aria-label="Add note">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+          </svg>
+        </button>
+      </td>
     </tr>`;
   }
 
-  function _renderReturnRows(returns) {
-    if (!returns || !returns.length) {
-      return `<tr><td colspan="12" class="px-6 py-16 text-center">
-        <div class="text-5xl mb-3">📂</div>
-        <div class="font-semibold text-slate-500 text-base">No returns found</div>
-        <div class="text-sm text-slate-400 mt-1">Import a CSV or adjust your filters</div>
-      </td></tr>`;
-    }
-    return returns.map(_renderReturnRow).join('');
+  function _emptyRow() {
+    return `<tr><td colspan="13" class="px-6 py-16 text-center">
+      <div class="text-5xl mb-3">📂</div>
+      <div class="font-semibold text-slate-500 text-base">No returns found</div>
+      <div class="text-sm text-slate-400 mt-1">Import a CSV or adjust your filters</div>
+    </td></tr>`;
   }
 
-  function _updatePaginationUI(data) {
+  function _updateFooter() {
     const ps = window.__pagState;
-    ps.page        = data.page;
-    ps.per_page    = data.per_page;
-    ps.total_pages = data.total_pages;
-    ps.total_count = data.total_count;
-
-    const prevBtn  = document.getElementById('pag-prev');
-    const nextBtn  = document.getElementById('pag-next');
-    const indicator = document.getElementById('pag-indicator');
-    const totalPagesEl = document.getElementById('pag-total-pages');
-    const perPageSel   = document.getElementById('pag-per-page');
-
-    if (prevBtn)  { prevBtn.disabled  = !data.has_prev; prevBtn.onclick  = () => loadPage(data.page - 1); }
-    if (nextBtn)  { nextBtn.disabled  = !data.has_next; nextBtn.onclick  = () => loadPage(data.page + 1); }
-    if (indicator && totalPagesEl) totalPagesEl.textContent = data.total_pages;
-    if (indicator) indicator.querySelector && (indicator.innerHTML = `Page ${data.page} of <span id="pag-total-pages">${data.total_pages}</span>`);
-    if (perPageSel) perPageSel.value = String(data.per_page);
-
+    // Update header count display
     const rc = document.getElementById('row-count');
-    if (rc) rc.textContent = (data.returns || []).length;
     const tc = document.getElementById('total-count');
-    if (tc) tc.textContent = data.total_count.toLocaleString();
+    if (rc) rc.textContent = ps.shownCount.toLocaleString();
+    if (tc) tc.textContent = ps.total_count.toLocaleString();
+    // Footer state
+    const spinner = document.getElementById('scroll-spinner');
+    const endMsg  = document.getElementById('scroll-end-msg');
+    if (spinner) spinner.classList.toggle('hidden', !ps.loading);
+    if (endMsg)  endMsg.classList.toggle('hidden', ps.loading || ps.page < ps.total_pages);
   }
 
-  window.loadPage = async function loadPage(page, perPage) {
+  /* Replace tbody with page 1 (used when a filter changes via AJAX) */
+  async function _resetToPage1() {
+    const ps = window.__pagState;
+    if (ps.loading) return;
+    ps.loading = true;
+    _updateFooter();
+
     const tbody = document.querySelector('#dashboard-table-wrap tbody');
     const tbl   = document.getElementById('returns-table');
     if (tbody) { tbody.style.opacity = '0.4'; tbody.style.pointerEvents = 'none'; }
-    if (tbl)   { tbl.setAttribute('aria-busy', 'true'); }
+    if (tbl)   tbl.setAttribute('aria-busy', 'true');
 
-    const url = new URL(window.location.href);
-    url.searchParams.set('page', page);
-    if (perPage) url.searchParams.set('per_page', perPage);
-    // also remove page from filter URL so applyFilter resets to page 1
     const apiUrl = new URL('/api/dashboard/returns', window.location.origin);
-    url.searchParams.forEach((v, k) => apiUrl.searchParams.set(k, v));
+    new URL(window.location.href).searchParams.forEach((v, k) => apiUrl.searchParams.set(k, v));
+    apiUrl.searchParams.set('page', '1');
+    apiUrl.searchParams.set('per_page', String(ps.per_page));
 
     try {
       const resp = await fetch(apiUrl.toString(), { credentials: 'same-origin' });
@@ -666,28 +789,94 @@ window.__pagState     = { page: {{ page }}, per_page: {{ per_page }}, total_page
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
 
+      ps.page        = data.page;
+      ps.total_pages = data.total_pages;
+      ps.total_count = data.total_count;
+      ps.shownCount  = (data.returns || []).length;
+
       if (tbody) {
-        tbody.innerHTML = _renderReturnRows(data.returns);
+        tbody.innerHTML = ps.shownCount ? data.returns.map(_renderReturnRow).join('') : _emptyRow();
         tbody.style.opacity = '1';
         tbody.style.pointerEvents = '';
       }
-      if (tbl) { tbl.setAttribute('aria-busy', 'false'); }
-      _updatePaginationUI(data);
-      history.pushState({ page: data.page, per_page: data.per_page }, '', url.toString());
+      if (tbl) tbl.setAttribute('aria-busy', 'false');
     } catch (e) {
       if (tbody) { tbody.style.opacity = '1'; tbody.style.pointerEvents = ''; }
-      if (tbl)   { tbl.setAttribute('aria-busy', 'false'); }
-      console.error('Dashboard pagination failed:', e);
+      if (tbl)   tbl.setAttribute('aria-busy', 'false');
+      console.error('Dashboard load failed:', e);
+    } finally {
+      ps.loading = false;
+      _updateFooter();
+    }
+  }
+
+  /* Append the next page (triggered by scroll sentinel) */
+  async function _loadNextPage() {
+    const ps = window.__pagState;
+    if (ps.loading || ps.page >= ps.total_pages) return;
+    ps.loading = true;
+    _updateFooter();
+
+    const nextPage = ps.page + 1;
+    const tbody = document.querySelector('#dashboard-table-wrap tbody');
+    const tbl   = document.getElementById('returns-table');
+    if (tbl) tbl.setAttribute('aria-busy', 'true');
+
+    const apiUrl = new URL('/api/dashboard/returns', window.location.origin);
+    new URL(window.location.href).searchParams.forEach((v, k) => apiUrl.searchParams.set(k, v));
+    apiUrl.searchParams.set('page', String(nextPage));
+    apiUrl.searchParams.set('per_page', String(ps.per_page));
+
+    try {
+      const resp = await fetch(apiUrl.toString(), { credentials: 'same-origin' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+
+      ps.page        = data.page;
+      ps.total_pages = data.total_pages;
+      ps.total_count = data.total_count;
+      ps.shownCount += (data.returns || []).length;
+
+      if (tbody && data.returns && data.returns.length) {
+        // Remove the empty-row placeholder if it's there
+        const empty = tbody.querySelector('td[colspan]');
+        if (empty) empty.closest('tr').remove();
+        tbody.insertAdjacentHTML('beforeend', data.returns.map(_renderReturnRow).join(''));
+      }
+      if (tbl) tbl.setAttribute('aria-busy', 'false');
+    } catch (e) {
+      console.error('Infinite scroll load failed:', e);
+      ps.page = nextPage - 1; // allow retry
+      if (tbl) tbl.setAttribute('aria-busy', 'false');
+    } finally {
+      ps.loading = false;
+      _updateFooter();
+    }
+  }
+
+  /* Expose loadPage globally — page=1 resets, page>1 appends (back-compat) */
+  window.loadPage = function (page, perPage) {
+    const ps = window.__pagState;
+    if (perPage) ps.per_page = perPage;
+    if (page === 1 || page <= 1) {
+      _resetToPage1();
+    } else {
+      // called from back/forward; just reload fresh
+      _resetToPage1();
     }
   };
 
-  // Handle browser back/forward button
-  window.addEventListener('popstate', function (ev) {
-    const s = ev.state;
-    if (s && s.page) loadPage(s.page, s.per_page);
-  });
+  /* IntersectionObserver on the sentinel div */
+  const sentinel = document.getElementById('scroll-sentinel');
+  if (sentinel && 'IntersectionObserver' in window) {
+    const wrap = document.getElementById('dashboard-table-wrap');
+    const obs  = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) _loadNextPage();
+    }, { root: wrap, threshold: 0 });
+    obs.observe(sentinel);
+  }
 
-  // applyFilter should reset to page 1 — patch it to remove page param before navigating
+  /* applyFilter resets to page 1 and navigates */
   document.addEventListener('DOMContentLoaded', function () {
     const orig = window.applyFilter;
     if (orig) {
@@ -695,11 +884,14 @@ window.__pagState     = { page: {{ page }}, per_page: {{ per_page }}, total_page
         const url = new URL(window.location);
         if (value) url.searchParams.set(key, value);
         else url.searchParams.delete(key);
-        url.searchParams.delete('page'); // always reset to page 1 on filter change
+        url.searchParams.delete('page');
         window.location = url.toString();
       };
     }
   });
+
+  // Initial footer state
+  _updateFooter();
 
 })();
 </script>
@@ -775,11 +967,51 @@ window.__pagState     = { page: {{ page }}, per_page: {{ per_page }}, total_page
   const STATUS_ORDER = ['PENDING INTAKE','LOG IN','PROCESSING','FINALIZE','PICKUP','EFILE READY','LOG OUT','REJECTED'];
   let _sortCol = null, _sortAsc = true;
 
+  // Reflect the server-supplied initial sort on the Log # arrow
+  (function initSortArrows() {
+    const ss = window.__serverSort || 'log_asc';
+    if (ss === 'log_desc' || ss === 'log_asc') {
+      const logTh = document.querySelector('th.sortable[data-col="log"]');
+      if (logTh) {
+        logTh.querySelector('.sort-arrow').className = 'sort-arrow ' + (ss === 'log_asc' ? 'asc' : 'desc');
+      }
+      _sortCol = 'log';
+      _sortAsc = ss === 'log_asc';
+    }
+  })();
+
   document.querySelectorAll('th.sortable').forEach(th => {
     th.addEventListener('click', () => {
       const col = th.dataset.col;
+
+      // Log # sort is server-side — reload the full dataset in the correct order
+      if (col === 'log') {
+        const currentSort = window.__serverSort || 'log_asc';
+        const nextSort    = currentSort === 'log_asc' ? 'log_desc' : 'log_asc';
+        window.__serverSort = nextSort;
+
+        // Update arrow immediately for visual feedback
+        document.querySelectorAll('th.sortable .sort-arrow').forEach(a => a.className = 'sort-arrow');
+        th.querySelector('.sort-arrow').className = 'sort-arrow ' + (nextSort === 'log_asc' ? 'asc' : 'desc');
+
+        // Persist the sort in the URL so infinite-scroll page loads use the same order
+        const url = new URL(window.location.href);
+        url.searchParams.set('sort', nextSort);
+        window.history.replaceState({}, '', url.toString());
+
+        // Reload from page 1 with the new server-side order
+        window.__pagState.page = 0;  // _resetToPage1 checks loading, not page
+        loadPage(1);
+        return;
+      }
+
+      // All other columns: client-side sort of loaded rows only
       if (_sortCol === col) _sortAsc = !_sortAsc;
-      else { _sortCol = col; _sortAsc = true; }
+      else {
+        _sortCol = col; _sortAsc = true;
+        // Clear the log sort arrow when switching to a different column
+        window.__serverSort = null;
+      }
 
       // Update arrow indicators
       document.querySelectorAll('th.sortable .sort-arrow').forEach(a => a.className = 'sort-arrow');
@@ -816,39 +1048,6 @@ window.__pagState     = { page: {{ page }}, per_page: {{ per_page }}, total_page
     if (el) el.textContent = visible;
     if (typeof syncDashboardTableSelection === "function") syncDashboardTableSelection();
   }
-
-  // ── Email classification reminder ─────────────────────────────────────────────
-  (function () {
-    _csrfFetch('/api/email-classifications/digest')
-      .then(r => _authJson(r))
-      .then(d => {
-        const missed  = d.possible_missed  || 0;
-        const attn    = d.need_attention   || 0;
-        if (missed <= 0 && attn <= 0) return;
-
-        const indicator = document.getElementById('email-review-indicator');
-        const lines     = document.getElementById('email-review-lines');
-        if (!indicator || !lines) return;
-
-        const parts = [];
-        if (missed > 0) {
-          parts.push(
-            `<a href="/email-review#missed-alerts" class="block text-sm font-bold text-red-600 hover:underline">` +
-            `⚠ ${missed} possible missed attachment${missed !== 1 ? 's' : ''}</a>`
-          );
-        }
-        if (attn > 0) {
-          parts.push(
-            `<a href="/email-review" class="block text-sm font-semibold text-amber-700 hover:underline">` +
-            `${attn} client email${attn !== 1 ? 's' : ''} need${attn !== 1 ? '' : 's'} review</a>`
-          );
-        }
-        lines.innerHTML = parts.join('');
-        indicator.classList.remove('hidden');
-        indicator.classList.add('flex');
-      })
-      .catch(() => {});
-  })();
 
   window.applyFilter = applyFilter;
   window.syncSaveDashboardFilterBtn = syncSaveDashboardFilterBtn;

@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intake Sheet — {{ client_name }} ({{ r.tax_year }})</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11px;
+    color: #1a1a1a;
+    background: #f5f5f5;
+    padding: 20px;
+  }
+
+  .sheet {
+    background: #fff;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 28px 32px;
+    border: 1px solid #ccc;
+    box-shadow: 0 2px 12px rgba(0,0,0,.12);
+  }
+
+  /* ── Print toolbar ── */
+  .print-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 780px;
+    margin: 0 auto 12px;
+  }
+  .print-bar button {
+    background: #1e40af;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 22px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: .02em;
+  }
+  .print-bar button:hover { background: #1d3a9e; }
+  .print-bar .close-link {
+    font-size: 12px;
+    color: #555;
+    text-decoration: none;
+  }
+  .print-bar .close-link:hover { color: #000; }
+
+  /* ── Header ── */
+  .office-name {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: .02em;
+  }
+  .sheet-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #555;
+    margin-top: 2px;
+  }
+  .sheet-hr {
+    border: none;
+    border-top: 2px solid #1a1a1a;
+    margin: 8px 0 10px;
+  }
+
+  /* ── Section headings ── */
+  .section-heading {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: #fff;
+    background: #334155;
+    padding: 3px 8px;
+    margin: 12px 0 5px;
+    border-radius: 3px;
+  }
+
+  /* ── Grid tables ── */
+  table.data {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  table.data td {
+    padding: 3px 6px;
+    vertical-align: top;
+  }
+  table.data td.lbl {
+    font-weight: 700;
+    white-space: nowrap;
+    width: 120px;
+    color: #333;
+  }
+  table.data td.val {
+    color: #1a1a1a;
+    border-bottom: 1px solid #e5e5e5;
+    min-width: 80px;
+  }
+  table.data td.val.blank {
+    color: #bbb;
+  }
+
+  /* Dep table */
+  table.dep-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+    margin-top: 4px;
+  }
+  table.dep-table th {
+    background: #334155;
+    color: #fff;
+    font-weight: 700;
+    padding: 3px 6px;
+    text-align: left;
+  }
+  table.dep-table td {
+    padding: 3px 6px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  table.dep-table tr:nth-child(even) td { background: #f8fafc; }
+
+  /* ── Processing / signature block ── */
+  .sig-block {
+    margin-top: 18px;
+    padding-top: 10px;
+    border-top: 1px solid #999;
+  }
+  .sig-line {
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    margin-top: 6px;
+  }
+  .sig-line .sig-field {
+    flex: 1;
+    border-bottom: 1px solid #555;
+    min-height: 22px;
+    font-size: 10px;
+    color: #777;
+    padding-bottom: 2px;
+  }
+  .sig-line .sig-label {
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+    margin-bottom: 2px;
+  }
+  .privacy-note {
+    margin-top: 8px;
+    font-size: 9px;
+    color: #888;
+    font-style: italic;
+  }
+
+  /* ── Balance due badge ── */
+  .balance-badge {
+    display: inline-block;
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  /* ── @media print ── */
+  @media print {
+    body {
+      background: #fff;
+      padding: 0;
+      font-size: 10px;
+    }
+    .print-bar { display: none !important; }
+    .sheet {
+      border: none;
+      box-shadow: none;
+      max-width: 100%;
+      padding: 0;
+      margin: 0;
+    }
+    .section-heading { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    table.dep-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    table.dep-table tr:nth-child(even) td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @page { margin: 0.6in; size: letter; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Print toolbar (hidden when printing) ── -->
+<div class="print-bar">
+  <button onclick="window.print()">&#128438; Print / Save as PDF</button>
+  <a href="javascript:window.close()" class="close-link">&#x2715; Close</a>
+</div>
+
+<div class="sheet">
+
+  <!-- ── Header ── -->
+  <div class="office-name">Xcel Financial Services, LLC</div>
+  <div class="sheet-title">Income Tax Client Intake Sheet</div>
+  <hr class="sheet-hr">
+
+  <!-- ── Return meta ── -->
+  <table class="data">
+    <tr>
+      <td class="lbl">Tax Year</td>
+      <td class="val">{{ r.tax_year or '—' }}</td>
+      <td class="lbl">Log #</td>
+      <td class="val">{{ r.log_number or '—' }}</td>
+      <td class="lbl">Return ID</td>
+      <td class="val">{{ return_id }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">Intake Date</td>
+      <td class="val">{{ r.intake_date or '—' }}</td>
+      <td class="lbl">Filing Status</td>
+      <td class="val">{{ r.filing_status or '—' }}</td>
+      <td class="lbl">Preparer</td>
+      <td class="val">{{ preparer_label or '—' }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">Status</td>
+      <td class="val">{{ r.client_status or '—' }}</td>
+      <td class="lbl">Promise Date</td>
+      <td class="val">{{ r.promise_date or '' }}</td>
+      <td class="lbl">Delivered By</td>
+      <td class="val">{{ r.delivered_by or '' }}</td>
+    </tr>
+  </table>
+
+  <!-- ── Client information ── -->
+  <div class="section-heading">Client Information</div>
+  <table class="data">
+    <tr>
+      <td class="lbl">Taxpayer</td>
+      <td class="val" colspan="3">{{ client_name }}</td>
+      <td class="lbl">SSN Last 4</td>
+      <td class="val">{{ r.ssn_last4 or '—' }}</td>
+    </tr>
+    {% if spouse_name %}
+    <tr>
+      <td class="lbl">Spouse</td>
+      <td class="val" colspan="5">{{ spouse_name }}</td>
+    </tr>
+    {% endif %}
+    <tr>
+      <td class="lbl">Address</td>
+      <td class="val" colspan="5">{{ r.address or '—' }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">Cell</td>
+      <td class="val">{{ r.taxpayer_cell or '—' }}</td>
+      <td class="lbl">Home Phone</td>
+      <td class="val">{{ r.taxpayer_phone or '—' }}</td>
+      <td class="lbl">Work Phone</td>
+      <td class="val">{{ r.taxpayer_work_phone or '—' }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">Email</td>
+      <td class="val" colspan="5">{{ r.taxpayer_email or '—' }}</td>
+    </tr>
+    {% if r.taxpayer_occupation %}
+    <tr>
+      <td class="lbl">Occupation</td>
+      <td class="val" colspan="5">{{ r.taxpayer_occupation }}{% if r.spouse_occupation %} / {{ r.spouse_occupation }}{% endif %}</td>
+    </tr>
+    {% endif %}
+  </table>
+
+  <!-- ── Dependents ── -->
+  {% if deps %}
+  <div class="section-heading">Dependents</div>
+  <table class="dep-table">
+    <tr>
+      <th>Name</th>
+      <th>Date of Birth</th>
+      <th>Relationship</th>
+      <th>SSN Last 4</th>
+      <th>Medicare</th>
+    </tr>
+    {% for d in deps %}
+    <tr>
+      <td>{{ d.full_name or '—' }}</td>
+      <td>{{ d.date_of_birth or '—' }}</td>
+      <td>{{ d.relationship or '—' }}</td>
+      <td>{{ d.ssn_last4 or '—' }}</td>
+      <td>{{ 'Yes' if d.on_medicare else 'No' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  <!-- ── Banking ── -->
+  <div class="section-heading">Banking Information</div>
+  <table class="data">
+    <tr>
+      <td class="lbl">Bank Name</td>
+      <td class="val">{{ r.bank_name or '—' }}</td>
+      <td class="lbl">Account Type</td>
+      <td class="val">{{ r.bank_account_type or '—' }}</td>
+      <td class="lbl">Routing #</td>
+      <td class="val">{{ r.bank_routing or '—' }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">Account # (last 4)</td>
+      <td class="val">{{ acct_masked or '—' }}</td>
+      <td class="lbl">Refund Method</td>
+      <td class="val" colspan="3">{{ r.refund_method or '—' }}</td>
+    </tr>
+  </table>
+
+  <!-- ── Fees ── -->
+  <div class="section-heading">Fees &amp; Payment</div>
+  <table class="data">
+    <tr>
+      <td class="lbl">Total Fee</td>
+      <td class="val">${{ "%.2f"|format(total_fee) }}</td>
+      <td class="lbl">Discount</td>
+      <td class="val">-${{ "%.2f"|format(discount) }}</td>
+      <td class="lbl">Net Fee</td>
+      <td class="val"><strong>${{ "%.2f"|format(net_fee) }}</strong></td>
+    </tr>
+    <tr>
+      <td class="lbl">Fee Paid</td>
+      <td class="val">${{ "%.2f"|format(fee_paid) }}</td>
+      <td class="lbl">Balance Due</td>
+      <td class="val">
+        {% set balance = net_fee - fee_paid %}
+        {% if balance > 0.005 %}
+          <span class="balance-badge">${{ "%.2f"|format(balance) }}</span>
+        {% else %}
+          <span style="color:#16a34a;font-weight:700;">Paid ✓</span>
+        {% endif %}
+      </td>
+      <td class="lbl">Payment Method</td>
+      <td class="val">{{ pmt.payment_method or '—' }}</td>
+    </tr>
+    {% if pmt.receipt_number or pmt.receipt2_number %}
+    <tr>
+      <td class="lbl">Receipt #(s)</td>
+      <td class="val" colspan="5">
+        {{ pmt.receipt_number or '' }}{% if pmt.receipt_number and pmt.receipt2_number %} / {% endif %}{{ pmt.receipt2_number or '' }}
+      </td>
+    </tr>
+    {% endif %}
+  </table>
+
+  <!-- ── Processing & Signature dates ── -->
+  <div class="section-heading">Processing</div>
+  <table class="data">
+    <tr>
+      <td class="lbl">Sigs Emailed</td>
+      <td class="val">{{ r.date_signatures_emailed or '' }}</td>
+      <td class="lbl">Reports Emailed</td>
+      <td class="val">{{ r.date_reports_emailed or '' }}</td>
+      <td class="lbl">Verified</td>
+      <td class="val">{{ 'Yes' if r.verified else '' }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">Date Emailed</td>
+      <td class="val">{{ r.date_emailed or '' }}</td>
+      <td class="lbl">Pickup Date</td>
+      <td class="val">{{ r.pickup_date or '' }}</td>
+      <td class="lbl">Logout Date</td>
+      <td class="val">{{ r.logout_date or '' }}</td>
+    </tr>
+  </table>
+
+  <!-- ── Signature block ── -->
+  <div class="sig-block">
+    <div class="sig-line">
+      <div>
+        <div class="sig-label">Client Signature</div>
+        <div class="sig-field"></div>
+      </div>
+      <div style="flex:0 0 160px;">
+        <div class="sig-label">Date</div>
+        <div class="sig-field"></div>
+      </div>
+    </div>
+    <p class="privacy-note">SSN shown as last 4 digits only. Full account number not shown on this sheet.</p>
+  </div>
+
+</div><!-- /sheet -->
+
+<script>
+  // Auto-print when opened from the "Print intake sheet" button
+  // Removed — let the user click the button so they see the sheet first.
+</script>
+</body>
+</html>
