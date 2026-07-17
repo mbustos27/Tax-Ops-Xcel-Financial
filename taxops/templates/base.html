@@ -201,6 +201,10 @@
               </span>
               {% endif %}
             </a>
+            <a href="{{ url_for('email_health.email_health_admin') }}"
+               class="tools-item {% if active_page == 'email_health' %}tools-item-active{% endif %}">
+              {{ _('Email System Health') }}
+            </a>
             {% if dep_review_count and dep_review_count > 0 %}
             <a href="{{ url_for('dependents_review_admin') }}"
                class="tools-item {% if active_page == 'dependents_review' %}tools-item-active{% endif %} relative">
@@ -604,6 +608,16 @@
       </div>
     </footer>
   </main>
+
+  <!-- ── Page-level fixed footer (e.g. intake save bar) ──────────────────
+       Rendered as a direct child of <body> — NOT inside <main>/<form> —
+       so its position:fixed is guaranteed to anchor to the viewport the
+       same way #dev-console-wrap and #back-to-top do below. A footer
+       nested inside the scrollable #main-content + <form> ancestor chain
+       was observed to render in normal document flow instead of fixed
+       (visible near the very bottom of a ~5000px document, not pinned to
+       the viewport) — moving it here is the fix. -->
+  {% block fixed_footer %}{% endblock %}
 
   <!-- ── Back to top ───────────────────────────────────────────────────── -->
   <button id="back-to-top"

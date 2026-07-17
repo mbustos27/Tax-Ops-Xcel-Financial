@@ -805,22 +805,32 @@
     </div>
   </div>
 
-  <!-- Change 5: sticky save footer (replaces old footer div) -->
-  <div class="fixed bottom-0 left-0 right-0 z-40 border-t px-6 py-3 flex items-center justify-between
-              shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
-       style="background:var(--bg-card);border-color:var(--border-default)">
-    <a href="/"
-       class="px-5 py-2.5 text-sm font-medium transition-colors"
-       style="color:var(--text-secondary)">
-      Cancel
-    </a>
-    <button type="submit"
-            class="btn-primary font-semibold rounded-xl px-8 py-2.5 text-sm shadow transition-colors">
-      Save &amp; Create Return
-    </button>
-  </div>
-
 </form>
+{% endblock %}
+
+{% block fixed_footer %}
+<!-- Change 5: sticky save footer — lives OUTSIDE #intake-form on purpose (see
+     base.html's fixed_footer block comment). The submit button targets the
+     form via the HTML5 form="intake-form" attribute so it still submits all
+     of the form's fields despite not being a DOM descendant of <form>. -->
+<!-- z-[100000]: must outrank #dev-console-wrap (z-index:99999 in base.html) so the
+     primary Save action is never blocked by the admin-only debug console overlay
+     that also docks to the bottom-right corner. Dev console still has the
+     backtick keyboard shortcut as a fallback toggle. -->
+<div class="fixed bottom-0 left-0 right-0 z-[100000] border-t px-6 py-3 flex items-center justify-between
+            shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
+     style="background:var(--bg-card);border-color:var(--border-default)">
+  <a href="/"
+     class="px-5 py-2.5 text-sm font-medium transition-colors"
+     style="color:var(--text-secondary)">
+    Cancel
+  </a>
+  <button type="submit"
+          form="intake-form"
+          class="btn-primary font-semibold rounded-xl px-8 py-2.5 text-sm shadow transition-colors">
+    Save &amp; Create Return
+  </button>
+</div>
 {% endblock %}
 
 {% block scripts %}
