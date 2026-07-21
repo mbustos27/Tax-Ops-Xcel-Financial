@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}{{ wo.work_order_number }} — {{ wo.client_name }} — Tax Log{% endblock %}
+
+{% block content %}
+<div class="space-y-6 pb-10">
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold" style="color:var(--text-primary)">{{ wo.work_order_number }}</h1>
+      <p class="text-sm mt-0.5" style="color:var(--text-muted)">{{ wo.client_name }}</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="/work-orders" class="text-xs font-semibold" style="color:var(--text-muted)">&larr; {{ _('Back to list') }}</a>
+    </div>
+  </div>
+
+  <div class="flex flex-wrap gap-2">
+    <a href="/work-orders/{{ wo.id }}/print" target="_blank"
+       class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg"
+       style="background:var(--color-primary-light);color:var(--color-primary)">
+      {{ _('Print') }}
+    </a>
+    {% if can_edit %}
+    <a href="/work-orders/{{ wo.id }}/edit"
+       class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200">
+      {{ _('Edit') }}
+    </a>
+    {% endif %}
+    {% if wo.status != 'processed' and get_effective_role() in ('preparer', 'admin') %}
+    <button type="button" onclick="woMarkProcessed({{ wo.id }})"
+            class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-green-50 hover:bg-green-100 text-green-700 border border-green-200">
+      {{ _('Mark Processed') }}
+    </button>
+    {% endif %}
+    {% if get_effective_role() == 'admin' %}
+    <button type="button" onclick='woDelete({{ wo.id }}, {{ wo.work_order_number | tojson }})'
+            class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg text-white bg-red-700 hover:bg-red-800">
+      {{ _('Delete') }}
+    </button>
+    {% endif %}
+  </div>
+
+  <div class="rounded-2xl overflow-hidden" style="background:var(--bg-card);border:1px solid var(--border-default)">
+    <div class="px-5 py-3 intake-section-header">
+      <span class="font-bold text-sm tracking-wide" style="color:var(--text-secondary)">{{ _('Work Order Details') }}</span>
+    </div>
+    <div class="p-5 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+      <div>
+        <div class="intake-label">{{ _('Date') }}</div>
+        <div style="color:var(--text-primary)">{{ wo.date_created }}</div>
+      </div>
+      <div>
+        <div class="intake-label">{{ _('Due By') }}</div>
+        <div style="color:var(--text-primary)">{{ wo.due_by or '—' }}</div>
+      </div>
+      <div>
+        <div class="intake-label">{{ _('Received By') }}</div>
+        <div style="color:var(--text-primary)">{{ wo.received_by_name or wo.received_by_username or '—' }}</div>
+      </div>
+      <div>
+        <div class="intake-label">{{ _('Assigned To') }}</div>
+        {% if can_edit %}
+        <div class="flex items-center gap-1.5" id="wo-assign-wrap">
+          <select id="wo-assign-select" class="intake-input" style="padding:4px 8px;font-size:0.8125rem">
+            <option value="">{{ _('\u2014 unassigned \u2014') }}</option>
+            {% for s in assignable_staff %}
+            <option value="{{ s.id }}" {% if wo.assigned_to_user_id == s.id %}selected{% endif %}>
+              {{ s.display_name or s.username }}
+            </option>
+            {% endfor %}
+          </select>
+          <button type="button" id="wo-assign-save-btn"
+                  class="text-xs font-semibold px-2 py-1 rounded-lg"
+                  style="background:var(--color-primary-light);color:var(--color-primary)">
+            {{ _('Send') }}
+          </button>
+        </div>
+        <p id="wo-assign-result" class="hidden text-xs mt-1"></p>
+        {% else %}
+        <div style="color:var(--text-primary)">{{ wo.assigned_to_name or wo.assigned_to_username or '—' }}</div>
+        {% endif %}
+      </div>
+      <div>
+        <div class="intake-label">{{ _('Status') }}</div>
+        <div>
+          {% if wo.status == 'processed' %}
+          <span class="text-green-700 font-semibold">{{ _('Processed') }}</span>
+          {% else %}
+          <span style="color:var(--text-muted)">{{ _('Open') }}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% if wo.status == 'processed' %}
+      <div>
+        <div class="intake-label">{{ _('Processed By') }}</div>
+        <div style="color:var(--text-primary)">{{ wo.processed_by_name or wo.processed_by_username or '—' }}</div>
+      </div>
+      {% endif %}
+      <div>
+        <div class="intake-label">{{ _('Created By') }}</div>
+        <div style="color:var(--text-primary)">{{ wo.created_by_name or wo.created_by_username or '—' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rounded-2xl overflow-hidden" style="background:var(--bg-card);border:1px solid var(--border-default)">
+    <div class="px-5 py-3 intake-section-header">
+      <span class="font-bold text-sm tracking-wide" style="color:var(--text-secondary)">{{ _('Work Description') }}</span>
+    </div>
+    <div class="p-5">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left" style="color:var(--text-muted)">
+            <th class="pb-2 font-semibold text-xs uppercase tracking-wide">{{ _('Description') }}</th>
+            <th class="pb-2 font-semibold text-xs uppercase tracking-wide w-32 text-right">{{ _('Fee') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr class="border-t" style="border-color:var(--border-subtle,var(--border-default))">
+            <td class="py-2" style="color:var(--text-primary)">{{ item.description }}</td>
+            <td class="py-2 text-right" style="color:var(--text-primary)">${{ "%.2f"|format(item.fee) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="mt-4 pt-4 flex items-center justify-end gap-3" style="border-top:1px solid var(--border-default)">
+        <span class="text-sm font-semibold" style="color:var(--text-secondary)">{{ _('Total Fee') }}</span>
+        <span class="text-lg font-bold" style="color:var(--color-primary)">${{ "%.2f"|format(wo.total_fee) }}</span>
+      </div>
+    </div>
+  </div>
+
+  {% set bstatus = billing_request.status if billing_request else 'pending' %}
+  <div class="rounded-2xl overflow-hidden" style="background:var(--bg-card);border:1px solid var(--border-default)">
+    <div class="px-5 py-3 intake-section-header">
+      <span class="font-bold text-sm tracking-wide" style="color:var(--text-secondary)">{{ _('Billing Request') }}</span>
+    </div>
+    <div class="p-5 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-4">
+        <div>
+          <div class="intake-label">{{ _('Amount') }}</div>
+          <div class="text-lg font-bold" style="color:var(--color-primary)">
+            ${{ "%.2f"|format(billing_request.amount if billing_request else wo.total_fee) }}
+          </div>
+        </div>
+        <div>
+          <div class="intake-label">{{ _('Status') }}</div>
+          <div>
+            {% if bstatus == 'paid' %}
+            <span class="text-xs font-semibold px-2 py-1 rounded-full bg-green-50 text-green-700 border border-green-200">{{ _('Paid') }}</span>
+            {% elif bstatus == 'billed' %}
+            <span class="text-xs font-semibold px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">{{ _('Billed') }}</span>
+            {% else %}
+            <span class="text-xs font-semibold px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">{{ _('Pending') }}</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2" id="wo-billing-actions">
+        {% if can_manage_billing %}
+        {% if bstatus == 'pending' %}
+        <button type="button" onclick="woBillingMark({{ wo.id }}, 'billed')"
+                class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200">
+          {{ _('Mark Billed') }}
+        </button>
+        {% elif bstatus == 'billed' %}
+        <button type="button" onclick="woBillingMark({{ wo.id }}, 'paid')"
+                class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-green-50 hover:bg-green-100 text-green-700 border border-green-200">
+          {{ _('Mark Paid') }}
+        </button>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function woMarkProcessed(id) {
+  if (!confirm('{{ _("Mark this work order as processed under your own name?") | e }}')) return;
+  const resp = await _csrfFetch(`/work-orders/${id}/process`, { method: 'POST' });
+  const data = await resp.json();
+  if (data.error) { alert(data.error); return; }
+  window.location.reload();
+}
+
+const _woAssignSaveBtn = document.getElementById('wo-assign-save-btn');
+if (_woAssignSaveBtn) {
+  _woAssignSaveBtn.addEventListener('click', async function () {
+    const select = document.getElementById('wo-assign-select');
+    const result = document.getElementById('wo-assign-result');
+    const value = select.value;
+    _woAssignSaveBtn.disabled = true;
+    try {
+      const resp = await _csrfFetch('/work-orders/{{ wo.id }}/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assigned_to_user_id: value || null }),
+      });
+      const data = await resp.json();
+      if (data.error) {
+        result.textContent = data.error;
+        result.style.color = '#b91c1c';
+        result.classList.remove('hidden');
+        return;
+      }
+      result.textContent = value ? '{{ _("Sent. They will see a notification.") | e }}' : '{{ _("Unassigned.") | e }}';
+      result.style.color = '#15803d';
+      result.classList.remove('hidden');
+    } finally {
+      _woAssignSaveBtn.disabled = false;
+    }
+  });
+}
+
+async function woBillingMark(id, status) {
+  const label = status === 'paid' ? '{{ _("paid") | e }}' : '{{ _("billed") | e }}';
+  if (!confirm(`{{ _("Mark the attached billing request as") | e }} ${label}?`)) return;
+  const resp = await _csrfFetch(`/work-orders/${id}/billing/mark`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  const data = await resp.json();
+  if (data.error) { alert(data.error); return; }
+  window.location.reload();
+}
+
+async function woDelete(id, woNumber) {
+  const typed = prompt(
+    `{{ _("This PERMANENTLY deletes this work order and cannot be undone.") | e }}\n\n` +
+    `{{ _("Type the work order number to confirm:") | e }} (${woNumber})`
+  );
+  if (typed === null) return;
+  if (typed.trim() !== String(woNumber)) {
+    alert('{{ _("Work order number did not match \u2014 nothing was deleted.") | e }}');
+    return;
+  }
+  const resp = await _csrfFetch(`/work-orders/${id}/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirm_work_order_number: typed.trim() }),
+  });
+  const data = await resp.json();
+  if (data.error) { alert(data.error); return; }
+  window.location.href = '/work-orders';
+}
+</script>
+{% endblock %}

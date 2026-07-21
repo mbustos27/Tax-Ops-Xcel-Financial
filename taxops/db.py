@@ -10,7 +10,7 @@ from form_schema import CREATE_TABLE_FRAGMENTS_DOC7, get_form_alter_columns_by_t
 # DEBT-6: increment this integer whenever a new migration block is added to
 # _migrate_existing_tables.  The value is stored in app_settings and surfaced
 # via /health so ops can confirm a deploy applied all migrations.
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 20
 
 _log = logging.getLogger(__name__)
 
@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS email_inbox (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
   sender_email        TEXT,
   sender_domain       TEXT,
+  sender_name         TEXT,
   subject_snippet     TEXT,
   filename            TEXT NOT NULL,
   original_filename   TEXT,
@@ -31,7 +32,13 @@ CREATE TABLE IF NOT EXISTS email_inbox (
   assigned_by         TEXT,
   assigned_at         TEXT,
   is_assigned         INTEGER NOT NULL DEFAULT 0,
-  is_deleted          INTEGER NOT NULL DEFAULT 0
+  is_deleted          INTEGER NOT NULL DEFAULT 0,
+  -- Phase 3.1: non-binding suggested-match cache. Computed on-demand by
+  -- /api/email-inbox/items (email_suggest.compute_suggestion), never by the
+  -- IMAP poll cycle. Recomputed whenever suggested_return_id IS NULL.
+  suggested_return_id INTEGER REFERENCES returns(id),
+  suggestion_method   TEXT,
+  suggestion_score    INTEGER
 )
 """
 
@@ -76,6 +83,27 @@ def set_schema_version(conn: sqlite3.Connection, version: int) -> None:
         """,
         (str(version), now_utc),
     )
+
+
+def find_duplicate_log_numbers(conn: sqlite3.Connection) -> List[sqlite3.Row]:
+    """Read-only: (log_number, tax_year) pairs shared by more than one return.
+
+    Used two ways: (1) as a startup guard before creating the
+    ux_returns_log_year UNIQUE index — creating a UNIQUE index over dirty data
+    would raise and could take down app startup, so callers must check this
+    first and skip the index (not crash) if it's non-empty; (2) by ops tooling
+    to surface duplicates for manual resolution. Never mutates anything.
+    """
+    return conn.execute(
+        """
+        SELECT log_number, tax_year, COUNT(*) AS cnt, GROUP_CONCAT(id) AS return_ids
+        FROM returns
+        WHERE log_number IS NOT NULL
+        GROUP BY log_number, tax_year
+        HAVING COUNT(*) > 1
+        ORDER BY tax_year, CAST(log_number AS INTEGER)
+        """
+    ).fetchall()
 
 
 def init_db(conn: sqlite3.Connection) -> None:
@@ -477,7 +505,11 @@ def init_db(conn: sqlite3.Connection) -> None:
     _migrate_existing_tables(conn)
     conn.executescript(
         """
-        CREATE INDEX IF NOT EXISTS idx_returns_log_year ON returns(log_number, tax_year);
+        -- RACE-1: idx_returns_log_year / ux_returns_log_year on (log_number,
+        -- tax_year) are created (or upgraded to UNIQUE) conditionally inside
+        -- _migrate_existing_tables, above — not here — since a plain
+        -- CREATE INDEX would silently recreate the redundant non-unique
+        -- index right after that logic drops it.
         CREATE INDEX IF NOT EXISTS idx_returns_client_year ON returns(client_id, tax_year);
         CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(last_name, first_name);
         CREATE INDEX IF NOT EXISTS idx_status_events_return ON status_events(return_id);
@@ -516,19 +548,36 @@ def init_db(conn: sqlite3.Connection) -> None:
 
 
 def _delete_return_children(conn: sqlite3.Connection, return_id: int) -> None:
-    """Delete all child rows that reference returns.id so the return can be safely removed."""
+    """Delete all child rows that reference returns.id so the return can be safely removed.
+
+    Used by DEL-1's hard-delete endpoint (app.py: api_delete_return). Every table
+    below has a `return_id` FK per the CREATE TABLE statements in this module —
+    kept as one explicit list (rather than introspecting sqlite_master) so a
+    future new return_id-bearing table is a deliberate addition here, not a
+    silent gap. review_queue is NOT here on purpose: it references clients, not
+    returns (proposed_client_id / resolved_client_id).
+    """
     for table in (
         "notes", "status_events", "return_forms", "missing_docs",
         "dependents", "return_documents", "extraction_queue",
-        "efile_batch_items", "review_queue",
+        "efile_batch_items", "extension_batch_items",
+        "filetrack_status_history", "payments",
     ):
-        fk_col = "return_id"
         try:
-            conn.execute(f"DELETE FROM {table} WHERE {fk_col} = ?", (return_id,))
+            conn.execute(f"DELETE FROM {table} WHERE return_id = ?", (return_id,))
         except sqlite3.OperationalError:
             pass
-    # payments table uses return_id too
-    conn.execute("DELETE FROM payments WHERE return_id = ?", (return_id,))
+    # email_inbox / email_processing_log reference a return without owning it —
+    # null the reference out rather than deleting email/audit history.
+    for table, col in (
+        ("email_inbox", "assigned_return_id"),
+        ("email_inbox", "suggested_return_id"),
+        ("email_processing_log", "return_id"),
+    ):
+        try:
+            conn.execute(f"UPDATE {table} SET {col} = NULL WHERE {col} = ?", (return_id,))
+        except sqlite3.OperationalError:
+            pass
 
 
 def _merge_client_fields(conn: sqlite3.Connection, kept_id: int, discard: Dict) -> None:
@@ -793,6 +842,11 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "extension_ack_status TEXT",
             "extension_ack_date TEXT",
             "extension_due_date TEXT",
+            # M3: filetrack (physical file barcode tracking) sticky status,
+            # set by filetrack_service.apply_filetrack_status() from scanner
+            # events — see filetrack_status_history for the full timeline.
+            "filetrack_status TEXT",
+            "filetrack_status_updated_at TEXT",
         ],
         "payments": [
             "refund_amount REAL",
@@ -1195,6 +1249,39 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_email_inbox_unassigned "
         "ON email_inbox(is_assigned, is_deleted, received_at)"
     )
+    # Phase 3.1: add sender_name/suggestion columns to email_inbox tables that
+    # predate this migration. Must run after _EMAIL_INBOX_CREATE_SQL above so
+    # the table is guaranteed to exist first (table_columns loop earlier in
+    # this function cannot be used for a table that may not exist yet).
+    _email_inbox_existing = _table_columns(conn, "email_inbox")
+    for col_def in (
+        "sender_name TEXT",
+        "suggested_return_id INTEGER REFERENCES returns(id)",
+        "suggestion_method TEXT",
+        "suggestion_score INTEGER",
+    ):
+        col_name = col_def.split(" ", 1)[0]
+        if col_name not in _email_inbox_existing:
+            try:
+                conn.execute(f"ALTER TABLE email_inbox ADD COLUMN {col_def}")
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc).lower():
+                    raise
+
+    # Phase 3.3: single-row heartbeat table upserted by mail_watcher at the end
+    # of every poll cycle (_upsert_watcher_heartbeat). The CHECK(id = 1)
+    # constraint enforces exactly one row; the health panel (Admin only)
+    # reads it, it never reads watcher internals directly.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS watcher_heartbeat (
+          id                        INTEGER PRIMARY KEY CHECK (id = 1),
+          last_poll_at              TEXT,
+          last_poll_outcome_counts  TEXT,
+          last_error                TEXT
+        )
+        """
+    )
 
     # IMPORT-DEDUP: clean historical duplicates before adding the unique index.
     # Safe to run multiple times (idempotent).
@@ -1329,6 +1416,293 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_client_billing_snapshot "
         "ON client_billing(client_id, balance_as_of)"
+    )
+
+    # M3: filetrack status history — every scanner-confirmed status event,
+    # mirroring the status_events pattern for returns.client_status. Kept
+    # even when log_number doesn't (yet) resolve to a return (return_id NULL)
+    # so a mis-scanned/premature scan is still visible for triage instead of
+    # silently dropped — see filetrack_service.apply_filetrack_status().
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS filetrack_status_history (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          return_id   INTEGER REFERENCES returns(id),
+          log_number  TEXT NOT NULL,
+          old_status  TEXT,
+          new_status  TEXT NOT NULL,
+          source      TEXT NOT NULL DEFAULT 'scanner',
+          scanned_at  TEXT NOT NULL,
+          recorded_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_filetrack_history_log "
+        "ON filetrack_status_history(log_number, scanned_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_filetrack_history_return "
+        "ON filetrack_status_history(return_id, scanned_at)"
+    )
+
+    # RACE-1: hard safety net for the intake log-number race (see
+    # AUDIT_INTAKE.md, Link 3). The route now serializes assignment with
+    # BEGIN IMMEDIATE, but this UNIQUE index turns any future duplicate into
+    # a loud sqlite3.IntegrityError instead of a silent duplicate label.
+    # A UNIQUE index over dirty data raises immediately, which would crash
+    # app startup — so we check first and skip (never auto-fix) if any
+    # duplicate (log_number, tax_year) pairs already exist. Idempotent and
+    # self-healing: once the underlying duplicates are resolved by hand, the
+    # very next startup creates the index automatically.
+    if find_duplicate_log_numbers(conn):
+        _log.warning(
+            "RACE-1: duplicate (log_number, tax_year) pairs exist in returns; "
+            "skipping ux_returns_log_year unique index until resolved manually "
+            "(run scripts/check_dupe_log_numbers.py for details). The older, "
+            "non-unique idx_returns_log_year index remains in place."
+        )
+    else:
+        # The UNIQUE index also serves every lookup idx_returns_log_year did
+        # (same columns, same order), so drop the now-redundant plain index
+        # rather than maintaining two indexes over identical columns.
+        conn.execute("DROP INDEX IF EXISTS idx_returns_log_year")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_returns_log_year "
+            "ON returns(log_number, tax_year)"
+        )
+
+    # WO-1: Work Order Creator — form-based module for staff to create/print
+    # physical Work Orders (separate concept from returns/log_number tracking;
+    # see routes/work_orders.py). client_id is an *optional* link to an
+    # existing client (for search/reporting) — client_name is always captured
+    # directly, mirroring extension_batch_items' client_name snapshot pattern,
+    # since a Work Order can be written for someone who isn't an intake
+    # client yet. received_by_user_id / processed_by_user_id reference
+    # auth_users (the real RBAC staff table) rather than any legacy paper-form
+    # staff-initials list — see preparer.py, which this deliberately does NOT
+    # reuse per the build spec.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS work_orders (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          work_order_number     TEXT NOT NULL,
+          client_id             INTEGER REFERENCES clients(id),
+          client_name           TEXT NOT NULL,
+          date_created          TEXT NOT NULL,
+          due_by                TEXT,
+          received_by_user_id   INTEGER REFERENCES auth_users(id),
+          processed_by_user_id  INTEGER REFERENCES auth_users(id),
+          created_by_user_id    INTEGER REFERENCES auth_users(id),
+          status                TEXT NOT NULL DEFAULT 'open',
+          total_fee             NUMERIC NOT NULL DEFAULT 0,
+          created_at            TEXT NOT NULL,
+          updated_at            TEXT NOT NULL,
+          assigned_to_user_id   INTEGER REFERENCES auth_users(id),
+          assigned_by_user_id   INTEGER REFERENCES auth_users(id),
+          assigned_at           TEXT
+        )
+        """
+    )
+    # WO-7: for DBs created before "assign to an employee" existed, the CREATE
+    # TABLE above is a no-op (IF NOT EXISTS), so these columns need adding the
+    # same way every other post-hoc column does (see table_columns dict above)
+    # — just done here, right after the table's own CREATE, rather than in
+    # that earlier dict, since that loop runs BEFORE this CREATE TABLE and
+    # would fail with "no such table" on a brand-new DB that hasn't reached
+    # this line yet.
+    _wo_existing_cols = _table_columns(conn, "work_orders")
+    for _col_def in (
+        "assigned_to_user_id INTEGER REFERENCES auth_users(id)",
+        "assigned_by_user_id INTEGER REFERENCES auth_users(id)",
+        "assigned_at TEXT",
+    ):
+        _col_name = _col_def.split(" ", 1)[0]
+        if _col_name not in _wo_existing_cols:
+            try:
+                conn.execute(f"ALTER TABLE work_orders ADD COLUMN {_col_def}")
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc).lower():
+                    raise
+    # RACE-1-style safety net (same pattern as ux_returns_log_year): a UNIQUE
+    # index is the hard backstop behind the BEGIN IMMEDIATE + retry numbering
+    # in routes/work_orders.py — see _next_work_order_number().
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_work_orders_number "
+        "ON work_orders(work_order_number)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_work_orders_status_date "
+        "ON work_orders(status, date_created)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_work_orders_client ON work_orders(client_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_work_orders_assigned ON work_orders(assigned_to_user_id)"
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS work_order_items (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          work_order_id   INTEGER NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+          description     TEXT NOT NULL,
+          fee             NUMERIC NOT NULL DEFAULT 0,
+          sort_order      INTEGER NOT NULL DEFAULT 0,
+          is_quick_pick   INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_work_order_items_wo "
+        "ON work_order_items(work_order_id, sort_order)"
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS work_order_quick_picks (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          label          TEXT NOT NULL,
+          default_fee    NUMERIC NOT NULL DEFAULT 0,
+          active         INTEGER NOT NULL DEFAULT 1,
+          sort_order     INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    # Seed once, idempotently, from the reference paper form — only when the
+    # table is completely empty, so this never fights with admin edits or
+    # deactivations made after the initial seed on a later startup.
+    if conn.execute("SELECT COUNT(*) c FROM work_order_quick_picks").fetchone()["c"] == 0:
+        conn.executemany(
+            "INSERT INTO work_order_quick_picks (label, default_fee, active, sort_order) "
+            "VALUES (?, ?, 1, ?)",
+            [
+                ("Consultation", 175.00, 0),
+                ("Corporate Book", 475.00, 1),
+                (
+                    "S Corporation Election Form 2553 with Explanation for Late Filing",
+                    750.00,
+                    2,
+                ),
+            ],
+        )
+
+    # WO-6: a quick pick can carry one-or-more *extra* fee components beyond
+    # its own base label/default_fee — e.g. "Statement of Information" ($125)
+    # plus a separate "Filing Fee" ($25) line, so staff never have to hand-type
+    # a second row for a compound-fee service. Selecting the quick pick in the
+    # form (see routes/work_orders.py + work_order_form.html) adds one line
+    # item per component IN ADDITION TO the base line. This is intentionally
+    # its own table (not a JSON column) so quantity is unbounded and each
+    # component gets its own row for editing/deleting in the admin UI.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS work_order_quick_pick_components (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          quick_pick_id  INTEGER NOT NULL REFERENCES work_order_quick_picks(id) ON DELETE CASCADE,
+          label          TEXT NOT NULL,
+          fee            NUMERIC NOT NULL DEFAULT 0,
+          sort_order     INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_wo_qp_components_pick "
+        "ON work_order_quick_pick_components(quick_pick_id, sort_order)"
+    )
+    # Seed the one compound example given at spec time (Statement of
+    # Information: $125 base + $25 filing fee) — matched by label so this
+    # never re-inserts a duplicate if it's already been added (by this seed
+    # or by an admin) and never touches admin-entered quick picks otherwise.
+    if conn.execute(
+        "SELECT COUNT(*) c FROM work_order_quick_picks WHERE label=?",
+        ("Statement of Information",),
+    ).fetchone()["c"] == 0:
+        next_sort = conn.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM work_order_quick_picks"
+        ).fetchone()["n"]
+        cur = conn.execute(
+            "INSERT INTO work_order_quick_picks (label, default_fee, active, sort_order) "
+            "VALUES (?, ?, 1, ?)",
+            ("Statement of Information", 125.00, next_sort),
+        )
+        conn.execute(
+            "INSERT INTO work_order_quick_pick_components (quick_pick_id, label, fee, sort_order) "
+            "VALUES (?, ?, ?, 0)",
+            (cur.lastrowid, "Filing Fee", 25.00),
+        )
+
+    # WO-7: generic per-user in-app notifications — first consumer is "you've
+    # been assigned a Work Order" (see routes/work_orders.py's _notify_user),
+    # but intentionally NOT work-order-specific (entity_type/entity_id +
+    # link_url are generic) so any future feature needing "notify this one
+    # user" can reuse this table instead of growing its own. There is no
+    # outbound-email capability in TaxOps today (mail_watcher.py is inbound
+    # IMAP only) — this is an in-app bell/badge, not an email.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notifications (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id       INTEGER NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+          title         TEXT NOT NULL,
+          body          TEXT,
+          link_url      TEXT,
+          entity_type   TEXT,
+          entity_id     INTEGER,
+          is_read       INTEGER NOT NULL DEFAULT 0,
+          created_at    TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notifications_user_unread "
+        "ON notifications(user_id, is_read, created_at)"
+    )
+
+    # WO-2: every work order gets an attached billing request carrying the
+    # fee, so accounting/front-desk has something to act on ("bill this
+    # client for $X") beyond the work order itself. One-to-one with
+    # work_orders (ux_billing_requests_wo) — see routes/work_orders.py,
+    # which creates this row automatically on work order create and keeps
+    # `amount` synced with total_fee while status is still 'pending'.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS billing_requests (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          work_order_id       INTEGER NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+          client_id           INTEGER REFERENCES clients(id),
+          client_name         TEXT NOT NULL,
+          amount              NUMERIC NOT NULL DEFAULT 0,
+          status              TEXT NOT NULL DEFAULT 'pending',
+          created_by_user_id  INTEGER REFERENCES auth_users(id),
+          created_at          TEXT NOT NULL,
+          updated_at          TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_billing_requests_wo "
+        "ON billing_requests(work_order_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_billing_requests_status "
+        "ON billing_requests(status, created_at)"
+    )
+    # Backfill: any work order created before this table existed still needs
+    # its one attached billing request, snapshotting its fee as of right now.
+    from utils import now as _now
+    _backfill_ts = _now()
+    conn.execute(
+        """
+        INSERT INTO billing_requests
+            (work_order_id, client_id, client_name, amount, status, created_by_user_id, created_at, updated_at)
+        SELECT wo.id, wo.client_id, wo.client_name, wo.total_fee, 'pending', wo.created_by_user_id, ?, ?
+        FROM work_orders wo
+        LEFT JOIN billing_requests br ON br.work_order_id = wo.id
+        WHERE br.id IS NULL
+        """,
+        (_backfill_ts, _backfill_ts),
     )
 
     # DEBT-6: stamp the schema version so /health can confirm migrations ran.

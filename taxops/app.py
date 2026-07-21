@@ -157,11 +157,21 @@ from routes.accounting import accounting_bp
 from routes.users import users_bp
 from routes.reports import reports_bp
 from routes.sender_rules import sender_rules_bp
+from routes.email_health import email_health_bp
+from routes.filetrack import filetrack_bp
+from routes.work_orders import work_orders_bp
+from routes.work_order_quick_picks import wo_quick_picks_bp
+from routes.notifications import notifications_bp
 app.register_blueprint(documents_bp)
 app.register_blueprint(accounting_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(reports_bp)
 app.register_blueprint(sender_rules_bp)
+app.register_blueprint(email_health_bp)
+app.register_blueprint(filetrack_bp)
+app.register_blueprint(work_orders_bp)
+app.register_blueprint(wo_quick_picks_bp)
+app.register_blueprint(notifications_bp)
 
 
 # REL-4: Flask g-based DB helper — lets routes use get_db() and have the connection
@@ -421,7 +431,14 @@ def _security_headers(response):
 
 @app.errorhandler(403)
 def _forbidden(e):
-    return render_template("403.html", role=get_effective_role()), 403
+    # WO-1 QA: 403.html extends base.html, which needs the full base_ctx()
+    # dict (status_counts, nav badge counts, etc.) — passing only `role`
+    # crashed with a Jinja UndefinedError on every plain-HTML abort(403) in
+    # the app (discovered via the Work Order Creator's RBAC tests, but this
+    # affected every existing abort(403) path, not just the new one).
+    ctx = base_ctx()
+    ctx["role"] = get_effective_role()
+    return render_template("403.html", **ctx), 403
 
 
 @app.errorhandler(CSRFError)
@@ -1271,6 +1288,24 @@ def base_ctx(year: int | None = None) -> dict:
         ).fetchone()["n"]
     except Exception:
         audit_alert_count = 0
+    # WO-7: per-user unread in-app notification count for the nav bell (e.g.
+    # "you've been assigned a new work order"). Unlike every other badge
+    # above, this is scoped to session["username"], not a global queue size.
+    try:
+        _current_username = session.get("username")
+        if _current_username:
+            my_unread_notification_count = conn.execute(
+                """
+                SELECT COUNT(*) n FROM notifications nf
+                JOIN auth_users u ON u.id = nf.user_id
+                WHERE u.username = ? AND nf.is_read = 0
+                """,
+                (_current_username,),
+            ).fetchone()["n"]
+        else:
+            my_unread_notification_count = 0
+    except Exception:
+        my_unread_notification_count = 0
     # Rejected returns — always pulled regardless of season filter
     rejected_rows = conn.execute(
         f"{_SELECT} WHERE r.client_status = 'REJECTED' ORDER BY r.updated_at DESC"
@@ -1298,6 +1333,7 @@ def base_ctx(year: int | None = None) -> dict:
         "spouse_review_count":      spouse_review_count,
         "recovered_client_count":   recovered_client_count,
         "audit_alert_count":        audit_alert_count,
+        "my_unread_notification_count": my_unread_notification_count,
         # ONBOARD-3: current user info for nav display.
         # Fall back to DB lookup so sessions created before role was stored still work.
         "current_user_name":    session.get("display_name") or session.get("username"),
@@ -2399,52 +2435,140 @@ def return_form_data_soft_delete(return_id: int, table: str, record_id: int):
 # ── Email Inbox ───────────────────────────────────────────────────────────────
 
 
+# Phase 3.2: filter chips on /email-inbox and /api/email-inbox/items. Each
+# maps to a predicate over an already-enriched item dict (needs_manual_tagging
+# and age_bucket/suggestion fields must already be populated). Server-side
+# filtering — chips are plain links/query params, never client-side hiding.
+_INBOX_FILTERS = {
+    "needs_manual_tagging": lambda d: d["needs_manual_tagging"],
+    "has_suggestion": lambda d: d.get("suggested_return_id") is not None,
+    "older_than_7d": lambda d: d["age_bucket"] == "red",
+}
+
+
+def _build_inbox_items(conn, *, filter_key: str | None = None) -> tuple[list[dict], dict]:
+    """Fetch, enrich (manual-tag flag, age bucket, suggestions), and
+    optionally filter unassigned/non-deleted email_inbox rows.
+
+    Returns (items, summary) where summary has unassigned_total and
+    older_than_7d_total computed over the *unfiltered* set (so the header
+    summary line/count badge always reflects the whole queue, independent of
+    which filter chip is active). Default sort is oldest-first.
+    """
+    from utils import needs_manual_tagging, age_bucket
+    from email_suggest import enrich_items_with_suggestions
+
+    rows = conn.execute(
+        "SELECT * FROM email_inbox WHERE is_assigned=0 AND is_deleted=0 "
+        "ORDER BY received_at ASC"
+    ).fetchall()
+    items = [dict(r) for r in rows]
+    for d in items:
+        d["needs_manual_tagging"] = needs_manual_tagging(d.get("filename") or "")
+        d["age_bucket"] = age_bucket(d.get("received_at"))
+    # Phase 3.1: non-binding suggestions, computed here (never in the IMAP
+    # poll cycle) and cached on the row. Never adds SSN/EIN/TIN/file_path.
+    enrich_items_with_suggestions(conn, items)
+
+    summary = {
+        "unassigned_total": len(items),
+        "older_than_7d_total": sum(1 for d in items if d["age_bucket"] == "red"),
+    }
+
+    if filter_key and filter_key in _INBOX_FILTERS:
+        items = [d for d in items if _INBOX_FILTERS[filter_key](d)]
+
+    return items, summary
+
+
+# Phase 3.5: Admin-only "Deleted items" view for soft-delete recovery. Kept
+# separate from _build_inbox_items/_INBOX_FILTERS (which are can_use_email_tools
+# scoped and only ever query is_deleted=0) so a non-admin can never reach
+# is_deleted=1 rows through the normal triage filters.
+_DELETED_INBOX_ITEM_PUBLIC_FIELDS = (
+    "id", "sender_email", "sender_domain", "subject_snippet", "filename",
+    "original_filename", "file_size_bytes", "received_at", "age_bucket",
+)
+
+
+def _build_deleted_inbox_items(conn) -> list[dict]:
+    from utils import age_bucket
+
+    rows = conn.execute(
+        "SELECT * FROM email_inbox WHERE is_deleted=1 ORDER BY received_at DESC"
+    ).fetchall()
+    items = [dict(r) for r in rows]
+    for d in items:
+        d["age_bucket"] = age_bucket(d.get("received_at"))
+    return items
+
+
 @app.route("/email-inbox")
 @permission_required("can_use_email_tools")
 def email_inbox_page():
-    from utils import needs_manual_tagging
+    filter_key = request.args.get("filter") or ""
+    is_admin = get_effective_role() == "admin"
     conn = get_connection()
     try:
-        rows = conn.execute(
-            "SELECT * FROM email_inbox WHERE is_assigned=0 AND is_deleted=0 "
-            "ORDER BY received_at DESC"
-        ).fetchall()
-        inbox_items = [dict(r) for r in rows]
-        for item in inbox_items:
-            item["needs_manual_tagging"] = needs_manual_tagging(item.get("filename") or "")
-        unassigned_count = len(inbox_items)
+        if filter_key == "deleted" and is_admin:
+            inbox_items = _build_deleted_inbox_items(conn)
+            _, summary = _build_inbox_items(conn)
+        else:
+            inbox_items, summary = _build_inbox_items(conn, filter_key=filter_key)
     finally:
         conn.close()
+    active_filter = filter_key if (filter_key in _INBOX_FILTERS or (filter_key == "deleted" and is_admin)) else ""
     ctx = base_ctx()
     ctx.update(
         inbox_items=inbox_items,
-        unassigned_count=unassigned_count,
+        unassigned_count=summary["unassigned_total"],
+        older_than_7d_count=summary["older_than_7d_total"],
+        active_filter=active_filter,
+        show_deleted_filter=is_admin,
         active_page="email_inbox",
     )
     return render_template("email_inbox.html", **ctx)
 
 
+# Explicit allowlist for the JSON API response — deliberately narrower than
+# the full email_inbox row (which _build_inbox_items uses internally for
+# filtering/enrichment). file_path, sender_name, is_assigned/is_deleted, and
+# assigned_* bookkeeping columns never leave this process as JSON.
+_INBOX_ITEM_PUBLIC_FIELDS = (
+    "id", "sender_email", "sender_domain", "subject_snippet", "filename",
+    "original_filename", "file_size_bytes", "received_at",
+    "needs_manual_tagging", "age_bucket",
+    "suggested_return_id", "suggestion_method", "suggestion_score",
+    "suggested_client_name", "suggested_log_number",
+)
+
+
 @app.route("/api/email-inbox/items")
 @permission_required("can_use_email_tools")
 def api_email_inbox_items():
-    from utils import needs_manual_tagging
+    filter_key = request.args.get("filter") or ""
     conn = get_connection()
     try:
-        rows = conn.execute(
-            "SELECT id, sender_email, sender_domain, subject_snippet, filename, "
-            "original_filename, file_size_bytes, received_at "
-            "FROM email_inbox WHERE is_assigned=0 AND is_deleted=0 "
-            "ORDER BY received_at DESC"
-        ).fetchall()
-        items = []
-        for r in rows:
-            d = dict(r)
-            # Phase 2.3: predicts whether extraction will be skipped post-assign
-            # (image attachment + EXTRACTOR_VISION_ENABLED=false). Never derived
-            # from or exposing file_path.
-            d["needs_manual_tagging"] = needs_manual_tagging(d.get("filename") or "")
-            items.append(d)
-        return jsonify({"items": items})
+        if filter_key == "deleted":
+            # Phase 3.5: admin-only, even though can_use_email_tools got this
+            # far — deleted items are a distinct, more sensitive view.
+            if get_effective_role() != "admin":
+                return jsonify({"error": "forbidden"}), 403
+            deleted_items = _build_deleted_inbox_items(conn)
+            _, summary = _build_inbox_items(conn)
+            response_items = [
+                {k: d.get(k) for k in _DELETED_INBOX_ITEM_PUBLIC_FIELDS} for d in deleted_items
+            ]
+        else:
+            items, summary = _build_inbox_items(conn, filter_key=filter_key)
+            response_items = [
+                {k: d.get(k) for k in _INBOX_ITEM_PUBLIC_FIELDS} for d in items
+            ]
+        return jsonify({
+            "items": response_items,
+            "unassigned_total": summary["unassigned_total"],
+            "older_than_7d_total": summary["older_than_7d_total"],
+        })
     finally:
         conn.close()
 
@@ -2515,6 +2639,17 @@ def api_email_inbox_assign(item_id: int):
 
         final_filename = os.path.basename(dest_path)
         ts = now()
+        # Phase 3.1: if this return_id matches the item's cached suggestion,
+        # this assign was "via suggestion" — recorded for suggestion-quality
+        # auditing only; it is still a fully human-confirmed assignment like
+        # every other path (match_confirmed=1 either way).
+        suggested_return_id = inbox_row["suggested_return_id"] if "suggested_return_id" in inbox_row.keys() else None
+        if suggested_return_id is not None and int(suggested_return_id) == int(return_id):
+            match_method = "email_suggested"
+            match_score = inbox_row["suggestion_score"]
+        else:
+            match_method = "email_manual"
+            match_score = None
         # Invariant (taxops-invariants.mdc): staff picking the return via this
         # endpoint IS the human confirmation. Set match fields explicitly —
         # never rely on the column default, which is what caused this to
@@ -2524,11 +2659,12 @@ def api_email_inbox_assign(item_id: int):
             "(return_id, filename, original_filename, doc_type, source, "
             " file_path, file_size_bytes, uploaded_by, uploaded_at, "
             " match_confirmed, match_score, match_method) "
-            "VALUES (?, ?, ?, 'unknown', 'email_inbox', ?, ?, ?, ?, 1, NULL, 'email_manual')",
+            "VALUES (?, ?, ?, 'unknown', 'email_inbox', ?, ?, ?, ?, 1, ?, ?)",
             (
                 return_id, final_filename, orig_name,
                 dest_path, inbox_row["file_size_bytes"],
                 session.get("username"), ts,
+                match_score, match_method,
             ),
         )
         new_doc_id = cur.lastrowid
@@ -2554,9 +2690,34 @@ def api_email_inbox_assign(item_id: int):
 def api_email_inbox_delete(item_id: int):
     conn = get_connection()
     try:
+        # Phase 3.5 invariant: flag-only, never unlink from disk — this is
+        # what makes admin restore possible. Do not add a file delete here.
         conn.execute(
             "UPDATE email_inbox SET is_deleted=1 WHERE id=?", (item_id,)
         )
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
+@app.route("/api/email-inbox/<int:item_id>/restore", methods=["POST"])
+@login_required
+@role_required("admin")
+def api_email_inbox_restore(item_id: int):
+    """Phase 3.5: Admin-only recovery from the soft-delete flag. The item
+    reappears in the default unassigned list with its original received_at
+    (its age badge will likely show red — intentional, per spec)."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id, is_deleted FROM email_inbox WHERE id=?", (item_id,)
+        ).fetchone()
+        if row is None:
+            return jsonify({"error": "Item not found"}), 404
+        if not row["is_deleted"]:
+            return jsonify({"error": "Item is not deleted"}), 400
+        conn.execute("UPDATE email_inbox SET is_deleted=0 WHERE id=?", (item_id,))
         conn.commit()
         return jsonify({"success": True})
     finally:
@@ -2908,8 +3069,24 @@ def intake():
         return digits if digits else None
 
     conn = get_connection()
-    try:
+
+    # RACE-1: the log-number read+insert below can race two concurrent
+    # intakes into reading the same MAX(log_number) before either commits,
+    # producing duplicate log numbers in the same tax_year (see
+    # AUDIT_INTAKE.md, Link 3). _run_intake_write() is the entire original
+    # intake body, unchanged below except for the added BEGIN IMMEDIATE;
+    # wrapping it in a function (rather than reindenting it under a new
+    # loop) lets the retry loop below call it without touching a single
+    # line of existing field-handling logic.
+    def _run_intake_write():
         tax_year = _i("tax_year") or date.today().year
+
+        # RACE-1: acquire the write lock *before* the MAX read below (not on
+        # the first INSERT, as sqlite3's default deferred-transaction mode
+        # would) so a second concurrent intake can't read the same MAX before
+        # this one commits. WAL readers elsewhere are unaffected; only other
+        # writers queue behind this lock until commit()/rollback() below.
+        conn.execute("BEGIN IMMEDIATE")
 
         # ── Auto log number (max + 1 for this tax year) ───────────────────────
         row = conn.execute(
@@ -3134,8 +3311,67 @@ def intake():
             )
 
         conn.commit()
+
+        # M3: print a physical file label for the new log_number, behind a
+        # feature flag. This is a convenience, not a hard invariant like the
+        # DB writes above — any failure here (module missing, printer off,
+        # pywin32 not installed, relay unreachable) is logged and swallowed,
+        # never breaks intake.
+        #
+        # FILETRACK_PRINT_MODE picks how the label actually gets to the
+        # printer: "local" calls win32print directly (only works when the
+        # printer is a real local Windows queue on THIS process's machine —
+        # never true for a Windows *service*'s Session 0 if the printer is
+        # only attached to a different workstation). "relay" instead POSTs
+        # the job to filetrack.relay.server running on the machine the
+        # printer is actually attached to. See filetrack/DEPLOYMENT.md.
+        from filetrack.config import FILETRACK_ENABLED
+        if FILETRACK_ENABLED:
+            try:
+                from filetrack.config import FILETRACK_PRINT_MODE
+                if FILETRACK_PRINT_MODE == "relay":
+                    from filetrack.labels.relay_client import print_label_via_relay
+                    print_label_via_relay(log_number)
+                else:
+                    from filetrack.labels.print_label import print_label as _filetrack_print_label
+                    _filetrack_print_label(log_number)
+            except Exception:
+                logging.getLogger("filetrack").warning(
+                    "filetrack: label print failed for log_number=%s", log_number, exc_info=True,
+                )
+
         return redirect(f"/return/{return_id}")
 
+    def _is_log_number_conflict(exc: sqlite3.IntegrityError) -> bool:
+        # RACE-1: matches the exact ux_returns_log_year UNIQUE index message
+        # (see db.py) — "UNIQUE constraint failed: returns.log_number,
+        # returns.tax_year" — so unrelated IntegrityErrors (bad FK, some other
+        # constraint) are never mistaken for the log-number race and retried.
+        msg = str(exc)
+        return "returns.log_number" in msg and "returns.tax_year" in msg
+
+    try:
+        _LOG_NUMBER_MAX_ATTEMPTS = 3
+        for _log_number_attempt in range(1, _LOG_NUMBER_MAX_ATTEMPTS + 1):
+            try:
+                return _run_intake_write()
+            except sqlite3.IntegrityError as exc:
+                conn.rollback()
+                # RACE-1: belt-and-suspenders — with BEGIN IMMEDIATE above
+                # holding the write lock across the read+insert, this should
+                # not fire in normal operation. If it ever does, retry with a
+                # fresh MAX read under a new lock rather than a raw 500;
+                # anything that isn't this specific conflict behaves exactly
+                # as before (single attempt, generic error).
+                if _is_log_number_conflict(exc) and _log_number_attempt < _LOG_NUMBER_MAX_ATTEMPTS:
+                    continue
+                ctx = base_ctx()
+                if _is_log_number_conflict(exc):
+                    err_msg, status = "Could not assign a log number, please retry.", 409
+                else:
+                    err_msg, status = str(exc), 500
+                ctx.update({"active_page": "intake", "today": today_iso, "error": err_msg})
+                return render_template("intake.html", **ctx), status
     except Exception as exc:
         conn.rollback()
         ctx = base_ctx()
@@ -5152,6 +5388,66 @@ def api_uncancel_return(return_id: int):
         ip_address=ip, http_status=200,
     )
     return jsonify({"success": True, "restored_fee": restored_fee})
+
+
+# ── DEL-1: Hard-delete a return (admin-only, irreversible) ───────────────────
+# Cancel/uncancel (LIFE-1, above) is the normal, reversible day-to-day action.
+# This is a separate, stricter action for permanently removing rows that
+# should never have existed at all (print/import test data, duplicate
+# intakes, etc.) rather than for closing out a real client's return.
+
+@app.post("/api/return/<int:return_id>/delete")
+@role_required("admin")
+def api_delete_return(return_id: int):
+    data = _get_json_safe() or {}
+    user = session.get("username")
+    ip   = request.remote_addr
+    conn = get_connection()
+    try:
+        ret = conn.execute(
+            """SELECT r.id, r.log_number, r.tax_year, r.client_status, r.client_id,
+                      c.last_name, c.first_name
+               FROM returns r JOIN clients c ON c.id = r.client_id
+               WHERE r.id = ?""",
+            (return_id,),
+        ).fetchone()
+        if not ret:
+            return jsonify({"error": "Return not found"}), 404
+
+        # Require the caller to echo back the log_number as an explicit,
+        # hard-to-fat-finger confirmation of *which* return is being destroyed
+        # (mirrors the "type to confirm" pattern used for other destructive
+        # admin actions in this app).
+        confirm = str(data.get("confirm_log_number") or "").strip()
+        if confirm != str(ret["log_number"] or ""):
+            return jsonify({
+                "error": "confirm_log_number must match this return's log number",
+                "log_number": ret["log_number"],
+            }), 400
+
+        before = dict(ret)
+        from db import _delete_return_children
+        conn.execute("BEGIN IMMEDIATE")
+        _delete_return_children(conn, return_id)
+        conn.execute("DELETE FROM returns WHERE id = ?", (return_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    from audit_service import _enqueue_write
+    _enqueue_write(
+        user_id=user, action="RETURN_DELETED", entity_type="return",
+        entity_id=str(return_id), before=before, after=None,
+        ip_address=ip, http_status=200,
+    )
+    logging.getLogger("taxops").warning(
+        "RETURN_DELETED: return_id=%s log_number=%s tax_year=%s client=%s, %s by user=%s",
+        return_id, before["log_number"], before["tax_year"],
+        before["last_name"], before["first_name"], user,
+    )
+    return jsonify({"success": True, "deleted_return_id": return_id})
 
 
 # ── BANK-1: Routing number lookup (local JSON only) ───────────────────────────

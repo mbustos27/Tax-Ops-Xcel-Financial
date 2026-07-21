@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Work Order Quick Picks') }} — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="p-6 max-w-4xl mx-auto space-y-8">
+
+  <div>
+    <h1 class="text-2xl font-bold" style="color:var(--text-primary)">{{ _('Work Order Quick Picks') }}</h1>
+    <p class="text-sm mt-0.5" style="color:var(--text-secondary)">
+      {{ _('The standardized service list staff can pick from on a Work Order instead of typing a description and fee by hand — like a QuickBooks Products/Services list. A quick pick can carry one or more extra fee components (e.g. "Statement of Information" $125 + a "Filing Fee" $25 component) so a compound-fee service adds every line at once.') }}
+    </p>
+  </div>
+
+  {# ── Add / edit quick pick form ─────────────────────────────────────────── #}
+  <section class="rounded-xl p-5 space-y-4" style="background:var(--card-bg);border:1px solid var(--border-subtle)">
+    <h2 id="qp-form-title" class="text-sm font-bold uppercase tracking-wide" style="color:var(--text-secondary)">
+      {{ _('Add Quick Pick') }}
+    </h2>
+
+    <div id="qp-form-result" class="hidden rounded-lg px-4 py-2.5 text-sm font-medium"></div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="sm:col-span-2">
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-secondary)" for="qp-label">{{ _('Label') }}</label>
+        <input id="qp-label" type="text" autocomplete="off" placeholder="{{ _('e.g. Statement of Information') }}"
+               class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+               style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-secondary)" for="qp-fee">{{ _('Default Fee') }}</label>
+        <input id="qp-fee" type="number" step="0.01" min="0" placeholder="0.00"
+               class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+               style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+      </div>
+    </div>
+
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <label class="block text-xs font-semibold" style="color:var(--text-secondary)">
+          {{ _('Extra Fee Components (optional)') }}
+        </label>
+        <button id="qp-add-component" type="button" class="text-xs font-semibold" style="color:var(--color-primary)">
+          + {{ _('Add component') }}
+        </button>
+      </div>
+      <p class="text-xs mb-2" style="color:var(--text-muted)">
+        {{ _('Each component adds its own line item automatically when this quick pick is selected on a Work Order.') }}
+      </p>
+      <div id="qp-components-body" class="space-y-2"></div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button id="qp-save-btn" type="button"
+              class="px-5 py-2 rounded-lg text-sm font-semibold transition-opacity"
+              style="background:var(--btn-primary-bg);color:var(--btn-primary-text)">
+        {{ _('Add Quick Pick') }}
+      </button>
+      <button id="qp-cancel-edit" type="button" class="hidden text-xs font-semibold" style="color:var(--text-muted)">
+        {{ _('Cancel edit') }}
+      </button>
+    </div>
+  </section>
+
+  {# ── Quick picks table ──────────────────────────────────────────────────── #}
+  <section class="rounded-xl overflow-hidden" style="border:1px solid var(--border-subtle)">
+    <div class="px-5 py-3 border-b" style="background:var(--bg-subtle);border-color:var(--border-subtle)">
+      <span class="text-xs font-bold tracking-widest uppercase" style="color:var(--text-secondary)">
+        {{ quick_picks|length }} {{ _('quick pick') }}{{ 's' if quick_picks|length != 1 else '' }}
+      </span>
+    </div>
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:var(--bg-subtle);border-bottom:1px solid var(--border-subtle)">
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">{{ _('Label') }}</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">{{ _('Default Fee') }}</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">{{ _('Extra Components') }}</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">{{ _('Status') }}</th>
+          <th class="px-4 py-2.5"></th>
+        </tr>
+      </thead>
+      <tbody id="qp-tbody">
+        {% for p in quick_picks %}
+        <tr id="qp-row-{{ p.id }}" class="border-t" style="border-color:var(--border-subtle)">
+          <td class="px-4 py-3 font-medium" style="color:var(--text-primary)">{{ p.label }}</td>
+          <td class="px-4 py-3" style="color:var(--text-secondary)">${{ "%.2f"|format(p.default_fee) }}</td>
+          <td class="px-4 py-3 text-xs" style="color:var(--text-secondary)">
+            {% if p.components %}
+              {% for c in p.components %}
+                <div>{{ c.label }} — ${{ "%.2f"|format(c.fee) }}</div>
+              {% endfor %}
+            {% else %}
+              &mdash;
+            {% endif %}
+          </td>
+          <td class="px-4 py-3">
+            {% if p.active %}
+            <span class="text-xs px-2 py-0.5 rounded font-medium" style="background:color-mix(in srgb,#16a34a 12%,transparent);color:#16a34a">{{ _('Active') }}</span>
+            {% else %}
+            <span class="text-xs px-2 py-0.5 rounded font-medium" style="background:color-mix(in srgb,#6b7280 12%,transparent);color:#6b7280">{{ _('Inactive') }}</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 whitespace-nowrap">
+            <button type="button" class="qp-edit-btn text-xs px-2 py-1 rounded font-medium mr-1"
+                    style="background:color-mix(in srgb,#2563eb 12%,transparent);color:#2563eb"
+                    data-id="{{ p.id }}" data-label="{{ p.label }}" data-fee="{{ p.default_fee }}"
+                    data-components="{{ p.components | tojson | forceescape }}">
+              {{ _('Edit') }}
+            </button>
+            {% if p.active %}
+            <button type="button" class="qp-deactivate-btn text-xs px-2 py-1 rounded font-medium"
+                    style="background:color-mix(in srgb,#dc2626 12%,transparent);color:#dc2626" data-id="{{ p.id }}">
+              {{ _('Deactivate') }}
+            </button>
+            {% else %}
+            <button type="button" class="qp-reactivate-btn text-xs px-2 py-1 rounded font-medium"
+                    style="background:color-mix(in srgb,#16a34a 12%,transparent);color:#16a34a" data-id="{{ p.id }}">
+              {{ _('Reactivate') }}
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="px-4 py-8 text-center text-sm italic" style="color:var(--text-secondary)">{{ _('No quick picks yet.') }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<script>
+(function () {
+  const componentsBody = document.getElementById('qp-components-body');
+  let editingId = null;
+
+  function componentRow(label, fee) {
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-2 qp-component-row';
+    row.innerHTML =
+      '<input type="text" class="qp-comp-label flex-1 rounded-lg border px-3 py-1.5 text-sm" ' +
+      '       placeholder="{{ _("Component label, e.g. Filing Fee") }}" ' +
+      '       style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">' +
+      '<input type="number" step="0.01" min="0" class="qp-comp-fee w-28 rounded-lg border px-3 py-1.5 text-sm" ' +
+      '       placeholder="0.00" style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">' +
+      '<button type="button" class="qp-remove-component text-red-400 hover:text-red-600 text-lg leading-none" title="{{ _("Remove") }}">&#10005;</button>';
+    componentsBody.appendChild(row);
+    row.querySelector('.qp-comp-label').value = label || '';
+    row.querySelector('.qp-comp-fee').value = (fee !== undefined && fee !== null) ? fee : '';
+    row.querySelector('.qp-remove-component').addEventListener('click', function () { row.remove(); });
+  }
+
+  document.getElementById('qp-add-component').addEventListener('click', function () { componentRow('', ''); });
+
+  function collectComponents() {
+    const out = [];
+    componentsBody.querySelectorAll('.qp-component-row').forEach(function (row) {
+      const label = row.querySelector('.qp-comp-label').value.trim();
+      const fee = parseFloat(row.querySelector('.qp-comp-fee').value || '0') || 0;
+      if (label) out.push({ label: label, fee: fee });
+    });
+    return out;
+  }
+
+  function resetForm() {
+    editingId = null;
+    document.getElementById('qp-form-title').textContent = '{{ _("Add Quick Pick") }}';
+    document.getElementById('qp-save-btn').textContent = '{{ _("Add Quick Pick") }}';
+    document.getElementById('qp-cancel-edit').classList.add('hidden');
+    document.getElementById('qp-label').value = '';
+    document.getElementById('qp-fee').value = '';
+    componentsBody.innerHTML = '';
+  }
+
+  function showResult(ok, msg) {
+    const el = document.getElementById('qp-form-result');
+    el.className = 'rounded-lg px-4 py-2.5 text-sm font-medium';
+    el.style.background = ok ? '#d1fae5' : '#fee2e2';
+    el.style.color = ok ? '#065f46' : '#991b1b';
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    setTimeout(function () { el.classList.add('hidden'); }, 5000);
+  }
+
+  document.getElementById('qp-save-btn').addEventListener('click', async function () {
+    const label = document.getElementById('qp-label').value.trim();
+    const default_fee = parseFloat(document.getElementById('qp-fee').value || '0') || 0;
+    if (!label) { showResult(false, '{{ _("Label is required.") }}'); return; }
+
+    const body = JSON.stringify({ label: label, default_fee: default_fee, components: collectComponents() });
+    const url = editingId
+      ? `/api/admin/work-order-quick-picks/${editingId}`
+      : '/api/admin/work-order-quick-picks';
+    const r = await _csrfFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body });
+    const d = await r.json();
+    if (d.success) {
+      location.reload();
+    } else {
+      showResult(false, d.error || '{{ _("Could not save quick pick.") }}');
+    }
+  });
+
+  document.getElementById('qp-cancel-edit').addEventListener('click', resetForm);
+
+  document.querySelectorAll('.qp-edit-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      editingId = btn.getAttribute('data-id');
+      document.getElementById('qp-form-title').textContent = '{{ _("Edit Quick Pick") }}';
+      document.getElementById('qp-save-btn').textContent = '{{ _("Save Changes") }}';
+      document.getElementById('qp-cancel-edit').classList.remove('hidden');
+      document.getElementById('qp-label').value = btn.getAttribute('data-label') || '';
+      document.getElementById('qp-fee').value = btn.getAttribute('data-fee') || '';
+      componentsBody.innerHTML = '';
+      let comps = [];
+      try { comps = JSON.parse(btn.getAttribute('data-components') || '[]'); } catch (e) { comps = []; }
+      comps.forEach(function (c) { componentRow(c.label, c.fee); });
+      document.getElementById('qp-label').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+
+  document.querySelectorAll('.qp-deactivate-btn').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      if (!confirm('{{ _("Deactivate this quick pick? It will no longer be selectable on new Work Orders.") }}')) return;
+      const id = btn.getAttribute('data-id');
+      const r = await _csrfFetch(`/api/admin/work-order-quick-picks/${id}/deactivate`, { method: 'POST' });
+      const d = await r.json();
+      if (d.success) location.reload();
+      else alert(d.error || '{{ _("Could not deactivate.") }}');
+    });
+  });
+
+  document.querySelectorAll('.qp-reactivate-btn').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      const id = btn.getAttribute('data-id');
+      const r = await _csrfFetch(`/api/admin/work-order-quick-picks/${id}/reactivate`, { method: 'POST' });
+      const d = await r.json();
+      if (d.success) location.reload();
+      else alert(d.error || '{{ _("Could not reactivate.") }}');
+    });
+  });
+})();
+</script>
+{% endblock %}

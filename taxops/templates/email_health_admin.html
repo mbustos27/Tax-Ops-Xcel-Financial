@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Email System Health — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="p-6 max-w-5xl mx-auto space-y-8">
+
+  <div>
+    <h1 class="text-2xl font-bold" style="color:var(--text-primary)">Email System Health</h1>
+    <p class="text-sm mt-0.5" style="color:var(--text-secondary)">
+      Read-only view of the IMAP watcher and extraction pipeline. Admin only.
+    </p>
+  </div>
+
+  {# ── Heartbeat ──────────────────────────────────────────────────────────── #}
+  <section class="rounded-xl p-5 space-y-3" style="background:var(--card-bg);border:1px solid var(--border-subtle)">
+    <h2 class="text-sm font-bold uppercase tracking-wide" style="color:var(--text-secondary)">Watcher heartbeat</h2>
+    {% set hb = health.heartbeat %}
+    <div class="flex items-center gap-3">
+      <span class="inline-block w-3 h-3 rounded-full shrink-0"
+            style="background:{{ '#dc2626' if hb.stale else '#16a34a' }}"></span>
+      {% if hb.last_poll_at %}
+        <span class="text-sm font-semibold" style="color:var(--text-primary)">
+          Last poll {{ hb.last_poll_at }}
+          {% if hb.seconds_since_last_poll is not none %}
+            ({{ (hb.seconds_since_last_poll)|round|int }}s ago)
+          {% endif %}
+        </span>
+      {% else %}
+        <span class="text-sm font-semibold" style="color:var(--text-primary)">No poll recorded yet</span>
+      {% endif %}
+      {% if hb.stale %}
+      <span class="text-xs px-2 py-0.5 rounded font-medium" style="background:color-mix(in srgb,#dc2626 12%,transparent);color:#dc2626">
+        STALE (threshold {{ hb.stale_threshold_seconds }}s)
+      </span>
+      {% endif %}
+    </div>
+    {% if hb.last_error %}
+    <div class="text-xs font-mono px-3 py-2 rounded" style="background:color-mix(in srgb,#dc2626 8%,transparent);color:#991b1b">
+      Last error: {{ hb.last_error }}
+    </div>
+    {% endif %}
+    <div class="text-xs" style="color:var(--text-secondary)">
+      Last cycle outcomes:
+      {% if hb.last_poll_outcome_counts %}
+        {% for k, v in hb.last_poll_outcome_counts.items() %}
+          <span class="font-mono">{{ k }}={{ v }}</span>{{ ", " if not loop.last }}
+        {% endfor %}
+      {% else %}
+        (none)
+      {% endif %}
+    </div>
+  </section>
+
+  {# ── Outcome counts ─────────────────────────────────────────────────────── #}
+  <section class="rounded-xl p-5 space-y-3" style="background:var(--card-bg);border:1px solid var(--border-subtle)">
+    <h2 class="text-sm font-bold uppercase tracking-wide" style="color:var(--text-secondary)">Outcome counts</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <div class="text-xs font-semibold mb-1" style="color:var(--text-secondary)">Last 24h</div>
+        <div class="text-sm font-mono" style="color:var(--text-primary)">
+          {% for k, v in health.outcome_counts.last_24h.items() %}{{ k }}={{ v }}{{ ", " if not loop.last }}{% else %}(none){% endfor %}
+        </div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold mb-1" style="color:var(--text-secondary)">Last 7d</div>
+        <div class="text-sm font-mono" style="color:var(--text-primary)">
+          {% for k, v in health.outcome_counts.last_7d.items() %}{{ k }}={{ v }}{{ ", " if not loop.last }}{% else %}(none){% endfor %}
+        </div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold mb-1" style="color:var(--text-secondary)">Suppression breakdown (24h)</div>
+        <div class="text-sm font-mono" style="color:var(--text-primary)">
+          {% for k, v in health.outcome_counts.suppression_breakdown_24h.items() %}{{ k }}={{ v }}{{ ", " if not loop.last }}{% else %}(none){% endfor %}
+        </div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold mb-1" style="color:var(--text-secondary)">Suppression breakdown (7d)</div>
+        <div class="text-sm font-mono" style="color:var(--text-primary)">
+          {% for k, v in health.outcome_counts.suppression_breakdown_7d.items() %}{{ k }}={{ v }}{{ ", " if not loop.last }}{% else %}(none){% endfor %}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ── Dead letters ────────────────────────────────────────────────────────── #}
+  <section class="rounded-xl overflow-hidden" style="border:1px solid var(--border-subtle)">
+    <div class="px-5 py-3 border-b" style="background:var(--bg-subtle);border-color:var(--border-subtle)">
+      <span class="text-xs font-bold tracking-widest uppercase" style="color:var(--text-secondary)">
+        {{ health.dead_letters.count }} dead letter{{ 's' if health.dead_letters.count != 1 else '' }}
+      </span>
+    </div>
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:var(--bg-subtle);border-bottom:1px solid var(--border-subtle)">
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">File</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Return</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Attempts</th>
+          <th class="text-left px-4 py-2.5 font-semibold" style="color:var(--text-secondary)">Last error</th>
+          <th class="px-4 py-2.5"></th>
+        </tr>
+      </thead>
+      <tbody id="dead-letters-tbody">
+        {% for d in health.dead_letters.items %}
+        <tr id="dl-row-{{ d.eq_id }}" class="border-t" style="border-color:var(--border-subtle)">
+          <td class="px-4 py-3" style="color:var(--text-primary)">{{ d.filename or d.original_filename or '(unknown)' }}</td>
+          <td class="px-4 py-3" style="color:var(--text-secondary)">
+            {{ d.log_number or ('#' ~ d.return_id) }} — {{ d.last_name }}{% if d.first_name %}, {{ d.first_name }}{% endif %} (TY{{ d.tax_year }})
+          </td>
+          <td class="px-4 py-3" style="color:var(--text-secondary)">{{ d.attempts }}</td>
+          <td class="px-4 py-3 text-xs font-mono truncate max-w-xs" style="color:var(--text-secondary)" title="{{ d.error_message or '' }}">
+            {{ (d.error_message or '—')[:80] }}
+          </td>
+          <td class="px-4 py-3 text-right">
+            <button onclick="requeueDeadLetter({{ d.eq_id }}, this)"
+                    class="text-xs px-3 py-1.5 rounded-lg font-medium"
+                    style="background:color-mix(in srgb,#d97706 12%,transparent);color:#d97706">
+              Requeue
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="px-4 py-8 text-center text-sm italic" style="color:var(--text-secondary)">No dead letters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {# ── Config snapshot ────────────────────────────────────────────────────── #}
+  <section class="rounded-xl p-5 space-y-2" style="background:var(--card-bg);border:1px solid var(--border-subtle)">
+    <h2 class="text-sm font-bold uppercase tracking-wide" style="color:var(--text-secondary)">Config snapshot</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm" style="color:var(--text-primary)">
+      <div>Poll interval: <span class="font-mono">{{ health.config.poll_interval_seconds }}s</span></div>
+      <div>Dry run: <span class="font-mono">{{ health.config.dry_run }}</span></div>
+      <div>Vision enabled: <span class="font-mono">{{ health.config.vision_enabled }}</span></div>
+      <div>Gmail categories: <span class="font-mono">{{ health.config.use_gmail_categories }}</span></div>
+      <div>IMAP account: <span class="font-mono">{{ 'configured' if health.config.imap_configured else 'not configured' }}</span></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+async function requeueDeadLetter(eqId, btn) {
+  btn.disabled = true;
+  const r = await _csrfFetch(`/api/admin/email-health/dead-letters/${eqId}/requeue`, {method: 'POST'});
+  const d = await r.json();
+  if (d.success) {
+    const row = document.getElementById(`dl-row-${eqId}`);
+    if (row) { row.style.opacity = '0.4'; btn.textContent = 'Requeued'; }
+  } else {
+    btn.disabled = false;
+    alert(d.error || 'Could not requeue.');
+  }
+}
+</script>
+{% endblock %}

@@ -10,12 +10,12 @@ msgstr ""
 "POT-Creation-Date: 2026-05-22 10:00-0700\n"
 "PO-Revision-Date: 2026-05-22 09:59-0700\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
-"Language: en\n"
 "Language-Team: en <LL@li.org>\n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Language: en\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "Generated-By: Babel 2.18.0\n"
 
 #: app.py:401
@@ -93,8 +93,8 @@ msgstr ""
 
 #: app.py:1369
 msgid ""
-"Type a name or return number here. Results appear as you type. This is "
-"the fastest way to get to any client or return."
+"Type a name or return number here. Results appear as you type. This is the "
+"fastest way to get to any client or return."
 msgstr ""
 
 #: app.py:1370
@@ -104,8 +104,8 @@ msgstr ""
 #: app.py:1371
 msgid ""
 "These tabs filter by workflow status. PROCESSING means actively being "
-"worked. PICKUP means ready for the client. Click any tab to see only "
-"those returns."
+"worked. PICKUP means ready for the client. Click any tab to see only those "
+"returns."
 msgstr ""
 
 #: app.py:1372
@@ -114,9 +114,8 @@ msgstr ""
 
 #: app.py:1373
 msgid ""
-"W-2s, 1099s, and anything the client emails gets saved here "
-"automatically. You can also upload documents directly. Click any file to "
-"view it."
+"W-2s, 1099s, and anything the client emails gets saved here automatically. "
+"You can also upload documents directly. Click any file to view it."
 msgstr ""
 
 #: app.py:1374
@@ -125,8 +124,8 @@ msgstr ""
 
 #: app.py:1375
 msgid ""
-"Use this control to move the return through the workflow — from "
-"PROCESSING to FINALIZE to PICKUP — as you work it."
+"Use this control to move the return through the workflow — from PROCESSING "
+"to FINALIZE to PICKUP — as you work it."
 msgstr ""
 
 #: app.py:1376
@@ -135,8 +134,8 @@ msgstr ""
 
 #: app.py:1377
 msgid ""
-"Add notes visible to everyone on the team. Record what was discussed, "
-"what's outstanding, or anything the next person needs to know."
+"Add notes visible to everyone on the team. Record what was discussed, what's"
+" outstanding, or anything the next person needs to know."
 msgstr ""
 
 #: app.py:1378
@@ -145,9 +144,9 @@ msgstr ""
 
 #: app.py:1379
 msgid ""
-"When a client emails their documents they appear here. Review and confirm"
-" to attach them to the right return. The system matches clients "
-"automatically — you just verify."
+"When a client emails their documents they appear here. Review and confirm to"
+" attach them to the right return. The system matches clients automatically —"
+" you just verify."
 msgstr ""
 
 #: app.py:1380
@@ -156,9 +155,9 @@ msgstr ""
 
 #: app.py:1381
 msgid ""
-"That covers the essentials. You can relaunch this tour anytime from the "
-"help icon in the top navigation. If you have questions check the runbook "
-"or ask your admin."
+"That covers the essentials. You can relaunch this tour anytime from the help"
+" icon in the top navigation. If you have questions check the runbook or ask "
+"your admin."
 msgstr ""
 
 #: templates/base.html:48
@@ -281,3 +280,35 @@ msgstr ""
 msgid "Needs manual tag"
 msgstr ""
 
+msgid "Assign To"
+msgstr ""
+
+msgid "— unassigned —"
+msgstr ""
+
+msgid "They'll get a notification that this Work Order was sent to them."
+msgstr ""
+
+msgid "Assigned To"
+msgstr ""
+
+msgid "Send"
+msgstr ""
+
+msgid "Sent. They will see a notification."
+msgstr ""
+
+msgid "Unassigned."
+msgstr ""
+
+msgid "Assigned to me"
+msgstr ""
+
+msgid "Notifications"
+msgstr ""
+
+msgid "Mark all read"
+msgstr ""
+
+msgid "No notifications"
+msgstr ""

@@ -1,0 +1,26 @@
+# filetrack module-local dependencies — intentionally NOT merged into the
+# main TaxOps requirements.txt (per M1 spec: filetrack must stay optional
+# and not force a hardware-only dependency onto every TaxOps install).
+#
+# Install only on the machine(s) that print labels and/or run the listener:
+#   pip install -r filetrack/requirements.txt
+
+# Windows RAW printing (filetrack.labels.printer). Windows-only; imported
+# lazily with a clear error message on non-Windows dev machines.
+pywin32>=306; sys_platform == "win32"
+
+# Optional: serial (COM port) scanner mode (filetrack.listener.run_listener
+# --mode serial, filetrack.hardware_validation.scan_probe --mode serial).
+# Not required for the default HID keyboard-wedge mode.
+pyserial>=3.5
+
+# HTTP client for the listener's CallbackSink → TaxOps /filetrack/status
+# (M3), and for filetrack.labels.relay_client (FILETRACK_PRINT_MODE=relay).
+# TaxOps itself likely already has requests; listed here too since
+# filetrack.listener must be runnable/testable with only this file installed.
+requests>=2.31
+
+# Only needed on the machine running filetrack.relay.server (the print
+# relay — FILETRACK_PRINT_MODE=relay; see filetrack/DEPLOYMENT.md). Not
+# needed for "local" mode or for the listener/scan side.
+flask>=2.3

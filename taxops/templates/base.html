@@ -73,7 +73,7 @@
         {% set tools_active =
             active_page in ('upload','source_compare','import_audit','merge','efile_batch','audit_log',
                             'logout','efile','extension','payments','review','season_rollover','backup_admin','failed_docs','admin_users',
-                            'email_inbox','sender_rules')
+                            'email_inbox','sender_rules','wo_quick_picks')
             or request.path.startswith('/email-inbox')
         %}
         {% if _has_any_tools %}
@@ -111,6 +111,10 @@
               {% endif %}
             </a>
             {% endif %}
+            <a href="/work-orders"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'work_orders' %}tools-item-active{% endif %}">
+              <span>{{ _('Work Orders') }}</span>
+            </a>
             {% if _can_extension %}
             <a href="/extension-queue?year={{ current_year }}"
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'extension' %}tools-item-active{% endif %}">
@@ -182,6 +186,10 @@
             <a href="{{ url_for('sender_rules.sender_rules_admin') }}"
                class="tools-item {% if active_page == 'sender_rules' %}tools-item-active{% endif %}">
               {{ _('Sender Rules') }}
+            </a>
+            <a href="{{ url_for('wo_quick_picks.quick_picks_admin') }}"
+               class="tools-item {% if active_page == 'wo_quick_picks' %}tools-item-active{% endif %}">
+              {{ _('Work Order Quick Picks') }}
             </a>
             <a href="{{ url_for('audit_log_admin') }}"
                class="tools-item {% if active_page == 'audit_log' %}tools-item-active{% endif %}">
@@ -366,6 +374,45 @@
               <p class="text-sm font-medium" style="color:var(--text-muted)">No rejected returns</p>
             </div>
             {% endif %}
+          </div>
+        </div>
+
+        <!-- WO-7: my-notifications bell (per-user, e.g. "Work Order assigned to you") -->
+        <div class="relative shrink-0" id="notif-bell-wrap">
+          <button id="notif-bell"
+                  aria-label="{{ _('Notifications') }}"
+                  aria-expanded="false"
+                  aria-haspopup="true"
+                  aria-controls="notif-dropdown"
+                  title="{{ _('Notifications') }}"
+                  class="relative flex items-center justify-center w-7 h-7 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                  style="color:var(--nav-text)">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+            </svg>
+            <span id="notif-bell-badge"
+                  class="absolute -top-0.5 -right-0.5 min-w-[1rem] h-4 bg-blue-500 text-white
+                          text-[10px] font-bold rounded-full flex items-center justify-center px-0.5
+                          leading-none {% if not my_unread_notification_count %}hidden{% endif %}"
+                  style="box-shadow:0 0 0 2px var(--nav-bg)">
+              {{ my_unread_notification_count }}
+            </span>
+          </button>
+
+          <div id="notif-dropdown"
+               class="hidden absolute right-0 top-full mt-2 w-80 rounded-xl shadow-2xl overflow-hidden z-50">
+            <div class="flex items-center justify-between px-4 py-3 border-b"
+                 style="background:var(--dropdown-bg);border-color:var(--border-subtle)">
+              <span class="font-bold text-sm" style="color:var(--text-primary)">{{ _('Notifications') }}</span>
+              <button type="button" id="notif-mark-all-read"
+                      class="text-xs font-semibold" style="color:var(--color-primary)">
+                {{ _('Mark all read') }}
+              </button>
+            </div>
+            <ul id="notif-list" class="max-h-96 overflow-y-auto divide-y" style="background:var(--dropdown-bg);border-color:var(--border-subtle)">
+              <li class="px-4 py-8 text-center text-sm" style="color:var(--text-muted)">{{ _('Loading...') }}</li>
+            </ul>
           </div>
         </div>
 
@@ -814,6 +861,114 @@
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
           closeRejectDropdown();
+          bell.focus();
+        }
+      });
+    })();
+  </script>
+  <script>
+    (function () {
+      const bell     = document.getElementById('notif-bell');
+      const dropdown = document.getElementById('notif-dropdown');
+      const wrap     = document.getElementById('notif-bell-wrap');
+      const list     = document.getElementById('notif-list');
+      const badge    = document.getElementById('notif-bell-badge');
+      const markAllBtn = document.getElementById('notif-mark-all-read');
+      if (!bell || !dropdown) return;
+
+      function escapeHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = s == null ? '' : String(s);
+        return d.innerHTML;
+      }
+
+      function setBadge(count) {
+        if (count > 0) {
+          badge.textContent = count;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+      }
+
+      function renderNotifications(items) {
+        if (!items.length) {
+          list.innerHTML = '<li class="px-4 py-8 text-center text-sm" style="color:var(--text-muted)">'
+            + '{{ _("No notifications") | e }}</li>';
+          return;
+        }
+        list.innerHTML = items.map(function (n) {
+          const unreadDot = n.is_read ? '' : '<span class="mt-1 w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>';
+          return '<li>'
+            + '<a href="' + escapeHtml(n.link_url || '#') + '" data-id="' + n.id + '" data-read="' + n.is_read + '"'
+            + ' class="notif-item flex items-start gap-3 px-4 py-3 transition-colors" style="color:inherit">'
+            + unreadDot
+            + '<div class="flex-1 min-w-0">'
+            + '<div class="font-semibold text-sm" style="color:var(--text-primary)">' + escapeHtml(n.title) + '</div>'
+            + (n.body ? '<div class="text-xs mt-0.5" style="color:var(--text-muted)">' + escapeHtml(n.body) + '</div>' : '')
+            + '</div></a></li>';
+        }).join('');
+      }
+
+      async function loadNotifications() {
+        try {
+          const resp = await fetch('/api/my-notifications');
+          if (!resp.ok) return;
+          const data = await resp.json();
+          renderNotifications(data.notifications || []);
+          setBadge(data.unread_count || 0);
+        } catch (e) {
+          console.error('Failed to load notifications', e);
+        }
+      }
+
+      list.addEventListener('click', async function (e) {
+        const link = e.target.closest('.notif-item');
+        if (!link) return;
+        const id = link.getAttribute('data-id');
+        const alreadyRead = link.getAttribute('data-read') === '1';
+        if (id && !alreadyRead) {
+          try { await _csrfFetch(`/api/my-notifications/${id}/read`, { method: 'POST' }); } catch (e2) { /* navigate anyway */ }
+        }
+      });
+
+      if (markAllBtn) {
+        markAllBtn.addEventListener('click', async function (e) {
+          e.stopPropagation();
+          try { await _csrfFetch('/api/my-notifications/mark-all-read', { method: 'POST' }); } catch (e2) { /* ignore */ }
+          loadNotifications();
+        });
+      }
+
+      function openNotifDropdown() {
+        dropdown.classList.remove('hidden');
+        bell.setAttribute('aria-expanded', 'true');
+        dropdown.style.opacity = '0';
+        dropdown.style.transform = 'translateY(-6px)';
+        requestAnimationFrame(() => {
+          dropdown.style.transition = 'opacity 150ms ease, transform 150ms ease';
+          dropdown.style.opacity = '1';
+          dropdown.style.transform = 'translateY(0)';
+        });
+        loadNotifications();
+      }
+      function closeNotifDropdown() {
+        dropdown.classList.add('hidden');
+        bell.setAttribute('aria-expanded', 'false');
+      }
+
+      bell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = !dropdown.classList.contains('hidden');
+        if (open) closeNotifDropdown(); else openNotifDropdown();
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!wrap.contains(e.target)) closeNotifDropdown();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
+          closeNotifDropdown();
           bell.focus();
         }
       });

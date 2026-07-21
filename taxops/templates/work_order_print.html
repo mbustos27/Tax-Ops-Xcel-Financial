@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work Order — {{ wo.work_order_number }} — {{ wo.client_name }}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12px;
+    color: #1a1a1a;
+    background: #F4EFE9;
+    padding: 20px;
+  }
+
+  .sheet {
+    background: #fff;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 32px 36px;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 12px rgba(0,0,0,.12);
+  }
+
+  /* ── Print toolbar ── */
+  .print-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 780px;
+    margin: 0 auto 12px;
+  }
+  .print-bar button {
+    background: #6B2233;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 22px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: .02em;
+  }
+  .print-bar button:hover { background: #5a1c2a; }
+  .print-bar .close-link { font-size: 12px; color: #555; text-decoration: none; }
+  .print-bar .close-link:hover { color: #000; }
+
+  /* ── Header ── */
+  .header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    border-bottom: 3px solid #6B2233;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+  }
+  .office-name { font-size: 18px; font-weight: 700; color: #3D1019; letter-spacing: .02em; }
+  .office-sub { font-size: 11px; color: #6B2233; margin-top: 2px; }
+  .form-title {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    color: #6B2233;
+    text-align: right;
+  }
+  .wo-number {
+    font-size: 15px;
+    font-weight: 700;
+    color: #3D1019;
+    text-align: right;
+    margin-top: 2px;
+  }
+
+  /* ── Meta grid ── */
+  table.meta {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+  table.meta td {
+    padding: 5px 8px;
+    vertical-align: bottom;
+  }
+  table.meta td.lbl {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 9px;
+    letter-spacing: .06em;
+    color: #6B2233;
+    white-space: nowrap;
+    padding-bottom: 0;
+  }
+  table.meta td.val {
+    border-bottom: 1px solid #999;
+    min-width: 90px;
+    padding-top: 2px;
+  }
+
+  /* ── Line item table ── */
+  table.items {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 10px;
+  }
+  table.items th {
+    background: #6B2233;
+    color: #fff;
+    font-weight: 700;
+    padding: 6px 10px;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  table.items th.fee-col { text-align: right; width: 110px; }
+  table.items td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #e5e5e5;
+  }
+  table.items td.fee-col { text-align: right; }
+  table.items tr:nth-child(even) td { background: #F4EFE9; }
+  .total-row td {
+    border-top: 2px solid #6B2233;
+    border-bottom: none;
+    font-weight: 800;
+    font-size: 14px;
+    color: #3D1019;
+    padding-top: 10px;
+  }
+
+  /* ── Sig block ── */
+  .sig-block { margin-top: 28px; }
+  .sig-line { display: flex; gap: 30px; margin-top: 22px; }
+  .sig-field { flex: 1; border-bottom: 1px solid #555; min-height: 20px; }
+  .sig-label { font-size: 10px; font-weight: 700; color: #6B2233; text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
+
+  /* ── Billing request block (WO-2/WO-3) — folded into this sheet so a work
+     order never needs a second page printed just for its billing slip ── */
+  .billing-block {
+    margin-top: 26px;
+    border-top: 2px dashed #6B2233;
+    padding-top: 16px;
+  }
+  .billing-title {
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #6B2233;
+    margin-bottom: 10px;
+  }
+  .billing-amount-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #F4EFE9;
+    border: 2px solid #6B2233;
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 12px;
+  }
+  .billing-amount-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #6B2233; }
+  .billing-amount-value { font-size: 22px; font-weight: 800; color: #3D1019; }
+  .chk-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 18px;
+  }
+  .chk-item { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: #333; }
+  .chk-box { display: inline-block; width: 13px; height: 13px; border: 1.5px solid #333; flex-shrink: 0; }
+  .chk-row-label { font-size: 10px; font-weight: 700; color: #6B2233; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
+  /* Closes off the printed form so leftover blank space at the bottom of the
+     page (short work orders) doesn't read as an unfinished/cut-off sheet. */
+  .form-end-line { border-top: 2px dashed #6B2233; margin-top: 26px; padding-top: 8px; text-align: center; }
+  .form-end-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #999; }
+
+  /* ── @media print ── */
+  @media print {
+    body { background: #fff; padding: 0; }
+    .print-bar { display: none !important; }
+    .sheet { border: none; box-shadow: none; max-width: 100%; padding: 0; margin: 0; }
+    table.items th, table.items tr:nth-child(even) td, .header-row, .total-row td, .billing-amount-row {
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    @page { margin: 0.6in; size: letter portrait; }
+  }
+</style>
+</head>
+<body>
+
+<div class="print-bar">
+  <button onclick="window.print()">&#128438; Print / Save as PDF</button>
+  <a href="javascript:window.close()" class="close-link">&#x2715; Close</a>
+</div>
+
+<div class="sheet">
+
+  <div class="header-row">
+    <div>
+      <div class="office-name">Xcel Financial Services, LLC</div>
+      <div class="office-sub">Work Order</div>
+    </div>
+    <div>
+      <div class="form-title">WORK ORDER</div>
+      <div class="wo-number">{{ wo.work_order_number }}</div>
+    </div>
+  </div>
+
+  <table class="meta">
+    <tr>
+      <td class="lbl" style="width:20%">Date</td>
+      <td class="lbl" style="width:40%">Client Name</td>
+      <td class="lbl" style="width:20%">Due By</td>
+      <td class="lbl" style="width:20%">Received By</td>
+    </tr>
+    <tr>
+      <td class="val">{{ wo.date_created or '—' }}</td>
+      <td class="val">{{ wo.client_name }}</td>
+      <td class="val">{{ wo.due_by or '—' }}</td>
+      <td class="val">{{ wo.received_by_name or wo.received_by_username or '—' }}</td>
+    </tr>
+  </table>
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th>Work Description</th>
+        <th class="fee-col">Fee</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ item.description }}</td>
+        <td class="fee-col">${{ "%.2f"|format(item.fee) }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="total-row">
+        <td>TOTAL FEE</td>
+        <td class="fee-col">${{ "%.2f"|format(wo.total_fee) }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="sig-block">
+    <div class="sig-line">
+      <div style="flex:1">
+        <div class="sig-field"></div>
+        <div class="sig-label">Processed By</div>
+      </div>
+      <div style="flex:1">
+        <div class="sig-field">{{ wo.processed_by_name or wo.processed_by_username or '' }}</div>
+        <div class="sig-label">Date Processed</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="billing-block">
+    <div class="billing-title">Billing Request</div>
+    <!-- This section is designed to be cut along the dashed line above and
+         handed to billing as a standalone slip — so it repeats the client /
+         work-order identifiers and itemized work rather than assuming the
+         reader still has the top of the sheet in front of them. -->
+
+    <table class="meta">
+      <tr>
+        <td class="lbl" style="width:25%">Work Order #</td>
+        <td class="lbl" style="width:45%">Client Name</td>
+        <td class="lbl" style="width:30%">Date Requested</td>
+      </tr>
+      <tr>
+        <td class="val">{{ wo.work_order_number }}</td>
+        <td class="val">{{ wo.client_name }}</td>
+        <td class="val">{{ (br.created_at or wo.date_created or '')[:10] or '—' }}</td>
+      </tr>
+      <tr>
+        <td class="lbl" style="width:25%">Requested By</td>
+        <td class="lbl" style="width:45%">Status</td>
+        <td class="lbl" style="width:30%"></td>
+      </tr>
+      <tr>
+        <td class="val">{{ br.requested_by_name or br.requested_by_username or '—' }}</td>
+        <td class="val">{{ br.status | upper }}</td>
+        <td class="val" style="border-bottom:none"></td>
+      </tr>
+    </table>
+
+    <table class="items" style="margin-top:12px">
+      <thead>
+        <tr>
+          <th>Work Billed</th>
+          <th class="fee-col">Fee</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.description }}</td>
+          <td class="fee-col">${{ "%.2f"|format(item.fee) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="billing-amount-row">
+      <div class="billing-amount-label">Amount to Bill</div>
+      <div class="billing-amount-value">${{ "%.2f"|format(br.amount) }}</div>
+    </div>
+
+    <div class="chk-row-label">Billed By (billing team — check one, by hand)</div>
+    <div class="chk-row">
+      {% for staff in billed_by_checklist %}
+      <div class="chk-item"><span class="chk-box"></span>{{ staff.abbrev }}</div>
+      {% endfor %}
+    </div>
+
+    <div class="sig-line">
+      <div style="flex:1">
+        <div class="sig-field"></div>
+        <div class="sig-label">Date Billed</div>
+      </div>
+      <div style="flex:1"></div>
+    </div>
+  </div>
+
+  <div class="form-end-line">
+    <span class="form-end-label">End of Work Order &amp; Billing Request</span>
+  </div>
+
+</div><!-- /sheet -->
+</body>
+</html>

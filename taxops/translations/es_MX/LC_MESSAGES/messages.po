@@ -4,17 +4,17 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version:  TaxOps\n"
+"Project-Id-Version: TaxOps\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-05-22 10:32-0700\n"
 "PO-Revision-Date: 2026-05-22 10:00-0700\n"
 "Last-Translator: TaxOps Team\n"
-"Language: es_MX\n"
 "Language-Team: es_MX\n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Language: es_MX\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "Generated-By: Babel 2.18.0\n"
 
 #: app.py:401
@@ -94,12 +94,12 @@ msgstr "Encuentra a cualquier cliente al instante"
 
 #: app.py:1372
 msgid ""
-"Type a name or return number here. Results appear as you type. This is "
-"the fastest way to get to any client or return."
+"Type a name or return number here. Results appear as you type. This is the "
+"fastest way to get to any client or return."
 msgstr ""
 "Escribe un nombre o número de declaración aquí. Los resultados aparecen "
-"mientras escribes. Esta es la forma más rápida de llegar a cualquier "
-"cliente o declaración."
+"mientras escribes. Esta es la forma más rápida de llegar a cualquier cliente"
+" o declaración."
 
 #: app.py:1373
 msgid "Track where every return stands"
@@ -108,13 +108,12 @@ msgstr "Da seguimiento al estado de cada declaración"
 #: app.py:1374
 msgid ""
 "These tabs filter by workflow status. PROCESSING means actively being "
-"worked. PICKUP means ready for the client. Click any tab to see only "
-"those returns."
+"worked. PICKUP means ready for the client. Click any tab to see only those "
+"returns."
 msgstr ""
-"Estas pestañas filtran por estado del flujo de trabajo. PROCESSING "
-"significa que se está trabajando activamente. PICKUP significa que está "
-"lista para el cliente. Haz clic en cualquier pestaña para ver solo esas "
-"declaraciones."
+"Estas pestañas filtran por estado del flujo de trabajo. PROCESSING significa"
+" que se está trabajando activamente. PICKUP significa que está lista para el"
+" cliente. Haz clic en cualquier pestaña para ver solo esas declaraciones."
 
 #: app.py:1375
 msgid "Every document in one place"
@@ -122,13 +121,12 @@ msgstr "Todos los documentos en un solo lugar"
 
 #: app.py:1376
 msgid ""
-"W-2s, 1099s, and anything the client emails gets saved here "
-"automatically. You can also upload documents directly. Click any file to "
-"view it."
+"W-2s, 1099s, and anything the client emails gets saved here automatically. "
+"You can also upload documents directly. Click any file to view it."
 msgstr ""
 "Los W-2, 1099 y cualquier documento que el cliente envíe por correo se "
-"guardan aquí automáticamente. También puedes subir documentos "
-"directamente. Haz clic en cualquier archivo para verlo."
+"guardan aquí automáticamente. También puedes subir documentos directamente. "
+"Haz clic en cualquier archivo para verlo."
 
 #: app.py:1377
 msgid "Change the return status"
@@ -136,8 +134,8 @@ msgstr "Cambia el estado de la declaración"
 
 #: app.py:1378
 msgid ""
-"Use this control to move the return through the workflow — from "
-"PROCESSING to FINALIZE to PICKUP — as you work it."
+"Use this control to move the return through the workflow — from PROCESSING "
+"to FINALIZE to PICKUP — as you work it."
 msgstr ""
 "Usa este control para avanzar la declaración en el flujo de trabajo, de "
 "PROCESSING a FINALIZE y a PICKUP, conforme la vayas trabajando."
@@ -148,12 +146,11 @@ msgstr "Mantén a tu equipo informado"
 
 #: app.py:1380
 msgid ""
-"Add notes visible to everyone on the team. Record what was discussed, "
-"what's outstanding, or anything the next person needs to know."
+"Add notes visible to everyone on the team. Record what was discussed, what's"
+" outstanding, or anything the next person needs to know."
 msgstr ""
-"Agrega notas visibles para todo el equipo. Registra lo que se habló, lo "
-"que sigue pendiente, o cualquier cosa que la siguiente persona necesite "
-"saber."
+"Agrega notas visibles para todo el equipo. Registra lo que se habló, lo que "
+"sigue pendiente, o cualquier cosa que la siguiente persona necesite saber."
 
 #: app.py:1381
 msgid "Incoming client documents"
@@ -161,13 +158,13 @@ msgstr "Documentos entrantes de clientes"
 
 #: app.py:1382
 msgid ""
-"When a client emails their documents they appear here. Review and confirm"
-" to attach them to the right return. The system matches clients "
-"automatically — you just verify."
+"When a client emails their documents they appear here. Review and confirm to"
+" attach them to the right return. The system matches clients automatically —"
+" you just verify."
 msgstr ""
-"Cuando un cliente envía sus documentos por correo, aparecen aquí. "
-"Revísalos y confírmalos para vincularlos a la declaración correcta. El "
-"sistema relaciona a los clientes automáticamente; tú solo verificas."
+"Cuando un cliente envía sus documentos por correo, aparecen aquí. Revísalos "
+"y confírmalos para vincularlos a la declaración correcta. El sistema "
+"relaciona a los clientes automáticamente; tú solo verificas."
 
 #: app.py:1383
 msgid "You are ready"
@@ -175,13 +172,13 @@ msgstr "Estás listo"
 
 #: app.py:1384
 msgid ""
-"That covers the essentials. You can relaunch this tour anytime from the "
-"help icon in the top navigation. If you have questions check the runbook "
-"or ask your admin."
+"That covers the essentials. You can relaunch this tour anytime from the help"
+" icon in the top navigation. If you have questions check the runbook or ask "
+"your admin."
 msgstr ""
-"Eso cubre lo esencial. Puedes volver a iniciar este recorrido cuando "
-"quieras desde el ícono de ayuda en la barra de navegación superior. Si "
-"tienes dudas, consulta el manual o pregúntale a tu administrador."
+"Eso cubre lo esencial. Puedes volver a iniciar este recorrido cuando quieras"
+" desde el ícono de ayuda en la barra de navegación superior. Si tienes "
+"dudas, consulta el manual o pregúntale a tu administrador."
 
 #: templates/base.html:48
 msgid "Dashboard"
@@ -435,7 +432,8 @@ msgid "Save filter view"
 msgstr "Guardar vista de filtros"
 
 #: templates/dashboard.html:407
-msgid "Name this preset. You can open it anytime from Saved below the filter bar."
+msgid ""
+"Name this preset. You can open it anytime from Saved below the filter bar."
 msgstr "Nombre este filtro. Puede abrirlo desde Guardados debajo de la barra."
 
 #: templates/dashboard.html:410
@@ -475,9 +473,9 @@ msgstr "Clasificación guardada."
 
 #: templates/email_review.html:11
 msgid ""
-"Each row needs an explicit confirmation: approve the suggestion, or tap a"
-" labeled alternative (no stray dropdown submits). Promotional inbox still"
-" supports bulk confirm."
+"Each row needs an explicit confirmation: approve the suggestion, or tap a "
+"labeled alternative (no stray dropdown submits). Promotional inbox still "
+"supports bulk confirm."
 msgstr ""
 
 #: templates/email_review.html:60
@@ -499,7 +497,8 @@ msgstr "Correos promocionales"
 
 #: templates/email_review.html:82
 msgid "Unconfirmed promotional — rarely need individual review."
-msgstr "Promocionales sin confirmar — raramente requieren revisión individual."
+msgstr ""
+"Promocionales sin confirmar — raramente requieren revisión individual."
 
 #: templates/email_review.html:87 templates/email_review.html:741
 #: templates/email_review.html:745 templates/email_review.html:750
@@ -590,8 +589,8 @@ msgstr "Fecha de Entrevista"
 msgid "Interviewed By"
 msgstr "Entrevistado Por"
 
-#: templates/intake.html:95 templates/intake.html:247 templates/intake.html:380
-#: templates/intake.html:422
+#: templates/intake.html:95 templates/intake.html:247
+#: templates/intake.html:380 templates/intake.html:422
 msgid "— select —"
 msgstr "— seleccionar —"
 
@@ -1131,8 +1130,8 @@ msgstr "Importar CSV"
 
 #: templates/review_queue.html:11
 msgid ""
-"These rows had uncertain name matches. Confirm, re-link, or create as new"
-" clients."
+"These rows had uncertain name matches. Confirm, re-link, or create as new "
+"clients."
 msgstr ""
 
 #: templates/review_queue.html:23
@@ -1141,7 +1140,9 @@ msgstr "Todo al día — sin revisiones pendientes."
 
 #: templates/review_queue.html:24
 msgid "Future CSV imports will add items here when a match is uncertain."
-msgstr "Las importaciones CSV futuras agregarán elementos aquí cuando una coincidencia sea incierta."
+msgstr ""
+"Las importaciones CSV futuras agregarán elementos aquí cuando una "
+"coincidencia sea incierta."
 
 #: templates/review_queue.html:33
 msgid "CSV Name"
@@ -1196,38 +1197,60 @@ msgstr "Una visita de cliente, de principio a fin"
 msgid "Intake"
 msgstr "Admisión"
 
-msgid "Client walks in. Fill the intake form — personal info, documents, fees, and any missing items."
-msgstr "El cliente llega. Llena el formulario de admisión: datos personales, documentos, honorarios y pendientes."
+msgid ""
+"Client walks in. Fill the intake form — personal info, documents, fees, and "
+"any missing items."
+msgstr ""
+"El cliente llega. Llena el formulario de admisión: datos personales, "
+"documentos, honorarios y pendientes."
 
 msgid "Collect documents"
 msgstr "Recolección de documentos"
 
-msgid "Upload W-2s, 1099s, and everything else directly to the return. Tag each file so it stays findable."
-msgstr "Sube los W-2, 1099 y todo lo demás directamente a la declaración. Etiqueta cada archivo para encontrarlo fácilmente."
+msgid ""
+"Upload W-2s, 1099s, and everything else directly to the return. Tag each "
+"file so it stays findable."
+msgstr ""
+"Sube los W-2, 1099 y todo lo demás directamente a la declaración. Etiqueta "
+"cada archivo para encontrarlo fácilmente."
 
 msgid "Process"
 msgstr "Proceso"
 
-msgid "Preparer opens Drake and works the return. Status stays PROCESSING until complete."
-msgstr "El preparador abre Drake y trabaja la declaración. El estado permanece en PROCESSING hasta terminar."
+msgid ""
+"Preparer opens Drake and works the return. Status stays PROCESSING until "
+"complete."
+msgstr ""
+"El preparador abre Drake y trabaja la declaración. El estado permanece en "
+"PROCESSING hasta terminar."
 
 msgid "Finalize"
 msgstr "Finalizar"
 
-msgid "Done in Drake. Mark FINALIZE — signals ready for review or client signature."
-msgstr "Listo en Drake. Marca FINALIZE — indica que está listo para revisión o firma del cliente."
+msgid ""
+"Done in Drake. Mark FINALIZE — signals ready for review or client signature."
+msgstr ""
+"Listo en Drake. Marca FINALIZE — indica que está listo para revisión o firma"
+" del cliente."
 
 msgid "Deliver"
 msgstr "Entrega"
 
-msgid "Counter pickup → mark PICKUP. Electronic filing → mark EFILE READY to queue for transmission."
-msgstr "Recoger en mostrador → marca PICKUP. Envío electrónico → marca EFILE READY para la cola de transmisión."
+msgid ""
+"Counter pickup → mark PICKUP. Electronic filing → mark EFILE READY to queue "
+"for transmission."
+msgstr ""
+"Recoger en mostrador → marca PICKUP. Envío electrónico → marca EFILE READY "
+"para la cola de transmisión."
 
 msgid "Close"
 msgstr "Cierre"
 
-msgid "Client picks up their copy or the batch gets transmitted. Return is done."
-msgstr "El cliente recoge su copia o el lote se transmite. La declaración queda cerrada."
+msgid ""
+"Client picks up their copy or the batch gets transmitted. Return is done."
+msgstr ""
+"El cliente recoge su copia o el lote se transmite. La declaración queda "
+"cerrada."
 
 #: app.py (tour modal)
 msgid "Welcome to TaxOps"
@@ -1246,7 +1269,8 @@ msgid "Manage documents, fees, missing items, and e-file"
 msgstr "Administra documentos, honorarios, pendientes y el e-file"
 
 msgid "Power features: bulk actions, saved views, receipt tracking"
-msgstr "Funciones avanzadas: acciones masivas, vistas guardadas, control de recibos"
+msgstr ""
+"Funciones avanzadas: acciones masivas, vistas guardadas, control de recibos"
 
 #: app.py (tour steps 3–4 — dashboard unlabeled controls)
 msgid "IRS rejection alerts"
@@ -1257,15 +1281,15 @@ msgid ""
 "Open it to see which returns need correction — don't let a rejection sit."
 msgstr ""
 "Esta campana se ilumina cuando el IRS rechaza alguna declaración enviada "
-"electrónicamente. Ábrela para ver qué declaraciones necesitan corrección "
-"— no dejes un rechazo sin atender."
+"electrónicamente. Ábrela para ver qué declaraciones necesitan corrección — "
+"no dejes un rechazo sin atender."
 
 msgid "Problem filters"
 msgstr "Filtros de problemas"
 
 msgid ""
-"These flag buttons filter for returns with active issues — balance due, "
-"late intake, or slow processing cycle. One click shows only those returns."
+"These flag buttons filter for returns with active issues — balance due, late"
+" intake, or slow processing cycle. One click shows only those returns."
 msgstr ""
 "Estos botones filtran las declaraciones con problemas activos: saldo "
 "pendiente, admisión tardía o ciclo lento. Un clic muestra solo esas "
@@ -1280,8 +1304,8 @@ msgid ""
 "every return at a glance, and multi-year comparison."
 msgstr ""
 "Haz clic aquí desde cualquier declaración para ver el expediente completo "
-"del cliente: datos de contacto, todas sus declaraciones y comparación "
-"entre años."
+"del cliente: datos de contacto, todas sus declaraciones y comparación entre "
+"años."
 
 msgid "Edit contact info"
 msgstr "Edita la información de contacto"
@@ -1299,12 +1323,12 @@ msgstr "Comparación entre años"
 
 msgid ""
 "Pick 2–3 tax years to compare income, deductions, and fees side-by-side. "
-"Useful for spotting year-over-year changes or walking a client through "
-"their history."
+"Useful for spotting year-over-year changes or walking a client through their"
+" history."
 msgstr ""
 "Selecciona 2 o 3 años fiscales para comparar ingresos, deducciones y "
-"honorarios en paralelo. Útil para detectar cambios año con año o repasar "
-"el historial con el cliente."
+"honorarios en paralelo. Útil para detectar cambios año con año o repasar el "
+"historial con el cliente."
 
 #: app.py (tour step 3 — intake)
 msgid "Start a new engagement"
@@ -1312,11 +1336,11 @@ msgstr "Inicia un nuevo expediente"
 
 msgid ""
 "The intake form is your TaxOps version of the paper client worksheet — "
-"personal info, document checklist, fees, and missing items, all in one "
-"place before Drake is ever opened."
+"personal info, document checklist, fees, and missing items, all in one place"
+" before Drake is ever opened."
 msgstr ""
-"El formulario de admisión es tu versión en TaxOps de la hoja de trabajo "
-"en papel del cliente: datos personales, lista de documentos, honorarios y "
+"El formulario de admisión es tu versión en TaxOps de la hoja de trabajo en "
+"papel del cliente: datos personales, lista de documentos, honorarios y "
 "pendientes, todo en un solo lugar antes de abrir Drake."
 
 #: app.py (tour step 4 — reintake)
@@ -1324,13 +1348,13 @@ msgid "Re-intake a returning client"
 msgstr "Vuelve a dar de alta a un cliente que regresa"
 
 msgid ""
-"For a returning client, search their name here before you fill anything "
-"in. TaxOps pre-fills what it already knows from last year — no "
-"re-entering the same info every season."
+"For a returning client, search their name here before you fill anything in. "
+"TaxOps pre-fills what it already knows from last year — no re-entering the "
+"same info every season."
 msgstr ""
 "Para un cliente que regresa, busca su nombre aquí antes de capturar nada. "
-"TaxOps llena automáticamente lo que ya sabe del año anterior, sin volver "
-"a capturar la misma información cada temporada."
+"TaxOps llena automáticamente lo que ya sabe del año anterior, sin volver a "
+"capturar la misma información cada temporada."
 
 #: app.py (tour step 6 — doc upload)
 msgid "Add documents to this return"
@@ -1341,18 +1365,18 @@ msgid ""
 "attached to this return. Use bulk upload to send a whole client packet at "
 "once."
 msgstr ""
-"Sube los documentos aquí en lugar de usar una carpeta compartida; el "
-"archivo queda vinculado a esta declaración. Usa la carga masiva para "
-"enviar el paquete completo de un cliente de una sola vez."
+"Sube los documentos aquí en lugar de usar una carpeta compartida; el archivo"
+" queda vinculado a esta declaración. Usa la carga masiva para enviar el "
+"paquete completo de un cliente de una sola vez."
 
 #: app.py (tour step 7 — missing docs)
 msgid "Track what the client still owes you"
 msgstr "Da seguimiento a lo que el cliente todavía te debe"
 
 msgid ""
-"Add missing items here instead of keeping a sticky note or mental list. "
-"Your whole team sees the same checklist and can check things off as the "
-"client brings them in."
+"Add missing items here instead of keeping a sticky note or mental list. Your"
+" whole team sees the same checklist and can check things off as the client "
+"brings them in."
 msgstr ""
 "Agrega aquí los documentos pendientes en lugar de una nota adhesiva o de "
 "memoria. Todo el equipo ve la misma lista y puede ir marcando conforme el "
@@ -1363,12 +1387,12 @@ msgid "Return shortcuts"
 msgstr "Acciones rápidas de la declaración"
 
 msgid ""
-"Print a routing sticker, download the intake sheet as a PDF, or cancel "
-"the return from this panel. When a return reaches PICKUP or EFILE READY a "
-"direct action button also appears here."
+"Print a routing sticker, download the intake sheet as a PDF, or cancel the "
+"return from this panel. When a return reaches PICKUP or EFILE READY a direct"
+" action button also appears here."
 msgstr ""
-"Imprime una etiqueta de enrutamiento, descarga la hoja de admisión en PDF "
-"o cancela la declaración desde este panel. Cuando una declaración llega a "
+"Imprime una etiqueta de enrutamiento, descarga la hoja de admisión en PDF o "
+"cancela la declaración desde este panel. Cuando una declaración llega a "
 "PICKUP o EFILE READY, aquí también aparece un botón de acción directa."
 
 #: app.py (tour step 10 — bulk actions)
@@ -1377,12 +1401,12 @@ msgstr "Actualiza varias declaraciones a la vez"
 
 msgid ""
 "Check this box to select every visible return, then use the bulk bar that "
-"appears to change status or assign a preparer across all of them — no "
-"one-by-one clicking."
+"appears to change status or assign a preparer across all of them — no one-"
+"by-one clicking."
 msgstr ""
 "Marca esta casilla para seleccionar todas las declaraciones visibles y usa "
-"la barra de acciones masivas que aparece para cambiar el estado o asignar "
-"un preparador en todas a la vez, sin hacerlo una por una."
+"la barra de acciones masivas que aparece para cambiar el estado o asignar un"
+" preparador en todas a la vez, sin hacerlo una por una."
 
 #: app.py (tour step 11 — saved filters)
 msgid "Save your daily view"
@@ -1390,12 +1414,12 @@ msgstr "Guarda tu vista del día"
 
 msgid ""
 "If you filter the dashboard the same way every shift, save it here. Your "
-"saved views appear as quick-pick chips so you don't rebuild the same "
-"filters every time."
+"saved views appear as quick-pick chips so you don't rebuild the same filters"
+" every time."
 msgstr ""
 "Si filtras el tablero de la misma forma en cada turno, guárdalo aquí. Tus "
-"vistas guardadas aparecen como accesos rápidos para que no tengas que "
-"volver a armar los mismos filtros cada vez."
+"vistas guardadas aparecen como accesos rápidos para que no tengas que volver"
+" a armar los mismos filtros cada vez."
 
 #: app.py (tour step 12 — pickup queue)
 msgid "Pickup queue"
@@ -1405,22 +1429,21 @@ msgid ""
 "Everything flagged PICKUP lives here — your TaxOps version of the paper "
 "pickup log. Filter by name or log number to find a client fast."
 msgstr ""
-"Todo lo marcado como PICKUP vive aquí: tu versión en TaxOps del registro "
-"de entregas en papel. Filtra por nombre o número de declaración para "
-"encontrar a un cliente rápidamente."
+"Todo lo marcado como PICKUP vive aquí: tu versión en TaxOps del registro de "
+"entregas en papel. Filtra por nombre o número de declaración para encontrar "
+"a un cliente rápidamente."
 
 #: app.py (tour step 13 — efile queue)
 msgid "E-file queue"
 msgstr "Cola de e-file"
 
 msgid ""
-"Returns ready to transmit show up here — the electronic version of "
-"pulling the e-file pile. Select returns and create a batch to send them "
-"all at once."
+"Returns ready to transmit show up here — the electronic version of pulling "
+"the e-file pile. Select returns and create a batch to send them all at once."
 msgstr ""
 "Las declaraciones listas para transmitir aparecen aquí: la versión "
-"electrónica de juntar el montón para e-file. Selecciona las declaraciones "
-"y crea un lote para enviarlas todas a la vez."
+"electrónica de juntar el montón para e-file. Selecciona las declaraciones y "
+"crea un lote para enviarlas todas a la vez."
 
 #: app.py (tour step 18 — export)
 msgid "Export to Excel"
@@ -1441,12 +1464,12 @@ msgstr "Control de recibos"
 
 msgid ""
 "Upload receipts here instead of a separate spreadsheet. TaxOps reads them "
-"with OCR, suggests a category, and queues them for QuickBooks export once "
-"a staff member approves."
+"with OCR, suggests a category, and queues them for QuickBooks export once a "
+"staff member approves."
 msgstr ""
-"Sube los recibos aquí en lugar de usar una hoja de cálculo separada. "
-"TaxOps los lee con OCR, sugiere una categoría y los deja en cola para "
-"exportarlos a QuickBooks una vez que un miembro del equipo los aprueba."
+"Sube los recibos aquí en lugar de usar una hoja de cálculo separada. TaxOps "
+"los lee con OCR, sugiere una categoría y los deja en cola para exportarlos a"
+" QuickBooks una vez que un miembro del equipo los aprueba."
 
 #: app.py (tour step 23 — year picker)
 msgid "Change the filing season"
@@ -1465,12 +1488,12 @@ msgid "Hide sensitive info in one click"
 msgstr "Oculta información sensible con un clic"
 
 msgid ""
-"Client at your desk or screen visible in the office? Toggle Privacy to "
-"mask names and numbers instantly — one click to hide, one more to restore."
+"Client at your desk or screen visible in the office? Toggle Privacy to mask "
+"names and numbers instantly — one click to hide, one more to restore."
 msgstr ""
-"¿Hay un cliente en tu escritorio o tu pantalla está visible en la "
-"oficina? Activa Privacy para ocultar nombres y números al instante, un "
-"clic para ocultar y otro para mostrar de nuevo."
+"¿Hay un cliente en tu escritorio o tu pantalla está visible en la oficina? "
+"Activa Privacy para ocultar nombres y números al instante, un clic para "
+"ocultar y otro para mostrar de nuevo."
 
 #: templates/base.html
 msgid "Sender Rules"
@@ -1484,3 +1507,313 @@ msgstr "Imagen — requiere etiquetado manual"
 msgid "Needs manual tag"
 msgstr "Necesita etiquetado manual"
 
+msgid "Add line"
+msgstr "Agregar línea"
+
+msgid "Amount"
+msgstr "Monto"
+
+msgid "Assign to suggested"
+msgstr "Asignar al sugerido"
+
+msgid "At least one line item is required."
+msgstr "Se requiere al menos una línea."
+
+msgid "Back to list"
+msgstr "Volver a la lista"
+
+msgid "Billed"
+msgstr "Facturado"
+
+msgid "Billing"
+msgstr "Facturación"
+
+msgid "Billing Request"
+msgstr "Solicitud de Facturación"
+
+msgid "Client Name"
+msgstr "Nombre del Cliente"
+
+msgid "Client name search"
+msgstr "Buscar por nombre de cliente"
+
+msgid "Create Work Order"
+msgstr "Crear Orden de Trabajo"
+
+msgid "Created By"
+msgstr "Creado Por"
+
+msgid "Custom / free text…"
+msgstr "Personalizado / texto libre…"
+
+msgid "Date"
+msgstr "Fecha"
+
+msgid "Delete"
+msgstr "Eliminar"
+
+msgid "Description"
+msgstr "Descripción"
+
+msgid "Description…"
+msgstr "Descripción…"
+
+msgid "Due By"
+msgstr "Fecha Límite"
+
+msgid "Due date is before the created date."
+msgstr "La fecha límite es anterior a la fecha de creación."
+
+msgid "Edit"
+msgstr "Editar"
+
+msgid "Edit Work Order"
+msgstr "Editar Orden de Trabajo"
+
+msgid "Filter"
+msgstr "Filtrar"
+
+msgid "From"
+msgstr "Desde"
+
+msgid "Has suggestion"
+msgstr "Tiene sugerencia"
+
+msgid "Last, First"
+msgstr "Apellido, Nombre"
+
+msgid "Mark Billed"
+msgstr "Marcar como Facturado"
+
+msgid "Mark Paid"
+msgstr "Marcar como Pagado"
+
+msgid "Mark Processed"
+msgstr "Marcar como Procesada"
+
+msgid "Mark the attached billing request as"
+msgstr "Marcar la solicitud de facturación adjunta como"
+
+msgid "Mark this work order as processed under your own name?"
+msgstr "¿Marcar esta orden de trabajo como procesada bajo su propio nombre?"
+
+msgid "Needs manual tagging"
+msgstr "Necesita etiquetado manual"
+
+msgid "New Work Order"
+msgstr "Nueva Orden de Trabajo"
+
+msgid "No work orders found"
+msgstr "No se encontraron órdenes de trabajo"
+
+msgid "Older than 7 days"
+msgstr "Con más de 7 días"
+
+msgid "Open"
+msgstr "Abierta"
+
+msgid "Paid"
+msgstr "Pagado"
+
+msgid "Pending"
+msgstr "Pendiente"
+
+msgid "Print"
+msgstr "Imprimir"
+
+msgid "Processed"
+msgstr "Procesada"
+
+msgid "Processed By"
+msgstr "Procesado Por"
+
+msgid "Received By"
+msgstr "Recibido Por"
+
+msgid "Remove"
+msgstr "Eliminar"
+
+msgid "Save Changes"
+msgstr "Guardar Cambios"
+
+msgid "Suggested"
+msgstr "Sugerido"
+
+msgid "This PERMANENTLY deletes this work order and cannot be undone."
+msgstr ""
+"Esto elimina PERMANENTEMENTE esta orden de trabajo y no se puede deshacer."
+
+msgid "To"
+msgstr "Hasta"
+
+msgid "Type client name…"
+msgstr "Escriba el nombre del cliente…"
+
+msgid "Type the work order number to confirm:"
+msgstr "Escriba el número de orden de trabajo para confirmar:"
+
+msgid "Work Description"
+msgstr "Descripción del Trabajo"
+
+msgid "Work Order"
+msgstr "Orden de Trabajo"
+
+msgid "Work Order #"
+msgstr "Orden de Trabajo #"
+
+msgid "Work Order Details"
+msgstr "Detalles de la Orden de Trabajo"
+
+msgid "Work Orders"
+msgstr "Órdenes de Trabajo"
+
+msgid "Work order number did not match — nothing was deleted."
+msgstr "El número de orden de trabajo no coincidió — no se eliminó nada."
+
+msgid "billed"
+msgstr "facturado"
+
+msgid "domain match"
+msgstr "coincidencia de dominio"
+
+msgid "exact email match"
+msgstr "coincidencia exacta de correo electrónico"
+
+msgid "log #"
+msgstr "expediente #"
+
+msgid "name match"
+msgstr "coincidencia de nombre"
+
+msgid "older than 7 days"
+msgstr "con más de 7 días"
+
+msgid "paid"
+msgstr "pagado"
+
+msgid "unassigned"
+msgstr "sin asignar"
+
+msgid "Work Order Quick Picks"
+msgstr "Selecciones Rápidas de Orden de Trabajo"
+
+msgid ""
+"The standardized service list staff can pick from on a Work Order instead of"
+" typing a description and fee by hand — like a QuickBooks Products/Services "
+"list. A quick pick can carry one or more extra fee components (e.g. "
+"\"Statement of Information\" $125 + a \"Filing Fee\" $25 component) so a "
+"compound-fee service adds every line at once."
+msgstr ""
+"La lista estandarizada de servicios que el personal puede elegir en una "
+"Orden de Trabajo en lugar de escribir una descripción y tarifa a mano — como"
+" una lista de Productos/Servicios de QuickBooks. Una selección rápida puede "
+"tener uno o más componentes de tarifa adicionales (por ejemplo, \"Statement "
+"of Information\" $125 + un componente \"Filing Fee\" $25) para que un "
+"servicio con tarifa compuesta agregue todas las líneas a la vez."
+
+msgid "Add Quick Pick"
+msgstr "Agregar Selección Rápida"
+
+msgid "Label"
+msgstr "Etiqueta"
+
+msgid "e.g. Statement of Information"
+msgstr "por ejemplo, Statement of Information"
+
+msgid "Default Fee"
+msgstr "Tarifa Predeterminada"
+
+msgid "Extra Fee Components (optional)"
+msgstr "Componentes de Tarifa Adicionales (opcional)"
+
+msgid "Add component"
+msgstr "Agregar componente"
+
+msgid ""
+"Each component adds its own line item automatically when this quick pick is "
+"selected on a Work Order."
+msgstr ""
+"Cada componente agrega automáticamente su propia línea cuando se selecciona "
+"esta selección rápida en una Orden de Trabajo."
+
+msgid "Cancel edit"
+msgstr "Cancelar edición"
+
+msgid "quick pick"
+msgstr "selección rápida"
+
+msgid "Extra Components"
+msgstr "Componentes Adicionales"
+
+msgid "Active"
+msgstr "Activo"
+
+msgid "Inactive"
+msgstr "Inactivo"
+
+msgid "Deactivate"
+msgstr "Desactivar"
+
+msgid "Reactivate"
+msgstr "Reactivar"
+
+msgid "No quick picks yet."
+msgstr "Aún no hay selecciones rápidas."
+
+msgid "Component label, e.g. Filing Fee"
+msgstr "Etiqueta del componente, por ejemplo, Filing Fee"
+
+msgid "Label is required."
+msgstr "La etiqueta es obligatoria."
+
+msgid "Could not save quick pick."
+msgstr "No se pudo guardar la selección rápida."
+
+msgid "Edit Quick Pick"
+msgstr "Editar Selección Rápida"
+
+msgid ""
+"Deactivate this quick pick? It will no longer be selectable on new Work "
+"Orders."
+msgstr ""
+"¿Desactivar esta selección rápida? Ya no se podrá seleccionar en nuevas "
+"Órdenes de Trabajo."
+
+msgid "Could not deactivate."
+msgstr "No se pudo desactivar."
+
+msgid "Could not reactivate."
+msgstr "No se pudo reactivar."
+
+msgid "Assign To"
+msgstr "Asignar A"
+
+msgid "— unassigned —"
+msgstr "— sin asignar —"
+
+msgid "They'll get a notification that this Work Order was sent to them."
+msgstr "Recibirán una notificación de que se les envió esta Orden de Trabajo."
+
+msgid "Assigned To"
+msgstr "Asignado A"
+
+msgid "Send"
+msgstr "Enviar"
+
+msgid "Sent. They will see a notification."
+msgstr "Enviado. Verán una notificación."
+
+msgid "Unassigned."
+msgstr "Sin asignar."
+
+msgid "Assigned to me"
+msgstr "Asignado a mí"
+
+msgid "Notifications"
+msgstr "Notificaciones"
+
+msgid "Mark all read"
+msgstr "Marcar todo como leído"
+
+msgid "No notifications"
+msgstr "Sin notificaciones"
