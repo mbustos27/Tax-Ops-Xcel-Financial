@@ -438,11 +438,29 @@ def _scan_pages_wia_impl(*, handwriting: bool = False, max_pages: int = 50) -> l
 
         tmp_path = None
         try:
-            # mkstemp creates an empty file; WIA SaveFile refuses to overwrite.
-            fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
-            os.close(fd)
-            os.remove(tmp_path)
-            image.SaveFile(tmp_path)
+            # Never create the file first — WIA ImageFile.SaveFile fails with
+            # "The file exists" (ERROR_FILE_EXISTS / -2147024816) if the path
+            # already exists (mkstemp creates an empty file).
+            import uuid
+
+            tmp_path = os.path.join(
+                tempfile.gettempdir(),
+                f"taxops_wia_{os.getpid()}_{uuid.uuid4().hex}.jpg",
+            )
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            try:
+                image.SaveFile(tmp_path)
+            except Exception as save_exc:
+                # One retry on a fresh path if somehow still colliding.
+                if "file exists" in str(save_exc).lower() or "-2147024816" in str(save_exc):
+                    tmp_path = os.path.join(
+                        tempfile.gettempdir(),
+                        f"taxops_wia_{os.getpid()}_{uuid.uuid4().hex}.jpg",
+                    )
+                    image.SaveFile(tmp_path)
+                else:
+                    raise
             with open(tmp_path, "rb") as fh:
                 pages.append(fh.read())
         finally:
