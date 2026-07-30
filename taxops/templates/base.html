@@ -73,7 +73,8 @@
         {% set tools_active =
             active_page in ('upload','source_compare','import_audit','merge','efile_batch','audit_log',
                             'logout','efile','extension','payments','review','season_rollover','backup_admin','failed_docs','admin_users',
-                            'email_inbox','sender_rules','wo_quick_picks')
+                            'email_inbox','sender_rules','wo_quick_picks','work_orders','compliance','compliance_periods','compliance_credentials',
+                            'email_health','reception_agents')
             or request.path.startswith('/email-inbox')
         %}
         {% if _has_any_tools %}
@@ -115,6 +116,14 @@
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'work_orders' %}tools-item-active{% endif %}">
               <span>{{ _('Work Orders') }}</span>
             </a>
+            <a href="/compliance"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'compliance' %}tools-item-active{% endif %}">
+              <span>{{ _('Compliance Tracker') }}</span>
+            </a>
+            <a href="/compliance/periods"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'compliance_periods' %}tools-item-active{% endif %}">
+              <span>{{ _('Filing Periods') }}</span>
+            </a>
             {% if _can_extension %}
             <a href="/extension-queue?year={{ current_year }}"
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'extension' %}tools-item-active{% endif %}">
@@ -128,6 +137,17 @@
               {% set ei = unassigned_email_count | default(0) %}
               {% if ei > 0 %}
               <span class="shrink-0 bg-blue-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ ei }}</span>
+              {% endif %}
+            </a>
+            {% endif %}
+            {% if has_permission('can_scan_intake_docs') %}
+            <a href="/?filter=scan_deferred"
+               class="tools-item flex items-center justify-between gap-3"
+               title="{{ _('Returns where document scan was skipped at intake') }}">
+              <span>{{ _('Docs not scanned') }}</span>
+              {% set sd = scan_deferred_count | default(0) %}
+              {% if sd > 0 %}
+              <span class="shrink-0 bg-amber-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ sd }}</span>
               {% endif %}
             </a>
             {% endif %}
@@ -191,6 +211,12 @@
                class="tools-item {% if active_page == 'wo_quick_picks' %}tools-item-active{% endif %}">
               {{ _('Work Order Quick Picks') }}
             </a>
+            {% endif %}
+            {% if _is_admin %}
+            <a href="/compliance/credentials"
+               class="tools-item {% if active_page == 'compliance_credentials' %}tools-item-active{% endif %}">
+              {{ _('Compliance Credentials') }}
+            </a>
             <a href="{{ url_for('audit_log_admin') }}"
                class="tools-item {% if active_page == 'audit_log' %}tools-item-active{% endif %}">
               {{ _('Audit log') }}
@@ -212,6 +238,14 @@
             <a href="{{ url_for('email_health.email_health_admin') }}"
                class="tools-item {% if active_page == 'email_health' %}tools-item-active{% endif %}">
               {{ _('Email System Health') }}
+            </a>
+            <a href="{{ url_for('reception_agents.reception_agents_admin') }}"
+               class="tools-item {% if active_page == 'reception_agents' %}tools-item-active{% endif %}">
+              {{ _('Reception Agents') }}
+              <span id="nav-ra-dots" class="ml-1 inline-flex gap-0.5 align-middle" title="Print / Scan">
+                <span data-ra="print" class="inline-block w-2 h-2 rounded-full" style="background:#9ca3af"></span>
+                <span data-ra="scan" class="inline-block w-2 h-2 rounded-full" style="background:#9ca3af"></span>
+              </span>
             </a>
             {% if dep_review_count and dep_review_count > 0 %}
             <a href="{{ url_for('dependents_review_admin') }}"
@@ -515,21 +549,21 @@
       <div class="max-w-screen-2xl mx-auto px-4">
 
         <!-- Row 1: status dots + total count -->
-        <div class="py-2 flex items-center gap-4 overflow-x-auto text-sm">
+        <div class="py-2 flex items-center gap-4 overflow-x-auto text-sm" id="status-summary-bar" data-year="{{ current_year }}">
           {% for s in status_flow %}
-          <a href="/?status={{ s }}&year={{ current_year }}"
+          <a href="/?status={{ s }}&year={{ current_year }}" data-status="{{ s }}"
              class="status-summary-item flex items-center gap-1.5 whitespace-nowrap hover:opacity-90 transition-opacity group"
              aria-label="{{ s }}: {{ status_counts.get(s, 0) }} {{ _('returns') }}">
             <span class="status-dot {{ status_dot.get(s, 'dot-slate') }}" aria-hidden="true"></span>
             <span class="text-xs transition-colors" style="color:var(--nav-text)">{{ s }}</span>
-            <span class="font-bold tabular-nums" style="color:var(--nav-text-active)" aria-hidden="true">{{ status_counts.get(s, 0) }}</span>
+            <span class="font-bold tabular-nums status-count-value" style="color:var(--nav-text-active)" aria-hidden="true">{{ status_counts.get(s, 0) }}</span>
           </a>
           {% endfor %}
 
           <div class="w-px h-4 shrink-0" style="background:var(--nav-border)"></div>
 
           <span class="whitespace-nowrap ml-auto shrink-0 text-xs" style="color:var(--nav-text)">
-            Total <span class="font-bold tabular-nums" style="color:var(--nav-text-active)">{{ status_counts.values() | sum }}</span>
+            Total <span class="font-bold tabular-nums" id="status-total-count" style="color:var(--nav-text-active)">{{ status_counts.values() | sum }}</span>
           </span>
         </div>
 
@@ -1044,6 +1078,41 @@
   </script>
   {% endif %}
 
+  <!-- M3-LIVE: poll the status summary bar so counts reflect scanner-driven
+       client_status changes without needing a page reload. See
+       /api/dashboard/status-counts in app.py for cost rationale (~1.3ms
+       query, benchmarked against the live DB - safe at this interval). -->
+  {% if current_user_name %}
+  <script>
+  (function () {
+    var bar = document.getElementById('status-summary-bar');
+    if (!bar) return;
+    var year = bar.getAttribute('data-year');
+    var totalEl = document.getElementById('status-total-count');
+
+    function _updateStatusCounts() {
+      fetch('/api/dashboard/status-counts?year=' + encodeURIComponent(year), { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d || !d.status_counts) return;
+          bar.querySelectorAll('[data-status]').forEach(function (item) {
+            var status = item.getAttribute('data-status');
+            var n = d.status_counts[status] || 0;
+            var valueEl = item.querySelector('.status-count-value');
+            if (valueEl) valueEl.textContent = n;
+            item.setAttribute('aria-label', status + ': ' + n + ' returns');
+          });
+          if (totalEl && typeof d.total === 'number') totalEl.textContent = d.total;
+        })
+        .catch(function () { /* fail silently - next poll will retry */ });
+    }
+    // No immediate call on load - the server-rendered values are already
+    // fresh from this exact page request; only the interval matters here.
+    setInterval(_updateStatusCounts, 5000);
+  })();
+  </script>
+  {% endif %}
+
   <!-- I18N-6: language toggle handler -->
   <script>
     (function () {
@@ -1106,6 +1175,34 @@
   </script>
 
   {% block scripts %}{% endblock %}
+
+  {% if _is_admin %}
+  <script>
+  (function () {
+    function paint(okPrint, okScan) {
+      var root = document.getElementById('nav-ra-dots');
+      if (!root) return;
+      var dots = root.querySelectorAll('[data-ra]');
+      dots.forEach(function (el) {
+        var which = el.getAttribute('data-ra');
+        var ok = which === 'print' ? okPrint : okScan;
+        el.style.background = ok ? '#16a34a' : '#dc2626';
+      });
+    }
+    function tick() {
+      fetch('/api/admin/reception-agents/status', { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function (d) {
+          paint(!!(d.print && d.print.ok), !!(d.scan && d.scan.ok));
+        })
+        .catch(function () { paint(false, false); });
+    }
+    // Defer so page paint is never blocked by the poll.
+    setTimeout(tick, 0);
+    setInterval(tick, 60000);
+  })();
+  </script>
+  {% endif %}
 
 {% if dev_console or current_user_role == 'admin' %}
 <!-- ── Dev Console (only rendered when FLASK_DEBUG=1) ────────────────────── -->

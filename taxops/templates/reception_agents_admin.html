@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Reception Agents — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="p-6 max-w-3xl mx-auto space-y-6">
+  <div>
+    <h1 class="text-2xl font-bold" style="color:var(--text-primary)">Reception Agents</h1>
+    <p class="text-sm mt-0.5" style="color:var(--text-secondary)">
+      Print relay (8765) and scan agent (8766) on the reception PC. Admin only.
+      Status refreshes every 60s and never blocks this page.
+    </p>
+  </div>
+
+  <section class="rounded-xl p-5 space-y-4" style="background:var(--card-bg);border:1px solid var(--border-subtle)">
+    <div class="flex items-center gap-3">
+      <span id="ra-print-dot" class="inline-block w-3 h-3 rounded-full shrink-0" style="background:#9ca3af"></span>
+      <div>
+        <div class="text-sm font-semibold" style="color:var(--text-primary)">Print relay</div>
+        <div class="text-xs font-mono" style="color:var(--text-secondary)">{{ print_url }}</div>
+        <div id="ra-print-detail" class="text-xs mt-1" style="color:var(--text-secondary)">Checking…</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="ra-scan-dot" class="inline-block w-3 h-3 rounded-full shrink-0" style="background:#9ca3af"></span>
+      <div>
+        <div class="text-sm font-semibold" style="color:var(--text-primary)">Scan agent</div>
+        <div class="text-xs font-mono" style="color:var(--text-secondary)">{{ scan_url }}</div>
+        <div id="ra-scan-detail" class="text-xs mt-1" style="color:var(--text-secondary)">Checking…</div>
+      </div>
+    </div>
+  </section>
+
+  <p class="text-xs" style="color:var(--text-secondary)">
+    On reception: <span class="font-mono">check_reception.bat</span> /
+    <span class="font-mono">diagnose_reception_relays.bat</span>.
+    See <span class="font-mono">docs/reception_agents_runbook.md</span>.
+  </p>
+</div>
+
+<script>
+(function () {
+  const GREEN = '#16a34a', RED = '#dc2626', GRAY = '#9ca3af';
+  function paint(dotId, detailId, ok, text) {
+    const dot = document.getElementById(dotId);
+    const detail = document.getElementById(detailId);
+    if (dot) dot.style.background = ok ? GREEN : RED;
+    if (detail) detail.textContent = text;
+  }
+  function refresh() {
+    fetch('/api/admin/reception-agents/status', { credentials: 'same-origin' })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+      .then(data => {
+        const p = data.print || {};
+        const s = data.scan || {};
+        paint('ra-print-dot', 'ra-print-detail', !!p.ok,
+          p.ok ? ('printer_found=true (' + (p.printer_configured || '') + ')')
+               : ('down: ' + (p.error || 'printer_found=false')));
+        paint('ra-scan-dot', 'ra-scan-detail', !!s.ok,
+          s.ok ? ('com_sta_v4 com_sta=true')
+               : ('down: ' + (s.error || ('code_rev=' + (s.code_rev || '?')))));
+      })
+      .catch(err => {
+        paint('ra-print-dot', 'ra-print-detail', false, String(err));
+        paint('ra-scan-dot', 'ra-scan-detail', false, String(err));
+      });
+  }
+  refresh();
+  setInterval(refresh, 60000);
+})();
+</script>
+{% endblock %}

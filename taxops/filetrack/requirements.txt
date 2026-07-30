@@ -24,3 +24,7 @@ requests>=2.31
 # relay — FILETRACK_PRINT_MODE=relay; see filetrack/DEPLOYMENT.md). Not
 # needed for "local" mode or for the listener/scan side.
 flask>=2.3
+
+# Production WSGI for the print relay (NSSM FiletrackRelay). Prefer this
+# over Flask's development server on the reception PC.
+waitress>=3.0.0

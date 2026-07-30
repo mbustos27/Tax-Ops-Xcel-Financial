@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 import functools
 import os
-import threading
 import sys
 from datetime import date, datetime, timedelta
 
@@ -40,6 +39,8 @@ from config import (
     MULTIYEAR_AGI_PERCENT_THRESHOLD,
     MULTIYEAR_BALANCE_ABS_THRESHOLD,
     MULTIYEAR_REFUND_ABS_THRESHOLD,
+    SCAN_AGENT_TOKEN,
+    SCAN_AGENT_URL,
     taxops_asset_cache_version,
     taxops_release_version,
 )
@@ -52,7 +53,14 @@ from env_validation import validate_taxops_environment_and_exit
 validate_taxops_environment_and_exit()
 
 from csv_analyzer import analyze, iter_data_rows, normalize_status
-from db import CURRENT_SCHEMA_VERSION, get_connection, get_schema_version, init_db
+from db import (
+    CURRENT_SCHEMA_VERSION,
+    get_active_intake_tax_year,
+    get_connection,
+    get_schema_version,
+    init_db,
+    set_active_intake_tax_year,
+)
 from form_schema import FORM_INTEGER_COLUMNS, FORM_TABLE_INSERT_COLUMNS
 from merge_ops import merge_client_into
 from bulk_returns import bulk_apply_processor_changes, bulk_apply_status_changes
@@ -158,10 +166,12 @@ from routes.users import users_bp
 from routes.reports import reports_bp
 from routes.sender_rules import sender_rules_bp
 from routes.email_health import email_health_bp
-from routes.filetrack import filetrack_bp
+from routes.filetrack import api_filetrack_status, filetrack_bp
 from routes.work_orders import work_orders_bp
 from routes.work_order_quick_picks import wo_quick_picks_bp
 from routes.notifications import notifications_bp
+from routes.compliance import compliance_bp
+from routes.reception_agents import reception_agents_bp
 app.register_blueprint(documents_bp)
 app.register_blueprint(accounting_bp)
 app.register_blueprint(users_bp)
@@ -169,9 +179,23 @@ app.register_blueprint(reports_bp)
 app.register_blueprint(sender_rules_bp)
 app.register_blueprint(email_health_bp)
 app.register_blueprint(filetrack_bp)
+app.register_blueprint(reception_agents_bp)
+# POST /filetrack/status is hit by the headless filetrack.listener process
+# (M3), which has no browser session and therefore no CSRF token to send —
+# it authenticates instead via its own X-Filetrack-Token header (see
+# routes/filetrack.py's module docstring: "Auth model (deliberately NOT
+# session/RBAC ...)"). Without this exemption, Flask-WTF's global
+# CSRFProtect(app) above 400s every real scan with "CSRF token missing or
+# invalid" — confirmed in production on 2026-07-22 (first live listener run).
+# Exempting the specific view function, not the whole blueprint, so the
+# admin-only GET routes in this blueprint keep normal CSRF behavior (GET is
+# CSRF-exempt by default anyway) and any *future* POST route added to this
+# blueprint still requires a deliberate, separate exemption decision.
+_csrf.exempt(api_filetrack_status)
 app.register_blueprint(work_orders_bp)
 app.register_blueprint(wo_quick_picks_bp)
 app.register_blueprint(notifications_bp)
+app.register_blueprint(compliance_bp)
 
 
 # REL-4: Flask g-based DB helper — lets routes use get_db() and have the connection
@@ -844,6 +868,9 @@ def query_returns(filters: dict | None = None) -> list[dict]:
                     clauses.append("r.contact_status = ?")
                     params.append(rc)
 
+    if f.get("scan_deferred"):
+        clauses.append("COALESCE(r.scan_deferred, 0) = 1")
+
     if f.get("q"):
         q = f["q"].strip()
         if q.isdigit():
@@ -952,6 +979,9 @@ def query_returns_paginated(filters: dict | None = None, *, page: int = 1, per_p
                 else:
                     clauses.append("r.contact_status = ?")
                     params.append(rc)
+
+    if f.get("scan_deferred"):
+        clauses.append("COALESCE(r.scan_deferred, 0) = 1")
 
     if f.get("q"):
         q = f["q"].strip()
@@ -1254,6 +1284,13 @@ def base_ctx(year: int | None = None) -> dict:
         ).fetchone()["n"]
     except Exception:
         unassigned_email_count = 0
+    # Intake scan deferred — returns where staff skipped "scan now".
+    try:
+        scan_deferred_count = conn.execute(
+            "SELECT COUNT(*) n FROM returns WHERE scan_deferred = 1"
+        ).fetchone()["n"]
+    except Exception:
+        scan_deferred_count = 0
     # DEP-IMPORT: count dependents pending match review for the nav badge.
     try:
         dep_review_count = conn.execute(
@@ -1329,6 +1366,7 @@ def base_ctx(year: int | None = None) -> dict:
         "failed_doc_count":         failed_doc_count,
         "receipt_review_count":     receipt_review_count,
         "unassigned_email_count":   unassigned_email_count,
+        "scan_deferred_count":      scan_deferred_count,
         "dep_review_count":         dep_review_count,
         "spouse_review_count":      spouse_review_count,
         "recovered_client_count":   recovered_client_count,
@@ -1834,11 +1872,28 @@ def health():
         }
 
     schema_ver: int | None = None
+    fts5: dict | None = None
     if db_ok:
         try:
             _sv_conn = get_connection()
             try:
                 schema_ver = get_schema_version(_sv_conn)
+                fts_enabled = bool(
+                    _sv_conn.execute(
+                        "SELECT sqlite_compileoption_used('ENABLE_FTS5')"
+                    ).fetchone()[0]
+                )
+                fts_table = (
+                    _sv_conn.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' "
+                        "AND name='return_documents_fts'"
+                    ).fetchone()
+                    is not None
+                )
+                fts5 = {
+                    "compile_option": bool(fts_enabled),
+                    "return_documents_fts": fts_table,
+                }
             finally:
                 _sv_conn.close()
         except Exception:
@@ -1879,6 +1934,7 @@ def health():
         "audit_queue_depth": audit_queue_depth(),
         "schema_version": schema_ver,
         "schema_version_expected": CURRENT_SCHEMA_VERSION,
+        "fts5": fts5,
         "extraction_queue": extraction_q,
         "workers": workers,
     }
@@ -1911,6 +1967,12 @@ def api_dashboard_returns():
         "reject_contact": request.args.get("reject_contact"),
         "q":              request.args.get("q"),
         "sort":           _api_sort,
+        "scan_deferred":  (
+            "1"
+            if (request.args.get("filter") or "").strip().lower() == "scan_deferred"
+            or request.args.get("scan_deferred")
+            else None
+        ),
     }
     rows, total_count = query_returns_paginated(filters, page=page, per_page=per_page)
     # Privacy invariant #7: ssn_last4 must not appear in list-endpoint JSON responses.
@@ -1927,6 +1989,32 @@ def api_dashboard_returns():
         "has_next":    page < total_pages,
         "has_prev":    page > 1,
     })
+
+
+@app.get("/api/dashboard/status-counts")
+@login_required
+def api_dashboard_status_counts():
+    """Live poll target for base.html's status summary bar (the row of
+    per-status counts + total shown under the nav on every page).
+
+    Added 2026-07-22 alongside M3 going live: scans now update
+    returns.client_status directly from the scan station, so these counts
+    can change without anyone navigating/reloading a page — this endpoint
+    lets the nav bar poll for that instead of only reflecting whatever was
+    true at the last full page render.
+
+    Cheap by construction: get_status_counts() is the exact same query
+    base_ctx() already runs on every single page load (benchmarked at
+    ~1.3ms against the live returns table), and this endpoint does nothing
+    else — no template render, no other base_ctx() nav-badge queries -
+    intentionally so this can be polled every few seconds without adding
+    meaningful load. `year` defaults to the current calendar year, same
+    default dashboard() uses; pass the page's own current_year explicitly
+    to stay in sync with whatever season the caller is actually viewing.
+    """
+    year = int(request.args.get("year", date.today().year))
+    counts = get_status_counts(year)
+    return jsonify({"status_counts": counts, "total": sum(counts.values())})
 
 
 @app.get("/api/notifications/unread-documents")
@@ -1968,10 +2056,13 @@ def can_publish_shared_dashboard_filters() -> bool:
 def _dashboard_request_has_explicit_filters() -> bool:
     if len(request.args.getlist("status")) > 0:
         return True
-    for key in ("processor", "balance_due", "late_intake", "slow_cycle", "form", "reject_contact", "q"):
+    for key in ("processor", "balance_due", "late_intake", "slow_cycle", "form", "reject_contact", "q", "scan_deferred"):
         v = request.args.get(key)
         if v is not None and str(v).strip():
             return True
+    filt = (request.args.get("filter") or "").strip().lower()
+    if filt == "scan_deferred":
+        return True
     return False
 
 
@@ -2176,6 +2267,12 @@ def dashboard():
         "reject_contact": request.args.get("reject_contact"),
         "q":           request.args.get("q"),
         "sort":        _sort_arg,
+        "scan_deferred": (
+            "1"
+            if (request.args.get("filter") or "").strip().lower() == "scan_deferred"
+            or request.args.get("scan_deferred")
+            else None
+        ),
     }
     returns, total_count = query_returns_paginated(filters, page=page, per_page=per_page)
     total_pages = max(1, math.ceil(total_count / per_page))
@@ -2241,8 +2338,33 @@ def return_detail(return_id: int):
         "contact_labels": CONTACT_LABELS,
         "drake_enabled":  bool(DRAKE_FOLDER_STRUCTURE_ENABLED),
         "view_only":      g.get("view_only", False),
+        "scan_agent_url": SCAN_AGENT_URL,
+        "scan_agent_token": SCAN_AGENT_TOKEN,
+        "can_scan_intake_docs": has_permission("can_scan_intake_docs"),
+        "prompt_scan":    request.args.get("scan") == "1",
     })
     return render_template("return_detail.html", **ctx)
+
+
+@app.post("/api/return/<int:return_id>/scan-deferred")
+@permission_required("can_scan_intake_docs")
+def api_return_scan_deferred(return_id: int):
+    """Mark or clear scan_deferred after intake 'Skip' / successful scan."""
+    data = request.get_json(silent=True) or {}
+    deferred = 1 if data.get("deferred", True) else 0
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT id FROM returns WHERE id = ?", (return_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "Return not found"}), 404
+        conn.execute(
+            "UPDATE returns SET scan_deferred = ? WHERE id = ?",
+            (deferred, return_id),
+        )
+        conn.commit()
+        return jsonify({"success": True, "scan_deferred": deferred})
+    finally:
+        conn.close()
 
 
 FILING_STATUS_OPTIONS = ("SINGLE", "MFJ", "MFS", "HH", "DEPENDENT", "QUAL NON DEP")
@@ -3019,6 +3141,17 @@ def payments():
 @app.route("/intake", methods=["GET", "POST"])
 @login_required
 def intake():
+    # Tax Year is no longer a per-intake choice — it's a single admin-set
+    # value, changed only at season rollover (see /admin/season-rollover),
+    # never per walk-in. This is what actually fixed the "goes to 1233
+    # instead of 1270s" bug: staff could never accidentally leave a stale
+    # default selected, because there's no longer a selectable default.
+    _tay_conn = get_connection()
+    try:
+        active_intake_tax_year = get_active_intake_tax_year(_tay_conn)
+    finally:
+        _tay_conn.close()
+
     if request.method == "GET":
         from config import INTAKE_SUGGESTED_UPCHARGE_PCT as _upc
         ctx = base_ctx()
@@ -3028,6 +3161,7 @@ def intake():
             "error": None,
             "habit_profile": None,
             "intake_suggested_upcharge_pct": _upc,
+            "active_intake_tax_year": active_intake_tax_year,
         })
         return render_template("intake.html", **ctx)
 
@@ -3042,7 +3176,8 @@ def intake():
         from config import INTAKE_SUGGESTED_UPCHARGE_PCT as _upc
         ctx = base_ctx()
         ctx.update({"active_page": "intake", "today": today_iso, "error": "Last name is required.",
-                    "prefill": {}, "intake_suggested_upcharge_pct": _upc})
+                    "prefill": {}, "intake_suggested_upcharge_pct": _upc,
+                    "active_intake_tax_year": active_intake_tax_year})
         return render_template("intake.html", **ctx), 400
 
     def _v(key):
@@ -3079,7 +3214,12 @@ def intake():
     # loop) lets the retry loop below call it without touching a single
     # line of existing field-handling logic.
     def _run_intake_write():
-        tax_year = _i("tax_year") or date.today().year
+        # Server-authoritative: the intake form no longer sends a real choice
+        # here (Tax Year is a locked display on the form, not a dropdown —
+        # see intake.html). Any client-submitted "tax_year" is ignored on
+        # purpose, so this can never again be silently wrong per-intake; the
+        # only way it changes is an admin running /admin/season-rollover.
+        tax_year = get_active_intake_tax_year(conn)
 
         # RACE-1: acquire the write lock *before* the MAX read below (not on
         # the first INSERT, as sqlite3's default deferred-transaction mode
@@ -3335,11 +3475,25 @@ def intake():
                 else:
                     from filetrack.labels.print_label import print_label as _filetrack_print_label
                     _filetrack_print_label(log_number)
-            except Exception:
+            except Exception as _print_exc:
+                # RelayError's message is already the actionable, human-
+                # readable summary (see relay_client._classify_network_error)
+                # — surface it as its own WARNING line, ahead of the full
+                # exc_info traceback below, so whoever is skimming
+                # taxops_stderr.log doesn't have to parse a stack trace to
+                # find out what to actually go check on the print station.
+                from filetrack.labels.relay_client import RelayError
+                if isinstance(_print_exc, RelayError):
+                    logging.getLogger("filetrack").warning(
+                        "filetrack: label print failed for log_number=%s — %s",
+                        log_number, _print_exc,
+                    )
                 logging.getLogger("filetrack").warning(
                     "filetrack: label print failed for log_number=%s", log_number, exc_info=True,
                 )
 
+        if has_permission("can_scan_intake_docs"):
+            return redirect(f"/return/{return_id}?scan=1")
         return redirect(f"/return/{return_id}")
 
     def _is_log_number_conflict(exc: sqlite3.IntegrityError) -> bool:
@@ -3370,12 +3524,14 @@ def intake():
                     err_msg, status = "Could not assign a log number, please retry.", 409
                 else:
                     err_msg, status = str(exc), 500
-                ctx.update({"active_page": "intake", "today": today_iso, "error": err_msg})
+                ctx.update({"active_page": "intake", "today": today_iso, "error": err_msg,
+                            "active_intake_tax_year": active_intake_tax_year})
                 return render_template("intake.html", **ctx), status
     except Exception as exc:
         conn.rollback()
         ctx = base_ctx()
-        ctx.update({"active_page": "intake", "today": today_iso, "error": str(exc)})
+        ctx.update({"active_page": "intake", "today": today_iso, "error": str(exc),
+                    "active_intake_tax_year": active_intake_tax_year})
         return render_template("intake.html", **ctx), 500
     finally:
         conn.close()
@@ -3775,6 +3931,12 @@ def export_excel():
         "form":        request.args.get("form"),
         "reject_contact": request.args.get("reject_contact"),
         "q":           request.args.get("q"),
+        "scan_deferred": (
+            "1"
+            if (request.args.get("filter") or "").strip().lower() == "scan_deferred"
+            or request.args.get("scan_deferred")
+            else None
+        ),
     }
     rows = query_returns(filters)
 
@@ -7240,13 +7402,70 @@ def season_rollover_admin():
         abort(403)
     ctx = base_ctx()
     yr = date.today().year
+    tay_conn = get_connection()
+    try:
+        active_intake_tax_year = get_active_intake_tax_year(tay_conn)
+    finally:
+        tay_conn.close()
     ctx.update({
         "active_page":               "season_rollover",
         "rollover_status":           season_rollover.NEW_ROLLOVER_STATUS,
         "default_source_tax_year":   yr - 1,
         "default_target_tax_year":    yr,
+        "active_intake_tax_year":    active_intake_tax_year,
     })
     return render_template("season_rollover.html", **ctx)
+
+
+@app.post("/api/admin/active-intake-tax-year")
+@login_required
+def api_admin_set_active_intake_tax_year():
+    """The one place that changes what tax_year new /intake walk-ins get.
+
+    Deliberately separate from the rollover preview/run endpoints below —
+    changing the active intake year is a one-line settings write, not a
+    data-copying operation, and an admin may need to set/correct it even
+    if they never run (or haven't yet run) a rollover. Gated behind the
+    same RBAC as season rollover since both are "turn of the season" admin
+    actions that should happen together, once a year.
+    """
+    if not can_run_season_rollover():
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        year = int(data["year"])
+        confirm_year = int(data["confirm_year"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "year and confirm_year must be integers"}), 400
+    if confirm_year != year:
+        return jsonify({"error": "Confirmation failed: enter the new tax year to confirm."}), 400
+    if year < 2000 or year > date.today().year + 1:
+        return jsonify({"error": "That doesn't look like a plausible tax year."}), 400
+
+    actor = (_session_username() or "").strip() or None
+    ip = request.remote_addr
+    conn = get_connection()
+    try:
+        before_year = get_active_intake_tax_year(conn)
+        conn.execute("BEGIN IMMEDIATE")
+        set_active_intake_tax_year(conn, year)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    from audit_service import _enqueue_write
+    _enqueue_write(
+        user_id=actor, action="ACTIVE_INTAKE_TAX_YEAR_CHANGED", entity_type="app_settings",
+        entity_id="active_intake_tax_year", before={"year": before_year}, after={"year": year},
+        ip_address=ip, http_status=200,
+    )
+    logging.getLogger("taxops").warning(
+        "ACTIVE_INTAKE_TAX_YEAR_CHANGED: %s -> %s by user=%s", before_year, year, actor,
+    )
+    return jsonify({"success": True, "active_intake_tax_year": year})
 
 
 @app.post("/api/admin/season-rollover/preview")
@@ -7545,28 +7764,10 @@ def register_workers(flask_app) -> None:
         start_accounting_worker(flask_app)
     except Exception as ex:
         _log.warning("Accounting worker startup skipped: %s", ex)
-    try:
-        from chat_cache import start_cache_worker
-        start_cache_worker(flask_app)
-    except Exception as ex:
-        _log.warning("Chat cache worker startup skipped: %s", ex)
-
-    def _startup_classifier():
-        from classifier import _load_model, retrain
-        _load_model()
-        retrain(DB_PATH)
-
-    threading.Thread(target=_startup_classifier, daemon=True, name="fasttext-startup").start()
-
-    def _warm_chat_cache():
-        try:
-            from datetime import date as _d
-            from chat_cache import refresh_chat_cache as _warm_cc
-            _warm_cc(year=_d.today().year)
-        except Exception as ex:
-            _log.warning("Chat cache warmup skipped: %s", ex)
-
-    threading.Thread(target=_warm_chat_cache, daemon=True, name="chat-cache-warm").start()
+    # Note: the fasttext sender-classifier (`classifier.py`) and the AI chat
+    # assistant's `chat_cache` module were both removed in the holding-area
+    # email rewrite (commit e188a1a) — do not reintroduce startup threads
+    # that import them here. See taxops-invariants.mdc.
 
 
 @app.post("/api/admin/reset-and-reimport")

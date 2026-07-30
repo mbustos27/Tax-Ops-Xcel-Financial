@@ -136,16 +136,52 @@ def create_app(*, token: str | None = None):
     return app
 
 
+def _load_machine_env_file() -> None:
+    """Load KEY=VALUE into os.environ for keys not already set (session-0 safe).
+
+    NSSM AppEnvironmentExtra is preferred; this file is a fallback for service
+    installs that cannot inherit the interactive user's environment.
+    Never logs values.
+    """
+    candidates = [
+        os.environ.get("FILETRACK_RELAY_ENV") or "",
+        r"C:\TaxOps\PrintRelay\relay.env",
+    ]
+    for path in candidates:
+        if not path or not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, _, val = line.partition("=")
+                    key = key.strip()
+                    val = val.strip().strip('"').strip("'")
+                    if key and key not in os.environ:
+                        os.environ[key] = val
+            logger.info("filetrack.relay: loaded env file %s", path)
+        except OSError as exc:
+            logger.warning("filetrack.relay: could not read env file %s: %s", path, exc)
+        break
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="filetrack print relay — run on the machine the physical printer is attached to"
     )
-    parser.add_argument("--host", default=os.environ.get("FILETRACK_RELAY_HOST", "0.0.0.0"))
-    parser.add_argument("--port", type=int, default=int(os.environ.get("FILETRACK_RELAY_PORT", "8765")))
+    parser.add_argument("--host", default=None)
+    parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--token", default=None, help="Overrides FILETRACK_RELAY_TOKEN env var")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+
+    _load_machine_env_file()
+
+    host = args.host or os.environ.get("FILETRACK_RELAY_HOST", "0.0.0.0")
+    port = args.port if args.port is not None else int(os.environ.get("FILETRACK_RELAY_PORT", "8765"))
 
     from filetrack.config import FILETRACK_RELAY_TOKEN
 
@@ -159,9 +195,25 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     app = create_app(token=token)
-    logger.info("filetrack.relay: listening on %s:%d (printer=%s)", args.host, args.port,
-                os.environ.get("FILETRACK_PRINTER") or "(unset!)")
-    app.run(host=args.host, port=args.port)
+    logger.info(
+        "filetrack.relay: listening on %s:%d (printer=%s)",
+        host,
+        port,
+        os.environ.get("FILETRACK_PRINTER") or "(unset!)",
+    )
+    # Production WSGI (Milestone 2). Flask app.run is a last-resort fallback only.
+    try:
+        from waitress import serve
+
+        threads = int(os.environ.get("FILETRACK_RELAY_THREADS", "4"))
+        logger.info("filetrack.relay: serving with waitress threads=%d", threads)
+        serve(app, host=host, port=port, threads=threads)
+    except ImportError:
+        logger.warning(
+            "filetrack.relay: waitress not installed — falling back to Flask "
+            "development server. pip install waitress"
+        )
+        app.run(host=host, port=port)
     return 0
 
 
