@@ -116,7 +116,8 @@ POST never happened (check `FILETRACK_PRINT_MODE` actually reads back as
 import time).
 
 Keep the relay running long-term the same way as the listener (step 4
-below) — as an NSSM service on the workstation:
+below) — as an NSSM service on the workstation. Preferred: run
+`T:\install_print_relay_nssm.ps1` (Admin) on the print PC. Manual NSSM:
 
 ```powershell
 nssm install FiletrackRelay "C:\path\to\python.exe"
@@ -238,3 +239,43 @@ no code changes. `nssm stop FiletrackListener` (or just unplug the scanner)
 stops the listener side independently; TaxOps itself is unaffected either
 way since printing/scanning are both best-effort, never a hard dependency
 of intake or any other core workflow.
+
+## 7. Scan Agent (Epson WIA → PDF) — reception workstation
+
+Separate from the barcode **FiletrackListener**. The Scan Agent runs on the
+PC with the Epson ES-500W II / ES-400 II and exposes `POST /scan` so the
+browser can upload the resulting PDF through TaxOps's existing
+`/return/<id>/documents/bulk-upload` endpoint (`source=scan_agent`).
+
+### Install (same NSSM pattern as FiletrackRelay)
+
+```powershell
+# On the reception / print-station PC (needs pywin32 + flask + pymupdf/Pillow):
+pip install -r filetrack\requirements.txt
+pip install pymupdf Pillow   # if not already present via taxops requirements
+
+$env:SCAN_AGENT_TOKEN = "<shared secret — also set SCAN_AGENT_TOKEN on TaxOps / in browser config>"
+python -m scan_agent.server --port 8766
+
+# Long-term:
+nssm install ScanAgent "C:\path\to\python.exe"
+nssm set ScanAgent AppParameters "-m scan_agent.server --port 8766"
+nssm set ScanAgent AppDirectory "T:\taxops"   # or C:\TaxOps\taxops — UNC preferred under Admin
+nssm set ScanAgent AppEnvironmentExtra "SCAN_AGENT_TOKEN=<shared secret>" "SCAN_AGENT_HOST=0.0.0.0" "SCAN_AGENT_PORT=8766"
+nssm set ScanAgent AppStdout "T:\taxops\scan_agent\logs\stdout.log"
+nssm set ScanAgent AppStderr "T:\taxops\scan_agent\logs\stderr.log"
+nssm start ScanAgent
+```
+
+**Auth is mandatory** — the agent refuses to start without `SCAN_AGENT_TOKEN`
+and rejects requests missing a matching `X-Scan-Agent-Token` header (including
+`/health`).
+
+On the TaxOps server / staff browsers, set:
+
+| Variable | Purpose |
+|---|---|
+| `SCAN_AGENT_URL` | e.g. `http://192.168.1.9:8766` (reception PC) |
+| `SCAN_AGENT_TOKEN` | Same secret as the agent |
+
+Verify: `curl -H "X-Scan-Agent-Token: SECRET" http://<workstation>:8766/health`

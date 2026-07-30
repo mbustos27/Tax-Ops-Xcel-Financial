@@ -102,7 +102,25 @@ def create_app(*, token: str | None = None):
 
     @app.get("/health")
     def health():
-        return jsonify({"status": "ok"})
+        # Deliberately never fails/500s even if pywin32 or the printer is
+        # broken — "am I reachable" (status) must stay independent of "will
+        # printing actually work" (the printer_* fields below), so a curl
+        # from the TaxOps server (or diagnose_fix_print_relay.ps1) can tell
+        # "relay down/unreachable" apart from "relay up, printer misconfigured"
+        # without needing an actual print job to find out.
+        info: dict = {"status": "ok"}
+        try:
+            from filetrack.config import DEFAULT_PRINTER_NAME
+            from filetrack.labels.printer import list_printers
+
+            info["printer_configured"] = DEFAULT_PRINTER_NAME
+            if DEFAULT_PRINTER_NAME:
+                info["printer_found"] = DEFAULT_PRINTER_NAME in list_printers()
+            else:
+                info["printer_found"] = False
+        except Exception as exc:
+            info["printer_check_error"] = str(exc)
+        return jsonify(info)
 
     @app.post("/print")
     def do_print():

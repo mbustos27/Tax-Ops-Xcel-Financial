@@ -140,6 +140,13 @@
             </div>
           </div>
           {% endif %}
+          {# DEL-1: hard-delete return — admin-only, irreversible (unlike cancel) #}
+          {% if get_effective_role() == 'admin' %}
+          <button type="button" onclick='deleteReturn({{ ret.id }}, {{ ret.log_number | tojson }})'
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-white bg-red-700 hover:bg-red-800 border border-red-800 rounded-lg px-3 py-2 transition-all">
+            {{ _('Delete return') }}
+          </button>
+          {% endif %}
         </nav>
       </div>
     </div>
@@ -1092,6 +1099,29 @@
     const data = await resp.json();
     if (data.error) { alert(data.error); return; }
     window.location.reload();
+  }
+
+  // ── DEL-1: Hard-delete return (admin-only, irreversible) ─────────────────
+  async function deleteReturn(returnId, logNumber) {
+    const typed = prompt(
+      `This PERMANENTLY deletes return #${logNumber} and all its notes, `
+      + `payments, documents, and history. This cannot be undone.\n\n`
+      + `Type the log number (${logNumber}) to confirm:`
+    );
+    if (typed === null) return;
+    if (typed.trim() !== String(logNumber)) {
+      alert('Log number did not match — nothing was deleted.');
+      return;
+    }
+    const resp = await _csrfFetch(`/api/return/${returnId}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm_log_number: typed.trim() }),
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    alert('Return deleted.');
+    window.location.href = '/dashboard';
   }
 
   // ── DEP-1: Remove dependent from return ──────────────────────────────────
