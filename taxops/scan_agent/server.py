@@ -561,13 +561,8 @@ def create_app(*, token: str | None = None):
     expected = token if token is not None else SCAN_AGENT_TOKEN
     app = Flask(__name__)
 
-    # Start STA pump at process start so CoInitializeEx is done before any request.
-    if sys.platform == "win32":
-        try:
-            _StaWiaPump.get()
-            logger.info("WIA STA pump ready (%s)", REQUIRED_CODE_REV)
-        except Exception as exc:
-            logger.error("WIA STA pump failed to start: %s", exc)
+    # Do NOT start the WIA STA pump here — CoInitialize / device probe can stall
+    # for many seconds and delay READY /health. Pump starts lazily on first WIA use.
 
     @app.after_request
     def _cors(resp):
@@ -611,6 +606,7 @@ def create_app(*, token: str | None = None):
             "scanner_found": False,
             "wia_probed": probe_wia,
             "com_sta": False,
+            "wia_save": "uuid_path",  # SaveFile must not use mkstemp (file-exists bug)
         }
         # Prove CoInitializeEx ran on the dedicated STA thread (no WIA yet).
         try:
@@ -733,6 +729,17 @@ def main(argv: list[str] | None = None) -> int:
         f"(accepting LAN on {args.host}:{args.port})",
         flush=True,
     )
+    # Warm STA pump in the background after we are already accepting /health.
+    if sys.platform == "win32":
+
+        def _warm_sta() -> None:
+            try:
+                _StaWiaPump.get()
+                logger.info("WIA STA pump ready (%s)", REQUIRED_CODE_REV)
+            except Exception as exc:
+                logger.error("WIA STA pump failed to start: %s", exc)
+
+        threading.Thread(target=_warm_sta, name="wia-sta-warm", daemon=True).start()
     server.serve_forever()
     return 0
 

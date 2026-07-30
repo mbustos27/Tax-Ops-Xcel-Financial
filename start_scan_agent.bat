@@ -117,7 +117,7 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8766" ^| findstr "LISTENING
 )
 timeout /t 2 /nobreak >nul
 
-echo Checking packages...
+echo Checking packages (may take a minute on first run)...
 "%PY%" -c "import flask, win32com.client, pythoncom, PIL" 2>nul
 if errorlevel 1 (
   echo Installing flask / pywin32 / Pillow / pymupdf...
@@ -142,10 +142,13 @@ echo Health check URL: http://127.0.0.1:8766/health
 echo Build expected:   com_sta_v4
 echo.
 echo KEEP THIS WINDOW OPEN. Close it only to stop the Scan Agent.
-echo Waiting for READY line - must say com_sta_v4
+echo Binding port then printing READY (do not wait for WIA)...
 echo.
 cd /d "%LOCAL_APP%"
 "%PY%" -m scan_agent.server --host 0.0.0.0 --port 8766
+set "EXITCODE=%ERRORLEVEL%"
 echo.
-echo Scan Agent exited. Press any key to close.
-pause >nul
+echo Scan Agent exited with code %EXITCODE%.
+echo If that was unexpected, scroll up for the Python traceback.
+pause
+exit /b %EXITCODE%
