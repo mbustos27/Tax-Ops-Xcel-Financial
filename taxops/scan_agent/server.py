@@ -533,10 +533,9 @@ def create_app(*, token: str | None = None):
             return jsonify(info)
 
         if not probe_wia:
-            info["tips"] = [
-                "Agent is up (com_sta_v4 STA pump). Scanner not probed on this call — "
-                "UI/status uses ?wia=1 (4s timeout)."
-            ]
+            # No staff-facing tips here — TaxOps status must call ?wia=1.
+            # A tip on this path was previously shown as "Scanner not ready."
+            info["tips"] = []
             return jsonify(info)
 
         try:

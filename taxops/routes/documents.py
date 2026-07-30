@@ -19,11 +19,12 @@ import logging
 import os
 import shutil
 import threading
+import time
 
 from flask import Blueprint, abort, current_app, jsonify, request, send_file, session
 
 import config as _config
-from auth import login_required
+from auth import login_required, role_required, permission_required, has_permission
 from db import get_connection
 from utils import (
     _enqueue_extraction,
@@ -43,6 +44,61 @@ _ALLOWED_RETURN_DOC_TYPES = frozenset(
     {"W-2", "1099", "paystub", "prior_return", "government_id", "misc", "receipt", "unknown"}
 )
 _ALLOWED_RETURN_DOC_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".pdf"})
+_ALLOWED_UPLOAD_SOURCES = frozenset({"walk_in", "scan_agent"})
+
+
+def _resolve_upload_provenance() -> tuple[str, str]:
+    """Return (source, match_method) from multipart form. Defaults preserve walk-in."""
+    raw = (request.form.get("source") or "walk_in").strip().lower()
+    source = raw if raw in _ALLOWED_UPLOAD_SOURCES else "walk_in"
+    if source == "scan_agent":
+        return "scan_agent", "scan_agent"
+    return "walk_in", "manual"
+
+
+def _after_scan_agent_upload(conn, return_id: int) -> dict:
+    """Clear scan_deferred; ensure log_number; print label only if newly allocated."""
+    meta: dict = {"log_number": None, "label_printed": False, "log_newly_allocated": False}
+    try:
+        conn.execute(
+            "UPDATE returns SET scan_deferred = 0 WHERE id = ?",
+            (return_id,),
+        )
+        conn.commit()
+    except Exception as exc:
+        log.warning("Could not clear scan_deferred for return %s: %s", return_id, exc)
+
+    try:
+        from log_numbers import ensure_return_log_number
+
+        log_number, newly = ensure_return_log_number(conn, return_id, begin_immediate=True)
+        meta["log_number"] = log_number
+        meta["log_newly_allocated"] = newly
+        if newly:
+            try:
+                from filetrack.config import FILETRACK_ENABLED, FILETRACK_PRINT_MODE
+
+                if FILETRACK_ENABLED:
+                    if FILETRACK_PRINT_MODE == "relay":
+                        from filetrack.labels.relay_client import print_label_via_relay
+
+                        print_label_via_relay(log_number)
+                    else:
+                        from filetrack.labels.print_label import print_label
+
+                        print_label(log_number)
+                    meta["label_printed"] = True
+            except Exception as print_exc:
+                log.warning(
+                    "Label print after scan upload failed for return %s log %s: %s",
+                    return_id,
+                    log_number,
+                    print_exc,
+                    exc_info=True,
+                )
+    except Exception as exc:
+        log.warning("Log number ensure failed for return %s: %s", return_id, exc)
+    return meta
 
 _FORM_DATA_SQL_TABLES = frozenset(
     {"w2_records", "f1099_nec_records", "f1099_misc_records", "f1099_int_records", "f1099_div_records"}
@@ -155,6 +211,12 @@ def return_documents_upload(return_id: int):
 
         raw_doc_type = (request.form.get("doc_type") or "unknown").strip()
         doc_type = raw_doc_type if raw_doc_type in _ALLOWED_RETURN_DOC_TYPES else "unknown"
+        upload_source, match_method = _resolve_upload_provenance()
+        if upload_source == "scan_agent":
+            from auth import has_permission
+
+            if not has_permission("can_scan_intake_docs"):
+                return jsonify({"error": "Permission denied"}), 403
 
         uploaded_at = now()
         uploaded_by = session.get("username")
@@ -199,16 +261,20 @@ def return_documents_upload(return_id: int):
                   file_path, file_size_bytes, file_hash, uploaded_by, uploaded_at, notes, is_deleted,
                   match_confirmed, match_score, match_method
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, NULL, 'manual')
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, NULL, ?)
                 """,
                 (
-                    return_id, candidate, original_filename, doc_type, "walk_in",
+                    return_id, candidate, original_filename, doc_type, upload_source,
                     full_path, file_size_bytes, file_hash, uploaded_by, uploaded_at, None,
+                    match_method,
                 ),
             )
             doc_id = cur.lastrowid
             conn.commit()
             _enqueue_extraction(doc_id, return_id)
+            scan_meta = {}
+            if upload_source == "scan_agent":
+                scan_meta = _after_scan_agent_upload(conn, return_id)
 
             # ACCOUNTING-10: auto-enqueue receipts to receipt_queue (still requires staff review).
             if doc_type == "receipt":
@@ -257,11 +323,14 @@ def return_documents_upload(return_id: int):
                 "doc_id": doc_id,
                 "filename": candidate,
                 "doc_type": doc_type,
+                "source": upload_source,
                 "uploaded_at": uploaded_at,
             }
         )
         if duplicate_warning:
             resp["duplicate_warning"] = duplicate_warning
+        if scan_meta:
+            resp.update(scan_meta)
         return jsonify(resp)
     finally:
         conn.close()
@@ -289,10 +358,17 @@ def return_documents_bulk_upload(return_id: int):
 
         raw_doc_type = (request.form.get("doc_type") or "unknown").strip()
         doc_type = raw_doc_type if raw_doc_type in _ALLOWED_RETURN_DOC_TYPES else "unknown"
+        upload_source, match_method = _resolve_upload_provenance()
+        if upload_source == "scan_agent":
+            from auth import has_permission
+
+            if not has_permission("can_scan_intake_docs"):
+                return jsonify({"error": "Permission denied"}), 403
         uploaded_by = session.get("username")
         folder = get_return_documents_path(return_id)
         app_obj = current_app._get_current_object()
         results = []
+        any_scan_saved = False
 
         for upload in uploads:
             if not upload or not upload.filename:
@@ -357,16 +433,19 @@ def return_documents_bulk_upload(return_id: int):
                       return_id, filename, original_filename, doc_type, source,
                       file_path, file_size_bytes, file_hash, uploaded_by, uploaded_at, notes, is_deleted,
                       match_confirmed, match_score, match_method
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, NULL, 'manual')
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, NULL, ?)
                     """,
                     (
-                        return_id, candidate, original_filename, doc_type, "walk_in",
+                        return_id, candidate, original_filename, doc_type, upload_source,
                         full_path, file_size_bytes, file_hash, uploaded_by, uploaded_at, None,
+                        match_method,
                     ),
                 )
                 doc_id = cur.lastrowid
                 conn.commit()
                 _enqueue_extraction(doc_id, return_id)
+                if upload_source == "scan_agent":
+                    any_scan_saved = True
 
                 # ACCOUNTING-10: auto-enqueue receipts.
                 if doc_type == "receipt":
@@ -425,7 +504,302 @@ def return_documents_bulk_upload(return_id: int):
                     "error": "Could not record document",
                 })
 
-        return jsonify({"results": results})
+        scan_meta = {}
+        if any_scan_saved:
+            scan_meta = _after_scan_agent_upload(conn, return_id)
+
+        return jsonify({"results": results, **scan_meta})
+    finally:
+        conn.close()
+
+
+def _call_scan_agent(*, handwriting: bool = False, timeout: int = 180) -> tuple[bytes, int]:
+    """POST to reception Scan Agent; return (pdf_bytes, page_count)."""
+    import urllib.error
+    import urllib.request
+
+    from config import SCAN_AGENT_TOKEN, SCAN_AGENT_URL
+
+    if not SCAN_AGENT_URL:
+        raise RuntimeError("SCAN_AGENT_URL is not configured on the TaxOps server")
+    if not SCAN_AGENT_TOKEN:
+        raise RuntimeError(
+            "SCAN_AGENT_TOKEN is not configured — set it in taxops/.env and restart TaxOpsService"
+        )
+
+    url = SCAN_AGENT_URL.rstrip("/") + "/scan"
+    body = json.dumps({"handwriting": bool(handwriting)}).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-Scan-Agent-Token": SCAN_AGENT_TOKEN,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            pdf = resp.read()
+            page_count = int(resp.headers.get("X-Scan-Page-Count") or "0")
+            return pdf, page_count
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")
+            payload = json.loads(detail)
+            detail = payload.get("error") or detail
+        except Exception:
+            pass
+        raise RuntimeError(detail or f"Scan Agent HTTP {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(
+            f"Cannot reach Scan Agent at {SCAN_AGENT_URL} — is ScanAgent running on the "
+            f"reception PC? ({exc.reason})"
+        ) from exc
+
+
+def _call_scan_agent_health(timeout: int = 8) -> dict:
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    from config import SCAN_AGENT_TOKEN, SCAN_AGENT_URL
+
+    if not SCAN_AGENT_URL:
+        return {
+            "ok": False,
+            "tips": ["SCAN_AGENT_URL is not set on the TaxOps server (.env)."],
+        }
+    if not SCAN_AGENT_TOKEN:
+        return {
+            "ok": False,
+            "tips": [
+                "SCAN_AGENT_TOKEN is not set — add it to taxops/.env and restart TaxOpsService."
+            ],
+        }
+    # Normalize base (strip trailing /health if someone put it in .env)
+    base = SCAN_AGENT_URL.rstrip("/")
+    if base.lower().endswith("/health"):
+        base = base[: -len("/health")]
+    url = base + "/health?wia=1"
+    req = urllib.request.Request(
+        url,
+        method="GET",
+        headers={"X-Scan-Agent-Token": SCAN_AGENT_TOKEN},
+    )
+    try:
+        # WIA probe is capped at ~4s on the agent; allow a little network slack.
+        with urllib.request.urlopen(req, timeout=max(timeout, 12)) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            # reachable = HTTP health succeeded; ok = WIA scanner usable (UI auto-start)
+            data["reachable"] = True
+            data["agent_ok"] = True
+            data["ok"] = bool(data.get("scanner_found") or data.get("scanner_ok"))
+            data["agent_url"] = SCAN_AGENT_URL
+            tips = [
+                t
+                for t in (data.get("tips") or [])
+                if t
+                and "not probed" not in str(t).lower()
+                and "wia=1" not in str(t).lower()
+            ]
+            # If we asked for WIA but agent did not probe, status path is wrong / stale server code.
+            if data.get("wia_probed") is False:
+                tips.insert(
+                    0,
+                    "TaxOps reached the agent without a WIA probe (wia_probed=false). "
+                    "Restart TaxOpsService so /api/scan-agent/status calls /health?wia=1.",
+                )
+                data["ok"] = False
+            err_blob = " ".join(
+                [
+                    str(data.get("scanner_error") or ""),
+                    " ".join(str(t) for t in tips),
+                ]
+            )
+            rev = data.get("code_rev") or ""
+            if rev not in ("com_sta_v1", "com_sta_v2", "com_sta_v3", "com_sta_v4"):
+                tips.insert(
+                    0,
+                    "Old Scan Agent process still running (missing com_sta_v4). "
+                    "On reception PC: close EVERY TaxOps Scan Agent window, then double-click "
+                    "\\\\Xcel-server\\taxops\\GO_SCAN_AGENT.bat and leave the new window open.",
+                )
+            elif rev != "com_sta_v4":
+                tips.insert(
+                    0,
+                    f"Scan Agent build is {rev!r}; need com_sta_v4 (STA pump). "
+                    "On reception: close all Scan Agent windows, run GO_SCAN_AGENT.bat.",
+                )
+            elif "hung" in err_blob.lower() or "timeout" in err_blob.lower():
+                tips.insert(
+                    0,
+                    "WIA hung talking to the scanner. Unplug Epson USB, power-cycle, "
+                    "fix Device Manager (not phantom), then GO_SCAN_AGENT.bat again.",
+                )
+            elif "CoInitialize" in err_blob and "hr=None" not in err_blob:
+                tips.insert(
+                    0,
+                    "WIA COM not initialized. On reception: close Scan Agent windows, "
+                    "run GO_SCAN_AGENT.bat (or scan_agent_wizard.bat Repair).",
+                )
+            data["tips"] = tips
+            return data
+    except urllib.error.HTTPError as exc:
+        return {
+            "ok": False,
+            "agent_ok": False,
+            "reachable": False,
+            "tips": [
+                f"Scan Agent returned HTTP {exc.code} — check SCAN_AGENT_TOKEN matches "
+                "the reception ScanAgent service."
+            ],
+            "agent_url": SCAN_AGENT_URL,
+        }
+    except urllib.error.URLError as exc:
+        return {
+            "ok": False,
+            "agent_ok": False,
+            "reachable": False,
+            "tips": [
+                f"Cannot reach {SCAN_AGENT_URL} ({exc.reason}). On reception: run "
+                "GO_SCAN_AGENT.bat / Start-ScheduledTask 'TaxOps Scan Agent', firewall "
+                "allows TCP 8766."
+            ],
+            "agent_url": SCAN_AGENT_URL,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "agent_ok": False,
+            "reachable": False,
+            "tips": [str(exc)],
+            "agent_url": SCAN_AGENT_URL,
+        }
+
+
+@documents_bp.route("/api/scan-agent/status", methods=["GET"])
+@login_required
+@permission_required("can_scan_intake_docs")
+def scan_agent_status():
+    """Proxy health to Scan Agent + config tips for the intake scan UI."""
+    return jsonify(_call_scan_agent_health())
+
+
+@documents_bp.route("/api/return/<int:return_id>/scan-intake", methods=["POST"])
+@login_required
+@permission_required("can_scan_intake_docs")
+def return_scan_intake(return_id: int):
+    """Server-side: Scan Agent → save PDF on return (avoids browser CORS).
+
+    Body JSON: { handwriting?: bool, doc_type?: str }
+    Default doc_type=unknown so Claude/Ollama extraction can auto-tag (sort later).
+    """
+    data = request.get_json(silent=True) or {}
+    handwriting = bool(data.get("handwriting"))
+    raw_doc_type = (data.get("doc_type") or "unknown").strip()
+    doc_type = raw_doc_type if raw_doc_type in _ALLOWED_RETURN_DOC_TYPES else "unknown"
+
+    conn = get_connection()
+    full_path: str | None = None
+    try:
+        exists = conn.execute("SELECT id FROM returns WHERE id = ?", (return_id,)).fetchone()
+        if not exists:
+            return jsonify({"error": "Return not found"}), 404
+
+        try:
+            pdf, page_count = _call_scan_agent(handwriting=handwriting)
+        except RuntimeError as exc:
+            health = _call_scan_agent_health(timeout=5)
+            tips = [str(exc)]
+            for tip in health.get("tips") or []:
+                if tip and tip not in tips:
+                    tips.append(tip)
+            payload = {"error": str(exc), "tips": tips}
+            for key in ("agent_url", "scanner_found", "scanner_names"):
+                if health.get(key) is not None:
+                    payload[key] = health[key]
+            return jsonify(payload), 502
+
+        folder = get_return_documents_path(return_id)
+        candidate = f"scan_{int(time.time())}.pdf"
+        full_path = os.path.abspath(os.path.join(folder, candidate))
+        n = 1
+        while os.path.exists(full_path):
+            candidate = f"scan_{int(time.time())}_{n}.pdf"
+            full_path = os.path.abspath(os.path.join(folder, candidate))
+            n += 1
+        with open(full_path, "wb") as fh:
+            fh.write(pdf)
+
+        uploaded_at = now()
+        uploaded_by = session.get("username")
+        file_size = os.path.getsize(full_path)
+        file_hash = _sha256_file(full_path)
+
+        cur = conn.execute(
+            """
+            INSERT INTO return_documents (
+              return_id, filename, original_filename, doc_type, source,
+              file_path, file_size_bytes, file_hash, uploaded_by, uploaded_at, notes, is_deleted,
+              match_confirmed, match_score, match_method
+            )
+            VALUES (?, ?, ?, ?, 'scan_agent', ?, ?, ?, ?, ?, NULL, 0, 1, NULL, 'scan_agent')
+            """,
+            (
+                return_id,
+                candidate,
+                candidate,
+                doc_type,
+                full_path,
+                file_size,
+                file_hash,
+                uploaded_by,
+                uploaded_at,
+            ),
+        )
+        doc_id = cur.lastrowid
+        conn.commit()
+        _enqueue_extraction(doc_id, return_id)
+        scan_meta = _after_scan_agent_upload(conn, return_id)
+
+        if doc_type == "unknown":
+            app_obj = current_app._get_current_object()
+
+            def _bg_classify():
+                try:
+                    with app_obj.app_context():
+                        from form_store import _classify_document
+
+                        _classify_document(doc_id, only_if_still_unknown=True)
+                except Exception as exc:
+                    log.error("Background classify failed for scan doc %s: %s", doc_id, exc)
+
+            threading.Thread(target=_bg_classify, daemon=True).start()
+
+        return jsonify(
+            scrub_ssn_from_dict(
+                {
+                    "success": True,
+                    "doc_id": doc_id,
+                    "filename": candidate,
+                    "doc_type": doc_type,
+                    "page_count": page_count,
+                    "uploaded_at": uploaded_at,
+                    "auto_sort": doc_type == "unknown",
+                    **scan_meta,
+                }
+            )
+        )
+    except Exception as exc:
+        log.exception("scan-intake failed for return %s", return_id)
+        if full_path and os.path.isfile(full_path):
+            try:
+                os.remove(full_path)
+            except OSError:
+                pass
+        return jsonify({"error": "Scan intake failed", "detail": str(exc)}), 500
     finally:
         conn.close()
 
@@ -435,11 +809,21 @@ def return_documents_bulk_upload(return_id: int):
 def return_documents_list(return_id: int):
     conn = get_connection()
     try:
+        q_text = (request.args.get("q") or "").strip()
+        doc_type_filter = (request.args.get("doc_type") or "").strip()
+        source_filter = (request.args.get("source") or "").strip()
+        fts_ids: set[int] | None = None
+        if q_text:
+            from document_fts import search_documents_fts
+
+            fts_ids = set(search_documents_fts(conn, q_text, return_id=return_id))
+
         rows = conn.execute(
             """
             SELECT
                 rd.id, rd.filename, rd.original_filename, rd.doc_type, rd.source,
                 rd.uploaded_by, rd.uploaded_at, rd.file_size_bytes,
+                rd.ocr_text_indexed, rd.match_method,
                 eq.status AS extraction_status,
                 eq.confidence AS extraction_confidence,
                 eq.detected_form_type AS extraction_detected_table,
@@ -461,6 +845,18 @@ def return_documents_list(return_id: int):
         ).fetchall()
         documents = []
         for r in rows:
+            if fts_ids is not None and int(r["id"]) not in fts_ids:
+                # Free-text requested: only FTS hits. Also allow filename/doc_type substring
+                # matches when OCR is not indexed yet (graceful fallback).
+                fname = (r["filename"] or "") + " " + (r["original_filename"] or "")
+                dtype = r["doc_type"] or ""
+                meta_hit = q_text.lower() in fname.lower() or q_text.lower() in dtype.lower()
+                if not meta_hit:
+                    continue
+            if doc_type_filter and (r["doc_type"] or "") != doc_type_filter:
+                continue
+            if source_filter and (r["source"] or "") != source_filter:
+                continue
             ext_stat = r["extraction_status"]
             try:
                 extraction_confidence = float(r["extraction_confidence"]) if r["extraction_confidence"] is not None else None
@@ -486,6 +882,8 @@ def return_documents_list(return_id: int):
                         "uploaded_by": r["uploaded_by"],
                         "uploaded_at": r["uploaded_at"],
                         "file_size_bytes": r["file_size_bytes"],
+                        "ocr_text_indexed": int(r["ocr_text_indexed"] or 0),
+                        "match_method": r["match_method"],
                         "extraction_status": ext_stat,
                         "extraction_confidence": extraction_confidence,
                         "extracted_fields": extracted_fields_view,
@@ -525,7 +923,7 @@ def return_document_view(return_id: int, doc_id: int):
 
 
 @documents_bp.route("/return/<int:return_id>/documents/<int:doc_id>/delete", methods=["POST"])
-@login_required
+@role_required("preparer")
 def return_document_delete(return_id: int, doc_id: int):
     conn = get_connection()
     try:

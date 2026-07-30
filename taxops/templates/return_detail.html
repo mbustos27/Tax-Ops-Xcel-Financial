@@ -793,11 +793,34 @@
                 <option value="prior_return">Prior Return</option>
                 <option value="government_id">Government ID</option>
                 <option value="misc">Misc</option>
+                <option value="unknown">{{ _('Mixed / sort later') }}</option>
               </select>
             </label>
             <button type="button" id="doc-upload-btn"
                     class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
               {{ _('Upload') }}
+            </button>
+            {% if can_scan_intake_docs and not view_only %}
+            <button type="button" id="doc-scan-btn"
+                    onclick="openScanModal()"
+                    class="shrink-0 flex items-center gap-1.5 text-xs text-white bg-[#6B2233] hover:bg-[#8B2E44] rounded-lg px-3 py-2 transition-all">
+              {{ _('Scan from Epson') }}
+            </button>
+            {% endif %}
+          </div>
+          <div class="flex flex-wrap items-end gap-3">
+            <label class="flex flex-col gap-1 text-sm flex-1 min-w-[12rem]">
+              <span class="text-slate-500 font-medium">{{ _('Search documents') }}</span>
+              <input type="search" id="doc-search-input" placeholder="{{ _('Client text, type, filename…') }}"
+                     class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            </label>
+            <button type="button" id="doc-search-btn" onclick="searchDocuments()"
+                    class="shrink-0 text-xs border border-slate-200 rounded-lg px-3 py-2 text-slate-600 hover:text-slate-900">
+              {{ _('Search') }}
+            </button>
+            <button type="button" id="doc-search-clear" onclick="clearDocSearch()"
+                    class="shrink-0 text-xs text-slate-400 hover:text-slate-700 px-2 py-2">
+              {{ _('Clear') }}
             </button>
           </div>
           <p id="doc-upload-status" class="hidden text-xs font-medium"></p>
@@ -811,6 +834,38 @@
           <div id="doc-list"></div>
         </div>
       </div>
+
+      {% if can_scan_intake_docs %}
+      <div id="scan-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-5 space-y-4 border border-slate-200">
+          <h3 class="text-lg font-semibold text-[#6B2233]">{{ _('Scan client documents now?') }}</h3>
+          <p class="text-sm text-slate-600">{{ _('Load pages in the Epson feeder. We will scan, upload, and auto-sort what we can.') }}</p>
+          <div id="scan-agent-health" class="text-xs rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
+            {{ _('Checking scanner…') }}
+          </div>
+          <label class="flex flex-col gap-1 text-sm">
+            <span class="text-slate-500 font-medium">{{ _('Document type') }}</span>
+            <select id="scan-doc-type" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option value="unknown" selected>{{ _('Mixed / sort later (recommended)') }}</option>
+              <option value="W-2">W-2</option>
+              <option value="1099">1099</option>
+              <option value="prior_return">{{ _('Prior Return') }}</option>
+              <option value="government_id">{{ _('Government ID') }}</option>
+              <option value="misc">Misc</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" id="scan-handwriting" class="rounded border-slate-300">
+            {{ _('Handwriting / no text enhancement') }}
+          </label>
+          <p id="scan-modal-status" class="hidden text-xs font-medium"></p>
+          <div class="flex flex-wrap gap-2 justify-end pt-2">
+            <button type="button" onclick="skipScanModal()" class="text-xs px-3 py-2 rounded-lg border border-slate-200 text-slate-600">{{ _('Skip') }}</button>
+            <button type="button" id="scan-modal-go" onclick="runScanAndUpload()" class="text-xs px-3 py-2 rounded-lg bg-[#6B2233] text-white">{{ _('Scan & upload') }}</button>
+          </div>
+        </div>
+      </div>
+      {% endif %}
 
       <div id="form-data-root" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
         <div class="section-header">{{ _('Document Data') }}</div>
@@ -1337,6 +1392,12 @@
   // ── Return documents (upload / list / view / soft-delete) ───────────────────
   const RETURN_ID = {{ ret.id }};
   const DRAKE_SYNC_ENABLED = {% if drake_enabled %}true{% else %}false{% endif %};
+  const CAN_SCAN = {% if can_scan_intake_docs %}true{% else %}false{% endif %};
+  const CAN_DELETE_DOCS = {% if get_effective_role() in ('preparer', 'admin') %}true{% else %}false{% endif %};
+  const PROMPT_SCAN = {% if prompt_scan %}true{% else %}false{% endif %};
+  const SCAN_AGENT_URL = {{ (scan_agent_url or '')|tojson }};
+  const SCAN_AGENT_TOKEN = {{ (scan_agent_token or '')|tojson }};
+  const LOG_NUMBER = {{ (ret.log_number or '')|tojson }};
 
   const FORM_FIELD_ORDER = {
     "w2_records": [
@@ -2215,7 +2276,8 @@
 
   function _docSourceLabel(src) {
     if (src === 'walk_in') return 'Walk-in';
-    if (src === 'email') return 'Email';
+    if (src === 'email' || src === 'email_inbox') return 'Email';
+    if (src === 'scan_agent') return 'Scan';
     return src ? _escapeHtml(String(src)) : '—';
   }
 
@@ -2648,8 +2710,10 @@
             : ''}
           <button type="button" onclick="extractFields(${doc.id}, this)"
                   class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs whitespace-nowrap">Extract fields</button>
-          <button type="button" onclick="deleteDocument(${doc.id})"
-                  class="text-slate-300 hover:text-red-400 transition-colors text-xs whitespace-nowrap" title="Remove from list">Delete</button>
+          ${CAN_DELETE_DOCS
+            ? `<button type="button" onclick="deleteDocument(${doc.id})"
+                  class="text-slate-300 hover:text-red-400 transition-colors text-xs whitespace-nowrap" title="Remove from list">Delete</button>`
+            : ''}
         </div>
         <div id="ext-review-panel-${doc.id}" class="hidden w-full max-w-2xl"></div>
       </div>`;
@@ -2710,10 +2774,12 @@
     _renderDocList(visible);
   }
 
-  function loadDocuments() {
+  function loadDocuments(query) {
     const listEl = document.getElementById('doc-list');
     if (!listEl) return;
-    _csrfFetch(`/return/${RETURN_ID}/documents`)
+    let url = `/return/${RETURN_ID}/documents`;
+    if (query) url += `?q=${encodeURIComponent(query)}`;
+    _csrfFetch(url)
       .then(r => r.json())
       .then(data => {
         _lastDocs = data.documents || [];
@@ -2728,15 +2794,233 @@
       });
   }
 
+  function searchDocuments() {
+    const q = (document.getElementById('doc-search-input') || {}).value || '';
+    loadDocuments(q.trim());
+  }
+
+  function clearDocSearch() {
+    const inp = document.getElementById('doc-search-input');
+    if (inp) inp.value = '';
+    loadDocuments();
+  }
+
+  let _scanAutoTimer = null;
+  let _scanAutoCancelled = false;
+
+  function openScanModal(opts) {
+    const autoStart = !!(opts && opts.autoStart);
+    _scanAutoCancelled = false;
+    if (_scanAutoTimer) { clearInterval(_scanAutoTimer); _scanAutoTimer = null; }
+    const m = document.getElementById('scan-modal');
+    if (m) m.classList.remove('hidden');
+    const statusEl = document.getElementById('scan-modal-status');
+    if (statusEl) {
+      statusEl.classList.add('hidden');
+      statusEl.textContent = '';
+    }
+    refreshScanAgentHealth().then((ok) => {
+      if (autoStart && ok && !_scanAutoCancelled) {
+        startScanCountdown();
+      }
+    });
+  }
+
+  function closeScanModal() {
+    _scanAutoCancelled = true;
+    if (_scanAutoTimer) { clearInterval(_scanAutoTimer); _scanAutoTimer = null; }
+    const m = document.getElementById('scan-modal');
+    if (m) m.classList.add('hidden');
+  }
+
+  function skipScanModal() {
+    closeScanModal();
+    _csrfFetch(`/api/return/${RETURN_ID}/scan-deferred`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deferred: true }),
+    }).catch(() => {});
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete('scan');
+      window.history.replaceState({}, '', u.pathname + u.search);
+    } catch (e) {}
+  }
+
+  async function refreshScanAgentHealth() {
+    const box = document.getElementById('scan-agent-health');
+    const goBtn = document.getElementById('scan-modal-go');
+    if (box) {
+      box.textContent = 'Checking scanner…';
+      box.className = 'text-xs rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600';
+    }
+    try {
+      const resp = await fetch('/api/scan-agent/status', { credentials: 'same-origin' });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const msg = data.error || data.tips || (`HTTP ${resp.status}`);
+        if (box) {
+          box.innerHTML = '<strong class="text-red-700">Could not reach Scan Agent status.</strong> ' +
+            _escapeHtml(Array.isArray(msg) ? msg.join(' ') : String(msg));
+          box.className = 'text-xs rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-700';
+        }
+        if (goBtn) goBtn.disabled = false;
+        return false;
+      }
+      const tips = (data.tips || []).filter(Boolean);
+      const tipBlob = tips.join(' ').toLowerCase();
+      const scannerReady = !!(data.ok || data.scanner_found || data.scanner_ok);
+      const agentUp = !!(data.reachable || data.agent_ok || data.status === 'ok' || data.code_rev);
+      if (scannerReady) {
+        const names = data.scanner_names ||
+          ((data.scanners || []).map(s => s.name).filter(Boolean).join(' | ')) ||
+          'scanner ready';
+        if (box) {
+          box.innerHTML = '<strong class="text-green-700">Scanner ready:</strong> ' +
+            _escapeHtml(names) +
+            (tips.length ? '<br><span class="text-amber-700">' + tips.map(_escapeHtml).join('<br>') + '</span>' : '');
+          box.className = 'text-xs rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-slate-700';
+        }
+        if (goBtn) goBtn.disabled = false;
+        return true;
+      }
+      // Stale TaxOps proxy called /health without ?wia=1 — scanner is often fine on reception.
+      if (tipBlob.indexOf('not probed') >= 0 || data.wia_probed === false) {
+        if (box) {
+          box.innerHTML = '<strong class="text-amber-800">Agent is up; TaxOps did not probe WIA.</strong> ' +
+            'Restart <span class="font-mono">TaxOpsService</span> on the server so status uses <span class="font-mono">/health?wia=1</span>. ' +
+            'On reception, diagnostic WIA probe should show EPSON ready.' +
+            (data.agent_url ? '<br><span class="text-slate-500">Agent: ' + _escapeHtml(data.agent_url) + '</span>' : '');
+          box.className = 'text-xs rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-slate-700';
+        }
+        if (goBtn) goBtn.disabled = false;
+        return false;
+      }
+      if (agentUp) {
+        const msg = tips.length
+          ? tips.join(' ')
+          : (data.scanner_error || 'Agent is up but WIA sees no scanner yet.');
+        if (box) {
+          box.innerHTML = '<strong class="text-amber-800">Scan Agent is up — scanner not ready.</strong> ' +
+            _escapeHtml(msg) +
+            (data.code_rev ? '<br><span class="text-slate-500">build: ' + _escapeHtml(data.code_rev) + '</span>' : '') +
+            (data.agent_url ? '<br><span class="text-slate-500">Agent: ' + _escapeHtml(data.agent_url) + '</span>' : '');
+          box.className = 'text-xs rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-slate-700';
+        }
+        if (goBtn) goBtn.disabled = false;
+        return false;
+      }
+      const msg = tips.length
+        ? tips.join(' ')
+        : (data.scanner_error || 'Scan Agent not reachable.');
+      if (box) {
+        box.innerHTML = '<strong class="text-red-700">Scanner not ready.</strong> ' +
+          _escapeHtml(msg) +
+          (data.agent_url ? '<br><span class="text-slate-500">Agent: ' + _escapeHtml(data.agent_url) + '</span>' : '');
+        box.className = 'text-xs rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-slate-700';
+      }
+      if (goBtn) goBtn.disabled = false;
+      return false;
+    } catch (err) {
+      if (box) {
+        box.textContent = 'Could not check scanner status: ' + (err.message || err);
+        box.className = 'text-xs rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-700';
+      }
+      return false;
+    }
+  }
+
+  function _escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function startScanCountdown() {
+    const statusEl = document.getElementById('scan-modal-status');
+    let n = 3;
+    if (statusEl) {
+      statusEl.classList.remove('hidden');
+      statusEl.className = 'text-xs font-medium text-slate-600';
+      statusEl.textContent = `Starting scan in ${n}… (Skip to cancel)`;
+    }
+    _scanAutoTimer = setInterval(() => {
+      n -= 1;
+      if (_scanAutoCancelled) {
+        clearInterval(_scanAutoTimer);
+        _scanAutoTimer = null;
+        return;
+      }
+      if (n <= 0) {
+        clearInterval(_scanAutoTimer);
+        _scanAutoTimer = null;
+        runScanAndUpload();
+        return;
+      }
+      if (statusEl) statusEl.textContent = `Starting scan in ${n}… (Skip to cancel)`;
+    }, 1000);
+  }
+
+  async function runScanAndUpload() {
+    if (_scanAutoTimer) { clearInterval(_scanAutoTimer); _scanAutoTimer = null; }
+    const statusEl = document.getElementById('scan-modal-status');
+    const goBtn = document.getElementById('scan-modal-go');
+    const docType = (document.getElementById('scan-doc-type') || {}).value || 'unknown';
+    const handwriting = !!(document.getElementById('scan-handwriting') || {}).checked;
+    if (statusEl) {
+      statusEl.classList.remove('hidden');
+      statusEl.textContent = 'Scanning from Epson… keep pages in the feeder.';
+      statusEl.className = 'text-xs font-medium text-slate-600';
+    }
+    if (goBtn) goBtn.disabled = true;
+    try {
+      const up = await _csrfFetch(`/api/return/${RETURN_ID}/scan-intake`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handwriting, doc_type: docType }),
+      });
+      const data = await up.json().catch(() => ({}));
+      if (!up.ok) {
+        const tips = (data.tips || []).join(' ');
+        throw new Error((data.error || 'Scan failed') + (tips ? ' — ' + tips : ''));
+      }
+      const pageCount = data.page_count != null ? data.page_count : '?';
+      const logNum = data.log_number || LOG_NUMBER || '';
+      if (statusEl) {
+        statusEl.textContent = `Uploaded ${pageCount} page(s)` +
+          (logNum ? ` — LOG:${logNum}` : '') +
+          (data.label_printed ? ' (label printed)' : '') +
+          (docType === 'unknown' || data.auto_sort ? ' — sorting in background' : '');
+        statusEl.className = 'text-xs font-medium text-green-700';
+      }
+      loadDocuments();
+      loadFormData();
+      setTimeout(closeScanModal, 1500);
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete('scan');
+        window.history.replaceState({}, '', u.pathname + u.search);
+      } catch (e) {}
+    } catch (err) {
+      if (statusEl) {
+        statusEl.textContent = err.message || String(err);
+        statusEl.className = 'text-xs font-medium text-red-600';
+      }
+      refreshScanAgentHealth();
+    } finally {
+      if (goBtn) goBtn.disabled = false;
+    }
+  }
+
   function deleteDocument(docId) {
     if (!confirm('Remove this document from the return? The file will be kept on disk.')) return;
     _csrfFetch(`/return/${RETURN_ID}/documents/${docId}/delete`, { method: 'POST' })
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) loadDocuments();
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (ok && data.success) loadDocuments();
+        else if (!ok) alert(data.error || 'Delete not allowed');
       });
   }
-
   function syncDocToDrake(docId, btn) {
     if (!DRAKE_SYNC_ENABLED) return;
     const orig = btn.textContent;
@@ -2982,6 +3266,9 @@
 
     loadDocuments();
     loadFormData();
+    if (CAN_SCAN && PROMPT_SCAN) {
+      openScanModal({ autoStart: true });
+    }
   })();
 
   window.confirmExtraction = confirmExtraction;
@@ -2990,6 +3277,11 @@
   window.printSticker = printSticker;
   window.syncDocToDrake = syncDocToDrake;
   window.toggleDocFilter = toggleDocFilter;
+  window.openScanModal = openScanModal;
+  window.skipScanModal = skipScanModal;
+  window.runScanAndUpload = runScanAndUpload;
+  window.searchDocuments = searchDocuments;
+  window.clearDocSearch = clearDocSearch;
   window.toggleExtractionReview = toggleExtractionReview;
   window.updateDocType = updateDocType;
   window.addMissingDoc = addMissingDoc;
