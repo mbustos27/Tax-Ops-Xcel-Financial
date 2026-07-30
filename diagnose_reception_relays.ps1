@@ -4,25 +4,15 @@
   One-shot diagnostic for TaxOps reception: print relay (8765) + scan agent (8766).
 
 .DESCRIPTION
-  Run ON the reception PC (printer + Epson attached):
+  Run ON the reception PC:
     \\Xcel-server\taxops\diagnose_reception_relays.bat
 
-  - Collects environment, ports, services, Python, packages, tokens (masked)
-  - Ensures print relay is listening + /health OK (starts it if down)
-  - Ensures scan agent is listening + /health shows com_sta_v4 (starts it if down)
-  - Writes a full report to C:\TaxOps\diagnostics\ and opens it
+  Writes C:\TaxOps\diagnostics\reception_relays_*.txt and opens Notepad.
 
-.PARAMETER ShareRoot
-  Folder that contains taxops\ and start_*.bat (default: script directory).
-
-.PARAMETER StartMissing
-  Attempt to start print/scan relays if they are down (default: true).
-
-.PARAMETER NoStart
-  Diagnose only - do not start anything.
-
-.PARAMETER OpenLog
-  Open the report in Notepad when finished (default: true).
+  Milestone 1 outcomes:
+  - Healthy agents already up  -> FAIL=0 WARN=0 RESULT: PASS
+  - Agents were down, started  -> FAIL=0 WARN=2 RESULT: PASS
+  - Epson unplugged            -> exactly one FAIL naming the scanner
 #>
 param(
     [string]$ShareRoot = "",
@@ -30,18 +20,17 @@ param(
     [switch]$NoOpenLog,
     [int]$PrintPort = 8765,
     [int]$ScanPort = 8766,
-    [string]$PrinterName = "4BARCODE 4B-2054A"
+    [string]$PrinterName = "4BARCODE 4B-2054A",
+    [string]$ExpectedEpson = "EPSON ES-500"
 )
 
 $ErrorActionPreference = "Continue"
 $StartMissing = -not $NoStart
 $OpenLog = -not $NoOpenLog
-# ---------- paths / log ----------
+
 $scriptPath = $MyInvocation.MyCommand.Path
 if (-not $scriptPath) { $scriptPath = "\\Xcel-server\taxops\diagnose_reception_relays.ps1" }
-if (-not $ShareRoot) {
-    $ShareRoot = Split-Path -Parent $scriptPath
-}
+if (-not $ShareRoot) { $ShareRoot = Split-Path -Parent $scriptPath }
 $ShareRoot = $ShareRoot.Trim().TrimEnd('\')
 if ($ShareRoot -match '[<>\|\?\*"]') {
     Write-Host "FATAL: Illegal characters in ShareRoot: $ShareRoot" -ForegroundColor Red
@@ -69,24 +58,17 @@ function Section([string]$Title) {
     L ""
     L ("======== {0} ========" -f $Title)
 }
-function Ok([string]$Msg) {
-    $script:ok++
-    L ("  [OK]   {0}" -f $Msg)
-}
-function Warn([string]$Msg) {
-    $script:warn++
-    L ("  [WARN] {0}" -f $Msg)
-}
-function Bad([string]$Msg) {
-    $script:fail++
-    L ("  [FAIL] {0}" -f $Msg)
-}
+function Ok([string]$Msg) { $script:ok++; L ("  [OK]   {0}" -f $Msg) }
+function Warn([string]$Msg) { $script:warn++; L ("  [WARN] {0}" -f $Msg) }
+function Bad([string]$Msg) { $script:fail++; L ("  [FAIL] {0}" -f $Msg) }
 function Info([string]$Msg) { L ("  [..]   {0}" -f $Msg) }
+
 function Mask([string]$s) {
     if (-not $s) { return "(empty)" }
     if ($s.Length -le 8) { return ("***len={0}***" -f $s.Length) }
     return ("{0}...{1} (len={2})" -f $s.Substring(0, 4), $s.Substring($s.Length - 4), $s.Length)
 }
+
 function Save-Log {
     $text = ($script:lines -join "`r`n") + "`r`n"
     Set-Content -LiteralPath $logPath -Value $text -Encoding UTF8
@@ -103,11 +85,17 @@ function Get-DotEnv([string]$Path, [string]$Key) {
     return ""
 }
 
+function Test-IsAdmin {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $p = New-Object Security.Principal.WindowsPrincipal($id)
+    return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Find-Python {
     $candidates = @(
         "$env:LOCALAPPDATA\Programs\Python\Python314\python.exe",
+        "C:\Users\Windows 10\AppData\Local\Programs\Python\Python314\python.exe",
         "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe",
-        "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
         "C:\TaxOps\taxops\.venv\Scripts\python.exe",
         (Join-Path $ShareRoot "taxops\.venv\Scripts\python.exe")
     )
@@ -115,8 +103,8 @@ function Find-Python {
         if ($c -and (Test-Path -LiteralPath $c) -and ($c -notmatch "WindowsApps")) { return $c }
     }
     try {
-        $py = & py -3 -c "import sys; print(sys.executable)" 2>$null
-        if ($py -and (Test-Path $py) -and ($py -notmatch "WindowsApps")) { return $py.Trim() }
+        $out = & py -3 -c "import sys; print(sys.executable)" 2>$null
+        if ($out -and (Test-Path $out.Trim()) -and ($out -notmatch "WindowsApps")) { return $out.Trim() }
     } catch {}
     $cmd = Get-Command python.exe -EA SilentlyContinue
     if ($cmd -and $cmd.Source -notmatch "WindowsApps") { return $cmd.Source }
@@ -129,7 +117,6 @@ function Get-Listeners([int]$Port) {
         $rows = @(Get-NetTCPConnection -LocalPort $Port -State Listen -EA SilentlyContinue)
     } catch {}
     if (-not $rows) {
-        # fallback netstat parse
         $raw = netstat -ano 2>$null | Select-String (":{0}\s+.*LISTENING" -f $Port)
         foreach ($m in $raw) {
             if ($m.Line -match "\s+(\d+)\s*$") {
@@ -138,6 +125,46 @@ function Get-Listeners([int]$Port) {
         }
     }
     return $rows
+}
+
+function Get-ProcessMeta([int]$ProcId) {
+    try {
+        $p = Get-Process -Id $ProcId -EA Stop
+        $path = ""
+        try { $path = $p.Path } catch {}
+        if (-not $path) {
+            try {
+                $path = (Get-CimInstance Win32_Process -Filter ("ProcessId={0}" -f $ProcId) -EA SilentlyContinue).ExecutablePath
+            } catch {}
+        }
+        return [pscustomobject]@{
+            Id        = $ProcId
+            Name      = $p.ProcessName
+            Path      = $path
+            StartTime = $p.StartTime
+        }
+    } catch {
+        return [pscustomobject]@{ Id = $ProcId; Name = "?"; Path = ""; StartTime = $null }
+    }
+}
+
+function Stop-Port([int]$Port) {
+    $killed = @()
+    foreach ($row in (Get-Listeners $Port)) {
+        $procId = [int]$row.OwningProcess
+        if ($procId -le 4) { continue }
+        $meta = Get-ProcessMeta $procId
+        Warn ("stale listener on {0} killed - PID={1} name={2} path={3} started={4}" -f `
+            $Port, $meta.Id, $meta.Name, $meta.Path, $meta.StartTime)
+        try {
+            Stop-Process -Id $procId -Force -EA Stop
+            $killed += $procId
+        } catch {
+            Warn ("Could not kill PID {0} on {1}: {2}" -f $procId, $Port, $_.Exception.Message)
+        }
+    }
+    if ($killed.Count) { Start-Sleep -Seconds 2 }
+    return $killed
 }
 
 function Invoke-JsonGet([string]$Url, [hashtable]$Headers, [int]$TimeoutSec = 5) {
@@ -157,23 +184,6 @@ function Invoke-JsonGet([string]$Url, [hashtable]$Headers, [int]$TimeoutSec = 5)
     }
 }
 
-function Stop-Port([int]$Port) {
-    $killed = @()
-    foreach ($row in (Get-Listeners $Port)) {
-        $procId = [int]$row.OwningProcess
-        if ($procId -le 4) { continue }
-        try {
-            Stop-Process -Id $procId -Force -EA Stop
-            $killed += $procId
-            Info ("Killed PID {0} on port {1}" -f $procId, $Port)
-        } catch {
-            Warn ("Could not kill PID {0} on {1}: {2}" -f $procId, $Port, $_.Exception.Message)
-        }
-    }
-    if ($killed.Count) { Start-Sleep -Seconds 2 }
-    return $killed
-}
-
 # ---------- header ----------
 L "TaxOps reception relay diagnostic"
 L ("Started: {0}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"))
@@ -182,22 +192,20 @@ L ("ShareRoot: {0}" -f $ShareRoot)
 L ("StartMissing: {0}" -f $StartMissing)
 
 Section "Machine"
+$isAdmin = Test-IsAdmin
 try {
     L ("  Computer: {0}" -f $env:COMPUTERNAME)
     L ("  User:     {0}\{1}" -f $env:USERDOMAIN, $env:USERNAME)
     L ("  OS:       {0}" -f [Environment]::OSVersion.VersionString)
     L ("  PS:       {0}" -f $PSVersionTable.PSVersion)
-    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $prin = New-Object Security.Principal.WindowsPrincipal($id)
-    $isAdmin = $prin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     L ("  Admin:    {0}" -f $isAdmin)
     try {
         $ips = Get-NetIPAddress -AddressFamily IPv4 -EA SilentlyContinue |
-            Where-Object { $_.IPAddress -notlike "127.*" } |
+            Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } |
             Select-Object -ExpandProperty IPAddress
         L ("  IPv4:     {0}" -f (($ips | Select-Object -Unique) -join ", "))
     } catch {
-        L ("  IPv4:     (unavailable) {0}" -f $_.Exception.Message)
+        L ("  IPv4:     (unavailable)")
     }
 } catch {
     Bad ("Machine info failed: {0}" -f $_.Exception.Message)
@@ -224,11 +232,19 @@ if (-not $py) {
     Bad "No usable python.exe (avoid Windows Store stub)"
 } else {
     Ok ("Python: {0}" -f $py)
-    try {
-        $ver = & $py -c 'import sys; print("{0}.{1}.{2}".format(*sys.version_info[:3]))' 2>&1
-        Info ("Version: {0}" -f $ver)
-    } catch {
-        Warn ("Version probe failed: {0}" -f $_.Exception.Message)
+    # 1c: use --version (no fragile -c quoting)
+    $verOut = & $py --version 2>&1 | Out-String
+    $verOut = $verOut.Trim()
+    Info ("Version: {0}" -f $verOut)
+    if ($verOut -match 'Python\s+(\d+)\.(\d+)') {
+        $maj = [int]$Matches[1]; $min = [int]$Matches[2]
+        if ($maj -eq 3 -and $min -eq 14) {
+            Ok "Python 3.14 required major.minor"
+        } else {
+            Bad ("Python {0}.{1} found - reception requires 3.14" -f $maj, $min)
+        }
+    } else {
+        Bad ("Could not parse python --version output: {0}" -f $verOut)
     }
     foreach ($mod in @("flask", "win32print", "win32com.client", "pythoncom", "PIL")) {
         & $py -c "import $mod" 2>$null
@@ -237,21 +253,16 @@ if (-not $py) {
     }
 }
 
-# ---------- tokens ----------
 Section "Tokens (masked)"
 $envTaxops = Join-Path $ShareRoot "taxops\.env"
 $tokenPrint = $env:FILETRACK_RELAY_TOKEN
 if (-not $tokenPrint) { $tokenPrint = Get-DotEnv $envTaxops "FILETRACK_RELAY_TOKEN" }
-if (-not $tokenPrint) { $tokenPrint = "zv8z42FQcfufRAvQDrJMXMXgb7Mpttdq" }  # start_print_relay.bat default
-
 $tokenScan = $env:SCAN_AGENT_TOKEN
 if (-not $tokenScan) { $tokenScan = Get-DotEnv (Join-Path "C:\TaxOps\ScanAgent" "token.env") "SCAN_AGENT_TOKEN" }
 if (-not $tokenScan) { $tokenScan = Get-DotEnv $envTaxops "SCAN_AGENT_TOKEN" }
-
 Info ("FILETRACK_RELAY_TOKEN: {0}" -f (Mask $tokenPrint))
 if ($tokenScan) { Info ("SCAN_AGENT_TOKEN:      {0}" -f (Mask $tokenScan)) }
 else { Bad "SCAN_AGENT_TOKEN missing - run scan_agent_wizard.bat once" }
-
 $printerEnv = $env:FILETRACK_PRINTER
 if (-not $printerEnv) { $printerEnv = Get-DotEnv $envTaxops "FILETRACK_PRINTER" }
 if (-not $printerEnv) { $printerEnv = $PrinterName }
@@ -265,22 +276,16 @@ Section "PRINT RELAY (TCP $PrintPort)"
 $printSvc = Get-Service -Name "FiletrackRelay" -EA SilentlyContinue
 if ($printSvc) {
     Info ("Service FiletrackRelay: {0}" -f $printSvc.Status)
-    if ($printSvc.Status -ne "Running" -and $StartMissing) {
-        try {
-            Start-Service FiletrackRelay -EA Stop
-            Start-Sleep 2
-            Ok "Started FiletrackRelay service"
-        } catch {
-            Warn ("Could not start FiletrackRelay service: {0}" -f $_.Exception.Message)
-        }
-    }
 } else {
-    Info "No FiletrackRelay Windows service (console/startup bat is OK)"
+    Info "No FiletrackRelay Windows service (console/startup bat is OK until M2)"
 }
 
 $printHealthUrl = "http://127.0.0.1:{0}/health" -f $PrintPort
+$printStartedByUs = $false
 $h = Invoke-JsonGet $printHealthUrl @{} 4
-if ($h.ok) {
+$printFirstOk = [bool]$h.ok
+
+if ($printFirstOk) {
     Ok ("Print /health HTTP {0}" -f $h.status)
     Info ("Body: {0}" -f $h.body)
     if ($h.json) {
@@ -291,11 +296,15 @@ if ($h.ok) {
         }
     }
 } else {
-    Bad ("Print /health failed: {0}" -f $h.error)
+    # 1b: do not FAIL yet - may start successfully
+    Info ("Print /health first probe failed: {0}" -f $h.error)
     $listeners = Get-Listeners $PrintPort
     if ($listeners.Count) {
-        Info ("Port {0} IS listening (PIDs: {1}) but health failed - wrong process?" -f `
-            $PrintPort, (($listeners | ForEach-Object { $_.OwningProcess }) -join ","))
+        foreach ($row in $listeners) {
+            $meta = Get-ProcessMeta ([int]$row.OwningProcess)
+            Warn ("stale listener on {0} (health failed) - PID={1} name={2} path={3} started={4}" -f `
+                $PrintPort, $meta.Id, $meta.Name, $meta.Path, $meta.StartTime)
+        }
     } else {
         Info ("Port {0} not listening" -f $PrintPort)
     }
@@ -305,32 +314,33 @@ if ($h.ok) {
         $printBat = Join-Path $ShareRoot "start_print_relay.bat"
         $appDir = Join-Path $ShareRoot "taxops"
         if ($py -and (Test-Path (Join-Path $appDir "filetrack\relay\server.py"))) {
+            if ($tokenPrint) { $env:FILETRACK_RELAY_TOKEN = $tokenPrint }
             $env:FILETRACK_PRINTER = $printerEnv
-            $env:FILETRACK_RELAY_TOKEN = $tokenPrint
             $env:FILETRACK_RELAY_HOST = "0.0.0.0"
             $env:FILETRACK_RELAY_PORT = "$PrintPort"
             $outLog = Join-Path $diagRoot ("print_relay_stdout_{0}.txt" -f $stamp)
             $errLog = Join-Path $diagRoot ("print_relay_stderr_{0}.txt" -f $stamp)
-            $arg = "-m filetrack.relay.server --port $PrintPort"
             try {
                 $proc = Start-Process -FilePath $py `
-                    -ArgumentList $arg `
+                    -ArgumentList @("-m", "filetrack.relay.server", "--port", "$PrintPort") `
                     -WorkingDirectory $appDir `
                     -RedirectStandardOutput $outLog `
                     -RedirectStandardError $errLog `
                     -WindowStyle Minimized `
                     -PassThru
-                Info ("Started PID {0} (logs {1} / {2})" -f $proc.Id, $outLog, $errLog)
+                Info ("Started PID {0}" -f $proc.Id)
+                $printStartedByUs = $true
             } catch {
-                Bad ("Start-Process print relay failed: {0}" -f $_.Exception.Message)
                 if (Test-Path $printBat) {
-                    Info "Fallback: start_print_relay.bat visible window"
                     Start-Process -FilePath $printBat -WorkingDirectory $ShareRoot
+                    $printStartedByUs = $true
+                } else {
+                    Bad ("Cannot start print relay: {0}" -f $_.Exception.Message)
                 }
             }
         } elseif (Test-Path $printBat) {
             Start-Process -FilePath $printBat -WorkingDirectory $ShareRoot
-            Info "Launched start_print_relay.bat"
+            $printStartedByUs = $true
         } else {
             Bad "Cannot start print relay - no python path / bat"
         }
@@ -339,12 +349,12 @@ if ($h.ok) {
             Start-Sleep -Seconds 1
             $h = Invoke-JsonGet $printHealthUrl @{} 3
             if ($h.ok) { break }
-            if ($i % 5 -eq 0) { Info ("Waiting print health... {0}/20" -f $i) }
         }
         if ($h.ok) {
-            Ok ("Print relay UP after start - {0}" -f $h.body)
+            Warn "Print relay was not running; started by diagnostic"
+            Info ("Body: {0}" -f $h.body)
         } else {
-            Bad ("Print relay still down after start: {0}" -f $h.error)
+            Bad ("Print /health failed after start attempt: {0}" -f $h.error)
             $errLog2 = Get-ChildItem $diagRoot -Filter "print_relay_stderr_*.txt" -EA SilentlyContinue |
                 Sort-Object LastWriteTime -Descending | Select-Object -First 1
             if ($errLog2) {
@@ -352,10 +362,11 @@ if ($h.ok) {
                 Get-Content $errLog2.FullName -Tail 40 -EA SilentlyContinue | ForEach-Object { L ("    {0}" -f $_) }
             }
         }
+    } else {
+        Bad ("Print /health failed (NoStart): {0}" -f $h.error)
     }
 }
 
-# Printer list via Python (extra detail)
 if ($py) {
     Info "Enumerating Windows printers via win32print..."
     try {
@@ -383,15 +394,13 @@ $scanLocal = "C:\TaxOps\ScanAgent\app\scan_agent\server.py"
 $scanApp = "C:\TaxOps\ScanAgent\app"
 if (Test-Path -LiteralPath $scanLocal) {
     Ok ("Local server.py: {0}" -f $scanLocal)
-    $revLine = Select-String -Path $scanLocal -Pattern "REQUIRED_CODE_REV" | Select-Object -First 1
-    if ($revLine) { Info ("Local: {0}" -f $revLine.Line.Trim()) }
     if (Select-String -Path $scanLocal -Pattern "com_sta_v4" -SimpleMatch -Quiet) {
         Ok "Local copy contains com_sta_v4"
     } else {
         Bad "Local copy missing com_sta_v4 - re-run GO_SCAN_AGENT.bat to re-sync"
     }
 } else {
-    Warn "No local scan_agent copy yet (C:\TaxOps\ScanAgent\app\...) - will sync on start"
+    Warn "No local scan_agent copy yet - will sync on start"
 }
 
 $shareScan = Join-Path $ShareRoot "taxops\scan_agent\server.py"
@@ -405,9 +414,7 @@ if (Test-Path -LiteralPath $shareScan) {
 
 $scanSvc = Get-Service -Name "ScanAgent" -EA SilentlyContinue
 if ($scanSvc) {
-    Info ("Service ScanAgent: {0}" -f $scanSvc.Status)
-} else {
-    Info "No ScanAgent Windows service (visible GO_SCAN_AGENT window is OK)"
+    Info ("Service ScanAgent: {0} (session-0 service is NOT the interactive WIA path)" -f $scanSvc.Status)
 }
 
 $scanHeaders = @{}
@@ -415,54 +422,52 @@ if ($tokenScan) { $scanHeaders["X-Scan-Agent-Token"] = $tokenScan }
 
 $scanHealthUrl = "http://127.0.0.1:{0}/health" -f $ScanPort
 $sh = Invoke-JsonGet $scanHealthUrl $scanHeaders 5
-if ($sh.ok) {
+$scanFirstOk = [bool]$sh.ok
+
+if ($scanFirstOk) {
     Ok ("Scan /health HTTP {0}" -f $sh.status)
     Info ("Body: {0}" -f $sh.body)
-    $rev = $null
-    if ($sh.json) { $rev = [string]$sh.json.code_rev }
+    $rev = if ($sh.json) { [string]$sh.json.code_rev } else { "" }
     if ($rev -eq "com_sta_v4") { Ok "Running build com_sta_v4" }
-    elseif ($rev) { Bad ("Running OLD build code_rev={0} - need com_sta_v4; close agent windows + GO_SCAN_AGENT.bat" -f $rev) }
+    elseif ($rev) { Bad ("Running OLD build code_rev={0} - need com_sta_v4" -f $rev) }
     else { Bad "No code_rev in health - very old agent" }
 
     if ($sh.json -and $sh.json.com_sta -eq $true) { Ok "com_sta=true (STA pump initialized)" }
     elseif ($sh.json -and ($sh.json.PSObject.Properties.Name -contains "com_sta")) {
         Bad ("com_sta={0} error={1}" -f $sh.json.com_sta, $sh.json.com_error)
     }
-
-    if ($sh.body -match "CoInitialize") {
-        Bad "Health body still mentions CoInitialize - old process or COM still broken"
-    }
+    # Do NOT substring-match CoInitialize - com_detail success is "CoInitializeEx hr=None"
 } else {
-    Bad ("Scan /health failed: {0}" -f $sh.error)
+    Info ("Scan /health first probe failed: {0}" -f $sh.error)
     if ($sh.status -eq 401) {
         Bad "Unauthorized - SCAN_AGENT_TOKEN mismatch vs running agent"
     }
     $listeners = Get-Listeners $ScanPort
     if ($listeners.Count) {
-        Info ("Port {0} listening PIDs: {1}" -f $ScanPort, (($listeners | ForEach-Object OwningProcess) -join ","))
+        foreach ($row in $listeners) {
+            $meta = Get-ProcessMeta ([int]$row.OwningProcess)
+            Warn ("stale listener on {0} (health failed) - PID={1} name={2} path={3} started={4}" -f `
+                $ScanPort, $meta.Id, $meta.Name, $meta.Path, $meta.StartTime)
+        }
+        if ($StartMissing) { [void](Stop-Port $ScanPort) }
     } else {
         Info ("Port {0} not listening" -f $ScanPort)
     }
 
-    if ($StartMissing) {
-        Info "Attempting to start scan agent via GO_SCAN_AGENT / start_scan_agent..."
-        $goBat = Join-Path $ShareRoot "GO_SCAN_AGENT.bat"
+    if ($StartMissing -and $sh.status -ne 401) {
+        Info "Attempting to start scan agent..."
         $startBat = Join-Path $ShareRoot "start_scan_agent.bat"
-        # Kill stale first so new code can bind
-        [void](Stop-Port $ScanPort)
         if (Test-Path -LiteralPath $startBat) {
             try {
                 Start-Process -FilePath "cmd.exe" `
                     -ArgumentList @("/c", "call `"$startBat`"") `
                     -WorkingDirectory $ShareRoot
-                Info "Launched start_scan_agent.bat (visible window - leave it open)"
+                Info "Launched start_scan_agent.bat"
             } catch {
                 Bad ("Failed to launch start_scan_agent.bat: {0}" -f $_.Exception.Message)
             }
-        } elseif (Test-Path -LiteralPath $goBat) {
-            Start-Process -FilePath $goBat -WorkingDirectory $ShareRoot
         } else {
-            Bad "start_scan_agent.bat / GO_SCAN_AGENT.bat missing"
+            Bad "start_scan_agent.bat missing"
         }
 
         for ($i = 1; $i -le 45; $i++) {
@@ -470,44 +475,47 @@ if ($sh.ok) {
             $sh = Invoke-JsonGet $scanHealthUrl $scanHeaders 3
             if ($sh.ok -and $sh.body -match "com_sta_v4") { break }
             if ($i % 5 -eq 0) {
-                Info ("Waiting scan health com_sta_v4... {0}/45  last={1}" -f $i, $(if ($sh.ok) { "HTTP OK" } else { $sh.error }))
+                Info ("Waiting scan health com_sta_v4... {0}/45" -f $i)
             }
         }
         if ($sh.ok -and $sh.body -match "com_sta_v4") {
-            Ok ("Scan agent UP - {0}" -f $sh.body)
+            Warn "Scan agent was not running; started by diagnostic"
+            Info ("Body: {0}" -f $sh.body)
         } elseif ($sh.ok) {
             Bad ("Scan agent answered but not com_sta_v4: {0}" -f $sh.body)
         } else {
-            Bad ("Scan agent still down: {0}" -f $sh.error)
-            Info "Look at the TaxOps Scan Agent window for [FAIL] lines (illegal path / no module)."
-            if (Test-Path $scanApp) {
-                Info ("Local app dir listing ({0}):" -f $scanApp)
-                Get-ChildItem $scanApp -EA SilentlyContinue | ForEach-Object { L ("    {0}" -f $_.Name) }
-                $agentDir = Join-Path $scanApp "scan_agent"
-                if (Test-Path $agentDir) {
-                    Get-ChildItem $agentDir -EA SilentlyContinue | ForEach-Object { L ("    scan_agent\{0}" -f $_.Name) }
-                }
-            }
+            Bad ("Scan /health failed after start attempt: {0}" -f $sh.error)
         }
+    } elseif (-not $StartMissing) {
+        Bad ("Scan /health failed (NoStart): {0}" -f $sh.error)
     }
 }
 
-# Optional WIA probe (short)
+# Optional WIA probe - field-based (1a)
+$wiaFailScanner = $false
 if ($sh.ok -and $tokenScan) {
-    Section "SCAN WIA probe (?wia=1, 6s cap)"
+    Section "SCAN WIA probe (?wia=1)"
     $wiaUrl = "http://127.0.0.1:{0}/health?wia=1" -f $ScanPort
     $wh = Invoke-JsonGet $wiaUrl $scanHeaders 8
-    if ($wh.ok) {
+    if ($wh.ok -and $wh.json) {
+        $wia = $wh.json
         Info ("WIA body: {0}" -f $wh.body)
-        if ($wh.body -match "CoInitialize") {
-            Bad "WIA path still reports CoInitialize"
-        } elseif ($wh.json -and ($wh.json.scanner_found -or $wh.json.scanner_ok)) {
-            Ok ("Scanner found: {0}" -f $wh.json.scanner_names)
+        # Success breadcrumb may contain the text CoInitializeEx - ignore string match.
+        if ($wia.wia_probed -and $wia.com_sta -and $wia.scanner_ok -and $wia.scanner_found) {
+            Ok ("WIA probe: {0}" -f $wia.scanner_names)
+            $namesUpper = ([string]$wia.scanner_names).ToUpperInvariant()
+            if ($ExpectedEpson -and ($namesUpper -notmatch [regex]::Escape($ExpectedEpson.ToUpperInvariant()))) {
+                Warn ("com_sta OK but expected Epson '{0}' absent from scanner_names={1}" -f `
+                    $ExpectedEpson, $wia.scanner_names)
+            }
         } else {
-            Warn "Agent OK but no WIA scanner - power Epson, fix USB (Device Manager), Epson Scan 2"
-            if ($wh.json.scanner_error) { Info ("scanner_error: {0}" -f $wh.json.scanner_error) }
-            if ($wh.json.tips) {
-                foreach ($t in @($wh.json.tips)) { Info ("tip: {0}" -f $t) }
+            $detail = $wia.com_detail
+            if (-not $detail) { $detail = $wia.scanner_error }
+            if (-not $detail) { $detail = $wia.com_error }
+            Bad ("WIA probe failed - scanner not OK (Epson ES-500WII). com_sta=$($wia.com_sta) scanner_ok=$($wia.scanner_ok) scanner_found=$($wia.scanner_found) detail=$detail")
+            $wiaFailScanner = $true
+            if ($wia.tips) {
+                foreach ($t in @($wia.tips)) { Info ("tip: {0}" -f $t) }
             }
         }
     } else {
@@ -515,40 +523,55 @@ if ($sh.ok -and $tokenScan) {
     }
 }
 
-# Epson PnP snapshot
 Section "Epson Device Manager snapshot"
 try {
     $devs = Get-PnpDevice -EA SilentlyContinue | Where-Object {
-        $_.FriendlyName -match "EPSON|Epson|ES-500|ES-400|WIA"
+        $_.FriendlyName -match "EPSON|Epson|ES-500|ES-400"
     }
     if (-not $devs) {
-        Warn "No Epson/WIA-named PnP devices"
+        if (-not $wiaFailScanner) { Warn "No Epson-named PnP devices" }
+        else { Info "No Epson-named PnP devices (already FAILed on WIA probe)" }
     } else {
         foreach ($d in $devs) {
-            $line = "  {0} | Status={1} | Class={2} | Problem={3}" -f `
+            $line = "{0} | Status={1} | Class={2} | Problem={3}" -f `
                 $d.FriendlyName, $d.Status, $d.Class, $d.Problem
-            if ($d.Status -eq "OK") { Ok $line.Trim() } else { Warn $line.Trim() }
+            if ($d.Status -eq "OK") { Ok $line }
+            else { Warn $line }
         }
     }
 } catch {
     Warn ("Get-PnpDevice failed: {0}" -f $_.Exception.Message)
 }
 
-# Firewall
+# 1d Firewall
 Section "Firewall rules"
-foreach ($name in @("TaxOps Print Relay", "TaxOps Scan Agent", "ScanAgent", "FiletrackRelay")) {
-    $rule = Get-NetFirewallRule -DisplayName $name -EA SilentlyContinue | Select-Object -First 1
-    if ($rule) {
-        Info ("{0}: Enabled={1} Action={2}" -f $name, $rule.Enabled, $rule.Action)
+if (-not $isAdmin) {
+    Warn "Firewall rules not enumerated - re-run elevated to verify"
+} else {
+    $needPorts = @($PrintPort, $ScanPort)
+    foreach ($port in $needPorts) {
+        $found = $false
+        try {
+            $rules = Get-NetFirewallRule -Direction Inbound -Enabled True -Action Allow -EA SilentlyContinue
+            foreach ($rule in $rules) {
+                $pf = Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule -EA SilentlyContinue
+                if (-not $pf) { continue }
+                $lp = @($pf.LocalPort)
+                if ($lp -contains "$port" -or $lp -contains $port -or $lp -contains "Any") {
+                    Ok ("Inbound allow for TCP {0}: {1}" -f $port, $rule.DisplayName)
+                    $found = $true
+                    break
+                }
+            }
+        } catch {
+            Warn ("Firewall enum error for {0}: {1}" -f $port, $_.Exception.Message)
+        }
+        if (-not $found) {
+            Bad ("No enabled inbound Allow rule found for TCP {0}" -f $port)
+        }
     }
 }
-try {
-    $ports = Get-NetFirewallPortFilter -EA SilentlyContinue |
-        Where-Object { $_.LocalPort -in @("$PrintPort", "$ScanPort") }
-    # Just note presence via rules is enough; detailed filter can be noisy
-} catch {}
 
-# Import check for scan_agent with local PYTHONPATH
 Section "scan_agent import check (local PYTHONPATH)"
 if ($py -and (Test-Path $scanApp)) {
     $env:PYTHONPATH = $scanApp
@@ -556,21 +579,20 @@ if ($py -and (Test-Path $scanApp)) {
     if ($LASTEXITCODE -eq 0) { Ok ("import scan_agent.server -> {0}" -f ($imp | Out-String).Trim()) }
     else {
         Bad ("import scan_agent failed: {0}" -f ($imp | Out-String).Trim())
-        Info "This is the 'No module named scan_agent' failure mode - sync/PYTHONPATH broken."
     }
 } else {
-    Warn "Skip import check - no local app or python"
+    Info "Skip import check - no local app or python"
 }
 
-# Summary
 Section "SUMMARY"
 L ("  OK={0}  WARN={1}  FAIL={2}" -f $script:ok, $script:warn, $script:fail)
 L ("  Report: {0}" -f $logPath)
 L ("  Latest: {0}" -f $latestPath)
+# PASS when FAIL=0 even if WARN>0 (cold-start WARNs are expected)
 if ($script:fail -eq 0) {
-    L "  RESULT: PASS (relays reachable; check WARNs for scanner/printer hardware)"
+    L "  RESULT: PASS"
 } else {
-    L "  RESULT: FAIL - read [FAIL] lines above; leave relay windows open if started"
+    L "  RESULT: FAIL - read [FAIL] lines above"
     L "  Print start:  start_print_relay.bat"
     L "  Scan start:   GO_SCAN_AGENT.bat   (must show READY com_sta_v4)"
 }
@@ -578,10 +600,8 @@ if ($script:fail -eq 0) {
 Save-Log
 Write-Host ""
 Write-Host ("Full report saved to:`n  {0}" -f $logPath) -ForegroundColor Cyan
-
 if ($OpenLog) {
     try { Start-Process notepad.exe -ArgumentList $logPath } catch {}
 }
-
 if ($script:fail -gt 0) { exit 1 }
 exit 0
