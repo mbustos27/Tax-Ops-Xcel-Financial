@@ -438,8 +438,10 @@ def _scan_pages_wia_impl(*, handwriting: bool = False, max_pages: int = 50) -> l
 
         tmp_path = None
         try:
+            # mkstemp creates an empty file; WIA SaveFile refuses to overwrite.
             fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
             os.close(fd)
+            os.remove(tmp_path)
             image.SaveFile(tmp_path)
             with open(tmp_path, "rb") as fh:
                 pages.append(fh.read())
@@ -461,6 +463,7 @@ def _scan_pages_wia(*, handwriting: bool = False, max_pages: int = 50) -> list[b
         _scan_pages_wia_impl,
         handwriting=handwriting,
         max_pages=max_pages,
+        # Allow ADF wait (~25s) + empty-feeder retries (~16s) + multi-page scan.
         timeout=300.0,
     )
 
