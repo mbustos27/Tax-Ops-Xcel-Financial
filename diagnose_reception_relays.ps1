@@ -543,31 +543,53 @@ try {
     Warn ("Get-PnpDevice failed: {0}" -f $_.Exception.Message)
 }
 
-# 1d Firewall
+# 1d Firewall — require TaxOps-named rules (or LocalPort exactly 8765/8766).
+# Do NOT treat "WFD Driver-only (TCP-In)" / LocalPort=Any as coverage.
 Section "Firewall rules"
 if (-not $isAdmin) {
     Warn "Firewall rules not enumerated - re-run elevated to verify"
 } else {
-    $needPorts = @($PrintPort, $ScanPort)
-    foreach ($port in $needPorts) {
-        $found = $false
+    $need = @(
+        @{ Port = $PrintPort; Names = @("TaxOps Filetrack Print Relay 8765", "TaxOps Print Relay") },
+        @{ Port = $ScanPort;  Names = @("TaxOps Scan Agent 8766", "TaxOps Scan Agent") }
+    )
+    foreach ($item in $need) {
+        $port = $item.Port
+        $foundNamed = $false
+        $foundPort = $false
+        $matched = @()
         try {
-            $rules = Get-NetFirewallRule -Direction Inbound -Enabled True -Action Allow -EA SilentlyContinue
-            foreach ($rule in $rules) {
-                $pf = Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule -EA SilentlyContinue
-                if (-not $pf) { continue }
-                $lp = @($pf.LocalPort)
-                if ($lp -contains "$port" -or $lp -contains $port -or $lp -contains "Any") {
-                    Ok ("Inbound allow for TCP {0}: {1}" -f $port, $rule.DisplayName)
-                    $found = $true
-                    break
+            foreach ($wantName in $item.Names) {
+                $rule = Get-NetFirewallRule -DisplayName $wantName -EA SilentlyContinue |
+                    Where-Object { $_.Enabled -eq $true -and $_.Direction -eq "Inbound" -and $_.Action -eq "Allow" } |
+                    Select-Object -First 1
+                if ($rule) {
+                    $foundNamed = $true
+                    $matched += $wantName
+                }
+            }
+            if (-not $foundNamed) {
+                $rules = Get-NetFirewallRule -Direction Inbound -Enabled True -Action Allow -EA SilentlyContinue
+                foreach ($rule in $rules) {
+                    # Skip noisy inbox defaults that allow Any port
+                    if ($rule.DisplayName -match 'WFD Driver-only|Cast to Device|Delivery Optimization') { continue }
+                    $pf = Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule -EA SilentlyContinue
+                    if (-not $pf) { continue }
+                    $lp = @($pf.LocalPort | ForEach-Object { "$_" })
+                    if ($lp -contains "$port") {
+                        $foundPort = $true
+                        $matched += $rule.DisplayName
+                        break
+                    }
                 }
             }
         } catch {
             Warn ("Firewall enum error for {0}: {1}" -f $port, $_.Exception.Message)
         }
-        if (-not $found) {
-            Bad ("No enabled inbound Allow rule found for TCP {0}" -f $port)
+        if ($foundNamed -or $foundPort) {
+            Ok ("Inbound allow for TCP {0}: {1}" -f $port, ($matched -join ", "))
+        } else {
+            Bad ("No TaxOps inbound Allow rule for TCP {0} - run install_print_relay_service.ps1 / install_scan_agent_task.ps1" -f $port)
         }
     }
 }
