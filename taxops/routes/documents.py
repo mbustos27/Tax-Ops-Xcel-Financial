@@ -712,13 +712,14 @@ def return_scan_intake(return_id: int):
             pdf, page_count = _call_scan_agent(handwriting=handwriting)
         except RuntimeError as exc:
             health = _call_scan_agent_health(timeout=5)
-            tips = [str(exc)]
+            err = str(exc)
+            tips = [err]
             for tip in health.get("tips") or []:
-                if tip and tip not in tips:
+                if tip and tip not in tips and tip != err:
                     tips.append(tip)
-            payload = {"error": str(exc), "tips": tips}
+            payload = {"error": err, "tips": tips[1:]}  # tips beyond the primary error
             for key in ("agent_url", "scanner_found", "scanner_names"):
-                if health.get(key) is not None:
+                if key in health:
                     payload[key] = health[key]
             return jsonify(payload), 502
 

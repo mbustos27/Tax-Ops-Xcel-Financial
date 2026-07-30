@@ -305,8 +305,56 @@ def _set_wia_prop(item: Any, prop_id: int, value: Any) -> None:
         pass
 
 
+def _adf_feed_ready(device: Any) -> bool | None:
+    """Return True/False if Document Handling Status is readable; None if unknown.
+
+    WIA_DPS_DOCUMENT_HANDLING_STATUS (3087): FEED_READY = 0x1.
+    """
+    for key in (3087, "Document Handling Status"):
+        try:
+            status = int(device.Properties(key).Value)
+            return bool(status & 0x1)
+        except Exception:
+            continue
+    return None
+
+
+def _is_adf_empty_error(exc: BaseException) -> bool:
+    """WIA_ERROR_PAPER_EMPTY / 'no documents left in the document feeder'."""
+    blob = str(exc).lower()
+    if "no documents left" in blob or "paper empty" in blob:
+        return True
+    if "document feeder" in blob and ("no document" in blob or "empty" in blob):
+        return True
+    # HRESULT WIA_ERROR_PAPER_EMPTY = 0x80210003 = -2145320957
+    if "-2145320957" in blob or "80210003" in blob:
+        return True
+    return False
+
+
+def _wait_for_adf_pages(device: Any, *, timeout_sec: float = 25.0, poll_sec: float = 0.5) -> None:
+    """Give staff time to load the feeder before the first Transfer."""
+    import time
+
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        ready = _adf_feed_ready(device)
+        if ready is True:
+            logger.info("scan_agent: ADF FEED_READY")
+            return
+        if ready is False:
+            logger.debug("scan_agent: waiting for pages in ADF…")
+        time.sleep(poll_sec)
+    logger.info(
+        "scan_agent: ADF wait timed out after %.0fs — attempting Transfer anyway",
+        timeout_sec,
+    )
+
+
 def _scan_pages_wia_impl(*, handwriting: bool = False, max_pages: int = 50) -> list[bytes]:
     """Must run on the STA pump thread."""
+    import time
+
     try:
         import win32com.client  # type: ignore
     except ImportError as exc:
@@ -336,6 +384,9 @@ def _scan_pages_wia_impl(*, handwriting: bool = False, max_pages: int = 50) -> l
     except Exception:
         pass
 
+    # Staff often open the modal before pages are seated — wait for FEED_READY.
+    _wait_for_adf_pages(device, timeout_sec=25.0, poll_sec=0.5)
+
     if device.Items.Count < 1:
         raise ScanError("Scanner connected but exposes no WIA items")
 
@@ -351,16 +402,39 @@ def _scan_pages_wia_impl(*, handwriting: bool = False, max_pages: int = 50) -> l
     jpeg_fmt = "{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}"
     pages: list[bytes] = []
 
+    empty_retries = 8
+    empty_delay_sec = 2.0
+
     for _ in range(max_pages):
-        try:
-            image = item.Transfer(jpeg_fmt)
-        except Exception as exc:
-            if pages:
+        image = None
+        last_exc: BaseException | None = None
+        for attempt in range(empty_retries):
+            try:
+                image = item.Transfer(jpeg_fmt)
+                last_exc = None
                 break
+            except Exception as exc:
+                last_exc = exc
+                if pages:
+                    # End of batch after at least one page — normal ADF empty.
+                    break
+                if _is_adf_empty_error(exc) and attempt < empty_retries - 1:
+                    logger.info(
+                        "scan_agent: ADF empty on Transfer, retry %d/%d in %.1fs",
+                        attempt + 1,
+                        empty_retries,
+                        empty_delay_sec,
+                    )
+                    time.sleep(empty_delay_sec)
+                    continue
+                break
+        if pages and image is None:
+            break
+        if image is None:
             raise ScanError(
-                f"WIA Transfer failed on {scanner_name}: {exc}. "
+                f"WIA Transfer failed on {scanner_name}: {last_exc}. "
                 "Load pages in the ADF, close the cover, and try again."
-            ) from exc
+            ) from last_exc
 
         tmp_path = None
         try:

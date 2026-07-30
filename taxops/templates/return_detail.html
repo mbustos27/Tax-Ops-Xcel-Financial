@@ -2938,11 +2938,12 @@
 
   function startScanCountdown() {
     const statusEl = document.getElementById('scan-modal-status');
-    let n = 3;
+    // Give staff time to seat pages in the Epson ADF before Transfer.
+    let n = 10;
     if (statusEl) {
       statusEl.classList.remove('hidden');
       statusEl.className = 'text-xs font-medium text-slate-600';
-      statusEl.textContent = `Starting scan in ${n}… (Skip to cancel)`;
+      statusEl.textContent = `Load pages in the Epson feeder now. Starting in ${n}s… (Skip to cancel)`;
     }
     _scanAutoTimer = setInterval(() => {
       n -= 1;
@@ -2957,7 +2958,9 @@
         runScanAndUpload();
         return;
       }
-      if (statusEl) statusEl.textContent = `Starting scan in ${n}… (Skip to cancel)`;
+      if (statusEl) {
+        statusEl.textContent = `Load pages in the Epson feeder now. Starting in ${n}s… (Skip to cancel)`;
+      }
     }, 1000);
   }
 
@@ -2981,8 +2984,8 @@
       });
       const data = await up.json().catch(() => ({}));
       if (!up.ok) {
-        const tips = (data.tips || []).join(' ');
-        throw new Error((data.error || 'Scan failed') + (tips ? ' — ' + tips : ''));
+        const tips = (data.tips || []).filter(t => t && t !== data.error);
+        throw new Error((data.error || 'Scan failed') + (tips.length ? ' — ' + tips.join(' ') : ''));
       }
       const pageCount = data.page_count != null ? data.page_count : '?';
       const logNum = data.log_number || LOG_NUMBER || '';
