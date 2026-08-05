@@ -50,23 +50,26 @@
                 </div>
               </div>
               {% elif get_effective_role() == 'receptionist' %}
-              {# Restricted status control — receptionist can only make specific transitions #}
-              {% set _cs = ret.client_status or '' %}
-              {% if _cs in ('HOLD', 'EFILE READY') %}
-              <span class="status-badge {{ ret.badge_class }} px-3 py-1">{{ _cs or 'NO STATUS' }}</span>
-              {% elif _cs == 'PICKUP' %}
-              <select onchange="setStatus({{ ret.id }}, this.value, this)"
-                      class="status-badge {{ ret.badge_class }} cursor-pointer rounded-lg px-3 py-1.5 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm font-semibold">
-                <option value="PICKUP" selected>PICKUP</option>
-                <option value="EFILE READY">EFILE READY</option>
-              </select>
-              {% else %}
-              <select onchange="setStatus({{ ret.id }}, this.value, this)"
-                      class="status-badge {{ ret.badge_class }} cursor-pointer rounded-lg px-3 py-1.5 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm font-semibold">
-                <option value="{{ _cs }}" selected disabled>{{ _cs or 'NO STATUS' }}</option>
-                <option value="HOLD">HOLD</option>
-              </select>
-              {% endif %}
+              {# Same control as preparer — filtered to desk-safe targets #}
+              {% set _recv_opts = receptionist_allowed_statuses(ret.client_status) %}
+              <div id="return-status-control" class="status-dropdown relative inline-block">
+                <button type="button" onclick="toggleStatusMenu(this)"
+                        class="status-badge flex items-center gap-1.5 {{ ret.badge_class }} cursor-pointer hover:opacity-90 transition-opacity">
+                  {{ ret.client_status or 'NO STATUS' }}
+                  <svg class="w-3 h-3 opacity-50 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </button>
+                <div class="status-menu hidden absolute left-0 top-full mt-1 rounded-xl shadow-xl py-1 z-50 min-w-[160px]" style="background:var(--dropdown-bg);border:1px solid var(--dropdown-border)">
+                  {% for s in _recv_opts %}
+                  <button type="button" onclick="setStatus({{ ret.id }}, '{{ s }}', this)"
+                          class="w-full text-left px-4 py-2.5 text-sm transition-colors" onmouseover="this.style.background='var(--bg-page)'" onmouseout="this.style.background=''"
+                                 {% if s == ret.client_status %}font-bold text-slate-900 bg-slate-50{% else %}text-slate-700{% endif %}">
+                    {{ s }}
+                  </button>
+                  {% endfor %}
+                </div>
+              </div>
               {% else %}
               <span class="status-badge {{ ret.badge_class }} px-3 py-1">{{ ret.client_status or 'NO STATUS' }}</span>
               {% endif %}

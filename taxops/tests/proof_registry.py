@@ -384,6 +384,22 @@ PROOF_BY_TEST_NAME: dict[str, list[str]] = {
     "test_receptionist_rank_still_below_preparer": [
         "ROLE_HIERARCHY rank for receptionist is still 0 (< preparer 1) — role_required guards still fire for all other routes.",
     ],
+    # ── Feature 1: Reception desk-safe status changes ─────────────────────────
+    "test_receptionist_allowed_statuses_safe_pack": [
+        "receptionist_allowed_statuses always includes HOLD/PROCESSING/PICKUP; EFILE READY only from PICKUP; never FINALIZE/LOG OUT/REJECTED.",
+    ],
+    "test_receptionist_can_set_desk_safe_statuses": [
+        "Receptionist POST /api/return/<id>/status with HOLD, PICKUP, or PROCESSING returns 200.",
+    ],
+    "test_receptionist_pickup_to_efile_ready": [
+        "Receptionist may set EFILE READY when current status is PICKUP (desk handoff).",
+    ],
+    "test_receptionist_forbidden_sensitive_statuses": [
+        "Receptionist POST to FINALIZE/LOG OUT/REJECTED/PENDING INTAKE/EFILE READY (from non-PICKUP) returns 403.",
+    ],
+    "test_preparer_still_can_set_finalize": [
+        "Preparer POST /api/return/<id>/status to FINALIZE still returns 200 — Reception gate does not affect preparer.",
+    ],
     "test_preparer_still_accesses_efile_queue": [
         "Preparer GET /efile-queue returns 200 — preparer behavior unchanged.",
     ],

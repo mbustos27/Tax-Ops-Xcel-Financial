@@ -532,6 +532,40 @@ def _handle_too_large(_e: RequestEntityTooLarge):
 
 STATUS_FLOW = ["PENDING INTAKE", "PROCESSING", "HOLD", "FINALIZE", "PICKUP", "EFILE READY", "LOG OUT", "REJECTED"]
 
+# Desk-safe targets Reception may always set (from any current status).
+# Never includes FINALIZE / LOG OUT / REJECTED / PENDING INTAKE / unrestricted EFILE READY.
+RECEPTIONIST_STATUS_ALWAYS: frozenset[str] = frozenset({"HOLD", "PROCESSING", "PICKUP"})
+# Extra targets allowed only when the file is already in that status (desk handoff).
+RECEPTIONIST_STATUS_FROM: dict[str, frozenset[str]] = {
+    "PICKUP": frozenset({"EFILE READY"}),
+}
+
+
+def receptionist_allowed_statuses(current_status: str | None) -> list[str]:
+    """STATUS_FLOW-ordered statuses Reception may set from ``current_status``.
+
+    Always includes the current status (so the UI can show it selected). Destination
+    set is RECEPTIONIST_STATUS_ALWAYS plus any RECEPTIONIST_STATUS_FROM extras.
+    """
+    cur = (current_status or "").strip().upper()
+    allowed: set[str] = set(RECEPTIONIST_STATUS_ALWAYS)
+    allowed |= RECEPTIONIST_STATUS_FROM.get(cur, frozenset())
+    if cur in STATUS_FLOW:
+        allowed.add(cur)
+    return [s for s in STATUS_FLOW if s in allowed]
+
+
+def receptionist_may_set_status(current_status: str | None, new_status: str) -> bool:
+    """True when Reception is allowed to change current → new (including no-op)."""
+    new = (new_status or "").strip().upper()
+    if new not in STATUS_FLOW:
+        return False
+    return new in receptionist_allowed_statuses(current_status)
+
+
+app.jinja_env.globals["receptionist_allowed_statuses"] = receptionist_allowed_statuses
+
+
 def _get_json_safe() -> dict | None:
     """SEC-1: safe JSON body parser.
 
@@ -1354,6 +1388,11 @@ def base_ctx(year: int | None = None) -> dict:
         "status_flow":          STATUS_FLOW,
         "status_badge":         STATUS_BADGE,
         "status_dot":           STATUS_DOT,
+        "receptionist_status_always": [s for s in STATUS_FLOW if s in RECEPTIONIST_STATUS_ALWAYS],
+        "receptionist_status_from": {
+            k: [s for s in STATUS_FLOW if s in v]
+            for k, v in RECEPTIONIST_STATUS_FROM.items()
+        },
         "status_counts":        get_status_counts(y),
         "totals":               get_totals(y),
         "processors":           preparer_dropdown_options(get_processors(y)),
@@ -4941,10 +4980,9 @@ def api_status(return_id: int):
 
     old_status  = row["client_status"]
 
-    # Receptionist may only make specific status transitions; enforce server-side.
+    # Receptionist may only make desk-safe transitions; enforce server-side.
     if get_effective_role() == "receptionist":
-        _receptionist_allowed = {"PICKUP": {"EFILE READY", "HOLD"}}.get(old_status, set()) | {"HOLD"}
-        if new_status not in _receptionist_allowed:
+        if not receptionist_may_set_status(old_status, new_status):
             conn.close()
             return jsonify({"error": "forbidden", "required_role": "preparer"}), 403
     timestamp   = now()

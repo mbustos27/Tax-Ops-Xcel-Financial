@@ -334,7 +334,9 @@
                 </svg>
               </button>
               <div class="status-menu hidden py-1" style="min-width:max-content">
-                {% for s in status_flow %}
+                {% set _recv = get_effective_role() == 'receptionist' %}
+                {% set _opts = receptionist_allowed_statuses(r.client_status) if _recv else status_flow %}
+                {% for s in _opts %}
                 <button onclick="setStatus({{ r.id }}, '{{ s }}', this)"
                         class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs hover:bg-[var(--table-row-hover)] transition-colors
                                {% if s == r.client_status %}font-bold text-slate-900 bg-slate-50{% else %}text-slate-700{% endif %}">
@@ -640,6 +642,9 @@
 /* ── Dashboard globals (injected server-side) ────────────────────────────── */
 window.__statusFlow   = {{ status_flow | tojson }};
 window.__statusDotMap = {{ status_dot  | tojson }};
+window.__isReceptionist = {{ (get_effective_role() == 'receptionist') | tojson }};
+window.__receptionStatusAlways = {{ receptionist_status_always | tojson }};
+window.__receptionStatusFrom = {{ receptionist_status_from | tojson }};
 window.__pagState     = { page: {{ page }}, per_page: {{ per_page }}, total_pages: {{ total_pages }}, total_count: {{ total_count }}, loading: false, shownCount: {{ returns | length }} };
 window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
 </script>
@@ -648,6 +653,16 @@ window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
 (function () {
 
   function _esc(s) { return escHtml(String(s == null ? '' : s)); }
+
+  function _statusOptionsFor(current) {
+    const flow = window.__statusFlow || [];
+    if (!window.__isReceptionist) return flow;
+    const allowed = new Set(window.__receptionStatusAlways || []);
+    const extra = (window.__receptionStatusFrom || {})[current] || [];
+    for (const s of extra) allowed.add(s);
+    if (current) allowed.add(current);
+    return flow.filter(s => allowed.has(s));
+  }
 
   function _renderReturnRow(r) {
     const yr = parseInt(document.body.dataset.year || new Date().getFullYear(), 10);
@@ -663,7 +678,7 @@ window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
         }).join('')}</div>`
       : '<span class="text-slate-300">—</span>';
 
-    const statusItems = (window.__statusFlow || []).map(s =>
+    const statusItems = _statusOptionsFor(r.client_status || '').map(s =>
       `<button onclick="setStatus(${r.id},'${_esc(s)}',this)"
           class="flex items-center gap-2 w-full text-left px-3 py-2 text-xs hover:bg-[var(--table-row-hover)] transition-colors${s === r.client_status ? ' font-bold text-slate-900 bg-slate-50' : ' text-slate-700'}">
         <span class="status-dot ${(window.__statusDotMap || {})[s] || 'dot-slate'} shrink-0"></span>
