@@ -312,3 +312,31 @@ msgstr ""
 
 msgid "No notifications"
 msgstr ""
+
+#. Feature 2: needs-attention dashboard / nav
+msgid "Needs attention"
+msgstr "Needs attention"
+
+msgid "total"
+msgstr "total"
+
+msgid "EF Rejected"
+msgstr "EF Rejected"
+
+msgid "Needs contact"
+msgstr "Needs contact"
+
+msgid "Stale processing"
+msgstr "Stale processing"
+
+msgid "Nothing needs attention"
+msgstr "Nothing needs attention"
+
+msgid "Visible to all staff"
+msgstr "Visible to all staff"
+
+msgid "Showing a subset of items — full count is in the nav attention badge."
+msgstr "Showing a subset of items — full count is in the nav attention badge."
+
+msgid "(unnamed)"
+msgstr "(unnamed)"

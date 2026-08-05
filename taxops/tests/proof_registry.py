@@ -400,6 +400,19 @@ PROOF_BY_TEST_NAME: dict[str, list[str]] = {
     "test_preparer_still_can_set_finalize": [
         "Preparer POST /api/return/<id>/status to FINALIZE still returns 200 — Reception gate does not affect preparer.",
     ],
+    # ── Feature 2: Needs-attention dashboard ──────────────────────────────────
+    "test_fetch_includes_three_reasons": [
+        "fetch_needs_attention returns ef_rejected, client_contact, and stale_processing for matching active-year returns.",
+    ],
+    "test_fetch_excludes_resolved_and_fresh": [
+        "Resolved REJECTED contact, fresh PROCESSING, and prior-year rows are excluded from needs-attention.",
+    ],
+    "test_fetch_dedups_ef_over_contact": [
+        "When EF Rejected and client-contact both match, reason is ef_rejected (single row).",
+    ],
+    "test_receptionist_dashboard_sees_attention": [
+        "Receptionist GET / dashboard includes Needs attention section for matching returns (not admin-gated).",
+    ],
     "test_preparer_still_accesses_efile_queue": [
         "Preparer GET /efile-queue returns 200 — preparer behavior unchanged.",
     ],

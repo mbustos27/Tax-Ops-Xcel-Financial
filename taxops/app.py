@@ -785,6 +785,147 @@ def _enrich(r: dict) -> dict:
     return r
 
 
+_NEEDS_ATTENTION_DRAKE_DONE = (
+    "EF Accepted",
+    "EF Ext Accepted",
+    "E-Filed: YES",
+    "Printed",
+)
+_NEEDS_ATTENTION_REASON_PRIORITY = {
+    "ef_rejected": 0,
+    "client_contact": 1,
+    "stale_processing": 2,
+}
+_NEEDS_ATTENTION_LIST_CAP = 25
+
+
+def _needs_attention_reason(row) -> str | None:
+    """Return reason code for a return row, or None if it does not need attention."""
+    get = row.get if isinstance(row, dict) else lambda k, default=None: (
+        row[k] if k in row.keys() else default
+    )
+    drake = (get("drake_status_raw") or "").strip()
+    if drake == "EF Rejected":
+        return "ef_rejected"
+    status = (get("client_status") or "").strip().upper()
+    contact = (get("contact_status") or "").strip()
+    if status == "REJECTED" and contact in ("", "not_contacted", "follow_up_needed"):
+        return "client_contact"
+    if status == "PROCESSING":
+        intake = get("intake_date")
+        display = get("display_name")
+        if display and intake:
+            intake_dt = _parse_iso_date(intake)
+            if intake_dt and intake_dt < (date.today() - timedelta(days=60)):
+                if drake not in _NEEDS_ATTENTION_DRAKE_DONE:
+                    return "stale_processing"
+    return None
+
+
+def fetch_needs_attention(
+    conn,
+    tax_year: int,
+    *,
+    limit: int | None = _NEEDS_ATTENTION_LIST_CAP,
+) -> tuple[list[dict], int]:
+    """Active-year returns that need cross-staff attention.
+
+    Reasons (deduped; highest priority wins): EF Rejected, REJECTED needing
+    client contact, stale PROCESSING (named client, intake older than 60 days,
+    Drake not accepted/printed).
+
+    Returns ``(items, total_count)``. Items are capped by ``limit`` (None = uncapped).
+    Never includes file_path / SSN fields.
+    """
+    from flask import has_request_context
+
+    cutoff = (date.today() - timedelta(days=60)).isoformat()
+    drake_done = tuple(_NEEDS_ATTENTION_DRAKE_DONE)
+    placeholders = ",".join("?" * len(drake_done))
+    rows = conn.execute(
+        f"""
+        SELECT
+            r.id AS return_id,
+            r.log_number,
+            r.tax_year,
+            r.client_status,
+            r.processor,
+            r.intake_date,
+            r.drake_status_raw,
+            r.contact_status,
+            c.id AS client_id,
+            c.display_name,
+            c.last_name,
+            c.first_name
+        FROM returns r
+        JOIN clients c ON c.id = r.client_id
+        WHERE r.tax_year = ?
+          AND (
+            r.drake_status_raw = 'EF Rejected'
+            OR (
+              r.client_status = 'REJECTED'
+              AND (
+                r.contact_status IS NULL
+                OR r.contact_status = ''
+                OR r.contact_status IN ('not_contacted', 'follow_up_needed')
+              )
+            )
+            OR (
+              r.client_status = 'PROCESSING'
+              AND c.display_name IS NOT NULL
+              AND r.intake_date IS NOT NULL
+              AND r.intake_date < ?
+              AND (
+                r.drake_status_raw IS NULL
+                OR r.drake_status_raw NOT IN ({placeholders})
+              )
+            )
+          )
+        """,
+        (tax_year, cutoff, *drake_done),
+    ).fetchall()
+
+    by_id: dict[int, dict] = {}
+    for row in rows:
+        d = dict(row)
+        reason = _needs_attention_reason(d)
+        if not reason:
+            continue
+        rid = int(d["return_id"])
+        existing = by_id.get(rid)
+        if existing is None or (
+            _NEEDS_ATTENTION_REASON_PRIORITY[reason]
+            < _NEEDS_ATTENTION_REASON_PRIORITY[existing["reason"]]
+        ):
+            item = {
+                "return_id": d["return_id"],
+                "log_number": d["log_number"],
+                "tax_year": d["tax_year"],
+                "client_status": d["client_status"],
+                "processor": d["processor"],
+                "intake_date": d["intake_date"],
+                "client_id": d["client_id"],
+                "display_name": d["display_name"],
+                "last_name": d["last_name"],
+                "first_name": d["first_name"],
+                "reason": reason,
+            }
+            if has_request_context() and privacy_mode_enabled():
+                item = _mask_return_payload(item)
+            by_id[rid] = item
+
+    ordered = sorted(
+        by_id.values(),
+        key=lambda it: (
+            _NEEDS_ATTENTION_REASON_PRIORITY.get(it["reason"], 99),
+            it.get("intake_date") or "9999-99-99",
+            it.get("return_id") or 0,
+        ),
+    )
+    total = len(ordered)
+    if limit is not None:
+        ordered = ordered[: max(0, int(limit))]
+    return ordered, total
 def _form_badges(r: dict) -> list[str]:
     mapping = [
         ("form_1040",    "1040"),
@@ -1381,6 +1522,10 @@ def base_ctx(year: int | None = None) -> dict:
     rejected_rows = conn.execute(
         f"{_SELECT} WHERE r.client_status = 'REJECTED' ORDER BY r.updated_at DESC"
     ).fetchall()
+    try:
+        needs_attention_items, needs_attention_count = fetch_needs_attention(conn, y)
+    except Exception:
+        needs_attention_items, needs_attention_count = [], 0
     conn.close()
     rejected = [_enrich(dict(r)) for r in rejected_rows]
     return {
@@ -1401,6 +1546,8 @@ def base_ctx(year: int | None = None) -> dict:
         "pending_review_count": pending_review,
         "rejected_returns":     rejected,
         "rejected_count":       len(rejected),
+        "needs_attention_items": needs_attention_items,
+        "needs_attention_count": needs_attention_count,
         "can_run_season_rollover": can_run_season_rollover(),
         "failed_doc_count":         failed_doc_count,
         "receipt_review_count":     receipt_review_count,

@@ -10,6 +10,60 @@
 {% set _hide_financial = get_effective_role() == 'receptionist' %}
 <div class="flex flex-col gap-3 h-full min-h-0">
 
+  {% if needs_attention_count and needs_attention_count > 0 %}
+  <!-- ── Needs attention (all staff) ───────────────────────────────────── -->
+  <div id="needs-attention-panel"
+       class="rounded-xl px-4 py-3 shadow-sm flex-shrink-0"
+       style="background:color-mix(in srgb,#b45309 8%,var(--bg-card));border:1px solid color-mix(in srgb,#b45309 28%,var(--border-default))">
+    <div class="flex items-center justify-between gap-3 mb-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="inline-flex items-center justify-center min-w-[1.4rem] h-5 px-1.5 rounded-full text-[11px] font-bold bg-amber-600 text-white">
+          {{ needs_attention_count }}
+        </span>
+        <h2 class="text-sm font-bold truncate" style="color:#92400e">{{ _('Needs attention') }}</h2>
+        <span class="text-xs hidden sm:inline" style="color:var(--text-muted)">{{ _('Visible to all staff') }}</span>
+      </div>
+    </div>
+    <ul class="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+      {% for r in needs_attention_items %}
+      <li>
+        <a href="/return/{{ r.return_id }}"
+           class="flex items-start gap-2 rounded-lg px-2.5 py-2 transition-colors"
+           style="background:var(--bg-card);border:1px solid var(--border-subtle)"
+           onmouseover="this.style.borderColor='#d97706'"
+           onmouseout="this.style.borderColor='var(--border-subtle)'">
+          <span class="mt-1 w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-semibold truncate" style="color:var(--text-primary)">
+              {% if privacy_mode %}
+                {{ _('Client') }} {{ r.client_id }}
+              {% else %}
+                {{ r.display_name or ((r.last_name or '') ~ ((', ' ~ r.first_name) if r.first_name else '')) or _('(unnamed)') }}
+              {% endif %}
+            </div>
+            <div class="text-xs mt-0.5 flex flex-wrap gap-x-1.5" style="color:var(--text-muted)">
+              {% if r.log_number %}<span class="font-mono font-bold" style="color:var(--text-secondary)">LOG {{ r.log_number }}</span>{% endif %}
+              <span style="color:#92400e;font-weight:600">
+                {% if r.reason == 'ef_rejected' %}{{ _('EF Rejected') }}
+                {% elif r.reason == 'client_contact' %}{{ _('Needs contact') }}
+                {% else %}{{ _('Stale processing') }}{% endif %}
+              </span>
+              {% if r.processor %}<span>{{ preparer_list_label(r.processor) }}</span>{% endif %}
+            </div>
+          </div>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if needs_attention_count > (needs_attention_items|length) %}
+    <p class="text-xs mt-2" style="color:var(--text-muted)">
+      {{ _('Showing a subset of items — full count is in the nav attention badge.') }}
+      ({{ needs_attention_items|length }}/{{ needs_attention_count }})
+    </p>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <!-- ── Filter bar — static, never moves ──────────────────────────────── -->
   <div id="filter-bar"
        class="rounded-xl px-4 py-3 space-y-2.5 shadow-sm flex-shrink-0" style="background:var(--bg-card);border:1px solid var(--border-default)">

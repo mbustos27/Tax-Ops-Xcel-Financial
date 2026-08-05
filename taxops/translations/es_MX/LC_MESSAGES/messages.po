@@ -1817,3 +1817,31 @@ msgstr "Marcar todo como leído"
 
 msgid "No notifications"
 msgstr "Sin notificaciones"
+
+#. Feature 2: needs-attention dashboard / nav
+msgid "Needs attention"
+msgstr "Requieren atención"
+
+msgid "total"
+msgstr "total"
+
+msgid "EF Rejected"
+msgstr "EF rechazado"
+
+msgid "Needs contact"
+msgstr "Requiere contacto"
+
+msgid "Stale processing"
+msgstr "Procesamiento atrasado"
+
+msgid "Nothing needs attention"
+msgstr "Nada requiere atención"
+
+msgid "Visible to all staff"
+msgstr "Visible para todo el personal"
+
+msgid "Showing a subset of items — full count is in the nav attention badge."
+msgstr "Mostrando un subconjunto — el total está en la insignia de atención."
+
+msgid "(unnamed)"
+msgstr "(sin nombre)"
