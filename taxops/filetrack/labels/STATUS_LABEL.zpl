@@ -1,27 +1,23 @@
 ^XA
+^FX STATUS label. Left margin via higher ^FO x (^LH ignored on this printer).^FS
 ^FWN
 ^PW532
 ^LL203
+^LS0
 ^LH0,0
+^LT0
+^MMT
+^PQ1,0,1,Y
 
-^FX ===== Outer border =====^FS
-^FO5,5^GB523,193,3^FS
-
-^FX ===== Status name (large, centered, single line) =====^FS
 ^CF0,40
-^FO10,20^FB512,1,0,C,0^FD{STATUS_NAME}^FS
+^FO60,8^FB454,1,0,C,0^FD{STATUS_NAME}^FS
 
-^FX ===== Divider =====^FS
-^FO18,84^GB497,2,2^FS
+^FO68,68^GB444,2,2^FS
 
-^FX ===== Code128 barcode — module width 1: STATUS: payload can run long =====^FS
-^FX (e.g. "STATUS:PENDING INTAKE" = 22 chars); width 2 would overflow the =====^FS
-^FX label at that length. PENDING physical scan-reliability confirmation. =====^FS
 ^BY1,2,60
-^FO20,94^BCN,60,N,N,N^FD{BARCODE}^FS
+^FO70,78^BCN,60,N,N,N^FD{BARCODE}^FS
 
-^FX ===== Human-readable barcode value =====^FS
 ^CF0,18
-^FO20,158^FD{BARCODE}^FS
+^FO70,140^FD{BARCODE}^FS
 
 ^XZ

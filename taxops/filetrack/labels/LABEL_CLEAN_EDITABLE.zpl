@@ -1,35 +1,29 @@
 ^XA
-^FX ===== ACTIVE file-label template (filetrack.labels.template.render_label). =====^FS
-^FX ===== Contains the LOG:<number> Code128 barcode field below. Fixed copy =====^FS
-^FX ===== of docs/LABEL_BARCODE_v1.zpl -- see template.py's module docstring =====^FS
-^FX ===== for what was fixed and why the original source file is untouched. =====^FS
+^FX LOG label 2.625x1 @ 203dpi. 24-dot L/R margins, band 24..508.^FS
+^CI28
 ^FWN
 ^PW532
 ^LL203
+^LS0
 ^LH0,0
+^LT0
+^MMT
+^PQ1,0,1,Y
 
-^FX ===== Outer border =====^FS
-^FO5,5^GB523,193,3^FS
-
-^FX ===== Identity line: LOG# (large, left) =====^FS
 ^CF0,30
-^FO18,16^FDLOG# {LOGNUM}^FS
+^FO24,12^FDLOG# {LOGNUM}^FS
 
-^FX ===== Intake dates (right of LOG#, stacked) =====^FS
 ^CF0,20
-^FO300,14^FDLOG-IN {LOG_IN_DATE}^FS
-^FO300,40^FDEXT   __/__/{EXT_YEAR}^FS
+^FO248,6^FB260,1,0,R,0^FDLOG-IN {LOG_IN_DATE}^FS
+^FO248,30^FB260,1,0,R,0^FDEXT   __/__/{EXT_YEAR}^FS
 
-^FX ===== Divider under identity block =====^FS
-^FO18,66^GB497,2,2^FS
+^FO24,62^GB484,2,2^FS
 
-^FX ===== Code128 barcode (centerpiece) =====^FS
-^FX BY sets module width (2) and ratio. BC height 70, no interpretation line (we print our own).^FS
 ^BY2,2,70
-^FO70,80^BCN,70,N,N,N^FD{BARCODE}^FS
+^FO132,76^BCN,70,N,N,N^FD{BARCODE}^FS
 
-^FX ===== Human-readable value under barcode =====^FS
-^CF0,22
-^FO70,158^FD{BARCODE}^FS
-
+^CF0,18
+^FO132,152^FD{BARCODE}^FS
+^CF0,16
+^FO314,154^FB194,1,0,R,0^FD{CLIENT}^FS
 ^XZ
