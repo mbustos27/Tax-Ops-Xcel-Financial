@@ -3655,12 +3655,13 @@ def intake():
         if FILETRACK_ENABLED:
             try:
                 from filetrack.config import FILETRACK_PRINT_MODE
+                _label_kwargs = dict(log_in_date=_v("intake_date") or today_iso)
                 if FILETRACK_PRINT_MODE == "relay":
                     from filetrack.labels.relay_client import print_label_via_relay
-                    print_label_via_relay(log_number)
+                    print_label_via_relay(log_number, **_label_kwargs)
                 else:
                     from filetrack.labels.print_label import print_label as _filetrack_print_label
-                    _filetrack_print_label(log_number)
+                    _filetrack_print_label(log_number, **_label_kwargs)
             except Exception as _print_exc:
                 # RelayError's message is already the actionable, human-
                 # readable summary (see relay_client._classify_network_error)

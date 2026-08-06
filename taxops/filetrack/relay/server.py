@@ -76,7 +76,7 @@ def handle_print_job(
     )
 
     try:
-        print_label(log_number)
+        print_label(log_number, log_in_date=payload.get("log_in_date") or None)
     except (PrinterNotFoundError, PrinterUnavailableError, SpoolerError) as exc:
         logger.error("filetrack.relay: print failed for log_number=%s: %s", log_number, exc)
         return 500, {"error": str(exc)}

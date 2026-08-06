@@ -17,15 +17,20 @@ import sys
 from filetrack.labels.template import render_label
 
 
-def print_label(log_number, *, printer_name: str | None = None, template_path: str | None = None) -> str:
-    """Render the label for `log_number` and send it to the printer (RAW
-    ZPL via filetrack.labels.printer.send_zpl). Raises PrinterUnavailableError
-    / PrinterNotFoundError / SpoolerError on failure — callers decide whether
-    to swallow that (e.g. app.py's print hook logs+swallows; the CLI reports
-    and exits non-zero). Returns the rendered ZPL string on success."""
+def print_label(
+    log_number,
+    *,
+    printer_name: str | None = None,
+    template_path: str | None = None,
+    log_in_date=None,
+    **fields,
+) -> str:
+    """Render the label for `log_number` and send it to the printer.
+    ``log_in_date`` defaults to today. Extra ``**fields`` are ignored by
+    the current template. Returns the rendered ZPL on success."""
     from filetrack.labels.printer import send_zpl
 
-    zpl = render_label(log_number, template_path=template_path)
+    zpl = render_label(log_number, template_path=template_path, log_in_date=log_in_date)
     send_zpl(zpl, printer_name=printer_name)
     return zpl
 
@@ -34,6 +39,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Render/print a filetrack file label")
     parser.add_argument("--log", required=True, help="Log number (e.g. 123)")
     parser.add_argument("--printer", default=None, help="Windows printer name (defaults to FILETRACK_PRINTER)")
+    parser.add_argument("--log-in-date", default=None, dest="log_in_date",
+                        help="LOG-IN date; default today")
     parser.add_argument("--template", default=None, help="Path to a ZPL template (defaults to LABEL_CLEAN_EDITABLE.zpl)")
     parser.add_argument(
         "--dry-run", action="store_true",
@@ -42,13 +49,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.dry_run:
-        print(render_label(args.log, template_path=args.template))
+        print(render_label(args.log, template_path=args.template, log_in_date=args.log_in_date))
         return 0
 
     from filetrack.labels.printer import PrinterNotFoundError, PrinterUnavailableError, SpoolerError
 
     try:
-        print_label(args.log, printer_name=args.printer, template_path=args.template)
+        print_label(args.log, printer_name=args.printer, template_path=args.template, log_in_date=args.log_in_date)
     except (PrinterUnavailableError, PrinterNotFoundError, SpoolerError) as exc:
         print(f"Print failed: {exc}", file=sys.stderr)
         return 1

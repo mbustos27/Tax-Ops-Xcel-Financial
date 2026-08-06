@@ -32,8 +32,11 @@ def test_render_label_preserves_template_structure():
     # Preserved layout elements from the supplied template.
     assert "^FO5,5^GB523,193,3^FS" in zpl          # outer border
     assert "^FO18,66^GB497,2,2^FS" in zpl           # divider
-    assert "LOG-IN __/__/2026" in zpl               # intake date fill-in field
-    assert "EXT   __/__/2026" in zpl                # extension date fill-in field
+    from datetime import date
+    today = date.today()
+    assert f"LOG-IN {today.month:02d}/{today.day:02d}/{today.year:04d}" in zpl
+    assert f"EXT   __/__/{today.year:04d}" in zpl
+    assert "LOG-IN __/__/" not in zpl
 
 
 def test_render_label_zero_pads_to_five_digits():
@@ -52,12 +55,16 @@ def test_render_label_does_not_mutate_template_file_on_disk():
     # The unrendered placeholders must still be present in the source file.
     assert "{LOGNUM}" in after
     assert "{BARCODE}" in after
+    assert "{LOG_IN_DATE}" in after
+    assert "{EXT_YEAR}" in after
 
 
 def test_render_label_no_leftover_placeholders():
     zpl = render_label("456")
     assert "{LOGNUM}" not in zpl
     assert "{BARCODE}" not in zpl
+    assert "{LOG_IN_DATE}" not in zpl
+    assert "{EXT_YEAR}" not in zpl
 
 
 def test_template_module_never_imports_printer():
@@ -68,3 +75,23 @@ def test_template_module_never_imports_printer():
     assert "win32print" not in src
     assert "filetrack.labels.printer" not in src
     assert "import printer" not in src
+
+
+def test_format_log_in_date_defaults_to_today():
+    from datetime import date
+    from filetrack.labels.template import format_log_in_date
+    d = date.today()
+    assert format_log_in_date(None) == f"{d.month:02d}/{d.day:02d}/{d.year:04d}"
+    assert format_log_in_date("2025-12-01") == "12/01/2025"
+
+
+def test_render_label_log_in_date_override():
+    zpl = render_label("123", log_in_date="2024-03-05")
+    assert "LOG-IN 03/05/2024" in zpl
+    assert "EXT   __/__/2024" in zpl
+
+
+def test_render_label_no_leftover_date_placeholders():
+    zpl = render_label("456")
+    assert "{LOG_IN_DATE}" not in zpl
+    assert "{EXT_YEAR}" not in zpl

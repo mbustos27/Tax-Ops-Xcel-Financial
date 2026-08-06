@@ -31,8 +31,7 @@ def print_label_via_relay(
     *,
     relay_url: str | None = None,
     token: str | None = None,
-    timeout: float | None = None,
-) -> None:
+    timeout: float | None = None,, log_in_date=None, **fields) -> None:
     """POST {"log_number": <str>} to the relay's /print endpoint. Raises
     RelayError on any network failure or non-200 response; returns None on
     success. Mirrors print_label()'s "one function, callers decide how to

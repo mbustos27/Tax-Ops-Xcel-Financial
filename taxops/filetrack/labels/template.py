@@ -1,34 +1,20 @@
 """filetrack.labels.template — pure ZPL rendering for file labels.
 
 Loads the base ZPL from a template file on disk (default:
-LABEL_CLEAN_EDITABLE.zpl, next to this module — a fixed copy of the
-originally-supplied docs/LABEL_BARCODE_v1.zpl; see the module docstring
-below for what was fixed and why the original is untouched), injects the
-human-readable log number and a native ^BC Code128 barcode payload, and
-returns the rendered ZPL as a string.
+LABEL_CLEAN_EDITABLE.zpl), injects the human-readable log number, a native
+^BC Code128 barcode payload, and the LOG-IN date, and returns the rendered
+ZPL as a string.
 
 render_label() is a pure function: it reads the template file (the only
 I/O it performs) and returns a new string. It never writes to the
 template file, and never rasterizes the barcode — ^BC stays a native ZPL
 field the printer itself renders.
-
-Fixes applied when copying docs/LABEL_BARCODE_v1.zpl to
-LABEL_CLEAN_EDITABLE.zpl (source file left untouched):
-  (a) Line "^FX ^BY sets module width (2) and ratio; ^BC height 70, ..."
-      embedded literal ^BY/^BC caret commands inside ^FX comment text. Per
-      the ZPL spec, an ^FX comment's effect ends at the very next caret
-      command — so this comment actually terminated at "^BY", which then
-      received the rest of the line as garbage parameters, corrupting that
-      field. Fixed by rewriting the comment without embedded carets and
-      terminating it with ^FS.
-  (b) Coordinate bounds (^FO/^GB vs 532x203) were verified and are already
-      correct — border 5,5→528x198; barcode 70,80 h=70→bottom 150; human-
-      readable barcode text 70,158 h=22→bottom 180. All inside 532x203
-      with no overlaps. No change needed for this one.
 """
 from __future__ import annotations
 
 import os
+import re
+from datetime import date, datetime
 
 from filetrack.config import (
     DEFAULT_TEMPLATE_PATH,
@@ -39,6 +25,8 @@ from filetrack.config import (
 
 _LOGNUM_PLACEHOLDER = "{LOGNUM}"
 _BARCODE_PLACEHOLDER = "{BARCODE}"
+_LOG_IN_DATE_PLACEHOLDER = "{LOG_IN_DATE}"
+_EXT_YEAR_PLACEHOLDER = "{EXT_YEAR}"
 
 
 def load_template(template_path: str | None = None) -> str:
@@ -62,27 +50,60 @@ def barcode_payload_for_log(log_number) -> str:
     return f"{LOG_PREFIX}{PREFIX_DELIMITER}{format_log_number(log_number)}"
 
 
-def render_label(log_number, *, template_path: str | None = None, **fields) -> str:
+def format_log_in_date(value=None) -> str:
+    """Format a LOG-IN date for the sticker as ``MM/DD/YYYY``.
+
+    ``None`` / empty → today. Accepts ``date``, ``datetime``, ISO
+    ``YYYY-MM-DD``, or ``MM/DD/YYYY``. Invalid values fall back to today.
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        d = date.today()
+        return f"{d.month:02d}/{d.day:02d}/{d.year:04d}"
+    if isinstance(value, datetime):
+        d = value.date()
+        return f"{d.month:02d}/{d.day:02d}/{d.year:04d}"
+    if isinstance(value, date):
+        return f"{value.month:02d}/{value.day:02d}/{value.year:04d}"
+    s = str(value).strip()
+    mdy = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
+    if mdy:
+        month, day, year = int(mdy.group(1)), int(mdy.group(2)), int(mdy.group(3))
+        try:
+            date(year, month, day)
+        except ValueError:
+            d = date.today()
+            return f"{d.month:02d}/{d.day:02d}/{d.year:04d}"
+        return f"{month:02d}/{day:02d}/{year:04d}"
+    try:
+        d = datetime.strptime(s[:10], "%Y-%m-%d").date()
+        return f"{d.month:02d}/{d.day:02d}/{d.year:04d}"
+    except ValueError:
+        d = date.today()
+        return f"{d.month:02d}/{d.day:02d}/{d.year:04d}"
+
+
+def render_label(log_number, *, template_path: str | None = None, log_in_date=None, **fields) -> str:
     """Render one file label's ZPL for `log_number`.
 
     - The human-readable {LOGNUM} field and the barcode payload both use
       filetrack.config.format_log_number() — the one canonical zero-pad
       rule (5 digits) — so the printed number and the barcode value never
       drift apart.
-    - The barcode is a native ^BC Code128 field already present in the
-      template (^BY2,2,70 / ^BCN,70,N,N,N); this function only supplies
-      the {BARCODE} value substituted into it — it never rasterizes an
-      image of a barcode.
+    - ``log_in_date`` fills ``LOG-IN`` (defaults to today); EXT stays a blank
+      ``__/__/YYYY`` using that date's year. Override for backdated labels.
     - Pure function — reads the template file and returns a new string.
       Never mutates the template file on disk.
-    - **fields is accepted but unused by this template (which only defines
-      {LOGNUM}/{BARCODE}) — kept for forward-compatibility with future
-      label templates that need more fields.
     """
+    if log_in_date is None and "log_in_date" in fields:
+        log_in_date = fields.get("log_in_date")
     formatted = format_log_number(log_number)
     payload = barcode_payload_for_log(log_number)
+    log_in = format_log_in_date(log_in_date)
+    ext_year = log_in[-4:] if len(log_in) >= 4 else str(date.today().year)
 
     zpl = load_template(template_path)
     zpl = zpl.replace(_LOGNUM_PLACEHOLDER, formatted)
     zpl = zpl.replace(_BARCODE_PLACEHOLDER, payload)
+    zpl = zpl.replace(_LOG_IN_DATE_PLACEHOLDER, log_in)
+    zpl = zpl.replace(_EXT_YEAR_PLACEHOLDER, ext_year)
     return zpl

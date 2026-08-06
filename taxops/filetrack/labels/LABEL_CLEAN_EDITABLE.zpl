@@ -17,8 +17,8 @@
 
 ^FX ===== Intake dates (right of LOG#, stacked) =====^FS
 ^CF0,20
-^FO300,14^FDLOG-IN __/__/2026^FS
-^FO300,40^FDEXT   __/__/2026^FS
+^FO300,14^FDLOG-IN {LOG_IN_DATE}^FS
+^FO300,40^FDEXT   __/__/{EXT_YEAR}^FS
 
 ^FX ===== Divider under identity block =====^FS
 ^FO18,66^GB497,2,2^FS
