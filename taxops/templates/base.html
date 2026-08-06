@@ -353,6 +353,8 @@
         </button>
 
         <!-- Needs-attention (all staff) — Feature 2 -->
+        {% from "_needs_attention_macros.html" import attn_reason_class, attn_reason_label, attn_client_name %}
+        {% set _ac = needs_attention_counts or {} %}
         <div class="relative shrink-0" id="attention-bell-wrap">
           <button id="attention-bell"
                   aria-label="{{ _('Needs attention') }}"
@@ -360,70 +362,63 @@
                   aria-haspopup="true"
                   aria-controls="attention-dropdown"
                   title="{{ _('Needs attention') }}"
-                  class="relative flex items-center justify-center w-7 h-7 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                  class="relative flex items-center justify-center w-7 h-7 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 {% if needs_attention_count and needs_attention_count > 0 %}attn-bell--active{% endif %}"
                   style="color:var(--nav-text)">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round"
                     d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
             </svg>
             {% if needs_attention_count and needs_attention_count > 0 %}
-            <span class="absolute -top-0.5 -right-0.5 min-w-[1rem] h-4 bg-amber-500 text-white
+            <span class="absolute -top-0.5 -right-0.5 min-w-[1rem] h-4 text-white
                           text-[10px] font-bold rounded-full flex items-center justify-center px-0.5
-                          leading-none" style="box-shadow:0 0 0 2px var(--nav-bg)">
+                          leading-none"
+                  style="background:var(--color-primary);box-shadow:0 0 0 2px var(--nav-bg)">
               {{ needs_attention_count }}
             </span>
             {% endif %}
           </button>
 
-          <div id="attention-dropdown"
-               class="hidden absolute right-0 top-full mt-2 w-80 rounded-xl shadow-2xl overflow-hidden z-50">
-            <div class="flex items-center justify-between px-4 py-3 border-b"
-                 style="background:color-mix(in srgb,#b45309 12%,transparent);border-color:color-mix(in srgb,#b45309 25%,transparent)">
-              <span class="font-bold text-sm flex items-center gap-2" style="color:#92400e">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <div id="attention-dropdown" class="hidden absolute right-0 top-full mt-2 rounded-xl overflow-hidden z-50">
+            <div class="attn-dd-head">
+              <span class="attn-dd-head__title">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round"
                         d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
                 </svg>
                 {{ _('Needs attention') }}
               </span>
-              <span class="text-xs font-semibold" style="color:#92400e">{{ needs_attention_count or 0 }} {{ _('total') }}</span>
+              <span class="attn-dd-head__count">{{ needs_attention_count or 0 }}</span>
             </div>
 
+            {% if needs_attention_count and needs_attention_count > 0 %}
+            <div class="attn-dd-summary" aria-label="{{ _('By reason') }}">
+              <span class="attn-chip attn-chip--ef {% if not _ac.get('ef_rejected') %}attn-chip--empty{% endif %}">
+                <span class="attn-chip__n">{{ _ac.get('ef_rejected', 0) }}</span> {{ _('EF Rejected') }}
+              </span>
+              <span class="attn-chip attn-chip--contact {% if not _ac.get('client_contact') %}attn-chip--empty{% endif %}">
+                <span class="attn-chip__n">{{ _ac.get('client_contact', 0) }}</span> {{ _('Needs contact') }}
+              </span>
+              <span class="attn-chip attn-chip--stale {% if not _ac.get('stale_processing') %}attn-chip--empty{% endif %}">
+                <span class="attn-chip__n">{{ _ac.get('stale_processing', 0) }}</span> {{ _('Stale') }}
+              </span>
+            </div>
+            {% endif %}
+
             {% if needs_attention_items %}
-            <ul class="max-h-96 overflow-y-auto divide-y" style="background:var(--dropdown-bg);border-color:var(--border-subtle)">
+            <ul class="attn-dd-list">
               {% for r in needs_attention_items %}
-              <li style="border-color:var(--border-subtle)">
-                <a href="/return/{{ r.return_id }}"
-                   class="flex items-start gap-3 px-4 py-3 transition-colors group"
-                   style="color:inherit"
-                   onmouseover="this.style.background='color-mix(in srgb,#b45309 8%,transparent)'"
-                   onmouseout="this.style.background=''">
-                  <span class="mt-0.5 w-2 h-2 rounded-full bg-amber-500 shrink-0 ring-2 ring-amber-100"></span>
-                  <div class="flex-1 min-w-0">
-                    <div class="font-semibold text-sm truncate" style="color:var(--text-primary)">
-                      {% if privacy_mode %}
-                        {{ _('Client') }} {{ r.client_id }}
-                      {% else %}
-                        {{ r.display_name or ((r.last_name or '') ~ ((', ' ~ r.first_name) if r.first_name else '')) or _('(unnamed)') }}
-                      {% endif %}
-                    </div>
-                    <div class="flex items-center gap-2 mt-0.5 text-xs flex-wrap" style="color:var(--text-muted)">
-                      {% if r.log_number %}
-                      <span class="font-mono font-bold" style="color:var(--text-secondary)">LOG {{ r.log_number }}</span>
-                      <span style="color:var(--border-default)">·</span>
-                      {% endif %}
-                      <span class="font-semibold" style="color:#92400e">
-                        {% if r.reason == 'ef_rejected' %}{{ _('EF Rejected') }}
-                        {% elif r.reason == 'client_contact' %}{{ _('Needs contact') }}
-                        {% else %}{{ _('Stale processing') }}{% endif %}
-                      </span>
-                      {% if r.processor %}
-                      <span style="color:var(--border-default)">·</span>
-                      <span>{{ preparer_list_label(r.processor) }}</span>
-                      {% endif %}
+              {% set rc = attn_reason_class(r.reason) %}
+              <li>
+                <a href="/return/{{ r.return_id }}" class="attn-dd-row">
+                  <span class="attn-badge attn-badge--{{ rc }}">{{ attn_reason_label(r.reason) }}</span>
+                  <div class="attn-row__main">
+                    <div class="attn-row__name">{{ attn_client_name(r) }}</div>
+                    <div class="attn-row__meta">
+                      {% if r.log_number %}<span class="attn-row__log">LOG {{ r.log_number }}</span>{% endif %}
+                      {% if r.processor %}<span>{{ preparer_list_label(r.processor) }}</span>{% endif %}
                     </div>
                   </div>
-                  <svg class="w-4 h-4 shrink-0 mt-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--border-strong)">
+                  <svg class="attn-row__chevron mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
                   </svg>
                 </a>
@@ -431,9 +426,7 @@
               {% endfor %}
             </ul>
             {% else %}
-            <div class="px-4 py-8 text-center" style="background:var(--dropdown-bg)">
-              <p class="text-sm font-medium" style="color:var(--text-muted)">{{ _('Nothing needs attention') }}</p>
-            </div>
+            <div class="attn-dd-empty">{{ _('Nothing needs attention') }}</div>
             {% endif %}
           </div>
         </div>

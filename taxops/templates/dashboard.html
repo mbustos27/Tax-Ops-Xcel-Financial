@@ -11,57 +11,57 @@
 <div class="flex flex-col gap-3 h-full min-h-0">
 
   {% if needs_attention_count and needs_attention_count > 0 %}
+  {% from "_needs_attention_macros.html" import attn_reason_class, attn_reason_label, attn_client_name %}
+  {% set _ac = needs_attention_counts or {} %}
   <!-- ── Needs attention (all staff) ───────────────────────────────────── -->
-  <div id="needs-attention-panel"
-       class="rounded-xl px-4 py-3 shadow-sm flex-shrink-0"
-       style="background:color-mix(in srgb,#b45309 8%,var(--bg-card));border:1px solid color-mix(in srgb,#b45309 28%,var(--border-default))">
-    <div class="flex items-center justify-between gap-3 mb-2">
-      <div class="flex items-center gap-2 min-w-0">
-        <span class="inline-flex items-center justify-center min-w-[1.4rem] h-5 px-1.5 rounded-full text-[11px] font-bold bg-amber-600 text-white">
-          {{ needs_attention_count }}
+  <section id="needs-attention-panel" class="attn-panel" aria-label="{{ _('Needs attention') }}">
+    <div class="attn-panel__head">
+      <div class="attn-panel__title">
+        <span class="attn-panel__count" aria-hidden="true">{{ needs_attention_count }}</span>
+        <h2>{{ _('Needs attention') }}</h2>
+      </div>
+      <div class="attn-summary" role="list" aria-label="{{ _('By reason') }}">
+        <span class="attn-chip attn-chip--ef {% if not _ac.get('ef_rejected') %}attn-chip--empty{% endif %}" role="listitem">
+          <span class="attn-chip__n">{{ _ac.get('ef_rejected', 0) }}</span>
+          {{ _('EF Rejected') }}
         </span>
-        <h2 class="text-sm font-bold truncate" style="color:#92400e">{{ _('Needs attention') }}</h2>
-        <span class="text-xs hidden sm:inline" style="color:var(--text-muted)">{{ _('Visible to all staff') }}</span>
+        <span class="attn-chip attn-chip--contact {% if not _ac.get('client_contact') %}attn-chip--empty{% endif %}" role="listitem">
+          <span class="attn-chip__n">{{ _ac.get('client_contact', 0) }}</span>
+          {{ _('Needs contact') }}
+        </span>
+        <span class="attn-chip attn-chip--stale {% if not _ac.get('stale_processing') %}attn-chip--empty{% endif %}" role="listitem">
+          <span class="attn-chip__n">{{ _ac.get('stale_processing', 0) }}</span>
+          {{ _('Stale processing') }}
+        </span>
       </div>
     </div>
-    <ul class="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+    <ul class="attn-list">
       {% for r in needs_attention_items %}
+      {% set rc = attn_reason_class(r.reason) %}
       <li>
-        <a href="/return/{{ r.return_id }}"
-           class="flex items-start gap-2 rounded-lg px-2.5 py-2 transition-colors"
-           style="background:var(--bg-card);border:1px solid var(--border-subtle)"
-           onmouseover="this.style.borderColor='#d97706'"
-           onmouseout="this.style.borderColor='var(--border-subtle)'">
-          <span class="mt-1 w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
-          <div class="min-w-0 flex-1">
-            <div class="text-sm font-semibold truncate" style="color:var(--text-primary)">
-              {% if privacy_mode %}
-                {{ _('Client') }} {{ r.client_id }}
-              {% else %}
-                {{ r.display_name or ((r.last_name or '') ~ ((', ' ~ r.first_name) if r.first_name else '')) or _('(unnamed)') }}
-              {% endif %}
-            </div>
-            <div class="text-xs mt-0.5 flex flex-wrap gap-x-1.5" style="color:var(--text-muted)">
-              {% if r.log_number %}<span class="font-mono font-bold" style="color:var(--text-secondary)">LOG {{ r.log_number }}</span>{% endif %}
-              <span style="color:#92400e;font-weight:600">
-                {% if r.reason == 'ef_rejected' %}{{ _('EF Rejected') }}
-                {% elif r.reason == 'client_contact' %}{{ _('Needs contact') }}
-                {% else %}{{ _('Stale processing') }}{% endif %}
-              </span>
+        <a href="/return/{{ r.return_id }}" class="attn-row attn-row--{{ rc }}">
+          <span class="attn-badge attn-badge--{{ rc }}">{{ attn_reason_label(r.reason) }}</span>
+          <div class="attn-row__main">
+            <div class="attn-row__name">{{ attn_client_name(r) }}</div>
+            <div class="attn-row__meta">
+              {% if r.log_number %}<span class="attn-row__log">LOG {{ r.log_number }}</span>{% endif %}
               {% if r.processor %}<span>{{ preparer_list_label(r.processor) }}</span>{% endif %}
             </div>
           </div>
+          <svg class="attn-row__chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+          </svg>
         </a>
       </li>
       {% endfor %}
     </ul>
     {% if needs_attention_count > (needs_attention_items|length) %}
-    <p class="text-xs mt-2" style="color:var(--text-muted)">
-      {{ _('Showing a subset of items — full count is in the nav attention badge.') }}
-      ({{ needs_attention_items|length }}/{{ needs_attention_count }})
+    <p class="attn-panel__foot">
+      {{ _('Showing') }} {{ needs_attention_items|length }}/{{ needs_attention_count }}
+      — {{ _('full count is in the nav attention badge') }}
     </p>
     {% endif %}
-  </div>
+  </section>
   {% endif %}
 
   <!-- ── Filter bar — static, never moves ──────────────────────────────── -->

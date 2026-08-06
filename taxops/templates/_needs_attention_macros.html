@@ -1,0 +1,22 @@
+{# Shared Needs-attention reason label helpers — include where needed. #}
+{% macro attn_reason_class(reason) -%}
+{%- if reason == 'ef_rejected' -%}ef
+{%- elif reason == 'client_contact' -%}contact
+{%- else -%}stale
+{%- endif -%}
+{%- endmacro %}
+
+{% macro attn_reason_label(reason) -%}
+{%- if reason == 'ef_rejected' -%}{{ _('EF Rejected') }}
+{%- elif reason == 'client_contact' -%}{{ _('Needs contact') }}
+{%- else -%}{{ _('Stale processing') }}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro attn_client_name(r) -%}
+{%- if privacy_mode -%}
+{{ _('Client') }} {{ r.client_id }}
+{%- else -%}
+{{ r.display_name or ((r.last_name or '') ~ ((', ' ~ r.first_name) if r.first_name else '')) or _('(unnamed)') }}
+{%- endif -%}
+{%- endmacro %}

@@ -834,7 +834,8 @@ def fetch_needs_attention(
     client contact, stale PROCESSING (named client, intake older than 60 days,
     Drake not accepted/printed).
 
-    Returns ``(items, total_count)``. Items are capped by ``limit`` (None = uncapped).
+    Returns ``(items, total_count, reason_counts)``. Items are capped by ``limit``
+    (None = uncapped). ``reason_counts`` is always over the full uncapped set.
     Never includes file_path / SSN fields.
     """
     from flask import has_request_context
@@ -923,9 +924,20 @@ def fetch_needs_attention(
         ),
     )
     total = len(ordered)
+    reason_counts = {
+        "ef_rejected": 0,
+        "client_contact": 0,
+        "stale_processing": 0,
+    }
+    for it in ordered:
+        key = it.get("reason")
+        if key in reason_counts:
+            reason_counts[key] += 1
     if limit is not None:
         ordered = ordered[: max(0, int(limit))]
-    return ordered, total
+    return ordered, total, reason_counts
+
+
 def _form_badges(r: dict) -> list[str]:
     mapping = [
         ("form_1040",    "1040"),
@@ -1523,9 +1535,16 @@ def base_ctx(year: int | None = None) -> dict:
         f"{_SELECT} WHERE r.client_status = 'REJECTED' ORDER BY r.updated_at DESC"
     ).fetchall()
     try:
-        needs_attention_items, needs_attention_count = fetch_needs_attention(conn, y)
+        needs_attention_items, needs_attention_count, needs_attention_counts = (
+            fetch_needs_attention(conn, y)
+        )
     except Exception:
         needs_attention_items, needs_attention_count = [], 0
+        needs_attention_counts = {
+            "ef_rejected": 0,
+            "client_contact": 0,
+            "stale_processing": 0,
+        }
     conn.close()
     rejected = [_enrich(dict(r)) for r in rejected_rows]
     return {
@@ -1548,6 +1567,7 @@ def base_ctx(year: int | None = None) -> dict:
         "rejected_count":       len(rejected),
         "needs_attention_items": needs_attention_items,
         "needs_attention_count": needs_attention_count,
+        "needs_attention_counts": needs_attention_counts,
         "can_run_season_rollover": can_run_season_rollover(),
         "failed_doc_count":         failed_doc_count,
         "receipt_review_count":     receipt_review_count,

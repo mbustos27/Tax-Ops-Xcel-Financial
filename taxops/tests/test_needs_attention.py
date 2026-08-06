@@ -93,7 +93,7 @@ def test_fetch_includes_three_reasons(taxops_db_path):
     )
 
     conn = get_connection(taxops_db_path)
-    items, total = fetch_needs_attention(conn, 2025, limit=None)
+    items, total, counts = fetch_needs_attention(conn, 2025, limit=None)
     conn.close()
 
     reasons = {it["return_id"]: it["reason"] for it in items}
@@ -101,6 +101,11 @@ def test_fetch_includes_three_reasons(taxops_db_path):
     assert reasons[5101] == "stale_processing"
     assert reasons[5102] == "client_contact"
     assert reasons[5103] == "ef_rejected"
+    assert counts == {
+        "ef_rejected": 1,
+        "client_contact": 1,
+        "stale_processing": 1,
+    }
 
 
 def test_fetch_excludes_resolved_and_fresh(taxops_db_path):
@@ -139,10 +144,15 @@ def test_fetch_excludes_resolved_and_fresh(taxops_db_path):
     )
 
     conn = get_connection(taxops_db_path)
-    items, total = fetch_needs_attention(conn, 2025, limit=None)
+    items, total, counts = fetch_needs_attention(conn, 2025, limit=None)
     conn.close()
     assert total == 0
     assert items == []
+    assert counts == {
+        "ef_rejected": 0,
+        "client_contact": 0,
+        "stale_processing": 0,
+    }
 
 
 def test_fetch_dedups_ef_over_contact(taxops_db_path):
@@ -161,10 +171,13 @@ def test_fetch_dedups_ef_over_contact(taxops_db_path):
     )
 
     conn = get_connection(taxops_db_path)
-    items, total = fetch_needs_attention(conn, 2025, limit=None)
+    items, total, counts = fetch_needs_attention(conn, 2025, limit=None)
     conn.close()
     assert total == 1
     assert items[0]["reason"] == "ef_rejected"
+    assert counts["ef_rejected"] == 1
+    assert counts["client_contact"] == 0
+    assert counts["stale_processing"] == 0
 
 
 def test_receptionist_dashboard_sees_attention(client, taxops_db_path):
