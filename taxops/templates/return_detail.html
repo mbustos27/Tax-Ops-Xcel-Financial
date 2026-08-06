@@ -97,6 +97,13 @@
             {{ _('Pickup workflow') }}
           </a>
           {% endif %}
+          <label class="inline-flex items-center gap-1.5 text-xs text-slate-600">
+            <span class="sr-only">{{ _('Log-in date on sticker') }}</span>
+            <input type="date" id="print-sticker-date"
+                   value="{{ ret.intake_date or today }}"
+                   class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
+                   title="{{ _('Log-in date printed on the sticker (editable)') }}">
+          </label>
           <button type="button" onclick="printSticker()"
                   class="inline-flex items-center justify-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 transition-all">
             <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -369,6 +376,7 @@
       alert('Network error — please try again.');
     });
   }
+  window._toggleExt = _toggleExt;
   </script>
 
   <!-- ── Status workflow ─────────────────────────────────────────────────── -->
@@ -988,17 +996,7 @@
 
 </div><!-- /wrapper -->
 
-<!-- Hidden sticker for print -->
-<div id="sticker-content" style="display:none">
-  <div style="font-family:monospace;border:2px solid #000;padding:14px 16px;width:2.6in;line-height:1.4">
-    <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#666">Tax Year {{ ret.tax_year }}</div>
-    <div style="font-size:22px;font-weight:900;letter-spacing:3px;margin:2px 0">{{ ret.log_number }}</div>
-    <div style="font-size:13px;font-weight:600">{{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %}</div>
-    {% if ret.client_status %}
-    <div style="font-size:9px;margin-top:6px;color:#555;text-transform:uppercase">{{ ret.client_status }}</div>
-    {% endif %}
-  </div>
-</div>
+<!-- Print sticker uses /api/return/{{ ret.id }}/print-label (same ZPL as intake). -->
 {% endblock %}
 
 {% block scripts %}
@@ -1137,44 +1135,65 @@
   async function confirmCancel(returnId) {
     const reason = (document.getElementById('cancel-reason-input')?.value || '').trim();
     if (!reason) { alert('Please enter a reason for cancellation.'); return; }
-    const resp = await _csrfFetch(`/api/return/${returnId}/cancel`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason }),
-    });
-    const data = await resp.json();
-    if (data.error) { alert(data.error); return; }
-    window.location.reload();
+    try {
+      const resp = await _csrfFetch(`/api/return/${returnId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data.error) {
+        alert(data.error || ('Cancel failed (HTTP ' + resp.status + ')'));
+        return;
+      }
+      window.location.reload();
+    } catch (e) {
+      alert(e.message || 'Cancel failed');
+    }
   }
 
   async function uncancelReturn(returnId) {
     if (!confirm('Reinstate this return?')) return;
-    const resp = await _csrfFetch(`/api/return/${returnId}/uncancel`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    const data = await resp.json();
-    if (data.error) { alert(data.error); return; }
-    window.location.reload();
+    try {
+      const resp = await _csrfFetch(`/api/return/${returnId}/uncancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data.error) {
+        alert(data.error || ('Uncancel failed (HTTP ' + resp.status + ')'));
+        return;
+      }
+      window.location.reload();
+    } catch (e) {
+      alert(e.message || 'Uncancel failed');
+    }
   }
 
   // ── DEL-1: Hard-delete return (admin-only, irreversible) ─────────────────
   async function deleteReturn(returnId, logNumber) {
+    const hasLog = logNumber != null && String(logNumber).trim() !== '';
+    const token = hasLog ? String(logNumber).trim() : String(returnId);
     const typed = prompt(
-      `This PERMANENTLY deletes return #${logNumber} and all its notes, `
+      `This PERMANENTLY deletes return #${hasLog ? logNumber : returnId} and all its notes, `
       + `payments, documents, and history. This cannot be undone.\n\n`
-      + `Type the log number (${logNumber}) to confirm:`
+      + (hasLog
+          ? `Type the log number (${token}) to confirm:`
+          : `This return has no log number. Type the return id (${token}) to confirm:`)
     );
     if (typed === null) return;
-    if (typed.trim() !== String(logNumber)) {
-      alert('Log number did not match — nothing was deleted.');
+    if (typed.trim() !== token) {
+      alert('Confirmation did not match — nothing was deleted.');
       return;
     }
+    const body = hasLog
+      ? { confirm_log_number: typed.trim() }
+      : { confirm_return_id: typed.trim() };
     const resp = await _csrfFetch(`/api/return/${returnId}/delete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirm_log_number: typed.trim() }),
+      body: JSON.stringify(body),
     });
     const data = await resp.json();
     if (data.error) { alert(data.error); return; }
@@ -1332,11 +1351,32 @@
     } catch (e) { console.error(e); }
   }
 
-  function printSticker() {
-    const content = document.getElementById('sticker-content').innerHTML;
-    const win = window.open('', '_blank', 'width=320,height=200');
-    win.document.write(`<html><body onload="window.print();window.close()">${content}</body></html>`);
-    win.document.close();
+  async function printSticker() {
+    // Same physical LOG sticker as intake create (ZPL via print relay) — not HTML.
+    const btn = document.querySelector('button[onclick="printSticker()"]');
+    const dateEl = document.getElementById('print-sticker-date');
+    const prev = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '{{ _("Printing…") }}'; }
+    try {
+      const body = {};
+      if (dateEl && dateEl.value) body.log_in_date = dateEl.value;
+      const resp = await _csrfFetch('/api/return/{{ ret.id }}/print-label', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.success) {
+        alert(data.error || ('{{ _("Print failed") }} (' + resp.status + ')'));
+        return;
+      }
+      if (window.flash && btn) window.flash(btn);
+    } catch (e) {
+      console.error(e);
+      alert('{{ _("Print failed") }}');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = prev || '{{ _("Print sticker") }}'; }
+    }
   }
 
   async function draftEmail(returnId) {
@@ -3302,6 +3342,15 @@
   window.submitNote = submitNote;
   window.toggleMissingDoc = toggleMissingDoc;
   window.toggleStatusMenu = toggleStatusMenu;
+  // LIFE-1 / DEL-1 / DEP-1 — onclick handlers (must be globals; script is an IIFE)
+  window.showCancelForm = showCancelForm;
+  window.hideCancelForm = hideCancelForm;
+  window.confirmCancel = confirmCancel;
+  window.uncancelReturn = uncancelReturn;
+  window.deleteReturn = deleteReturn;
+  window.removeDependent = removeDependent;
+  window.applyExtracted = applyExtracted;
+  window.deleteFormRecord = deleteFormRecord;
 })();
 </script>
 {% endblock %}
