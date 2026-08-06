@@ -1115,3 +1115,8 @@ def return_document_confirm_extraction(return_id: int, doc_id: int):
         return jsonify({"success": True, "doc_type": doc_type_ui})
     finally:
         conn.close()
+
+
+# Attach static rejection lookup + extraction requeue (post-ai_routes cleanup).
+import routes.reference  # noqa: E402, F401
+

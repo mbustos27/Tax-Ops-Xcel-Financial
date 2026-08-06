@@ -506,7 +506,7 @@
     if (res.ok) location.reload();
   }
 
-  // ── Rejection code lookup (static reference table → LLM fallback) ─────────
+  // ── Rejection code lookup (static reference table) ─────────────────────────
   document.addEventListener('DOMContentLoaded', () => {
     const codeInput   = document.getElementById('reject-code');
     const reasonInput = document.getElementById('reject-reason');
@@ -529,7 +529,7 @@
       if (!val) return;
 
       try {
-        const resp = await _csrfFetch('/ai/rejection-code/lookup', {
+        const resp = await _csrfFetch('/api/rejection-code/lookup', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ code: val }),
@@ -553,7 +553,7 @@
           sourceHint.textContent = 'matched reference table';
           sourceHint.style.color = '#16a34a';
         } else {
-          sourceHint.textContent = 'LLM lookup';
+          sourceHint.textContent = 'not in reference table';
           sourceHint.style.color = '#94a3b8';
         }
         sourceHint.style.display = 'inline';
