@@ -6110,18 +6110,22 @@ def api_merge_clients():
 
     conn = get_connection()
     try:
-        keep    = conn.execute("SELECT * FROM clients WHERE id=?", (keep_id,)).fetchone()
-        discard = conn.execute("SELECT * FROM clients WHERE id=?", (discard_id,)).fetchone()
-        if not keep or not discard:
+        keep_row = conn.execute("SELECT * FROM clients WHERE id=?", (keep_id,)).fetchone()
+        discard_row = conn.execute("SELECT * FROM clients WHERE id=?", (discard_id,)).fetchone()
+        if not keep_row or not discard_row:
             return jsonify({"error": "Client not found"}), 404
+
+        # sqlite3.Row has no .get — materialize dicts before optional-field access.
+        keep = dict(keep_row)
+        discard = dict(discard_row)
 
         ts = now()
         merge_client_into(conn, keep_id, discard_id, ts)
         conn.commit()
 
         keep_name = _build_name_full(
-            keep["first_name"] or "", keep["last_name"] or "",
-            keep["display_name"] or "",
+            keep.get("first_name") or "", keep.get("last_name") or "",
+            keep.get("display_name") or "",
             keep.get("spouse_first_name") or "", keep.get("spouse_last_name") or "",
         )
         return jsonify({"success": True, "kept": keep_name})
