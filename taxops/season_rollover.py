@@ -318,3 +318,277 @@ def build_rollover_report_csv(report: dict[str, Any]) -> str:
             (r.get("reason") or "").replace("\n", " ").strip(),
         ])
     return buf.getvalue()
+
+
+def _fetch_clients_missing_year(conn: Connection, target_year: int) -> list[int]:
+    rows = conn.execute(
+        """
+        SELECT c.id
+          FROM clients c
+         WHERE NOT EXISTS (
+               SELECT 1 FROM returns r
+                WHERE r.client_id = c.id AND r.tax_year = ?
+         )
+         ORDER BY c.id
+        """,
+        (target_year,),
+    ).fetchall()
+    return [int(r["id"]) for r in rows]
+
+
+def _latest_prior_return(conn: Connection, client_id: int, target_year: int) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT *
+          FROM returns
+         WHERE client_id = ? AND tax_year < ?
+         ORDER BY tax_year DESC, id DESC
+         LIMIT 1
+        """,
+        (client_id, target_year),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def _insert_pending_intake_return(
+    conn: Connection,
+    *,
+    client_id: int,
+    target_year: int,
+    src: dict[str, Any] | None,
+    options: RolloverCarryOptions,
+    actor: str | None,
+    ts: str,
+    note_prefix: str,
+) -> int:
+    """Insert one PENDING INTAKE return (+ empty return_forms + status event)."""
+    proc = filing = None
+    interview_by = promise = delivered_by = notes = None
+    if src:
+        proc = (
+            normalize_preparer(str(src["processor"]))
+            if options.carry_processor and src.get("processor")
+            else None
+        )
+        filing = (
+            str(src["filing_status"]).strip()
+            if options.carry_filing_status and src.get("filing_status")
+            else None
+        )
+        if options.carry_intake_fields:
+            interview_by = src.get("interview_by") or None
+            promise = src.get("promise_date") or None
+            delivered_by = src.get("delivered_by") or None
+            notes = src.get("notes_intake") or None
+
+    conn.execute(
+        """
+        INSERT INTO returns (
+          client_id, log_number, tax_year, client_status,
+          processor, verified, filing_status,
+          intake_date, interview_by, promise_date, delivered_by, notes_intake,
+          pickup_date, logout_date, efile_date, ack_date,
+          date_emailed, updated_date,
+          transfer_flag, transfer_2025_flag, transfer_2026_flag,
+          email_marker,
+          created_at, updated_at
+        ) VALUES (
+          ?, NULL, ?, ?,
+          ?, 0, ?,
+          NULL, ?, ?, ?, ?,
+          NULL, NULL, NULL, NULL,
+          NULL, NULL,
+          NULL, NULL, NULL,
+          NULL,
+          ?, ?
+        )
+        """,
+        (
+            client_id, target_year, NEW_ROLLOVER_STATUS,
+            proc, filing,
+            interview_by, promise, delivered_by, notes,
+            ts, ts,
+        ),
+    )
+    new_rid = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+    if src and options.carry_prior_year_log_on_client and src.get("log_number"):
+        conn.execute(
+            "UPDATE clients SET prior_year_log = ?, updated_at = ? WHERE id = ?",
+            (str(src["log_number"]).strip(), ts, client_id),
+        )
+
+    form_vals: list[Any]
+    if src and options.carry_return_forms:
+        rf_src = conn.execute(
+            "SELECT * FROM return_forms WHERE return_id = ? LIMIT 1",
+            (int(src["id"]),),
+        ).fetchone()
+        if rf_src:
+            rfd = dict(rf_src)
+            form_vals = [rfd.get(c) for c in RETURN_FORM_COLUMNS]
+        else:
+            form_vals = [None] * len(RETURN_FORM_COLUMNS)
+    else:
+        form_vals = [None] * len(RETURN_FORM_COLUMNS)
+
+    ph_f = ",".join("?" * (len(RETURN_FORM_COLUMNS) + 1))
+    fc = ", ".join(RETURN_FORM_COLUMNS)
+    conn.execute(
+        f"INSERT INTO return_forms (return_id, {fc}) VALUES ({ph_f})",
+        [new_rid] + form_vals,
+    )
+
+    sid = int(src["id"]) if src else None
+    src_year = int(src["tax_year"]) if src and src.get("tax_year") is not None else None
+    if src and sid is not None and src_year is not None:
+        note = f"{note_prefix} from TY{src_year} return #{sid}; actor={(actor or '').strip() or '?'}"
+    else:
+        note = f"{note_prefix} (no prior return); actor={(actor or '').strip() or '?'}"
+
+    conn.execute(
+        """
+        INSERT INTO status_events (
+          return_id, event_type, old_status, new_status,
+          event_timestamp, source_file, note
+        ) VALUES (
+          ?, 'ROLLOVER', NULL, ?, ?, 'season_rollover', ?
+        )
+        """,
+        (new_rid, NEW_ROLLOVER_STATUS, ts, note),
+    )
+    return new_rid
+
+
+def seed_preintake_preview(conn: Connection, *, target_year: int) -> dict[str, Any]:
+    """Count clients who need a PENDING INTAKE shell for ``target_year``."""
+    if target_year < 1990 or target_year > 2100:
+        return {"ok": False, "error": "Target tax year must be between 1990 and 2100."}
+
+    missing = _fetch_clients_missing_year(conn, target_year)
+    with_prior = 0
+    orphans = 0
+    sample: list[dict[str, Any]] = []
+    for cid in missing:
+        src = _latest_prior_return(conn, cid, target_year)
+        if src:
+            with_prior += 1
+            if len(sample) < 25:
+                sample.append({
+                    "client_id": cid,
+                    "source_return_id": int(src["id"]),
+                    "source_tax_year": int(src["tax_year"]),
+                })
+        else:
+            orphans += 1
+            if len(sample) < 25:
+                sample.append({
+                    "client_id": cid,
+                    "source_return_id": None,
+                    "source_tax_year": None,
+                })
+
+    return {
+        "ok": True,
+        "new_status": NEW_ROLLOVER_STATUS,
+        "target_year": target_year,
+        "totals": {
+            "missing": len(missing),
+            "with_prior_return": with_prior,
+            "orphans_no_prior_return": orphans,
+        },
+        "sample": sample,
+    }
+
+
+def seed_preintake_commit(
+    conn: Connection,
+    *,
+    target_year: int,
+    options: RolloverCarryOptions,
+    actor: str | None,
+    ts: str,
+) -> dict[str, Any]:
+    """
+    Seed PENDING INTAKE for every client lacking a return in ``target_year``.
+
+    Unlike year-to-year rollover, this uses each client's newest prior-year
+    return (any tax_year < target) so Drake-imported clients and orphans all
+    get a preintake shell for intake autofill / dashboard visibility.
+    """
+    preview = seed_preintake_preview(conn, target_year=target_year)
+    if not preview.get("ok"):
+        return preview
+
+    created_rows: list[dict[str, Any]] = []
+    missing = _fetch_clients_missing_year(conn, target_year)
+
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        # Re-check inside the transaction so concurrent intake can't double-seed.
+        already = clients_with_return_in_year(conn, target_year)
+        for cid in missing:
+            if cid in already:
+                continue
+            src = _latest_prior_return(conn, cid, target_year)
+            if src and options.require_prior_logged_out:
+                prior_status = (src.get("client_status") or "").strip()
+                if prior_status not in PRIOR_CLOSED_STATUSES:
+                    continue
+            new_rid = _insert_pending_intake_return(
+                conn,
+                client_id=cid,
+                target_year=target_year,
+                src=src,
+                options=options,
+                actor=actor,
+                ts=ts,
+                note_prefix="Preintake seeded",
+            )
+            created_rows.append({
+                "outcome": "created",
+                "client_id": cid,
+                "source_return_id": int(src["id"]) if src else None,
+                "new_return_id": new_rid,
+                "reason": "orphan" if not src else "",
+            })
+            already = frozenset(set(already) | {cid})
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+    return {
+        "ok": True,
+        "target_year": target_year,
+        "new_status": NEW_ROLLOVER_STATUS,
+        "report": {"created": created_rows, "skipped": []},
+        "totals": {"created": len(created_rows)},
+    }
+
+
+def seed_preintake_after_import(
+    conn: Connection,
+    *,
+    actor: str = "import",
+    ts: str | None = None,
+) -> dict[str, Any]:
+    """Best-effort: seed PENDING INTAKE for active year after CSV/Drake import.
+
+    Ensures Drake-imported clients who lack an active-year return show up in
+    intake autofill as preintake. Idempotent; swallows errors so import never fails.
+    """
+    from db import get_active_intake_tax_year
+    from utils import now as _now
+
+    try:
+        target_year = int(get_active_intake_tax_year(conn))
+        return seed_preintake_commit(
+            conn,
+            target_year=target_year,
+            options=RolloverCarryOptions(),
+            actor=actor,
+            ts=ts or _now(),
+        )
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "totals": {"created": 0}}

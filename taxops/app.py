@@ -7779,6 +7779,77 @@ def download_season_rollover_csv():
     )
 
 
+@app.post("/api/admin/seed-preintake/preview")
+@login_required
+def api_admin_seed_preintake_preview():
+    """Preview PENDING INTAKE shells for every client missing the target year."""
+    if not can_run_season_rollover():
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        target_year = int(data.get("target_year") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "target_year must be an integer"}), 400
+    if not target_year:
+        conn = get_connection()
+        try:
+            target_year = get_active_intake_tax_year(conn)
+        finally:
+            conn.close()
+    conn = get_connection()
+    try:
+        out = season_rollover.seed_preintake_preview(conn, target_year=target_year)
+    finally:
+        conn.close()
+    if not out.get("ok"):
+        return jsonify(out), 400
+    return jsonify(out)
+
+
+@app.post("/api/admin/seed-preintake/run")
+@login_required
+def api_admin_seed_preintake_run():
+    """Seed PENDING INTAKE for all clients missing the target tax year."""
+    if not can_run_season_rollover():
+        return jsonify({"error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        target_year = int(data["target_year"])
+        confirmation_year = int(data["confirmation_year"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "target_year and confirmation_year must be integers"}), 400
+    if confirmation_year != target_year:
+        return jsonify({"error": "Confirmation failed: enter the target tax year to confirm."}), 400
+
+    carry_raw = data.get("carry") if isinstance(data.get("carry"), dict) else data
+    opts = season_rollover.carry_options_from_dict(carry_raw)
+    actor = (_session_username() or "").strip() or None
+    ts = now()
+
+    conn = get_connection()
+    try:
+        result = season_rollover.seed_preintake_commit(
+            conn,
+            target_year=target_year,
+            options=opts,
+            actor=actor,
+            ts=ts,
+        )
+        if not result.get("ok"):
+            return jsonify({"ok": False, "error": result.get("error", "Seed failed")}), 400
+        created = (result.get("report") or {}).get("created") or []
+        csv_body = season_rollover.build_rollover_report_csv(result.get("report") or {})
+        session["season_rollover_export_csv"] = csv_body
+        session["season_rollover_export_filename"] = f"preintake_seed_ty{target_year}_{ts[:10]}.csv"
+        return jsonify({
+            "ok": True,
+            "target_year": target_year,
+            "created_count": len(created),
+            "export_ready": True,
+        })
+    finally:
+        conn.close()
+
 # ── AUDIT admin (AUDIT-3…AUDIT-7) ───────────────────────────────────────────
 
 
@@ -8100,6 +8171,22 @@ def api_admin_reset_and_reimport():
                 t["returns_created"] += stats.created_returns
                 t["returns_updated"] += stats.updated_returns
                 t["errors"].extend(stats.errors)
+
+        # 3b. Seed PENDING INTAKE for clients still missing the active year
+        #     (Drake imports alone never create preintake shells).
+        try:
+            from season_rollover import seed_preintake_after_import
+
+            seeded = seed_preintake_after_import(conn, actor=actor or "reimport")
+            result_summary["preintake_seed"] = {
+                "ok": bool(seeded.get("ok")),
+                "target_year": seeded.get("target_year"),
+                "created": (seeded.get("totals") or {}).get("created", 0),
+                "error": seeded.get("error"),
+            }
+        except Exception as exc:
+            current_app.logger.exception("reset-and-reimport: preintake seed failed")
+            result_summary["preintake_seed"] = {"ok": False, "error": str(exc)}
 
         # 4. Audit the action
         try:

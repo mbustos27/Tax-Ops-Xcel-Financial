@@ -12,6 +12,37 @@
     </p>
   </div>
 
+  <div class="bg-white rounded-xl border border-violet-200 shadow-sm p-5 space-y-3 bg-violet-50/40">
+    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wide">Active intake tax year</h2>
+    <p class="text-xs text-slate-600 leading-relaxed">
+      This is the tax year every new <code class="text-xs bg-slate-100 px-1 rounded">/intake</code> walk-in gets —
+      staff no longer pick it per-intake. Change it here <strong>once, at the turn of the season</strong>
+      (typically right when you run a rollover below), not for individual returns.
+    </p>
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="text-sm text-slate-700">
+        Currently: <span id="tay-current" class="font-mono font-bold text-violet-800 text-base">{{ active_intake_tax_year }}</span>
+      </div>
+      <label class="block text-sm font-medium text-slate-700">
+        New year
+        <input id="tay-new" type="number" step="1" min="2000" max="2100"
+               placeholder="{{ active_intake_tax_year }}"
+               class="mt-1 w-32 rounded-lg border border-slate-200 px-3 py-2 text-sm"/>
+      </label>
+      <label class="block text-sm font-medium text-slate-700">
+        Confirm year
+        <input id="tay-confirm" type="number" step="1" placeholder="Repeat new year"
+               class="mt-1 w-40 rounded-lg border border-amber-300 px-3 py-2 text-sm"/>
+      </label>
+      <button type="button" id="tay-btn-apply"
+              class="text-sm font-semibold px-4 py-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed">
+        Set active intake year
+      </button>
+    </div>
+    <p id="tay-err" class="hidden text-sm text-red-600"></p>
+    <p id="tay-ok" class="hidden text-sm text-emerald-700"></p>
+  </div>
+
   <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
     <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wide">1 · Years</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -90,10 +121,97 @@
     <div id="sr-preview-summary" class="text-sm text-slate-700"></div>
     <div id="sr-preview-exc" class="text-xs text-slate-600 max-h-52 overflow-y-auto whitespace-pre-wrap font-mono border border-slate-100 rounded-lg p-2 bg-slate-50"></div>
   </div>
+
+  <div class="bg-white rounded-xl border border-violet-200 shadow-sm p-5 space-y-4 bg-violet-50/30">
+    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wide">4 · Seed preintake (Drake / missing year)</h2>
+    <p class="text-xs text-slate-600 leading-relaxed">
+      Create a <span class="font-mono font-semibold text-violet-700">{{ rollover_status }}</span> return for
+      <strong>every client who does not already have</strong> a return in the target tax year — including
+      Drake-imported clients and clients with no prior return. This is what makes them show as
+      <strong>Preintake</strong> in intake search autofill for the active season.
+    </p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <label class="block text-sm font-medium text-slate-700">
+        Target tax year
+        <input id="pi-target" type="number" step="1" min="1990" max="2100" value="{{ active_intake_tax_year }}"
+               class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/>
+      </label>
+      <label class="block text-sm font-medium text-slate-700">
+        Confirm year
+        <input id="pi-confirm" type="number" step="1" placeholder="Repeat target year"
+               class="mt-1 w-full rounded-lg border border-amber-300 px-3 py-2 text-sm"/>
+      </label>
+    </div>
+    <div class="flex flex-wrap gap-2 items-center">
+      <button type="button" id="pi-btn-preview"
+              class="text-sm font-semibold px-4 py-2 rounded-lg bg-slate-800 text-white hover:bg-slate-900">
+        Preview missing clients
+      </button>
+      <button type="button" id="pi-btn-run" disabled
+              class="text-sm font-semibold px-4 py-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed">
+        Seed PENDING INTAKE
+      </button>
+    </div>
+    <p id="pi-err" class="hidden text-sm text-red-600"></p>
+    <p id="pi-ok" class="hidden text-sm text-emerald-700"></p>
+    <div id="pi-preview-box" class="hidden text-sm text-slate-700 bg-white border border-slate-200 rounded-lg p-3"></div>
+  </div>
 </div>
 
 <script>
 (function () {
+  function setTayMsg(kind, msg) {
+    const errEl = document.getElementById("tay-err");
+    const okEl = document.getElementById("tay-ok");
+    errEl.classList.add("hidden");
+    okEl.classList.add("hidden");
+    if (kind === "error") {
+      errEl.textContent = msg;
+      errEl.classList.remove("hidden");
+    } else if (kind === "ok") {
+      okEl.textContent = msg;
+      okEl.classList.remove("hidden");
+    }
+  }
+
+  document.getElementById("tay-btn-apply").addEventListener("click", async function () {
+    setTayMsg(null);
+    const y = parseInt(document.getElementById("tay-new").value, 10);
+    const cf = parseInt(document.getElementById("tay-confirm").value, 10);
+    if (!Number.isFinite(y)) {
+      setTayMsg("error", "Enter the new tax year.");
+      return;
+    }
+    if (!Number.isFinite(cf) || cf !== y) {
+      setTayMsg("error", "Confirm year must match the new year exactly.");
+      return;
+    }
+    if (!confirm("Set active intake tax year to " + y + "? Every new /intake walk-in will use this immediately.")) return;
+
+    const btn = document.getElementById("tay-btn-apply");
+    btn.disabled = true;
+    try {
+      const r = await _csrfFetch("/api/admin/active-intake-tax-year", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year: y, confirm_year: cf }),
+      });
+      const d = await _authJson(r);
+      if (!d.success) {
+        setTayMsg("error", d.error || "Update failed.");
+        return;
+      }
+      document.getElementById("tay-current").textContent = d.active_intake_tax_year;
+      document.getElementById("tay-new").value = "";
+      document.getElementById("tay-confirm").value = "";
+      setTayMsg("ok", "Active intake tax year is now " + d.active_intake_tax_year + ".");
+    } catch (e) {
+      setTayMsg("error", e.message || "Update failed.");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   let lastPreviewOk = false;
 
   function carryPayload() {
@@ -229,6 +347,94 @@
   });
 
   syncRunEnabled();
+
+  function setPiMsg(kind, msg) {
+    const errEl = document.getElementById("pi-err");
+    const okEl = document.getElementById("pi-ok");
+    errEl.classList.add("hidden");
+    okEl.classList.add("hidden");
+    if (kind === "error") {
+      errEl.textContent = msg;
+      errEl.classList.remove("hidden");
+    } else if (kind === "ok") {
+      okEl.textContent = msg;
+      okEl.classList.remove("hidden");
+    }
+  }
+
+  let piPreviewOk = false;
+  document.getElementById("pi-btn-preview").addEventListener("click", async function () {
+    setPiMsg(null);
+    piPreviewOk = false;
+    document.getElementById("pi-btn-run").disabled = true;
+    const t = parseInt(document.getElementById("pi-target").value, 10);
+    if (!Number.isFinite(t)) {
+      setPiMsg("error", "Enter a target tax year.");
+      return;
+    }
+    try {
+      const r = await _csrfFetch("/api/admin/seed-preintake/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_year: t, carry: carryPayload() }),
+      });
+      const d = await _authJson(r);
+      if (!d.ok) {
+        setPiMsg("error", d.error || "Preview failed.");
+        return;
+      }
+      const tot = d.totals || {};
+      document.getElementById("pi-preview-box").textContent =
+        "Missing TY" + t + ": " + (tot.missing ?? "?") +
+        " (with prior return: " + (tot.with_prior_return ?? "?") +
+        ", orphans: " + (tot.orphans_no_prior_return ?? "?") + ")";
+      document.getElementById("pi-preview-box").classList.remove("hidden");
+      piPreviewOk = true;
+      document.getElementById("pi-btn-run").disabled = false;
+    } catch (e) {
+      setPiMsg("error", e.message || "Preview failed.");
+    }
+  });
+
+  document.getElementById("pi-btn-run").addEventListener("click", async function () {
+    setPiMsg(null);
+    const t = parseInt(document.getElementById("pi-target").value, 10);
+    const cf = parseInt(document.getElementById("pi-confirm").value, 10);
+    if (!Number.isFinite(t) || !Number.isFinite(cf) || cf !== t) {
+      setPiMsg("error", "Confirm year must equal the target tax year.");
+      return;
+    }
+    if (!piPreviewOk) {
+      setPiMsg("error", "Run Preview missing clients first.");
+      return;
+    }
+    if (!confirm("Seed PENDING INTAKE for every client missing TY" + t + "?")) return;
+    document.getElementById("pi-btn-run").disabled = true;
+    try {
+      const r = await _csrfFetch("/api/admin/seed-preintake/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_year: t,
+          confirmation_year: cf,
+          carry: carryPayload(),
+        }),
+      });
+      const d = await _authJson(r);
+      if (!d.ok) {
+        setPiMsg("error", d.error || "Seed failed.");
+        document.getElementById("pi-btn-run").disabled = false;
+        return;
+      }
+      setPiMsg("ok", "Created " + d.created_count + " PENDING INTAKE return(s) for TY" + t + ".");
+      const dl = document.getElementById("sr-download");
+      if (dl && d.export_ready) dl.style.display = "inline-flex";
+      piPreviewOk = false;
+    } catch (e) {
+      setPiMsg("error", e.message || "Seed failed.");
+      document.getElementById("pi-btn-run").disabled = false;
+    }
+  });
 })();
 </script>
 {% endblock %}

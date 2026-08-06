@@ -38,6 +38,20 @@ def main() -> None:
             continue
         process_one_file(conn, csv_file)
 
+    # After all imports: ensure every client missing the active year has a
+    # PENDING INTAKE shell so intake autofill search can find them.
+    try:
+        from season_rollover import seed_preintake_after_import
+
+        seeded = seed_preintake_after_import(conn, actor="csv_import")
+        created = (seeded.get("totals") or {}).get("created", 0)
+        if seeded.get("ok"):
+            print(f"preintake_seed: created={created} year={seeded.get('target_year')}")
+        else:
+            print(f"preintake_seed: skipped ({seeded.get('error')})")
+    except Exception as exc:
+        print(f"preintake_seed: failed ({exc})")
+
     conn.close()
     print("taxops v2 ready")
 
