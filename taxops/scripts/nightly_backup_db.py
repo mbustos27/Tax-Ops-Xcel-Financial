@@ -35,7 +35,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from config import DB_PATH
+import config
 
 log = logging.getLogger(__name__)
 
@@ -171,10 +171,19 @@ def _alert_default(webhook_url: str, subject: str, detail: str) -> None:
 
 def _run_once(
     *,
+    db_path: str | None = None,
     alert_fn: _AlertCaller | None = None,
 ) -> tuple[bool, Path | None, str]:
-    """Returns ``(success, outfile, message)``. ``alert_fn`` injected for testing."""
-    src = Path(DB_PATH).resolve()
+    """Returns ``(success, outfile, message)``. ``alert_fn`` injected for testing.
+
+    ``db_path`` defaults to ``config.DB_PATH`` resolved at call time (not at
+    module-import time) so callers — including tests — can override the
+    source database without relying on environment-variable timing or
+    module-reload tricks. Production callers (the nightly Task Scheduler
+    invocation and the on-demand admin endpoint via backup.py) never pass
+    this and get identical behavior to before: today's ``config.DB_PATH``.
+    """
+    src = Path(db_path if db_path is not None else config.DB_PATH).resolve()
 
     webhook = os.environ.get("TAXOPS_BACKUP_ALERT_WEBHOOK", "").strip()
 

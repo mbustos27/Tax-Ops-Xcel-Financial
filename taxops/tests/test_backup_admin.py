@@ -34,22 +34,17 @@ def bmod():
 
 # ── BACKUP-1: datestamped filename ───────────────────────────────────────────
 
-def test_backup_filename_uses_utc_stamp(bmod, tmp_path):
+def test_backup_filename_uses_utc_stamp(bmod, tmp_path, monkeypatch):
     """Backup file name contains UTC ISO timestamp and correct suffix."""
     src = tmp_path / "live.db"
     cx = sqlite3.connect(str(src)); cx.execute("CREATE TABLE t(x)"); cx.commit(); cx.close()
 
     bdir = tmp_path / "bk"; bdir.mkdir()
-    import os as _os
-    old = _os.environ.copy()
-    _os.environ["TAXOPS_DB"]          = str(src)
-    _os.environ["TAXOPS_BACKUP_DIR"]  = str(bdir)
-    try:
-        mod = _load_script()
-        ok, out, msg = mod._run_once()
-    finally:
-        for k in ("TAXOPS_DB", "TAXOPS_BACKUP_DIR"):
-            _os.environ.pop(k, None)
+    monkeypatch.setenv("TAXOPS_BACKUP_DIR", str(bdir))
+    mod = _load_script()
+    # db_path passed explicitly (3.0 fix) — no reliance on TAXOPS_DB env timing
+    # or config.DB_PATH's import-time binding.
+    ok, out, msg = mod._run_once(db_path=str(src))
 
     assert ok, msg
     assert out is not None
@@ -150,7 +145,7 @@ def test_run_once_logs_warning_on_failure(tmp_path, monkeypatch, caplog):
     assert errlog.exists()
 
 
-def test_run_once_no_error_log_on_success(tmp_path):
+def test_run_once_no_error_log_on_success(tmp_path, monkeypatch):
     """BACKUP-4: no error log written when backup succeeds."""
     src = tmp_path / "live.db"
     cx = sqlite3.connect(str(src)); cx.execute("CREATE TABLE t(x)"); cx.commit(); cx.close()
@@ -158,22 +153,61 @@ def test_run_once_no_error_log_on_success(tmp_path):
     bdir   = tmp_path / "bk"; bdir.mkdir()
     errlog = bdir / "backup_error.log"
 
-    old_env = {k: os.environ.get(k) for k in ("TAXOPS_DB", "TAXOPS_BACKUP_DIR", "TAXOPS_BACKUP_ERROR_LOG")}
-    os.environ["TAXOPS_DB"]               = str(src)
-    os.environ["TAXOPS_BACKUP_DIR"]       = str(bdir)
-    os.environ["TAXOPS_BACKUP_ERROR_LOG"] = str(errlog)
-    try:
-        mod = _load_script()
-        ok, _, msg = mod._run_once()
-    finally:
-        for k, v in old_env.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+    monkeypatch.setenv("TAXOPS_BACKUP_DIR", str(bdir))
+    monkeypatch.setenv("TAXOPS_BACKUP_ERROR_LOG", str(errlog))
+    mod = _load_script()
+    ok, _, msg = mod._run_once(db_path=str(src))
 
     assert ok, msg
     assert not errlog.exists(), "error log must NOT be written on success"
+
+
+# ── Side-task 3.0: DB_PATH resolved at call time, not import time ───────────
+
+def test_run_once_default_db_path_reads_config_at_call_time(tmp_path, monkeypatch):
+    """Without an explicit db_path, _run_once() must use config.DB_PATH as it
+    is *at call time* — proving the fix for the frozen `from config import
+    DB_PATH` binding that made monkeypatching unreachable."""
+    import config as cfg
+    src = tmp_path / "live.db"
+    cx = sqlite3.connect(str(src)); cx.execute("CREATE TABLE t(x)"); cx.commit(); cx.close()
+    bdir = tmp_path / "bk"; bdir.mkdir()
+
+    monkeypatch.setattr(cfg, "DB_PATH", str(src))
+    monkeypatch.setenv("TAXOPS_BACKUP_DIR", str(bdir))
+
+    mod = _load_script()
+    ok, out, msg = mod._run_once()
+
+    assert ok, msg
+    assert out is not None
+
+
+def test_run_once_explicit_db_path_overrides_config(tmp_path, monkeypatch):
+    """An explicit db_path always wins over config.DB_PATH, however stale."""
+    import config as cfg
+    src = tmp_path / "live.db"
+    cx = sqlite3.connect(str(src)); cx.execute("CREATE TABLE t(x)"); cx.commit(); cx.close()
+    bdir = tmp_path / "bk"; bdir.mkdir()
+
+    # config.DB_PATH deliberately points somewhere that doesn't exist.
+    monkeypatch.setattr(cfg, "DB_PATH", str(tmp_path / "does_not_exist.db"))
+    monkeypatch.setenv("TAXOPS_BACKUP_DIR", str(bdir))
+
+    mod = _load_script()
+    ok, out, msg = mod._run_once(db_path=str(src))
+
+    assert ok, msg
+    assert out is not None
+
+
+def test_main_entry_point_signature_unchanged(bmod):
+    """BACKUP entry point stays backward compatible: main() takes no args and
+    calls _run_once() with defaults, matching the nightly Task Scheduler
+    invocation (`python scripts/nightly_backup_db.py`)."""
+    import inspect
+    sig = inspect.signature(bmod.main)
+    assert list(sig.parameters) == [], "main() must remain a no-arg entry point"
 
 
 # ── BACKUP-5: backup.py wrapper ───────────────────────────────────────────────
@@ -185,24 +219,15 @@ def test_backup_module_importable():
     assert bk.BackupResult
 
 
-def test_run_backup_returns_backupresult(tmp_path):
+def test_run_backup_returns_backupresult(tmp_path, monkeypatch):
     """run_backup() returns a BackupResult with expected fields."""
     src = tmp_path / "live.db"
     cx = sqlite3.connect(str(src)); cx.execute("CREATE TABLE t(x)"); cx.commit(); cx.close()
 
     bdir = tmp_path / "bk"; bdir.mkdir()
     import backup as bk
-    old_env = {k: os.environ.get(k) for k in ("TAXOPS_DB", "TAXOPS_BACKUP_DIR")}
-    os.environ["TAXOPS_DB"]         = str(src)
-    os.environ["TAXOPS_BACKUP_DIR"] = str(bdir)
-    try:
-        result = bk.run_backup()
-    finally:
-        for k, v in old_env.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+    monkeypatch.setenv("TAXOPS_BACKUP_DIR", str(bdir))
+    result = bk.run_backup(db_path=str(src))
 
     assert result.success is True
     assert result.backup_file is not None

@@ -31,14 +31,18 @@ class BackupResult:
     size_bytes: int | None
 
 
-def run_backup() -> BackupResult:
+def run_backup(db_path: str | None = None) -> BackupResult:
     """Run a single backup cycle (backup + retention cleanup + error log).
 
     Safe to call from a request thread — the underlying SQLite backup() call
     uses WAL and is compatible with concurrent readers/writers.
+
+    ``db_path`` is optional and defaults to ``config.DB_PATH`` resolved at
+    call time inside ``nightly_backup_db._run_once()`` — the admin endpoint
+    never passes it, so on-demand backups behave identically to before.
     """
     mod = _load_backup_script()
-    ok, out_path, msg = mod._run_once()
+    ok, out_path, msg = mod._run_once(db_path=db_path)
 
     size: int | None = None
     if out_path is not None:
