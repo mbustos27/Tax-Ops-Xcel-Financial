@@ -22,7 +22,7 @@ cd C:\TaxOps\taxops
 Optional flags:
 ```powershell
 .\scripts\restart_service.ps1 -SkipSmoke              # skip smoke test
-.\scripts\restart_service.ps1 -BaseUrl http://192.168.1.141:5000  # remote target
+.\scripts\restart_service.ps1 -BaseUrl http://192.168.1.173:5000  # remote target
 ```
 
 **Manual stop / start with `sc.exe` (same as the script does internally):**
@@ -167,14 +167,22 @@ Write-Host "OK — uptime $($j.uptime_seconds)s, schema v$($j.schema_version)"
 
 ### Running a backup
 
-**Automatic (nightly at 2:10 AM):** The Task Scheduler job `TaxOpsNightlyDbBackup` runs automatically. To register it for the first time (run once as Administrator):
+**Automatic (nightly at 2:10 AM):** The Task Scheduler job `TaxOpsNightlyDbBackup` runs automatically. Register it **once as Administrator on the file server** (SYSTEM cannot see mapped `T:`):
+
+```bat
+:: From the share root (C:\TaxOps on the server, or \\Xcel-server\taxops):
+setup_nightly_backup.bat
+```
+
+Or directly:
 
 ```powershell
 cd C:\TaxOps\taxops
-powershell -ExecutionPolicy Bypass -File scripts\register-nightly-backup-task.ps1
-# Verify registration:
+powershell -ExecutionPolicy Bypass -File scripts\register-nightly-backup-task.ps1 -RunNow
 Get-ScheduledTask -TaskName TaxOpsNightlyDbBackup
 ```
+
+One-off backup without touching Task Scheduler: `setup_nightly_backup.bat /run` (writes to `<share>\backups\taxops_backup_*.sqlite`).
 
 **Manual trigger from the admin UI:** Log in → Tools → **Backup** → click **Run backup now**.
 
@@ -252,10 +260,10 @@ The restart script (`scripts/restart_service.ps1`) runs the smoke test automatic
 cd C:\TaxOps\taxops
 python smoke_test.py
 # Override if running from a different machine:
-python smoke_test.py http://192.168.1.141:5000
+python smoke_test.py http://192.168.1.173:5000
 ```
 
-Expected output: `SMOKE OK    target=http://192.168.1.141:5000  endpoints=6`  
+Expected output: `SMOKE OK    target=http://192.168.1.173:5000  endpoints=6`  
 Results are always appended to `C:\TaxOps\logs\smoke.log` with an ISO timestamp.
 
 **What `smoke_test.py` checks:**
@@ -304,7 +312,7 @@ $Service = 'TaxOpsService'
 nssm set $Service AppEnvironmentExtra "+TAXOPS_PASS=new_strong_password_here"
 
 # Add a new variable (first variable must not have "+" prefix — use for initial setup only):
-# nssm set $Service AppEnvironmentExtra "OLLAMA_BASE_URL=http://192.168.1.141:11434"
+# nssm set $Service AppEnvironmentExtra "OLLAMA_BASE_URL=http://192.168.1.173:11434"
 # For additional variables, always prefix with "+" to append rather than replace:
 nssm set $Service AppEnvironmentExtra "+NEW_VAR=value"
 ```
@@ -331,7 +339,7 @@ Restart-Service TaxOpsService
 
 ```powershell
 cd C:\TaxOps\taxops
-.\scripts\nssm-set-ollama-url.ps1 -Service TaxOpsService -OllamaUrl http://192.168.1.141:11434
+.\scripts\nssm-set-ollama-url.ps1 -Service TaxOpsService -OllamaUrl http://192.168.1.173:11434
 ```
 
 ### Rotate the app secret (`TAXOPS_SECRET`)
