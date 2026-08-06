@@ -168,6 +168,16 @@ msgstr ""
 msgid "Tools"
 msgstr ""
 
+#: templates/base.html
+msgid "Daily"
+msgstr ""
+
+
+#: templates/base.html
+msgid "Occasional"
+msgstr ""
+
+
 #: templates/base.html:71
 msgid "Pickup Queue"
 msgstr ""

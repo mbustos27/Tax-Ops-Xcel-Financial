@@ -210,11 +210,12 @@ class TestBaseHtml:
         ]
         assert bad == [], f"{len(bad)} <nav> element(s) without aria-label"
 
-    def test_tools_btn_has_aria_expanded(self, soup):
-        """Tools dropdown button must have aria-expanded for screen readers."""
-        btn = soup.find("button", id="tools-btn")
-        assert btn is not None, "tools-btn not found"
-        assert btn.get("aria-expanded") is not None, "tools-btn missing aria-expanded"
+    def test_daily_and_occasional_btns_have_aria_expanded(self, soup):
+        """Daily / Occasional dropdown buttons must have aria-expanded."""
+        for btn_id in ("daily-btn", "occasional-btn"):
+            btn = soup.find("button", id=btn_id)
+            assert btn is not None, f"{btn_id} not found"
+            assert btn.get("aria-expanded") is not None, f"{btn_id} missing aria-expanded"
 
     def test_reject_bell_has_aria_expanded(self, soup):
         """Reject bell button must have aria-expanded."""

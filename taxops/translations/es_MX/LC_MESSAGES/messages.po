@@ -188,6 +188,16 @@ msgstr "Panel Principal"
 msgid "Tools"
 msgstr "Herramientas"
 
+#: templates/base.html
+msgid "Daily"
+msgstr "Diario"
+
+
+#: templates/base.html
+msgid "Occasional"
+msgstr "Ocasional"
+
+
 #: templates/base.html:71
 msgid "Pickup Queue"
 msgstr "Cola de Entrega"

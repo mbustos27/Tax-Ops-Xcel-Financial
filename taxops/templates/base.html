@@ -62,36 +62,44 @@
           {{ _('Reports') }}
         </a> -->
 
-        <!-- Tools dropdown -->
+        <!-- Daily / Occasional tool menus (Feature 4) -->
         {% set _role = get_effective_role() %}
         {% set _is_preparer = _role in ('preparer', 'admin') %}
         {% set _is_admin = _role == 'admin' %}
         {% set _can_efile = has_permission('can_manage_efile_queue') %}
         {% set _can_extension = has_permission('can_manage_extension_queue') %}
         {% set _can_email_tools = has_permission('can_use_email_tools') %}
-        {% set _has_any_tools = _is_preparer or _can_efile or _can_extension or _can_email_tools %}
-        {% set tools_active =
-            active_page in ('upload','source_compare','import_audit','merge','efile_batch','audit_log',
-                            'logout','efile','extension','payments','review','season_rollover','backup_admin','failed_docs','admin_users',
-                            'email_inbox','sender_rules','wo_quick_picks','work_orders','compliance','compliance_periods','compliance_credentials',
-                            'email_health','reception_agents')
+        {% set _can_scan = has_permission('can_scan_intake_docs') %}
+        {% set _has_any_tools = _is_preparer or _can_efile or _can_extension or _can_email_tools or _can_scan %}
+        {% set daily_active =
+            active_page in ('logout','efile','extension','work_orders','email_inbox','receipt_queue',
+                            'dependents_review','spouses_review')
             or request.path.startswith('/email-inbox')
+            or (request.args.get('filter') == 'scan_deferred')
+        %}
+        {% set occasional_active =
+            active_page in ('upload','source_compare','import_audit','merge','efile_batch','extension_batch',
+                            'audit_log','payments','review','season_rollover','backup_admin','failed_docs',
+                            'admin_users','sender_rules','wo_quick_picks','compliance','compliance_periods',
+                            'compliance_credentials','email_health','reception_agents','accounting_settings',
+                            'recovered_clients','audit_alerts')
         %}
         {% if _has_any_tools %}
-        <div class="relative" id="tools-menu-wrap">
-          <button id="tools-btn"
+        {# ── Daily ───────────────────────────────────────────────────────── #}
+        <div class="relative" id="daily-menu-wrap">
+          <button id="daily-btn"
                   type="button"
                   aria-expanded="false"
                   aria-haspopup="true"
-                  aria-controls="tools-dropdown"
-                  class="nav-link flex items-center gap-1 {% if tools_active %}active{% endif %}">
-            {{ _('Tools') }}
-            <svg class="w-3 h-3 mt-0.5 transition-transform" id="tools-chevron"
+                  aria-controls="daily-dropdown"
+                  class="nav-link flex items-center gap-1 {% if daily_active %}active{% endif %}">
+            {{ _('Daily') }}
+            <svg class="w-3 h-3 mt-0.5 transition-transform" id="daily-chevron"
                  fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
             </svg>
           </button>
-          <div id="tools-dropdown"
+          <div id="daily-dropdown"
                class="hidden absolute left-0 top-full mt-1 min-w-[16rem] w-max max-w-[min(calc(100vw-2rem),22rem)] rounded-xl shadow-lg py-1 z-50"
                style="background:var(--dropdown-bg);border:1px solid var(--dropdown-border)">
             {% if _can_efile %}
@@ -116,14 +124,6 @@
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'work_orders' %}tools-item-active{% endif %}">
               <span>{{ _('Work Orders') }}</span>
             </a>
-            <a href="/compliance"
-               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'compliance' %}tools-item-active{% endif %}">
-              <span>{{ _('Compliance Tracker') }}</span>
-            </a>
-            <a href="/compliance/periods"
-               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'compliance_periods' %}tools-item-active{% endif %}">
-              <span>{{ _('Filing Periods') }}</span>
-            </a>
             {% if _can_extension %}
             <a href="/extension-queue?year={{ current_year }}"
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'extension' %}tools-item-active{% endif %}">
@@ -140,7 +140,7 @@
               {% endif %}
             </a>
             {% endif %}
-            {% if has_permission('can_scan_intake_docs') %}
+            {% if _can_scan %}
             <a href="/?filter=scan_deferred"
                class="tools-item flex items-center justify-between gap-3"
                title="{{ _('Returns where document scan was skipped at intake') }}">
@@ -151,7 +151,66 @@
               {% endif %}
             </a>
             {% endif %}
+            {% if _is_admin %}
+            <a href="{{ url_for('accounting.receipt_queue_list') }}"
+               class="tools-item {% if active_page == 'receipt_queue' %}tools-item-active{% endif %} relative">
+              {{ _('Receipt Queue') }}
+              {% if receipt_review_count and receipt_review_count > 0 %}
+              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-amber-500 text-white rounded-full leading-none">
+                {{ receipt_review_count }}
+              </span>
+              {% endif %}
+            </a>
+            {% if dep_review_count and dep_review_count > 0 %}
+            <a href="{{ url_for('dependents_review_admin') }}"
+               class="tools-item {% if active_page == 'dependents_review' %}tools-item-active{% endif %} relative">
+              {{ _('Dep. Review') }}
+              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-amber-500 text-white rounded-full leading-none">
+                {{ dep_review_count }}
+              </span>
+            </a>
+            {% endif %}
+            <a href="{{ url_for('spouses_review_admin') }}"
+               class="tools-item {% if active_page == 'spouses_review' %}tools-item-active{% endif %} relative">
+              {{ _('Spouses') }}
+              {% if spouse_review_count and spouse_review_count > 0 %}
+              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
+                           text-[10px] font-bold bg-purple-500 text-white rounded-full leading-none">
+                {{ spouse_review_count }}
+              </span>
+              {% endif %}
+            </a>
+            {% endif %}
+          </div>
+        </div>
 
+        {# ── Occasional ──────────────────────────────────────────────────── #}
+        <div class="relative" id="occasional-menu-wrap">
+          <button id="occasional-btn"
+                  type="button"
+                  aria-expanded="false"
+                  aria-haspopup="true"
+                  aria-controls="occasional-dropdown"
+                  class="nav-link flex items-center gap-1 {% if occasional_active %}active{% endif %}">
+            {{ _('Occasional') }}
+            <svg class="w-3 h-3 mt-0.5 transition-transform" id="occasional-chevron"
+                 fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div id="occasional-dropdown"
+               class="hidden absolute left-0 top-full mt-1 min-w-[16rem] w-max max-w-[min(calc(100vw-2rem),22rem)] rounded-xl shadow-lg py-1 z-50"
+               style="background:var(--dropdown-bg);border:1px solid var(--dropdown-border)">
+            <a href="/compliance"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'compliance' %}tools-item-active{% endif %}">
+              <span>{{ _('Compliance Tracker') }}</span>
+            </a>
+            <a href="/compliance/periods"
+               class="tools-item flex items-center justify-between gap-3 {% if active_page == 'compliance_periods' %}tools-item-active{% endif %}">
+              <span>{{ _('Filing Periods') }}</span>
+            </a>
             {% if _is_admin %}
             <a href="/payments?year={{ current_year }}"
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'payments' %}tools-item-active{% endif %}">
@@ -185,16 +244,6 @@
                class="tools-item {% if active_page == 'import_audit' %}tools-item-active{% endif %}">
               {{ _('Import Audit') }}
             </a>
-            <a href="{{ url_for('accounting.receipt_queue_list') }}"
-               class="tools-item {% if active_page == 'receipt_queue' %}tools-item-active{% endif %} relative">
-              {{ _('Receipt Queue') }}
-              {% if receipt_review_count and receipt_review_count > 0 %}
-              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
-                           text-[10px] font-bold bg-amber-500 text-white rounded-full leading-none">
-                {{ receipt_review_count }}
-              </span>
-              {% endif %}
-            </a>
             <a href="{{ url_for('accounting.accounting_settings') }}"
                class="tools-item {% if active_page == 'accounting_settings' %}tools-item-active{% endif %}">
               {{ _('QB Settings') }}
@@ -211,8 +260,6 @@
                class="tools-item {% if active_page == 'wo_quick_picks' %}tools-item-active{% endif %}">
               {{ _('Work Order Quick Picks') }}
             </a>
-            {% endif %}
-            {% if _is_admin %}
             <a href="/compliance/credentials"
                class="tools-item {% if active_page == 'compliance_credentials' %}tools-item-active{% endif %}">
               {{ _('Compliance Credentials') }}
@@ -246,26 +293,6 @@
                 <span data-ra="print" class="inline-block w-2 h-2 rounded-full" style="background:#9ca3af"></span>
                 <span data-ra="scan" class="inline-block w-2 h-2 rounded-full" style="background:#9ca3af"></span>
               </span>
-            </a>
-            {% if dep_review_count and dep_review_count > 0 %}
-            <a href="{{ url_for('dependents_review_admin') }}"
-               class="tools-item {% if active_page == 'dependents_review' %}tools-item-active{% endif %} relative">
-              {{ _('Dep. Review') }}
-              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
-                           text-[10px] font-bold bg-amber-500 text-white rounded-full leading-none">
-                {{ dep_review_count }}
-              </span>
-            </a>
-            {% endif %}
-            <a href="{{ url_for('spouses_review_admin') }}"
-               class="tools-item {% if active_page == 'spouses_review' %}tools-item-active{% endif %} relative">
-              {{ _('Spouses') }}
-              {% if spouse_review_count and spouse_review_count > 0 %}
-              <span class="ml-1 inline-flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1
-                           text-[10px] font-bold bg-purple-500 text-white rounded-full leading-none">
-                {{ spouse_review_count }}
-              </span>
-              {% endif %}
             </a>
             {% if recovered_client_count and recovered_client_count > 0 %}
             <a href="{{ url_for('recovered_clients_admin') }}"
@@ -946,47 +973,7 @@
       });
     })();
   </script>
-    <script>
-    (function () {
-      const bell     = document.getElementById('attention-bell');
-      const dropdown = document.getElementById('attention-dropdown');
-      const wrap     = document.getElementById('attention-bell-wrap');
-      if (!bell || !dropdown) return;
-
-      function openAttentionDropdown() {
-        dropdown.classList.remove('hidden');
-        bell.setAttribute('aria-expanded', 'true');
-        dropdown.style.opacity = '0';
-        dropdown.style.transform = 'translateY(-6px)';
-        requestAnimationFrame(() => {
-          dropdown.style.transition = 'opacity 150ms ease, transform 150ms ease';
-          dropdown.style.opacity = '1';
-          dropdown.style.transform = 'translateY(0)';
-        });
-      }
-      function closeAttentionDropdown() {
-        dropdown.classList.add('hidden');
-        bell.setAttribute('aria-expanded', 'false');
-      }
-
-      bell.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const open = !dropdown.classList.contains('hidden');
-        if (open) closeAttentionDropdown(); else openAttentionDropdown();
-      });
-
-      document.addEventListener('click', (e) => {
-        if (!wrap.contains(e.target)) closeAttentionDropdown();
-      });
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
-          closeAttentionDropdown();
-          bell.focus();
-        }
-      });
-    })();
-  </script>
-<script>
+  <script>
     (function () {
       const bell     = document.getElementById('reject-bell');
       const dropdown = document.getElementById('reject-dropdown');
@@ -1021,6 +1008,46 @@
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
           closeRejectDropdown();
+          bell.focus();
+        }
+      });
+    })();
+  </script>
+  <script>
+    (function () {
+      const bell     = document.getElementById('attention-bell');
+      const dropdown = document.getElementById('attention-dropdown');
+      const wrap     = document.getElementById('attention-bell-wrap');
+      if (!bell || !dropdown) return;
+
+      function openAttentionDropdown() {
+        dropdown.classList.remove('hidden');
+        bell.setAttribute('aria-expanded', 'true');
+        dropdown.style.opacity = '0';
+        dropdown.style.transform = 'translateY(-6px)';
+        requestAnimationFrame(() => {
+          dropdown.style.transition = 'opacity 150ms ease, transform 150ms ease';
+          dropdown.style.opacity = '1';
+          dropdown.style.transform = 'translateY(0)';
+        });
+      }
+      function closeAttentionDropdown() {
+        dropdown.classList.add('hidden');
+        bell.setAttribute('aria-expanded', 'false');
+      }
+
+      bell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = !dropdown.classList.contains('hidden');
+        if (open) closeAttentionDropdown(); else openAttentionDropdown();
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!wrap.contains(e.target)) closeAttentionDropdown();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
+          closeAttentionDropdown();
           bell.focus();
         }
       });
@@ -1136,45 +1163,59 @@
   </script>
   <script>
     (function () {
-      const btn      = document.getElementById('tools-btn');
-      const dropdown = document.getElementById('tools-dropdown');
-      const wrap     = document.getElementById('tools-menu-wrap');
-      const chevron  = document.getElementById('tools-chevron');
-      if (!btn || !dropdown) return;
+      function bindNavDropdown(prefix) {
+        const btn = document.getElementById(prefix + '-btn');
+        const dropdown = document.getElementById(prefix + '-dropdown');
+        const wrap = document.getElementById(prefix + '-menu-wrap');
+        const chevron = document.getElementById(prefix + '-chevron');
+        if (!btn || !dropdown || !wrap) return null;
 
-      function openToolsDropdown() {
-        dropdown.classList.remove('hidden');
-        btn.setAttribute('aria-expanded', 'true');
-        chevron.style.transform = 'rotate(180deg)';
-        dropdown.style.opacity = '0';
-        dropdown.style.transform = 'translateY(-6px)';
-        requestAnimationFrame(() => {
-          dropdown.style.transition = 'opacity 140ms ease, transform 140ms ease';
-          dropdown.style.opacity = '1';
-          dropdown.style.transform = 'translateY(0)';
+        function open() {
+          dropdown.classList.remove('hidden');
+          btn.setAttribute('aria-expanded', 'true');
+          if (chevron) chevron.style.transform = 'rotate(180deg)';
+          dropdown.style.opacity = '0';
+          dropdown.style.transform = 'translateY(-6px)';
+          requestAnimationFrame(() => {
+            dropdown.style.transition = 'opacity 140ms ease, transform 140ms ease';
+            dropdown.style.opacity = '1';
+            dropdown.style.transform = 'translateY(0)';
+          });
+        }
+        function close() {
+          dropdown.classList.add('hidden');
+          btn.setAttribute('aria-expanded', 'false');
+          if (chevron) chevron.style.transform = '';
+        }
+        return { btn, dropdown, wrap, open, close };
+      }
+
+      const daily = bindNavDropdown('daily');
+      const occasional = bindNavDropdown('occasional');
+      const menus = [daily, occasional].filter(Boolean);
+      if (!menus.length) return;
+
+      menus.forEach((menu) => {
+        menu.btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const opening = menu.dropdown.classList.contains('hidden');
+          menus.forEach((m) => m.close());
+          if (opening) menu.open();
         });
-      }
-      function closeToolsDropdown() {
-        dropdown.classList.add('hidden');
-        btn.setAttribute('aria-expanded', 'false');
-        chevron.style.transform = '';
-      }
-
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const opening = dropdown.classList.contains('hidden');
-        if (opening) openToolsDropdown(); else closeToolsDropdown();
       });
 
       document.addEventListener('click', (e) => {
-        if (!wrap.contains(e.target)) closeToolsDropdown();
+        if (menus.every((m) => !m.wrap.contains(e.target))) {
+          menus.forEach((m) => m.close());
+        }
       });
 
       document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
-          closeToolsDropdown();
-          btn.focus();
-        }
+        if (e.key !== 'Escape') return;
+        const openMenu = menus.find((m) => !m.dropdown.classList.contains('hidden'));
+        if (!openMenu) return;
+        openMenu.close();
+        openMenu.btn.focus();
       });
     })();
   </script>
