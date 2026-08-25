@@ -1,0 +1,605 @@
+{
+  "candidate_ids_taxops": {
+    "ssn_last4": {
+      "source": "taxops.clients",
+      "fill_rate": 0.9037,
+      "filled": 1379,
+      "distinct": 1294,
+      "uniqueness_ratio": 0.9384,
+      "collision_keys": 78
+    },
+    "taxpayer_cell": {
+      "source": "taxops.clients",
+      "fill_rate": 0.6088,
+      "filled": 929,
+      "distinct": 855,
+      "uniqueness_ratio": 0.9203,
+      "collision_keys": 65
+    },
+    "taxpayer_phone": {
+      "source": "taxops.clients",
+      "fill_rate": 0.0485,
+      "filled": 74,
+      "distinct": 70,
+      "uniqueness_ratio": 0.9459,
+      "collision_keys": 3
+    },
+    "taxpayer_email": {
+      "source": "taxops.clients",
+      "fill_rate": 0.036,
+      "filled": 55,
+      "distinct": 53,
+      "uniqueness_ratio": 0.9636,
+      "collision_keys": 2
+    },
+    "address": {
+      "source": "taxops.clients",
+      "fill_rate": 0.6239,
+      "filled": 952,
+      "distinct": 793,
+      "uniqueness_ratio": 0.833,
+      "collision_keys": 132
+    },
+    "taxpayer_dob": {
+      "source": "taxops.clients",
+      "fill_rate": 0.555,
+      "filled": 847,
+      "distinct": 830,
+      "uniqueness_ratio": 0.9799,
+      "collision_keys": 15
+    },
+    "prior_year_log": {
+      "source": "taxops.clients",
+      "fill_rate": 0.0288,
+      "filled": 44,
+      "distinct": 44,
+      "uniqueness_ratio": 1.0,
+      "collision_keys": 0
+    },
+    "log_number": {
+      "source": "taxops.returns",
+      "fill_rate": 0.7433,
+      "filled": 1199,
+      "distinct": 1199,
+      "uniqueness_ratio": 1.0,
+      "duplicate_log_year_pairs": 0
+    },
+    "csm_ssn_last4": {
+      "source": "drake_prefill_links",
+      "fill_rate": 1.0,
+      "filled": 1379,
+      "distinct": 1233,
+      "uniqueness_ratio": 0.8941,
+      "collision_keys": 130
+    }
+  },
+  "name_length_boundaries": {
+    "clients_display": {
+      "n": 379,
+      "max": 40,
+      "n_eq_39": 3,
+      "n_eq_40": 1,
+      "n_ge_39": 4,
+      "n_ge_40": 1
+    },
+    "clients_last": {
+      "n": 1526,
+      "max": 39,
+      "n_eq_39": 2,
+      "n_eq_40": 0,
+      "n_ge_39": 2,
+      "n_ge_40": 0
+    },
+    "csm_name_raw": {
+      "n": 1379,
+      "max": 40,
+      "n_eq_39": 24,
+      "n_eq_40": 74,
+      "n_ge_39": 98,
+      "n_ge_40": 74
+    },
+    "csm_name_norm": {
+      "n": 1379,
+      "max": 40,
+      "n_eq_39": 30,
+      "n_eq_40": 68,
+      "n_ge_39": 98,
+      "n_ge_40": 68
+    },
+    "purple_name": {
+      "n": 1303,
+      "max": 51,
+      "n_eq_39": 7,
+      "n_eq_40": 12,
+      "n_ge_39": 54,
+      "n_ge_40": 47
+    }
+  },
+  "normalized_name_collisions": {
+    "n_multi_buckets": 14,
+    "extra_rows": 14,
+    "largest_25": [
+      {
+        "key": "ORMA SERVICES INC",
+        "n": 2,
+        "ids": [
+          8,
+          754
+        ],
+        "ssn4s": [
+          null,
+          "2100"
+        ]
+      },
+      {
+        "key": "MIAMAR FUTURE LLC",
+        "n": 2,
+        "ids": [
+          32,
+          654
+        ],
+        "ssn4s": [
+          null,
+          "4898"
+        ]
+      },
+      {
+        "key": "SANDOVAL AUTO SERVICE TOW",
+        "n": 2,
+        "ids": [
+          107,
+          1780
+        ],
+        "ssn4s": [
+          null,
+          null
+        ]
+      },
+      {
+        "key": "PADILLA GARCIA ABEL CLAUDIA E",
+        "n": 2,
+        "ids": [
+          479,
+          1801
+        ],
+        "ssn4s": [
+          null,
+          null
+        ]
+      },
+      {
+        "key": "KLEAN SOLAR SOLUTIONS LLC",
+        "n": 2,
+        "ids": [
+          517,
+          854
+        ],
+        "ssn4s": [
+          "7813",
+          null
+        ]
+      },
+      {
+        "key": "GIMENEZ GARCIA ENRIQUE P LUVIA",
+        "n": 2,
+        "ids": [
+          543,
+          1803
+        ],
+        "ssn4s": [
+          null,
+          null
+        ]
+      },
+      {
+        "key": "HERNANDEZ ISMAEL",
+        "n": 2,
+        "ids": [
+          659,
+          2275
+        ],
+        "ssn4s": [
+          "2720",
+          "3403"
+        ]
+      },
+      {
+        "key": "NUNO JUAN",
+        "n": 2,
+        "ids": [
+          731,
+          2276
+        ],
+        "ssn4s": [
+          "8143",
+          "0775"
+        ]
+      },
+      {
+        "key": "ALVARADO OSCAR",
+        "n": 2,
+        "ids": [
+          1215,
+          2272
+        ],
+        "ssn4s": [
+          "3038",
+          "2401"
+        ]
+      },
+      {
+        "key": "LUNA ESTEBAN",
+        "n": 2,
+        "ids": [
+          1278,
+          2393
+        ],
+        "ssn4s": [
+          "8818",
+          "6722"
+        ]
+      },
+      {
+        "key": "VALDEZ SANDRA",
+        "n": 2,
+        "ids": [
+          1344,
+          2404
+        ],
+        "ssn4s": [
+          "6184",
+          "9983"
+        ]
+      },
+      {
+        "key": "HERNANDEZ ABEL",
+        "n": 2,
+        "ids": [
+          1440,
+          2273
+        ],
+        "ssn4s": [
+          "5426",
+          "2665"
+        ]
+      },
+      {
+        "key": "TASHAYOD ALEX",
+        "n": 2,
+        "ids": [
+          1506,
+          2329
+        ],
+        "ssn4s": [
+          "4759",
+          "0956"
+        ]
+      },
+      {
+        "key": "SOLOMON LAUREN",
+        "n": 2,
+        "ids": [
+          1709,
+          2429
+        ],
+        "ssn4s": [
+          "9376",
+          "9179"
+        ]
+      }
+    ]
+  },
+  "truncated_vs_full_csm": {
+    "n_short_ge39": 98,
+    "n_with_longer_prefix_hit": 0,
+    "samples": []
+  },
+  "name_format": {
+    "csm_has_amp": 442,
+    "csm_has_comma": 1254,
+    "purple_has_amp": 404,
+    "purple_has_comma": 0,
+    "clients_blank_first": 151,
+    "sample_joint_csm": [
+      "BUSTOS, MOISES & YANEZ, SANDRA",
+      "HAMIDEH, LAILA N & AKRAM",
+      "RAMIREZ, JOSE & MARTHA R",
+      "LAZO, RICARDO & VIRGINIA",
+      "DEAMER, DAVID M & RISE WORTHY"
+    ],
+    "sample_purple_order": [
+      "ROCIO GARAY",
+      "LAILA & AKRAM HAMIDEH",
+      "S POU DENTAL CORP",
+      "PERFECT SMILE MANAGEMENT CORP",
+      "A V TECH CONCEPTS INC"
+    ]
+  },
+  "audit_db": {
+    "stages": {
+      "stage_drake": 1155,
+      "stage_log": 2820,
+      "stage_taxops_client": 1514,
+      "audit_match": 3167,
+      "audit_finding": 3102
+    },
+    "match_pairs": [
+      {
+        "left_kind": "drake",
+        "right_kind": "taxops",
+        "n": 1135
+      },
+      {
+        "left_kind": "drake",
+        "right_kind": "log",
+        "n": 1022
+      },
+      {
+        "left_kind": "log",
+        "right_kind": "taxops",
+        "n": 1010
+      }
+    ],
+    "findings": [
+      {
+        "subtype": null,
+        "n": 1681
+      },
+      {
+        "subtype": "log_taxops",
+        "n": 1010
+      },
+      {
+        "subtype": "no_log_number",
+        "n": 113
+      },
+      {
+        "subtype": "same_name_sibling",
+        "n": 96
+      },
+      {
+        "subtype": "unmatched_other",
+        "n": 70
+      },
+      {
+        "subtype": "ambiguous_unbreakable_tie",
+        "n": 46
+      },
+      {
+        "subtype": "unmatched_active_status",
+        "n": 43
+      },
+      {
+        "subtype": "spouse_unrecovered",
+        "n": 42
+      },
+      {
+        "subtype": "multi_year_client_unmatched_name",
+        "n": 1
+      }
+    ],
+    "pragma_match": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "run_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "pair",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "left_kind",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "left_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "right_kind",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "right_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "tier",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "confidence",
+        "type": "REAL",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "sources_agree",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      }
+    ],
+    "pragma_finding": [
+      {
+        "cid": 0,
+        "name": "id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 1
+      },
+      {
+        "cid": 1,
+        "name": "run_id",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 2,
+        "name": "finding_type",
+        "type": "TEXT",
+        "notnull": 1,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 3,
+        "name": "subtype",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 4,
+        "name": "severity",
+        "type": "INTEGER",
+        "notnull": 1,
+        "dflt": "50",
+        "pk": 0
+      },
+      {
+        "cid": 5,
+        "name": "subject_kind",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 6,
+        "name": "subject_id",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 7,
+        "name": "tax_year",
+        "type": "INTEGER",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 8,
+        "name": "detail_json",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      },
+      {
+        "cid": 9,
+        "name": "source_refs",
+        "type": "TEXT",
+        "notnull": 0,
+        "dflt": null,
+        "pk": 0
+      }
+    ]
+  },
+  "csm_xlsx": {
+    "desktop_1155": {
+      "n": 1155,
+      "max_name_len": 40,
+      "n_eq_39": 17,
+      "n_eq_40": 54,
+      "n_ge_39": 71,
+      "last4_filled": 1155,
+      "last4_distinct": 1103,
+      "last4_collision_keys": 52,
+      "sample_len40": [
+        "ABU TAHA, ZAID AHMED Y & GIULIANA CASSIN",
+        "AGUILAR FLORES, JOSE A & ANGELICA AGUILA",
+        "ANDRADE RAZO, MIGUEL & PATRICIA ALCANTAR",
+        "ARCINIEGA MAQUEDA, GABINO & MAIRA L GOME",
+        "ARROYO HERNANDEZ, HUMBERTO & MARIA D HER"
+      ],
+      "sample_len39": [
+        "ADAME, DEMETRIO L & ROSALINDA HERNANDEZ",
+        "BURGOS GARCIA, JESUS G & DAVILA MOLINA,",
+        "DELGADO LOPEZ, ALFREDO & NORMA E FLORES",
+        "FALATOONZADEH, HOSSEIN & SARA VAFAEENIA",
+        "HUERTA MURO, JUAN C & MIRIAM L RECENDEZ"
+      ]
+    },
+    "csvfiles_2024": {
+      "n": 2514,
+      "max_name_len": 40,
+      "n_eq_39": 49,
+      "n_eq_40": 137,
+      "n_ge_39": 186,
+      "last4_filled": 2514,
+      "last4_distinct": 1233,
+      "last4_collision_keys": 1281,
+      "sample_len40": [
+        "AUREOLES SALGADO, LEONEL & GALAN, ALICIA",
+        "TAHANI-BIDMESHKI, DAVOUD D & MARIA E TAH",
+        "ABU TAHA, ZAID AHMED Y & GIULIANA CASSIN",
+        "PADILLA, ABEL & CLAUDIA E GARCIA BERNARD",
+        "PEREZ, MANUEL D & LEIDY A ALVARADO PALAC"
+      ],
+      "sample_len39": [
+        "TRUJILLO CAMPOS, JOSE F & ROCIO RAMIREZ",
+        "FALATOONZADEH, HOSSEIN & SARA VAFAEENIA",
+        "JORGE BARAJAS, ISRAEL & MARIA DE LA LUZ",
+        "RAMOS XIQUIN, NATALIA Y & CARLOS JUAREZ",
+        "RAMOS XIQUIN, NATALIA Y & CARLOS JUAREZ"
+      ]
+    }
+  },
+  "tax_log_xcel2025": {
+    "named_rows": 1252,
+    "log_values_nonempty": 1252,
+    "log_distinct": 1048,
+    "last_max_len": 39,
+    "last_n_eq_40": 0,
+    "last_n_eq_39": 3,
+    "note": "Column mapping per audit/config.py LOG_LAST_COL=2 LOG_FIRST_COL=3; log number column inferred from col B presence"
+  }
+}

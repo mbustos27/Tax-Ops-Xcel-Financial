@@ -1,0 +1,379 @@
+*GPDSpecVersion: "1.0"
+*GPDFileName: "BRD8020U.GPD"
+*GPDFileVersion: "1.0"
+*Include: "brhbp03.gpd"
+*ModelName: "Brother DCP-8020 USB"
+*PrintRate: 16
+*PrintRatePPM: 16
+*PrintRateUnit: PPM
+
+*Feature: Resolution
+{
+    *rcNameID: =RESOLUTION_DISPLAY
+    *DefaultOption: Option2
+    *Option: Option1
+    {
+        *Name: "HQ 1200"
+        *DPI: PAIR(1200, 1200)
+        *TextDPI: PAIR(1200, 1200)
+        *PinsPerLogPass: 32
+        *PinsPerPhysPass: 1
+        *SpotDiameter: 100
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "@L<0F>"
+        }
+    }
+    *Option: Option2
+    {
+        *Name: "600 x 600 " =DOTS_PER_INCH
+        *DPI: PAIR(600, 600)
+        *TextDPI: PAIR(600, 600)
+        *PinsPerLogPass: 32
+        *PinsPerPhysPass: 1
+        *SpotDiameter: 100
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "@L<00>"
+        }
+    }
+    *Option: Option3
+    {
+        *Name: "300 x 300 " =DOTS_PER_INCH
+        *DPI: PAIR(300, 300)
+        *TextDPI: PAIR(300, 300)
+        *PinsPerLogPass: 32
+        *PinsPerPhysPass: 1
+        *SpotDiameter: 100
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "@L<05>"
+        }
+    }
+}
+
+*Feature: PrintArea
+{
+    *rcNameID: 352
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: Normal
+    *Option: Normal
+    {
+        *rcNameID: =OFF_DISPLAY
+    }
+    *Option: Wide
+    {
+        *rcNameID: =ON_DISPLAY
+    }
+}
+*Feature: InputBin
+{
+    *rcNameID: =PAPER_SOURCE_DISPLAY
+    *DefaultOption: AUTO
+    *Option: AUTO
+    {
+        *rcNameID: 320
+*%        *Constraints: LIST (PaperSize.ENV_10, PaperSize.ENV_DL,PaperSize.ENV_C5,PaperSize.ENV_MONARCH)
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "@S<30>"
+        }
+    }
+    *Option: UPPER
+    {
+        *rcNameID: 321
+        *Constraints: LIST (PaperSize.ENV_10, PaperSize.ENV_DL,PaperSize.ENV_C5,PaperSize.ENV_MONARCH)
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "@S<31>"
+        }
+    }
+    *Option: LOWER
+    {
+        *rcNameID: 322
+        *Constraints: LIST (PaperSize.A6,PaperSize.ENV_10, PaperSize.ENV_DL,PaperSize.ENV_C5,PaperSize.ENV_MONARCH,PaperSize.JAPANESE_POSTCARD)
+        *Installable?: TRUE
+        *rcInstallableFeatureNameID: 322
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "@S<32>"
+        }
+    }
+    *Option: MANUAL
+    {
+        *rcNameID: 325
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: "@S<4D>"
+        }
+    }
+}
+
+*Feature: SecurePrint
+{
+    *Name: "SecurePrint"
+    *DefaultOption: Off
+
+    *Option: Off
+    {
+        *Name: "Off"
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.1
+            *CallbackID: 11
+        }
+    }
+}
+
+*Feature: PaperWidth
+{
+    *Name: "PaperWidth"
+    *DefaultOption: Off
+    *Option: Off
+    {
+        *Name: "Off"
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+            *CallbackID: 12
+        }
+    }
+}
+
+*Feature: MediaType
+{
+    *rcNameID: =MEDIA_TYPE_DISPLAY
+    *DefaultOption: STANDARD
+    *Option: STANDARD
+    {
+        *rcNameID: 300
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+            *Cmd: "@J<0000>"
+        }
+    }
+    *Option: Thin
+    {
+        *rcNameID: 301
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+            *Cmd: "@J<0004>"
+        }
+    }
+    *Option: Thick
+    {
+        *rcNameID: 302
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+            *Cmd: "@J<0001>"
+        }
+    }
+    *Option: Thicker
+    {
+        *rcNameID: 303
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+            *Cmd: "@J<0002>"
+        }
+    }
+    *Option: Bond
+    {
+        *rcNameID: 304
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+            *Cmd: "@J<0005>"
+        }
+    }
+    *Option: TRANSPARENCY
+    {
+        *rcNameID: 305
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+            *Cmd: "@J<0003>"
+        }
+    }
+    *Option: Enverope
+    {
+        *rcNameID: 306
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+            *Cmd: "@J<0006>"
+        }
+    }
+    *Option: Env_Thick
+    {
+        *rcNameID: 307
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+            *Cmd: "@J<0007>"
+        }
+    }
+    *Option: Env_Thin
+    {
+        *rcNameID: 308
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+            *Cmd: "@J<0008>"
+        }
+    }
+}
+
+*Feature: PaperCmd
+{
+    *Name: "Paper"
+    *DefaultOption: Option1
+    *Option: Option1
+    {
+        *Name: ""
+        *switch: PaperSize
+        {
+            *case: LETTER
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<0200>"
+                }
+            }
+            *case: A4
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<1A00>"
+                }
+            }
+            *case: LEGAL
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<0300>"
+                }
+            }
+            *case: EXECUTIVE
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<0100>"
+                }
+            }
+            *case: FOLIO
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<0E04>"
+                }
+            }
+            *case: B5
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<2D00>"
+                }
+            }
+            *case: A5
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<1900>"
+                }
+            }
+            *case: A6
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<1800>"
+                }
+            }
+            *case: ENV_B5
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<6400>"
+                }
+            }
+            *case: ENV_10
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<5100>"
+                }
+            }
+            *case: ENV_DL
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<5A00>"
+                }
+            }
+            *case: ENV_C5
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<5B00>"
+                }
+            }
+            *case: ENV_MONARCH
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<5000>"
+                }
+            }
+            *case: JAPANESE_POSTCARD
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<4700>"
+                }
+            }
+            *default:
+            {
+                *Command: CmdSelect
+                {
+                    *Order: DOC_SETUP.9
+                    *Cmd: "@W<6500>"
+                }
+            }
+        }
+    }
+}
+
+*Feature: Memory
+{
+    *rcNameID: =PRINTER_MEMORY_DISPLAY
+    *DefaultOption: 32768KB
+    *Option: 32768KB
+    {
+        *Name: "32MB"
+        *MemoryConfigKB: PAIR(32768, 16384)
+    }
+}

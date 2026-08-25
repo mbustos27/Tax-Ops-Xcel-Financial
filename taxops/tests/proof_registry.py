@@ -434,4 +434,80 @@ PROOF_BY_TEST_NAME: dict[str, list[str]] = {
     "test_only_admin_has_email_tools": [
         "Only admin is in can_use_email_tools; receptionist and preparer are excluded.",
     ],
+    # ── COMPLIANCE-0: Compliance Tracker module ────────────────────────────────
+    "test_schema_creates_all_compliance_tables": [
+        "init_db creates exactly the 5 compliance_* tables (clients/credentials/accounts/filing_periods/correspondence_log).",
+    ],
+    "test_schema_migration_is_idempotent": [
+        "Running init_db a second time against an already-migrated DB does not raise, and PRAGMA integrity_check passes.",
+    ],
+    "test_filing_period_unique_index_prevents_duplicate_period_per_account": [
+        "ux_compliance_filing_periods_account_label raises IntegrityError on a duplicate (account, period_label) insert.",
+    ],
+    "test_crypto_roundtrip_and_never_stores_plaintext": [
+        "encrypt_password()/decrypt_password() round-trip correctly, and the plaintext never appears inside the ciphertext bytes.",
+    ],
+    "test_mask_username": [
+        "mask_username() masks the middle of a login username for list-view display.",
+    ],
+    "test_dashboard_and_periods_board_viewable_by_all_roles": [
+        "GET /compliance and /compliance/periods return 200 for receptionist, preparer, and admin alike.",
+    ],
+    "test_credentials_admin_page_is_admin_only": [
+        "GET /compliance/credentials is 403 for receptionist/preparer and 200 for admin.",
+    ],
+    "test_client_account_credential_crud_is_admin_only": [
+        "POST /api/compliance/clients, /credentials, and /accounts all return 403 for preparer and receptionist.",
+    ],
+    "test_filing_status_update_allowed_for_preparer_not_receptionist": [
+        "POST /api/compliance/periods/<id>/status is 403 for receptionist and 200 for preparer (can_manage_compliance_filings).",
+    ],
+    "test_correspondence_note_requires_filing_permission": [
+        "POST /api/compliance/correspondence is 403 for receptionist and 200 for preparer.",
+    ],
+    "test_ssn_last4_never_appears_in_client_create_response": [
+        "The JSON response body from creating a client with ssn_last4 set contains neither the value nor the key.",
+    ],
+    "test_ssn_last4_never_appears_in_client_update_response": [
+        "The JSON response body from updating a client's ssn_last4 never echoes the new value back.",
+    ],
+    "test_ssn_last4_hidden_on_client_detail_page_for_unassigned_receptionist": [
+        "The rendered client detail HTML omits ssn_last4's value for a receptionist who is not the assigned preparer.",
+    ],
+    "test_ssn_last4_visible_on_client_detail_page_for_admin": [
+        "The rendered client detail HTML includes ssn_last4's value for an admin viewer.",
+    ],
+    "test_credential_list_never_serializes_password_or_ciphertext": [
+        "The admin credentials list page never contains the stored plaintext password anywhere in its HTML.",
+    ],
+    "test_client_detail_never_serializes_password_or_ciphertext": [
+        "The client detail page (which lists that client's accounts/credentials) never contains the stored plaintext password.",
+    ],
+    "test_reveal_credential_decrypts_correctly_and_is_admin_only": [
+        "POST .../reveal is 403 for preparer and 200 for admin, returning the exact original plaintext password.",
+    ],
+    "test_reveal_credential_writes_audit_log_entry": [
+        "Every credential reveal enqueues an audit_log write with action=COMPLIANCE_CREDENTIAL_REVEALED, entity_type=compliance_credential, and never the password itself in before/after.",
+    ],
+    "test_reveal_credential_with_no_password_returns_400": [
+        "Revealing a credential with no stored password returns 400 instead of a decrypt error.",
+    ],
+    "test_rotating_password_clears_needs_rotation_flag": [
+        "Updating a credential with a new password clears needs_rotation, stamps last_rotated_at, and the new password decrypts correctly.",
+    ],
+    "test_roll_forward_creates_period_for_every_account_in_source_period": [
+        "Roll-forward creates exactly one new filing_period per account found in the source period, visible on the target period's board view.",
+    ],
+    "test_roll_forward_is_idempotent_on_second_call": [
+        "Calling roll-forward twice with the same source/target creates 0 rows the second time (skipped_existing=1), not a duplicate.",
+    ],
+    "test_roll_forward_requires_distinct_labels": [
+        "Roll-forward with identical source and target period labels returns 400.",
+    ],
+    "test_roll_forward_404_for_unknown_source_label": [
+        "Roll-forward with a source_period_label that matches no filing periods returns 404.",
+    ],
+    "test_data_download_export_never_includes_ssn_or_credentials": [
+        "The Data Download CSV export never contains ssn_last4 values or stored credential passwords, only client/account/period fields.",
+    ],
 }

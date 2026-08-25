@@ -170,30 +170,29 @@ def taxops_release_version() -> str:
 def taxops_asset_cache_version() -> str:
     """Token for ``?v=`` on static JS/CSS URLs (CACHE bust / GitHub #141).
 
-    Precedence:
+    Precedence for the base label:
 
     1. ``TAXOPS_APP_VERSION`` — bump this on each deploy when shipping static-only
        changes without changing ``TAXOPS_VERSION`` or git revision.
     2. ``taxops_release_version()`` — ``TAXOPS_VERSION`` env, else short git SHA.
-    3. If that resolves to ``unknown`` (zip deploy without ``.git``), use max
-       mtime (ns) of bundled static files under ``taxops/static/`` so refreshes
-       still change when ``app.js`` / ``app.css`` / ``tw.min.css`` change.
+
+    Always suffix the max mtime of bundled static files so uncommitted edits to
+    ``app.js`` / ``app.css`` still change ``?v=`` (otherwise the button HTML can
+    update while the browser keeps a stale handler-less ``app.js``).
     """
     tag = os.environ.get("TAXOPS_APP_VERSION", "").strip()
-    if tag:
-        return tag
-    ver = taxops_release_version()
-    if ver != "unknown":
-        return ver
+    base = tag or taxops_release_version()
     try:
         mt = 0
         for rel in ("static/app.js", "static/app.css", "static/tw.min.css"):
             p = _HERE / rel
             if p.is_file():
                 mt = max(mt, p.stat().st_mtime_ns)
-        return f"m{mt}" if mt else "0"
+        if mt:
+            return f"m{mt}" if not base or base == "unknown" else f"{base}-m{mt}"
     except OSError:
-        return "0"
+        pass
+    return base if base and base != "unknown" else "0"
 
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -333,6 +332,32 @@ MAIL_WATCHER_CLIENT_MATCH_MIN_SCORE = int(os.environ.get("MAIL_WATCHER_CLIENT_MA
 # Set true only when Ollama has enough resources for concurrent vision requests.
 EXTRACTOR_VISION_ENABLED: bool = os.environ.get("EXTRACTOR_VISION_ENABLED", "false").lower() == "true"
 
+# Scan Agent (reception workstation WIA → PDF). Browser calls this host; TaxOps
+# server does not need the agent, but templates use these defaults for the UI.
+SCAN_AGENT_URL: str = (os.environ.get("SCAN_AGENT_URL") or "http://127.0.0.1:8766").rstrip("/")
+SCAN_AGENT_TOKEN: str = os.environ.get("SCAN_AGENT_TOKEN", "")
+
+# ── Claude OCR (scan-agent documents only) — PunchBridge-ported pattern ──────
+ANTHROPIC_API_KEY: str = os.environ.get("ANTHROPIC_API_KEY", "")
+# Model strings verified against docs.claude.com (same family as PunchBridge).
+CLAUDE_OCR_MODEL_FAST: str = os.environ.get("CLAUDE_OCR_MODEL_FAST", "claude-haiku-4-5")
+CLAUDE_OCR_MODEL_READ: str = os.environ.get("CLAUDE_OCR_MODEL_READ", "claude-sonnet-5")
+CLAUDE_OCR_MODEL_HARD: str = os.environ.get("CLAUDE_OCR_MODEL_HARD", "claude-opus-4-8")
+# Escalate Haiku → Sonnet when confidence is below this (or missing).
+try:
+    CLAUDE_OCR_ESCALATE_THRESHOLD: float = float(
+        os.environ.get("CLAUDE_OCR_ESCALATE_THRESHOLD", "0.85")
+    )
+except ValueError:
+    CLAUDE_OCR_ESCALATE_THRESHOLD = 0.85
+# Escalate Sonnet → Opus below this (PunchBridge HARD_REREAD_THRESHOLD default).
+try:
+    CLAUDE_OCR_HARD_REREAD_THRESHOLD: float = float(
+        os.environ.get("CLAUDE_OCR_HARD_REREAD_THRESHOLD", "0.75")
+    )
+except ValueError:
+    CLAUDE_OCR_HARD_REREAD_THRESHOLD = 0.75
+
 # EMAIL-7: matches with score >= MIN_SCORE but < LOW_CONF_THRESHOLD go to pending_review
 # instead of auto-attaching; staff confirms/rejects from Email Review → Pending Review.
 MAIL_LOW_CONF_THRESHOLD = int(os.environ.get("MAIL_LOW_CONF_THRESHOLD", "88"))
@@ -465,11 +490,10 @@ PERSONAL_EMAIL_DOMAINS: frozenset = frozenset({
     "xcelfinancial.com",
 })
 
-# Client business domains — unique domains that belong to real clients and will
-# never appear in a generic spam training set.  Emails from these domains bypass
-# the ML classifier entirely and go straight to LLM evaluation.  After the first
-# successful attachment save, the domain is auto-boosted to cache so subsequent
-# emails hit the cache layer (Layer 5) and skip both ML and LLM.
+# Client business domains — unique domains that belong to real clients (e.g. a
+# client's own company). Used by email_suggest.py's "domain_hint" suggestion:
+# an inbox item from one of these domains is suggested to the single client
+# who has an email on file at that domain (ambiguous if more than one).
 #
 # Populated via IMAP_CLIENT_HINT_DOMAINS env var (comma-separated).
 # Example: IMAP_CLIENT_HINT_DOMAINS=olavictory.org,coronabrosinstall.com,orealtyllc.com
@@ -540,6 +564,18 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "can_manage_extension_queue":  frozenset({"preparer", "admin"}),
     # Email inbox is admin-only until the workflow is fully hardened.
     "can_use_email_tools":         frozenset({"admin"}),
+    # Compliance Tracker: day-to-day filing period work (status updates,
+    # roll-forward, correspondence notes) is preparer+admin — the actual
+    # CDTFA/city filing work, not front-desk. Client/account/credential
+    # CRUD stays role_required("admin") only (Compliance Tracker security
+    # requirements #1-#4) — deliberately NOT a ROLE_PERMISSIONS entry, so
+    # it can never be loosened by editing this dict alone.
+    "can_manage_compliance_filings": frozenset({"preparer", "admin"}),
+    # Intake document scanning via the reception Scan Agent.
+    "can_scan_intake_docs": frozenset({"receptionist", "preparer", "admin"}),
+    # Return documents: list/view/upload/tag/soft-delete (reception desk + preparers).
+    # Drake sync stays separate (login + Drake flag) — not front-desk critical.
+    "can_manage_return_documents": frozenset({"receptionist", "preparer", "admin"}),
 }
 
 

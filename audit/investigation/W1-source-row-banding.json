@@ -1,0 +1,107 @@
+{
+  "generated_at": "2026-08-11T23:58:30Z",
+  "tax_log_path": "C:\\Users\\Windows 10\\OneDrive - Xcel Financial Services LLC\\Shared\\Logs\\TAX LOG 2025 Live.xlsx",
+  "pinned_cut": 772,
+  "cut_rule": "first reappearance of bare log 1 (sequence restart)",
+  "max_row": 2071,
+  "named_nonempty_log_rows": 1251,
+  "genuine_reuse_keys": 204,
+  "pair_keys": 200,
+  "cross_band_pairs": 200,
+  "same_band_pairs": 0,
+  "verdict": "BAND_RESTART_PINNED",
+  "canonical_rule": "tax_year==25 first; Drake/TaxOps token agree second; later row third",
+  "canonical_examples": [
+    {
+      "bare_log": "141",
+      "canonical": {
+        "source_row": 10,
+        "name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "all_rows": [
+        {
+          "source_row": 10,
+          "name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        },
+        {
+          "source_row": 912,
+          "name": "CHAN, THY",
+          "yr": 24,
+          "status": "PROCESSING",
+          "band": "band2"
+        }
+      ]
+    },
+    {
+      "bare_log": "1",
+      "canonical": {
+        "source_row": 6,
+        "name": "CEST LA VIE APPAERL INC",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "all_rows": [
+        {
+          "source_row": 6,
+          "name": "CEST LA VIE APPAERL INC",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        },
+        {
+          "source_row": 772,
+          "name": "AZUSA HOMES LLC",
+          "yr": 22,
+          "status": "PRIOR HOLD",
+          "band": "band2"
+        }
+      ]
+    },
+    {
+      "bare_log": "203",
+      "canonical": {
+        "source_row": 58,
+        "name": "COLLAZO, MIGUEL & MAYRA",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "all_rows": [
+        {
+          "source_row": 58,
+          "name": "COLLAZO, MIGUEL & MAYRA",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ]
+    },
+    {
+      "bare_log": "247",
+      "canonical": {
+        "source_row": 102,
+        "name": "VILLALTA, ROSALINDA V",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "all_rows": [
+        {
+          "source_row": 102,
+          "name": "VILLALTA, ROSALINDA V",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ]
+    }
+  ],
+  "implication": "Cut pinned at row 772. Cross-band pairs=200/200. Hold Tax Log genuine_reuse office split. Use canonical row rule for L0."
+}

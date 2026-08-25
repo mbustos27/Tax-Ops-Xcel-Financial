@@ -1,0 +1,67 @@
+*GPDSpecVersion: "1.0"
+*GPDFileVersion: "1.0"
+*GPDFileName: "BRPT18R.GPD"
+*Include: "StdNames.gpd"
+*ModelName: "Brother PT-18R"
+*MasterUnits: PAIR(180, 180)
+*ResourceDLL: "brptui.dll"
+*PrinterType: SERIAL
+*MemoryUsage: LIST(RASTER)
+*RotateCoordinate?: FALSE
+*RotateRaster?: FALSE
+*RotateFont?: FALSE
+*Feature: Resolution
+{
+    *rcNameID: =RESOLUTION_DISPLAY
+    *DefaultOption: Option1
+    *Option: Option1
+    {
+        *Name: "180 x 180 " =DOTS_PER_INCH
+        *DPI: PAIR(180, 180)
+        *TextDPI: PAIR(180, 180)
+        *SpotDiameter: 100
+        *Command: CmdSendBlockData { *Cmd : "" }
+    }
+}
+*Feature: Orientation
+{
+    *rcNameID: =ORIENTATION_DISPLAY
+    *DefaultOption: LANDSCAPE_CC270
+    *Option: PORTRAIT
+    {
+        *rcNameID: =PORTRAIT_DISPLAY
+    }
+    *Option: LANDSCAPE_CC270
+    {
+        *rcNameID: =LANDSCAPE_DISPLAY
+    }
+}
+*Feature: InputBin
+{
+    *rcNameID: =PAPER_SOURCE_DISPLAY
+    *DefaultOption: TAPE
+    *Option: TAPE
+    {
+        *rcNameID: 301	*% Cassette
+    }
+}
+*Include: "BRPT181.gpd"
+*Command: CmdStartPage
+{
+	*Order: PAGE_SETUP.1
+	*CallbackID: 10
+	*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+}
+*Command: CmdStartJob
+{
+    *Order: JOB_SETUP.1
+    *Cmd: "<1B>@"
+}
+*Command: CmdEndDoc
+{
+    *Order: DOC_FINISH.1
+    *Cmd: "<1A>"
+}
+*Command: CmdCR { *Cmd : "" }
+*Command: CmdLF { *Cmd : "" }
+*Command: CmdFF { *Cmd : "" }

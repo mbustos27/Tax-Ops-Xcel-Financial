@@ -1,0 +1,429 @@
+*GPDSpecVersion: "1.0"
+*GPDFileName: "BRM7300U.GPD"
+*ModelName: "Brother MFC-7300C USB"
+*PrintRate: 10
+*PrintRatePPM: 10
+*PrintRateUnit: PPM
+*Include: "StdNames.gpd"
+*MasterUnits: PAIR(600, 600)
+*ResourceDLL: "brclr00.dll"
+*PrinterType: SERIAL
+*Feature: Orientation
+{
+    *rcNameID: =ORIENTATION_DISPLAY
+    *DefaultOption: PORTRAIT
+    *Option: PORTRAIT
+    {
+        *rcNameID: =PORTRAIT_DISPLAY
+    }
+    *Option: LANDSCAPE_CC270
+    {
+        *rcNameID: =LANDSCAPE_DISPLAY
+    }
+}
+*Feature: Resolution
+{
+    *rcNameID: =RESOLUTION_DISPLAY
+    *DefaultOption: Option2
+    *Option: Option1
+    {
+	*Name: "150 x 150 " =DOTS_PER_INCH
+        *DPI: PAIR(150, 150)
+        *TextDPI: PAIR(150, 150)
+        *PinsPerLogPass: 32
+        *PinsPerPhysPass: 1
+        *SpotDiameter: 100
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: ""
+        }
+%    	*InvalidCombination: LIST(Resolution.Option1, PaperQuality.Inkjet)
+%	*InvalidCombination: LIST(Resolution.Option1, PaperQuality.Glossy)
+%	*InvalidCombination: LIST(Resolution.Option1, PaperQuality.Photographic)
+	
+    }
+    *Option: Option2
+    {
+        *Name: "300 x 300 " =DOTS_PER_INCH
+        *DPI: PAIR(300, 300)
+        *TextDPI: PAIR(300, 300)
+        *PinsPerLogPass: 32
+        *PinsPerPhysPass: 1
+        *SpotDiameter: 100
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: ""
+        }
+%        *InvalidCombination: LIST(Resolution.Option2, PaperQuality.Inkjet)
+%	*InvalidCombination: LIST(Resolution.Option2, PaperQuality.Glossy)
+%	*InvalidCombination: LIST(Resolution.Option2, PaperQuality.Photographic)
+    }
+    *Option: Option3
+    {
+        *Name: "600 x 600 " =DOTS_PER_INCH
+        *DPI: PAIR(600, 600)
+        *TextDPI: PAIR(600, 600)
+        *PinsPerLogPass: 32
+        *PinsPerPhysPass: 1
+        *SpotDiameter: 100
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *Cmd: ""
+        }
+%        *InvalidCombination: LIST(Resolution.Option3, PaperQuality.Plain, 600x600_High.LEVEL1)
+    }
+}
+*Feature: InputBin
+{
+    *rcNameID: =PAPER_SOURCE_DISPLAY
+    *DefaultOption: AUTO
+    *Option: AUTO
+    {
+        *rcNameID: =UPPER_TRAY_DISPLAY
+    }
+}
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: LETTER
+    *Option: LETTER
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(4800, 6272)
+      *PrintableOrigin: PAIR(150, 70)
+      *CursorOrigin: PAIR(150, 70)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 0
+      }
+    }
+    *Option: LEGAL
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(4800, 8064)
+      *PrintableOrigin: PAIR(150, 70)
+      *CursorOrigin: PAIR(150, 70)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 0
+      }
+    }
+    *Option: A4
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(4800, 6656)
+      *PrintableOrigin: PAIR(80, 70)
+      *CursorOrigin: PAIR(80, 70)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 1
+      }
+    }
+    
+    *Option: EXECUTIVE
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(4160, 5952)
+      *PrintableOrigin: PAIR(80, 70)
+      *CursorOrigin: PAIR(80, 70)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 2
+      }
+    }
+%    *Option: ENV_B5
+%    {
+%      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+%      *PrintableArea: PAIR(3980, 5184)
+%      *PrintableOrigin: PAIR(80, 236)
+%      *CursorOrigin: PAIR(80, 236)
+%      *Command: CmdSelect
+%      {
+%            *Order: DOC_SETUP.6
+%            *CallbackID: 3
+%      }
+%    }
+    *Option: A5
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(3336, 4608)
+      *PrintableOrigin: PAIR(80, 70)
+      *CursorOrigin: PAIR(80, 70)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 4
+      }
+    }
+    *Option: ENV_10
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(2304, 4992)
+      *PrintableOrigin: PAIR(80, 236)
+      *CursorOrigin: PAIR(80, 236)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 5
+      }
+    }
+    *Option: ENV_DL
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(2432, 4480)
+      *PrintableOrigin: PAIR(80, 236)
+      *CursorOrigin: PAIR(80, 236)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 6
+      }
+    }
+    *Option: ENV_C5
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(3648, 4672)
+      *PrintableOrigin: PAIR(80, 236)
+      *CursorOrigin: PAIR(80, 236)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 7
+      }
+    }
+    *Option: ENV_MONARCH
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(2144, 3776)
+      *PrintableOrigin: PAIR(80, 236)
+      *CursorOrigin: PAIR(80, 236)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 8
+      }
+    }
+}
+%*Feature: Halftone
+%{
+%    *rcNameID: =HALFTONING_DISPLAY
+%    *DefaultOption: HT_PATSIZE_AUTO
+%    *Option: HT_PATSIZE_AUTO
+%    {
+%        *rcNameID: =HT_AUTO_SELECT_DISPLAY
+%        *Order: DOC_SETUP.7
+%        *CallbackID: 11
+%    }
+%    *Option: HT_PATSIZE_SUPERCELL_M
+%    {
+%        *rcNameID: =HT_SUPERCELL_DISPLAY
+%        *Order: DOC_SETUP.7
+%        *CallbackID: 12
+%     }    
+%    *rcNameID: =HALFTONING_DISPLAY
+%	*DefaultOption: "DITHER"
+%    *Option: "DITHER"
+%    *Command: CmdSelect
+%    {
+%        *Order: DOC_SETUP.7
+%        *CallbackID: 10
+%    }
+%    *Option: "ERROR DIFFUSION"
+%    *Command: CmdSelect
+%    {
+%        *Order: DOC_SETUP.7
+%        *CallbackID: 11
+%    }
+%}
+*Feature: Econo
+{
+    *rcNameID: 266
+    *DefaultOption: OFF
+    *Option: OFF
+    {
+        *rcNameID: =OFF_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+	        *CallbackID: 11
+            *Cmd: ""
+        }
+    }
+    *Option: LEVEL1
+    {
+        *rcNameID: 270
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+	        *CallbackID: 12
+            *Cmd: ""
+        }
+    }
+  
+}
+*Feature: PaperQuality
+{
+    *rcNameID: =MEDIA_TYPE_DISPLAY
+    *DefaultOption: Regular
+	*Option: Plain
+	{
+		*rcNameID: 1000
+		*Command: CmdSelect
+		{
+			*Order: DOC_SETUP.5
+			*CallbackID: 15
+			*Cmd: ""
+		}
+		*DefaultQuality: BetterQualitySettings
+		*DraftQualitySettings:LIST(Resolution.Option1,PaperQuality.Plain) 
+		*BetterQualitySettings:LIST(Resolution.Option2,PaperQuality.Plain) 
+		*BestQualitySettings:LIST(Resolution.Option3,PaperQuality.Plain) 
+	}
+    *Option: Inkjet
+    {
+        *rcNameID: 1001
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+	        *CallbackID: 16
+            *Cmd: ""
+        }
+    }
+    *Option: Glossy
+    {
+        *rcNameID: 1002
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+	        *CallbackID: 17
+            *Cmd: ""
+        }
+    }
+    *Option: Photographic
+    {
+        *rcNameID: 1003
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+	        *CallbackID: 18
+            *Cmd: ""
+        }
+    }
+
+}
+*Feature: 600x600_High
+{
+    *rcNameID: 271
+    *DefaultOption: OFF
+    *Option: OFF
+    {
+        *rcNameID: =OFF_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: JOB_SETUP.1
+	        *CallbackID: 13
+            *Cmd: ""
+        }
+    }
+    *Option: LEVEL1
+    {
+        *rcNameID: 272
+        *Command: CmdSelect
+        {
+            *Order: JOB_SETUP.1
+	        *CallbackID: 14
+            *Cmd: ""
+        }
+    }
+}
+
+*Command: CmdStartPage
+{
+    *Order: PAGE_SETUP.1
+    *CallbackID: 20
+}
+*Command: CmdStartJob
+{
+    *Order: JOB_SETUP.2
+    *CallbackID: 22
+}
+*Command: CmdEndJob
+{
+    *Order: JOB_FINISH.1
+    *CallbackID: 23
+}
+*Command: CmdEndPage
+{
+    *Order: PAGE_FINISH.1
+    *CallbackID: 21
+}
+*Feature: ColorMode
+{
+	*rcNameID: 1030
+	*DefaultOption: Color
+	*Option: Monochrome
+	{
+		*rcNameID: 1032
+		*Name:"Monochrome"
+		*DevNumOfPlanes: 0
+		*DevBPP: 0
+		*DrvBPP: 24
+		*Color?: FALSE
+		*IPCallbackID: 2
+	}
+	*Option: Color
+	{
+		*rcNameID: 1031
+		*Name:"Color"
+		*DevNumOfPlanes: 0
+		*DevBPP: 0
+		*DrvBPP: 24
+		*Color?: TRUE
+		*IPCallbackID: 1
+	}
+}
+
+%*switch: PaperQuality
+%{
+%*case: Plain
+%    {
+%		*DefaultQuality: BetterQualitySettings
+%		*DraftQualitySettings:LIST(Resolution.Option1,PaperQuality.Plain) 
+%		*BetterQualitySettings:LIST(Resolution.Option2,PaperQuality.Plain) 
+%		*BestQualitySettings:LIST(Resolution.Option3,PaperQuality.Plain) 
+%    }
+%*case:Inkjet
+%    {
+%		*DefaultQuality: BestQualitySettings
+%	      	*DraftQualitySettings:LIST() 
+%		*BetterQualitySettings:LIST(Resolution.Option2,PaperQuality.Inkjet) 
+%		*BestQualitySettings:LIST(Resolution.Option3,PaperQuality.Inkjet) 
+%    }
+%*case:Glossy
+%    {
+%		*DefaultQuality: BestQualitySettings 
+%	      	*DraftQualitySettings:LIST() 
+%		*BetterQualitySettings:LIST(Resolution.Option2,PaperQuality.Glossy) 
+%		*BestQualitySettings:LIST(Resolution.Option3,PaperQuality.Glossy) 
+%    }
+%*case: Photographic
+%    {
+%		*DefaultQuality: BestQualitySettings 
+%		*DraftQualitySettings:LIST() 
+%		*BetterQualitySettings:LIST(Resolution.Option2,PaperQuality.Photographic) 
+%		*BestQualitySettings:LIST(Resolution.Option3,PaperQuality.Photographic) 
+%    }
+%}
+
+*OutputDataFormat: H_BYTE
+*Command: CmdSendBlockData { *Cmd : "" }
+*Command: CmdCR { *Cmd : "" }
+*Command: CmdLF { *Cmd : "" }
+*Command: CmdFF { *Cmd : "" }

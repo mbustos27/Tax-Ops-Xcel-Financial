@@ -6,7 +6,7 @@ Run from the project root: python test_ollama.py
 import os
 import requests
 
-base_url = os.environ.get("OLLAMA_BASE_URL", "http://192.168.1.141:11434")
+base_url = os.environ.get("OLLAMA_BASE_URL", "http://192.168.1.173:11434")
 
 print(f"Testing Ollama at: {base_url}")
 

@@ -1,0 +1,763 @@
+{
+  "needs_human_n": 42,
+  "now_has_spouse_row": 33,
+  "spouse_ambiguous_n": 28,
+  "spouse_store_divergence_open": 163,
+  "queue": [
+    {
+      "finding_id": "541a5afd464c93ff5a9de8f3182b1623cbf7c0fc5f96aa9fb8104694973d6a02",
+      "entity_key": "spouse_unrecovered|0043|LOPEZ|AGAPITO",
+      "subtype": "spouse_unrecovered",
+      "last4": "0043",
+      "name_hint": "LOPEZ",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2498,
+        "weak": false
+      },
+      "matched_client_ids": [
+        2225
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "4123f84ca32a93b3c71b144593deb300238a1ccd96a084e9da27275eb8607c9e",
+      "entity_key": "spouse_unrecovered|0377|AZAMAR PEREZ|MISAEL",
+      "subtype": "spouse_unrecovered",
+      "last4": "0377",
+      "name_hint": "AZAMAR PEREZ",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2478,
+        "weak": false
+      },
+      "matched_client_ids": [
+        1574
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "91b4234098934fce9e92d2c61110d2bb0ab35fb449979868c63db86df80802af",
+      "entity_key": "spouse_unrecovered|0852|VILLANUEVA VAZQUEZ|JUAN",
+      "subtype": "spouse_unrecovered",
+      "last4": "0852",
+      "name_hint": "VILLANUEVA VAZQUEZ",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2535,
+        "weak": false
+      },
+      "matched_client_ids": [
+        2265
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5_hygiene"
+    },
+    {
+      "finding_id": "24a75ff5da7bacf040ec2a70b34d99fba875a8b38680e2180cfea9dc271bd955",
+      "entity_key": "spouse_unrecovered|1313|HUERTA|DANNY",
+      "subtype": "spouse_unrecovered",
+      "last4": "1313",
+      "name_hint": "HUERTA",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2492,
+        "weak": false
+      },
+      "matched_client_ids": [
+        495
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "contam_fix"
+    },
+    {
+      "finding_id": "40007bec271ce7a34338ef59a948a6297ffe534fbde42f1ae0f425f1fa63221f",
+      "entity_key": "spouse_unrecovered|1495|GRAJEDA|ARNULFO",
+      "subtype": "spouse_unrecovered",
+      "last4": "1495",
+      "name_hint": "GRAJEDA",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2490,
+        "weak": false
+      },
+      "matched_client_ids": [
+        776
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5_hygiene"
+    },
+    {
+      "finding_id": "130a02f28c743d79985050edd5c9900fe42ecc2a7a1405decb94cf71d841978c",
+      "entity_key": "spouse_unrecovered|1697|RAMON RODRIGUEZ|CRESCENCIANO",
+      "subtype": "spouse_unrecovered",
+      "last4": "1697",
+      "name_hint": "RAMON RODRIGUEZ",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2519,
+        "weak": false
+      },
+      "matched_client_ids": [
+        139
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "trunc_fix"
+    },
+    {
+      "finding_id": "a873c9ba3e6492f1fc6a0b109f07c48fdf8fbed397611443b43b9a84bb307661",
+      "entity_key": "spouse_unrecovered|1859|JORGE BARAJAS|ISRAEL",
+      "subtype": "spouse_unrecovered",
+      "last4": "1859",
+      "name_hint": "JORGE BARAJAS",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2495,
+        "weak": false
+      },
+      "matched_client_ids": [],
+      "has_spouses_row_now": false,
+      "status": "ACKED",
+      "resolved_by": "wave5_intake_gap"
+    },
+    {
+      "finding_id": "f436a125dc351c96b47e20fb7a536a69df5d5f99e540c6fff9750ed657f212ec",
+      "entity_key": "spouse_unrecovered|1896|MOLINA|JOSE",
+      "subtype": "spouse_unrecovered",
+      "last4": "1896",
+      "name_hint": "MOLINA",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2505,
+        "weak": false
+      },
+      "matched_client_ids": [
+        665
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "b1d69b3c7461f8eef6757688282ca41517bc37d5245f004d9d39330abc4724c1",
+      "entity_key": "spouse_unrecovered|2332|VELASQUEZ|MAYNOR",
+      "subtype": "spouse_unrecovered",
+      "last4": "2332",
+      "name_hint": "VELASQUEZ",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2534,
+        "weak": false
+      },
+      "matched_client_ids": [
+        1257
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5_hygiene"
+    },
+    {
+      "finding_id": "8585b8dc18a919d44784b16cf99c0498305384a16ea95e3561e43b2d96679175",
+      "entity_key": "spouse_unrecovered|2374|MOLINA|JOSE",
+      "subtype": "spouse_unrecovered",
+      "last4": "2374",
+      "name_hint": "MOLINA",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2503,
+        "weak": false
+      },
+      "matched_client_ids": [
+        124,
+        1370
+      ],
+      "has_spouses_row_now": false,
+      "status": "RESOLVED",
+      "resolved_by": "wave5_hygiene"
+    },
+    {
+      "finding_id": "a78e735a8855591cfe2ee71c56b4794ee7c6e47e6f639fea29fb798fab184af4",
+      "entity_key": "spouse_unrecovered|2401|ALVARADO|OSCAR",
+      "subtype": "spouse_unrecovered",
+      "last4": "2401",
+      "name_hint": "ALVARADO",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2469,
+        "weak": false
+      },
+      "matched_client_ids": [
+        2272
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "a32d110410a732df81ee021b0683bb4483e98477b25351116f10b877c581f55f",
+      "entity_key": "spouse_unrecovered|2416|GALLARDO|ENRIQUE",
+      "subtype": "spouse_unrecovered",
+      "last4": "2416",
+      "name_hint": "GALLARDO",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2488,
+        "weak": false
+      },
+      "matched_client_ids": [
+        1520
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "6dcfc7e8a5252fe873a806e8ea5bcce912466373165c209ef1ec6d70314a6214",
+      "entity_key": "spouse_unrecovered|2472|TEXCOCANO|FEDERICO",
+      "subtype": "spouse_unrecovered",
+      "last4": "2472",
+      "name_hint": "TEXCOCANO",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2531,
+        "weak": false
+      },
+      "matched_client_ids": [
+        1236
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5_hygiene"
+    },
+    {
+      "finding_id": "4417e03f95bd70164ba7c4eb2a113b0151a930bf0b238830fd2ed3663a0ee236",
+      "entity_key": "spouse_unrecovered|2549|MELENDREZ BRAVO|GABRIELA",
+      "subtype": "spouse_unrecovered",
+      "last4": "2549",
+      "name_hint": "MELENDREZ BRAVO",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2502,
+        "weak": false
+      },
+      "matched_client_ids": [
+        578
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "42f5f3d17580f20161c009b22816ea0ef4c8f7f739fa6da8031aebc1c23602ac",
+      "entity_key": "spouse_unrecovered|2845|LIMA MARROQUIN|ALFONSO",
+      "subtype": "spouse_unrecovered",
+      "last4": "2845",
+      "name_hint": "LIMA MARROQUIN",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2496,
+        "weak": false
+      },
+      "matched_client_ids": [
+        1467
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "9abc60bbccef20bc02b0f581325f64aeb928cf716e63aef19993ac168bca619f",
+      "entity_key": "spouse_unrecovered|3263|MURGUIA MENDEZ|ANA",
+      "subtype": "spouse_unrecovered",
+      "last4": "3263",
+      "name_hint": "MURGUIA MENDEZ",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2513,
+        "weak": false
+      },
+      "matched_client_ids": [
+        1337
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5_hygiene"
+    },
+    {
+      "finding_id": "fd865aa9966a3c2d464eac4a882ea7ac001f4ac6235e5519b02e708e6d419d99",
+      "entity_key": "spouse_unrecovered|3387|CASTILLO|VICTOR",
+      "subtype": "spouse_unrecovered",
+      "last4": "3387",
+      "name_hint": "CASTILLO",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2482,
+        "weak": false
+      },
+      "matched_client_ids": [
+        1582
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "425699f589369297d0f4dd29abf27e7b23ba9c2831e02c8dfc03d9218894fb01",
+      "entity_key": "spouse_unrecovered|3527|MUNGUIA|FEDERICO",
+      "subtype": "spouse_unrecovered",
+      "last4": "3527",
+      "name_hint": "MUNGUIA",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2511,
+        "weak": false
+      },
+      "matched_client_ids": [
+        145
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "contam_fix"
+    },
+    {
+      "finding_id": "bcf97a033c1bbf5611a2d27e48e27a9c9fa0f74e1874add4173b9026c73bc9b1",
+      "entity_key": "spouse_unrecovered|3546|REYES SOLIS|GASPAR",
+      "subtype": "spouse_unrecovered",
+      "last4": "3546",
+      "name_hint": "REYES SOLIS",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2522,
+        "weak": false
+      },
+      "matched_client_ids": [],
+      "has_spouses_row_now": false,
+      "status": "ACKED",
+      "resolved_by": "wave5_intake_gap"
+    },
+    {
+      "finding_id": "12b89cbc2dcb19d81649558978c4c8b991e80129bd3a19bfe9352b7aa2322460",
+      "entity_key": "spouse_unrecovered|3574|SANDOVAL|EFRAIN",
+      "subtype": "spouse_unrecovered",
+      "last4": "3574",
+      "name_hint": "SANDOVAL",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2529,
+        "weak": false
+      },
+      "matched_client_ids": [],
+      "has_spouses_row_now": false,
+      "status": "RESOLVED",
+      "resolved_by": "wave5_hygiene"
+    },
+    {
+      "finding_id": "7c890b52c2ea97c0d090673221e4501c1be331e87a8afd702523d56c9b476902",
+      "entity_key": "spouse_unrecovered|3582|ASFOUR|EMAD",
+      "subtype": "spouse_unrecovered",
+      "last4": "3582",
+      "name_hint": "ASFOUR",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2473,
+        "weak": false
+      },
+      "matched_client_ids": [
+        80
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5_hygiene"
+    },
+    {
+      "finding_id": "f025babdab60dda00e602cc7c53708c9341d0a5ccbc4351498d45ce217dcd401",
+      "entity_key": "spouse_unrecovered|3657|ESTEVEZ|NERY",
+      "subtype": "spouse_unrecovered",
+      "last4": "3657",
+      "name_hint": "ESTEVEZ",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2484,
+        "weak": false
+      },
+      "matched_client_ids": [
+        742
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "a64e31df380ab821e73db3fedd902a33523b85a5fef29da38459136a78b0a1ee",
+      "entity_key": "spouse_unrecovered|3962|MORALES ITZEP|JUAN",
+      "subtype": "spouse_unrecovered",
+      "last4": "3962",
+      "name_hint": "MORALES ITZEP",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2509,
+        "weak": false
+      },
+      "matched_client_ids": [
+        1247
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5_hygiene"
+    },
+    {
+      "finding_id": "0d373068e7f6d3d4bd2c4e62f4e1948f49cc366cb916ff8c67d40562a872970a",
+      "entity_key": "spouse_unrecovered|4032|RIOS|TRINY",
+      "subtype": "spouse_unrecovered",
+      "last4": "4032",
+      "name_hint": "RIOS",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2524,
+        "weak": false
+      },
+      "matched_client_ids": [
+        868
+      ],
+      "has_spouses_row_now": true,
+      "status": "ACKED",
+      "resolved_by": "wave5_export_gap"
+    },
+    {
+      "finding_id": "bbc214ec78998c08383ec14f5e74044bbd328cbb502f1ad262fae3e169b5e8b3",
+      "entity_key": "spouse_unrecovered|4074|RESENDEZ|FRANCISCO",
+      "subtype": "spouse_unrecovered",
+      "last4": "4074",
+      "name_hint": "RESENDEZ",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2520,
+        "weak": false
+      },
+      "matched_client_ids": [
+        1386
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "97873d64db2bde9c3bbc9547a5a154be950a8ea4003f4821a15dcfd60d0edb30",
+      "entity_key": "spouse_unrecovered|4595|ABOU ABDOU|AHMED",
+      "subtype": "spouse_unrecovered",
+      "last4": "4595",
+      "name_hint": "ABOU ABDOU",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2466,
+        "weak": false
+      },
+      "matched_client_ids": [
+        521
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "982800e29d7d4aaeca1969b2aec8f6fe65e1ae20ae46ad32cf587e0bac17f68a",
+      "entity_key": "spouse_unrecovered|4972|CALZADILLA FLORES|ENRIQUE",
+      "subtype": "spouse_unrecovered",
+      "last4": "4972",
+      "name_hint": "CALZADILLA FLORES",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2481,
+        "weak": false
+      },
+      "matched_client_ids": [],
+      "has_spouses_row_now": false,
+      "status": "ACKED",
+      "resolved_by": "wave5_intake_gap"
+    },
+    {
+      "finding_id": "5652075dd1ea86c633d3762b3beccd7f6beef86b96c3d6a1f2469003ae56109e",
+      "entity_key": "spouse_unrecovered|5180|QUINTANA|ROGELIO",
+      "subtype": "spouse_unrecovered",
+      "last4": "5180",
+      "name_hint": "QUINTANA",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2517,
+        "weak": false
+      },
+      "matched_client_ids": [
+        819
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "contam_fix"
+    },
+    {
+      "finding_id": "239609fee22d34b71aba3fad6a0c8c1bb1b42ef0030fbf61ee5bef80432b24e0",
+      "entity_key": "spouse_unrecovered|5336|ROBLEDO|PEDRO",
+      "subtype": "spouse_unrecovered",
+      "last4": "5336",
+      "name_hint": "ROBLEDO",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2526,
+        "weak": false
+      },
+      "matched_client_ids": [
+        873
+      ],
+      "has_spouses_row_now": false,
+      "status": "ACKED",
+      "resolved_by": "wave5_export_gap"
+    },
+    {
+      "finding_id": "5e423b39401a9ea920b84b5451aea89f846e807db1b89d48f0938756c80a5ff7",
+      "entity_key": "spouse_unrecovered|5628|FLORES SALAMANCA|JOSUE",
+      "subtype": "spouse_unrecovered",
+      "last4": "5628",
+      "name_hint": "FLORES SALAMANCA",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2486,
+        "weak": false
+      },
+      "matched_client_ids": [
+        1656
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5_hygiene"
+    },
+    {
+      "finding_id": "30bcbdafa78238e2a012e7cb2a82892c3d6118610a105f2113183c6b68702fc5",
+      "entity_key": "spouse_unrecovered|5949|MARTINEZ|ARNULFO",
+      "subtype": "spouse_unrecovered",
+      "last4": "5949",
+      "name_hint": "MARTINEZ",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2500,
+        "weak": false
+      },
+      "matched_client_ids": [
+        610
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "contam_fix"
+    },
+    {
+      "finding_id": "270fd5115b6c87abf6dc57d2c95454a4ffb2f69b2c66e1f4b7ddd71496385830",
+      "entity_key": "spouse_unrecovered|6672|AVILA|LUCY",
+      "subtype": "spouse_unrecovered",
+      "last4": "6672",
+      "name_hint": "AVILA",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2476,
+        "weak": false
+      },
+      "matched_client_ids": [
+        313
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "0513537da790033dd96b81fd498c8cc503dabdf92ee6ecbf14b69c15ea7f8a9d",
+      "entity_key": "spouse_unrecovered|6789|MONTANEZ|PABLO",
+      "subtype": "spouse_unrecovered",
+      "last4": "6789",
+      "name_hint": "MONTANEZ",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2507,
+        "weak": false
+      },
+      "matched_client_ids": [
+        546,
+        2397
+      ],
+      "has_spouses_row_now": true,
+      "status": "FALSE_POSITIVE",
+      "resolved_by": "wrong_last4_match"
+    },
+    {
+      "finding_id": "d7013aad85fedcf0f43b76cd210871a728384f2bb72aeb5a84aa9a0918146e5f",
+      "entity_key": "spouse_unrecovered|7316|RAMIREZ HUERTA|ISMAEL",
+      "subtype": "spouse_unrecovered",
+      "last4": "7316",
+      "name_hint": "RAMIREZ HUERTA",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2518,
+        "weak": false
+      },
+      "matched_client_ids": [
+        551
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5_hygiene"
+    },
+    {
+      "finding_id": "101caa0663f13343496f4b825b4e1575cc55ee9ffd65dfbfa6a1c29adc264506",
+      "entity_key": "spouse_unrecovered|7744|ROJAS|LUIS",
+      "subtype": "spouse_unrecovered",
+      "last4": "7744",
+      "name_hint": "ROJAS",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2527,
+        "weak": false
+      },
+      "matched_client_ids": [
+        902
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "6d3f78555006e56d76a08a087d842602b6896538772592ae22cd8450c23219f3",
+      "entity_key": "spouse_unrecovered|8316|NAVARRO|MIGUEL",
+      "subtype": "spouse_unrecovered",
+      "last4": "8316",
+      "name_hint": "NAVARRO",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2514,
+        "weak": false
+      },
+      "matched_client_ids": [
+        716
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "fa6458e568a4be64a5801feab0b4ccb894b92f1fe0f176e2b594bc8b78844836",
+      "entity_key": "spouse_unrecovered|8686|AVALOS PEREZ|JOSE",
+      "subtype": "spouse_unrecovered",
+      "last4": "8686",
+      "name_hint": "AVALOS PEREZ",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2475,
+        "weak": false
+      },
+      "matched_client_ids": [
+        626
+      ],
+      "has_spouses_row_now": false,
+      "status": "ACKED",
+      "resolved_by": "wave5_intake_gap"
+    },
+    {
+      "finding_id": "5577d81d2be001d45e9409354f4fbf8dc3ac46788f1dacab91b1477696ea90b1",
+      "entity_key": "spouse_unrecovered|8901|TINOCO|LILIANA",
+      "subtype": "spouse_unrecovered",
+      "last4": "8901",
+      "name_hint": "TINOCO",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2532,
+        "weak": false
+      },
+      "matched_client_ids": [
+        1006
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "6fb25b5a2e005a93473e1f29dd030456eefea9f88d5cbddc609570d15d6113c7",
+      "entity_key": "spouse_unrecovered|8914|ARMENTA|JORGE",
+      "subtype": "spouse_unrecovered",
+      "last4": "8914",
+      "name_hint": "ARMENTA",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2471,
+        "weak": false
+      },
+      "matched_client_ids": [
+        1004,
+        1413
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "712ee91cb1979747c3397002c9239f1eeede16dbda2c2a0b7995b478439b074a",
+      "entity_key": "spouse_unrecovered|9169|OLEA|ANTONIO",
+      "subtype": "spouse_unrecovered",
+      "last4": "9169",
+      "name_hint": "OLEA",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2516,
+        "weak": false
+      },
+      "matched_client_ids": [
+        2361
+      ],
+      "has_spouses_row_now": false,
+      "status": "ACKED",
+      "resolved_by": "wave5_intake_gap"
+    },
+    {
+      "finding_id": "fb9d950b0c1ad760ded363f11dbb6932f68d0df97b8fb06ac5148201bbc23580",
+      "entity_key": "spouse_unrecovered|9270|JOHNSON|ALLEN",
+      "subtype": "spouse_unrecovered",
+      "last4": "9270",
+      "name_hint": "JOHNSON",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2494,
+        "weak": false
+      },
+      "matched_client_ids": [
+        501
+      ],
+      "has_spouses_row_now": true,
+      "status": "RESOLVED",
+      "resolved_by": "wave5"
+    },
+    {
+      "finding_id": "3ee0dc541cccfc4ccce0d8ddcff2a37d29c4ecad36fc5f4ca436b04334cee8f7",
+      "entity_key": "spouse_unrecovered|9799|BURGOS GARCIA|JESUS",
+      "subtype": "spouse_unrecovered",
+      "last4": "9799",
+      "name_hint": "BURGOS GARCIA",
+      "detail": {
+        "backfill": "jul31",
+        "old_id": 2480,
+        "weak": false
+      },
+      "matched_client_ids": [
+        121
+      ],
+      "has_spouses_row_now": false,
+      "status": "ACKED",
+      "resolved_by": "wave5_export_gap"
+    }
+  ],
+  "needs_human_open": 0,
+  "wave5_resolved": 33,
+  "wave5_export_gap_acked": 8,
+  "lucy_n": 0
+}

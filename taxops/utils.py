@@ -120,6 +120,38 @@ def needs_manual_tagging(filename: str) -> bool:
     return ext in _MANUAL_TAG_IMAGE_EXTS
 
 
+# Phase 3.2: inbox aging/triage view. Boundaries are inclusive of the lower
+# bound and exclusive of the upper — "exactly 2 days" is amber (>=2), "exactly
+# 7 days" is red (>=7). Muted Cabernet Warm badge variants map to these in the
+# templates; no new colors are introduced.
+AGE_BUCKET_GREEN = "green"
+AGE_BUCKET_AMBER = "amber"
+AGE_BUCKET_RED = "red"
+
+
+def age_bucket(received_at: str | None, *, now: datetime | None = None) -> str:
+    """Classify an email_inbox item's age from its received_at timestamp.
+
+    green: age < 2 days.  amber: 2 <= age <= 7 days (boundaries inclusive —
+    "exactly 2 days" and "exactly 7 days" are both amber).  red: age > 7 days
+    (strictly older than the "older than 7 days" triage filter's threshold).
+    Unparsable/missing timestamps default to green (fail safe, never alarm
+    on bad data) rather than raising.
+    """
+    dt = parse_iso_datetime(received_at)
+    if dt is None:
+        return AGE_BUCKET_GREEN
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    age_days = (current - dt).total_seconds() / 86400.0
+    if age_days > 7:
+        return AGE_BUCKET_RED
+    if age_days >= 2:
+        return AGE_BUCKET_AMBER
+    return AGE_BUCKET_GREEN
+
+
 def _scrub_ssn_from_string(value: str) -> str:
     if not isinstance(value, str):
         return value

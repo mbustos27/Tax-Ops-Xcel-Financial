@@ -1,0 +1,71 @@
+{
+  "generated_at": "2026-08-12T00:02:59Z",
+  "actions": [
+    {
+      "entity_key": "spouse_unrecovered|0852|VILLANUEVA VAZQUEZ|JUAN",
+      "action": "reopened",
+      "finding_id": "91b4234098934fce9e92d2c61110d2bb0ab35fb449979868c63db86df80802af"
+    },
+    {
+      "entity_key": "spouse_unrecovered|7316|RAMIREZ HUERTA|ISMAEL",
+      "action": "reopened",
+      "finding_id": "d7013aad85fedcf0f43b76cd210871a728384f2bb72aeb5a84aa9a0918146e5f"
+    },
+    {
+      "entity_key": "spouse_unrecovered|2374|MOLINA|JOSE",
+      "action": "set_RESOLVED",
+      "finding_id": "8585b8dc18a919d44784b16cf99c0498305384a16ea95e3561e43b2d96679175"
+    },
+    {
+      "entity_key": "spouse_unrecovered|3574|SANDOVAL|EFRAIN",
+      "action": "set_RESOLVED",
+      "finding_id": "12b89cbc2dcb19d81649558978c4c8b991e80129bd3a19bfe9352b7aa2322460"
+    },
+    {
+      "entity_key": "spouse_unrecovered|0852|VILLANUEVA VAZQUEZ|JUAN",
+      "action": "trunc_drake_wins",
+      "finding_id": "91b4234098934fce9e92d2c61110d2bb0ab35fb449979868c63db86df80802af"
+    },
+    {
+      "entity_key": "spouse_unrecovered|7316|RAMIREZ HUERTA|ISMAEL",
+      "action": "trunc_drake_wins",
+      "finding_id": "d7013aad85fedcf0f43b76cd210871a728384f2bb72aeb5a84aa9a0918146e5f"
+    },
+    {
+      "entity_key": "spouse_unrecovered|1495|GRAJEDA|ARNULFO",
+      "action": "trunc_drake_wins",
+      "finding_id": "40007bec271ce7a34338ef59a948a6297ffe534fbde42f1ae0f425f1fa63221f"
+    },
+    {
+      "entity_key": "spouse_unrecovered|2332|VELASQUEZ|MAYNOR",
+      "action": "trunc_drake_wins",
+      "finding_id": "b1d69b3c7461f8eef6757688282ca41517bc37d5245f004d9d39330abc4724c1"
+    },
+    {
+      "entity_key": "spouse_unrecovered|2472|TEXCOCANO|FEDERICO",
+      "action": "trunc_drake_wins",
+      "finding_id": "6dcfc7e8a5252fe873a806e8ea5bcce912466373165c209ef1ec6d70314a6214"
+    },
+    {
+      "entity_key": "spouse_unrecovered|3263|MURGUIA MENDEZ|ANA",
+      "action": "trunc_drake_wins",
+      "finding_id": "9abc60bbccef20bc02b0f581325f64aeb928cf716e63aef19993ac168bca619f"
+    },
+    {
+      "entity_key": "spouse_unrecovered|3582|ASFOUR|EMAD",
+      "action": "trunc_drake_wins",
+      "finding_id": "7c890b52c2ea97c0d090673221e4501c1be331e87a8afd702523d56c9b476902"
+    },
+    {
+      "entity_key": "spouse_unrecovered|3962|MORALES ITZEP|JUAN",
+      "action": "trunc_drake_wins",
+      "finding_id": "a64e31df380ab821e73db3fedd902a33523b85a5fef29da38459136a78b0a1ee"
+    },
+    {
+      "entity_key": "spouse_unrecovered|5628|FLORES SALAMANCA|JOSUE",
+      "action": "trunc_drake_wins",
+      "finding_id": "5e423b39401a9ea920b84b5451aea89f846e807db1b89d48f0938756c80a5ff7"
+    }
+  ],
+  "open_n": 11
+}

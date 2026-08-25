@@ -54,14 +54,15 @@ def format_log_number(log_number) -> str:
     return s.zfill(LOG_NUMBER_ZERO_PAD) if s.isdigit() else s
 
 
-# ── M0 hardware defaults — ⚠ PENDING physical confirmation ─────────────────
-# filetrack/hardware_validation/FINDINGS.md does not exist yet in this repo —
-# M0 has not been run against the real Arkscan 2054A / ScanAvenger from this
-# session (no physical access). Everything below is a reasonable keyboard-
-# wedge-mode default, NOT a confirmed value. All of it is overridable via CLI
-# flag or env var (see listener/run_listener.py --help). Once FINDINGS.md
-# exists, reconcile these defaults with it and flip HARDWARE_FINDINGS_CONFIRMED.
-HARDWARE_FINDINGS_CONFIRMED = False
+# ── M0 hardware defaults — ✅ CONFIRMED 2026-07-22 ──────────────────────────
+# filetrack/hardware_validation/FINDINGS.md: mode=HID, suffix="\n", delimiter
+# ":" all confirmed against the real Arkscan/4BARCODE printer + ScanAvenger
+# scanner (print_test.py's 3 labels, a burst-vs-live comparison, and label
+# geometry all checked out). Defaults below are now confirmed values, not
+# just reasonable guesses. Still overridable via CLI flag or env var (see
+# listener/run_listener.py --help) if a different scanner/printer is ever
+# swapped in — re-run M0 and update FINDINGS.md before trusting a new unit.
+HARDWARE_FINDINGS_CONFIRMED = True
 
 DEFAULT_SCAN_MODE = os.environ.get("FILETRACK_SCAN_MODE", "hid")  # 'hid' | 'serial'
 # Most 1D/2D scanners in HID keyboard-wedge mode append Enter (CR, LF, or

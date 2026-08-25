@@ -1,16 +1,16 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Install / start FiletrackRelay (label print) on the print-station PC.
+  DEPRECATED — use taxops\scripts\install_print_relay_service.ps1 or GO_RECEPTION.bat -Repair
 
 .DESCRIPTION
-  Same NSSM pattern as setup_scan_agent.ps1. Run ON the workstation that has
-  the 4BARCODE printer (Admin / UAC Yes). See taxops/filetrack/DEPLOYMENT.md §4.
-
-  Does NOT touch TaxOpsService on the server.
+  Legacy duplicate of install_print_relay_service.ps1. Kept only for emergency
+  rollback. Pass -ForceDeprecated to run anyway.
 
 .EXAMPLE
-  \\Xcel-server\taxops\install_print_relay_nssm.ps1
+  # Canonical:
+  powershell -File \\Xcel-server\taxops\taxops\scripts\install_print_relay_service.ps1
+  # or:  T:\GO_RECEPTION.bat -Repair
 #>
 param(
     [string]$UncRoot = "\\Xcel-server\taxops",
@@ -19,10 +19,27 @@ param(
     [string]$HostBind = "0.0.0.0",
     [int]$Port = 8765,
     [string]$ServiceName = "FiletrackRelay",
-    [switch]$NoNssm
+    [switch]$NoNssm,
+    [switch]$ForceDeprecated
 )
 
 $ErrorActionPreference = "Continue"
+
+Write-Host ""
+Write-Host "========================================================" -ForegroundColor Yellow
+Write-Host " DEPRECATED: install_print_relay_nssm.ps1" -ForegroundColor Yellow
+Write-Host "========================================================" -ForegroundColor Yellow
+Write-Host " Use instead:" -ForegroundColor Yellow
+Write-Host "   T:\GO_RECEPTION.bat -Repair" -ForegroundColor Cyan
+Write-Host "   taxops\scripts\install_print_relay_service.ps1" -ForegroundColor Cyan
+Write-Host " (AppDirectory must be UNC, never mapped T:)" -ForegroundColor DarkYellow
+Write-Host ""
+
+if (-not $ForceDeprecated) {
+    Write-Host "Refusing to run. Re-run with -ForceDeprecated only if you must." -ForegroundColor Red
+    exit 2
+}
+Write-Host "[WARN] Continuing with deprecated installer..." -ForegroundColor Yellow
 
 function Test-IsAdmin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -46,6 +63,7 @@ if (-not (Test-IsAdmin)) {
     if ($Token) { $arg += @("-Token", $Token) }
     if ($Printer) { $arg += @("-Printer", $Printer) }
     if ($NoNssm) { $arg += "-NoNssm" }
+    if ($ForceDeprecated) { $arg += "-ForceDeprecated" }
     Start-Process powershell.exe -Verb RunAs -WorkingDirectory $root -ArgumentList $arg
     exit 0
 }
@@ -131,7 +149,7 @@ $svc = Get-Service $ServiceName -EA SilentlyContinue
 if ($svc -and $svc.Status -eq "Running") {
     Write-Host "  [OK] $ServiceName is RUNNING on port $Port" -ForegroundColor Green
 } else {
-    Write-Host "  [WARN] Service not running — check $logDir\relay_stderr.log" -ForegroundColor Yellow
+    Write-Host "  [WARN] Service not running - check $logDir\relay_stderr.log" -ForegroundColor Yellow
 }
 
 $fwName = "TaxOps Filetrack Relay"

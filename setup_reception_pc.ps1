@@ -1,28 +1,18 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Easy one-shot setup for the TaxOps RECEPTION workstation.
+  DEPRECATED — use T:\GO_RECEPTION.bat (and -Repair for auto-start).
 
 .DESCRIPTION
-  Modeled after the Epson scanner "guided setup" pattern on office PCs:
-  welcome -> prerequisites -> numbered steps with OK/FAIL -> desktop guide
-  shortcut -> how to verify.
+  Frozen. This wizard installs outdated auto-start (Startup-folder print +
+  NSSM ScanAgent) that conflicts with the current architecture:
+    Print  = NSSM FiletrackRelay (UNC AppDirectory)
+    Scan   = Scheduled Task Interactive AtLogOn (not session-0)
 
-  What it configures:
-    1. Office network check
-    2. Map T: to \\Xcel-server\taxops
-    3. hosts entry so http://taxlog/ works
-    4. Desktop "Tax Log" shortcut
-    5. Confirm 4BARCODE label printer
-    6. Python + print-relay dependencies
-    7. Start print relay + Startup-folder auto-start
-    8. Firewall rule for TCP 8765
-    9. Epson document scanner (device + drivers + ScanSmart)
-   10. Scan Agent (WIA → PDF on TCP 8766, NSSM ScanAgent)
-   11. Desktop "Reception Setup Guide" shortcut
+  Pass -ForceDeprecated to run the old wizard anyway.
 
-  Launch:  \\Xcel-server\taxops\setup_reception_pc.bat
-           (or T:\setup_reception_pc.bat)
+  Canonical: T:\GO_RECEPTION.bat
+  Docs: taxops\docs\reception_agents_runbook.md
 #>
 param(
     [string]$ServerIP        = "192.168.1.173",
@@ -34,10 +24,27 @@ param(
     [string]$ScanAgentToken  = $env:SCAN_AGENT_TOKEN,
     [int]$AppPort            = 5000,
     [int]$RelayPort          = 8765,
-    [int]$ScanAgentPort      = 8766
+    [int]$ScanAgentPort      = 8766,
+    [switch]$ForceDeprecated
 )
 
 $ErrorActionPreference = "Continue"
+
+Write-Host ""
+Write-Host "========================================================" -ForegroundColor Yellow
+Write-Host " DEPRECATED: setup_reception_pc.ps1" -ForegroundColor Yellow
+Write-Host "========================================================" -ForegroundColor Yellow
+Write-Host " Use instead:  T:\GO_RECEPTION.bat" -ForegroundColor Cyan
+Write-Host "               T:\GO_RECEPTION.bat -Repair   (Admin)" -ForegroundColor Cyan
+Write-Host "               T:\GO_SCAN_AGENT.bat" -ForegroundColor Cyan
+Write-Host ""
+if (-not $ForceDeprecated) {
+    Write-Host "Refusing to run. Pass -ForceDeprecated only if you must." -ForegroundColor Red
+    exit 2
+}
+Write-Host "[WARN] Continuing with deprecated reception setup..." -ForegroundColor Yellow
+Write-Host ""
+
 $UncRoot = $UncRoot.TrimEnd('\')
 $totalSteps = 11
 $script:step = 0
@@ -93,6 +100,7 @@ if (-not (Test-IsAdmin)) {
         "-ScanAgentPort", "$ScanAgentPort"
     )
     if ($ScanAgentToken) { $arg += @("-ScanAgentToken", $ScanAgentToken) }
+    if ($ForceDeprecated) { $arg += "-ForceDeprecated" }
     Start-Process powershell.exe -Verb RunAs -WorkingDirectory $root -ArgumentList $arg
     exit 0
 }

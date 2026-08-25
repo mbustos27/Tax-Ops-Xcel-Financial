@@ -1,0 +1,342 @@
+{
+  "group_c": [
+    {
+      "key": "HERNANDEZ|ISMAEL",
+      "older_id": 659,
+      "newer_id": 2275,
+      "older": {
+        "id": 659,
+        "last_name": "HERNANDEZ",
+        "first_name": "ISMAEL",
+        "ssn_last4": "2720",
+        "id_type": 1,
+        "created_at": "2026-07-01 18:19:30"
+      },
+      "newer": {
+        "id": 2275,
+        "last_name": "HERNANDEZ",
+        "first_name": "ISMAEL",
+        "ssn_last4": "3403",
+        "id_type": null,
+        "created_at": "2026-08-07T22:27:47+00:00"
+      },
+      "older_returns": [
+        {
+          "id": 707,
+          "tax_year": 2025,
+          "log_number": "563",
+          "client_status": "LOG OUT"
+        }
+      ],
+      "newer_returns": [],
+      "older_years": [
+        2025
+      ],
+      "newer_years": [],
+      "overlap_years": [],
+      "year_gap": null,
+      "verdict": "distinct_people"
+    },
+    {
+      "key": "NUNO|JUAN",
+      "older_id": 731,
+      "newer_id": 2276,
+      "older": {
+        "id": 731,
+        "last_name": "NUNO",
+        "first_name": "JUAN",
+        "ssn_last4": "8143",
+        "id_type": 1,
+        "created_at": "2026-04-21T22:06:58+00:00"
+      },
+      "newer": {
+        "id": 2276,
+        "last_name": "NUNO",
+        "first_name": "JUAN",
+        "ssn_last4": "0775",
+        "id_type": null,
+        "created_at": "2026-08-07T22:27:47+00:00"
+      },
+      "older_returns": [
+        {
+          "id": 784,
+          "tax_year": 2025,
+          "log_number": "591",
+          "client_status": "LOG OUT"
+        }
+      ],
+      "newer_returns": [],
+      "older_years": [
+        2025
+      ],
+      "newer_years": [],
+      "overlap_years": [],
+      "year_gap": null,
+      "verdict": "distinct_people"
+    },
+    {
+      "key": "ALVARADO|OSCAR",
+      "older_id": 1215,
+      "newer_id": 2272,
+      "older": {
+        "id": 1215,
+        "last_name": "ALVARADO",
+        "first_name": "OSCAR",
+        "ssn_last4": "3038",
+        "id_type": 1,
+        "created_at": "2026-04-21T22:10:40+00:00"
+      },
+      "newer": {
+        "id": 2272,
+        "last_name": "ALVARADO",
+        "first_name": "OSCAR",
+        "ssn_last4": "2401",
+        "id_type": null,
+        "created_at": "2026-08-07T22:27:47+00:00"
+      },
+      "older_returns": [
+        {
+          "id": 2400,
+          "tax_year": 2025,
+          "log_number": "709",
+          "client_status": "LOG OUT"
+        }
+      ],
+      "newer_returns": [],
+      "older_years": [
+        2025
+      ],
+      "newer_years": [],
+      "overlap_years": [],
+      "year_gap": null,
+      "verdict": "distinct_people"
+    },
+    {
+      "key": "LUNA|ESTEBAN",
+      "older_id": 1278,
+      "newer_id": 2393,
+      "older": {
+        "id": 1278,
+        "last_name": "LUNA",
+        "first_name": "ESTEBAN",
+        "ssn_last4": "8818",
+        "id_type": 1,
+        "created_at": "2026-04-21T22:10:40+00:00"
+      },
+      "newer": {
+        "id": 2393,
+        "last_name": "LUNA",
+        "first_name": "ESTEBAN",
+        "ssn_last4": "6722",
+        "id_type": null,
+        "created_at": "2026-08-07T22:27:47+00:00"
+      },
+      "older_returns": [
+        {
+          "id": 2520,
+          "tax_year": 2024,
+          "log_number": null,
+          "client_status": "PROCESSING"
+        },
+        {
+          "id": 2438,
+          "tax_year": 2025,
+          "log_number": "1165",
+          "client_status": "PROCESSING"
+        }
+      ],
+      "newer_returns": [],
+      "older_years": [
+        2024,
+        2025
+      ],
+      "newer_years": [],
+      "overlap_years": [],
+      "year_gap": null,
+      "verdict": "distinct_people"
+    },
+    {
+      "key": "VALDEZ|SANDRA",
+      "older_id": 1344,
+      "newer_id": 2404,
+      "older": {
+        "id": 1344,
+        "last_name": "VALDEZ",
+        "first_name": "SANDRA",
+        "ssn_last4": "6184",
+        "id_type": 1,
+        "created_at": "2026-04-21T22:10:40+00:00"
+      },
+      "newer": {
+        "id": 2404,
+        "last_name": "VALDEZ",
+        "first_name": "SANDRA",
+        "ssn_last4": "9983",
+        "id_type": null,
+        "created_at": "2026-08-07T22:27:47+00:00"
+      },
+      "older_returns": [
+        {
+          "id": 2471,
+          "tax_year": 2025,
+          "log_number": "1114",
+          "client_status": "LOG OUT"
+        }
+      ],
+      "newer_returns": [],
+      "older_years": [
+        2025
+      ],
+      "newer_years": [],
+      "overlap_years": [],
+      "year_gap": null,
+      "verdict": "distinct_people"
+    },
+    {
+      "key": "HERNANDEZ|ABEL",
+      "older_id": 1440,
+      "newer_id": 2273,
+      "older": {
+        "id": 1440,
+        "last_name": "HERNANDEZ",
+        "first_name": "ABEL",
+        "ssn_last4": "5426",
+        "id_type": 1,
+        "created_at": "2026-04-21T22:10:40+00:00"
+      },
+      "newer": {
+        "id": 2273,
+        "last_name": "HERNANDEZ",
+        "first_name": "ABEL",
+        "ssn_last4": "2665",
+        "id_type": null,
+        "created_at": "2026-08-07T22:27:47+00:00"
+      },
+      "older_returns": [
+        {
+          "id": 2518,
+          "tax_year": 2024,
+          "log_number": null,
+          "client_status": "PROCESSING"
+        },
+        {
+          "id": 2344,
+          "tax_year": 2025,
+          "log_number": null,
+          "client_status": "PROCESSING"
+        },
+        {
+          "id": 2473,
+          "tax_year": 2026,
+          "log_number": "714",
+          "client_status": "LOG OUT"
+        }
+      ],
+      "newer_returns": [],
+      "older_years": [
+        2024,
+        2025,
+        2026
+      ],
+      "newer_years": [],
+      "overlap_years": [],
+      "year_gap": null,
+      "verdict": "distinct_people"
+    },
+    {
+      "key": "TASHAYOD|ALEX",
+      "older_id": 1506,
+      "newer_id": 2329,
+      "older": {
+        "id": 1506,
+        "last_name": "TASHAYOD",
+        "first_name": "ALEX",
+        "ssn_last4": "4759",
+        "id_type": 1,
+        "created_at": "2026-04-21T22:10:40+00:00"
+      },
+      "newer": {
+        "id": 2329,
+        "last_name": "TASHAYOD",
+        "first_name": "ALEX",
+        "ssn_last4": "0956",
+        "id_type": null,
+        "created_at": "2026-08-07T22:27:47+00:00"
+      },
+      "older_returns": [
+        {
+          "id": 1600,
+          "tax_year": 2025,
+          "log_number": "700",
+          "client_status": "LOG OUT"
+        }
+      ],
+      "newer_returns": [],
+      "older_years": [
+        2025
+      ],
+      "newer_years": [],
+      "overlap_years": [],
+      "year_gap": null,
+      "verdict": "distinct_people"
+    },
+    {
+      "key": "SOLOMON|LAUREN",
+      "older_id": 1709,
+      "newer_id": 2429,
+      "older": {
+        "id": 1709,
+        "last_name": "SOLOMON",
+        "first_name": "LAUREN",
+        "ssn_last4": "9376",
+        "id_type": 1,
+        "created_at": "2026-04-21T22:10:40+00:00"
+      },
+      "newer": {
+        "id": 2429,
+        "last_name": "SOLOMON",
+        "first_name": "LAUREN",
+        "ssn_last4": "9179",
+        "id_type": null,
+        "created_at": "2026-08-07T22:27:47+00:00"
+      },
+      "older_returns": [
+        {
+          "id": 2581,
+          "tax_year": 2025,
+          "log_number": "569",
+          "client_status": "PICKUP"
+        }
+      ],
+      "newer_returns": [],
+      "older_years": [
+        2025
+      ],
+      "newer_years": [],
+      "overlap_years": [],
+      "year_gap": null,
+      "verdict": "distinct_people"
+    }
+  ],
+  "itin_handoff_candidates": [],
+  "false_positive_safe": [
+    "HERNANDEZ|ISMAEL",
+    "NUNO|JUAN",
+    "ALVARADO|OSCAR",
+    "LUNA|ESTEBAN",
+    "VALDEZ|SANDRA",
+    "HERNANDEZ|ABEL",
+    "TASHAYOD|ALEX",
+    "SOLOMON|LAUREN"
+  ],
+  "spouse_store": {
+    "clients_spouse_last": 406,
+    "clients_spouse_first": 375,
+    "spouse_dob": 1,
+    "spouse_cell": 1,
+    "spouse_work_phone": 0,
+    "spouse_email": 0,
+    "spouses_rows": 166,
+    "clients_only_spouse_names": 354
+  }
+}

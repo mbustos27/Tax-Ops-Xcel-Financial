@@ -12,6 +12,13 @@ def test_intake_succeeds_when_filetrack_disabled_default(client_logged_in, taxop
 
 def test_intake_calls_print_label_when_enabled(client_logged_in, taxops_db_path, monkeypatch):
     monkeypatch.setattr("filetrack.config.FILETRACK_ENABLED", True)
+    # Force local mode explicitly: the real .env on this machine sets
+    # FILETRACK_PRINT_MODE=relay (production print-relay config), which
+    # would otherwise leak into this test and route through
+    # print_label_via_relay instead of the local print_label this test
+    # asserts on — see test_intake_calls_relay_client_when_print_mode_is_relay
+    # for the relay-mode equivalent of this same assertion.
+    monkeypatch.setattr("filetrack.config.FILETRACK_PRINT_MODE", "local")
 
     with patch("filetrack.labels.print_label.print_label") as mock_print:
         resp = client_logged_in.post("/intake", data={"last_name": "Jones"}, follow_redirects=False)

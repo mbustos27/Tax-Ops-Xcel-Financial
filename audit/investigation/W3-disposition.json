@@ -1,0 +1,50 @@
+{
+  "updated": [
+    {
+      "finding_id": "5fc4c7a1f2f06d3c1731760b2d3a4d2d7ffd36c29b2cd054af84260d4578d718",
+      "type": "PREFILL_STUB_BURST",
+      "entity": "2026-08-07T22:27:47"
+    },
+    {
+      "finding_id": "746d3e53ff391f929afa969f1eb4e9bab43beafea86bebf35f460d14dbf55450",
+      "type": "DUPLICATE_CLIENT",
+      "entity": "HERNANDEZ|ISMAEL"
+    },
+    {
+      "finding_id": "43224e2dfee59c321e20fe5c15fea294f8249f0903c89b5f671b770b61c11721",
+      "type": "DUPLICATE_CLIENT",
+      "entity": "NUNO|JUAN"
+    },
+    {
+      "finding_id": "3c5bce69a359c411bc98c339c897e87a2d3fd532f25fc1b4bd4368a6b08e5e36",
+      "type": "DUPLICATE_CLIENT",
+      "entity": "ALVARADO|OSCAR"
+    },
+    {
+      "finding_id": "543c859b8abe2914e7d9df0ef65d7253dd94b34881bda6d7536bb79a8530f3ee",
+      "type": "DUPLICATE_CLIENT",
+      "entity": "LUNA|ESTEBAN"
+    },
+    {
+      "finding_id": "f49f6c07682b4974c19847949c4ce16f1f22e731d19c679e79ace4b5ab06da28",
+      "type": "DUPLICATE_CLIENT",
+      "entity": "VALDEZ|SANDRA"
+    },
+    {
+      "finding_id": "14a434e2ddd38148366a4ecd01231e11a8e5a69c2d98e4cf0ffb12cf8d76319a",
+      "type": "DUPLICATE_CLIENT",
+      "entity": "HERNANDEZ|ABEL"
+    },
+    {
+      "finding_id": "6ea03a5d63862dc0bb89ba6bb942277b58e75bb84b15cfd5730656e0881b9abe",
+      "type": "DUPLICATE_CLIENT",
+      "entity": "TASHAYOD|ALEX"
+    },
+    {
+      "finding_id": "850f4b53fbd3fecbbfc76a3cd11cf7a0b82412e31757e46af308c90ad04a684c",
+      "type": "DUPLICATE_CLIENT",
+      "entity": "SOLOMON|LAUREN"
+    }
+  ],
+  "n": 9
+}

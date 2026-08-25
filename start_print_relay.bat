@@ -1,10 +1,33 @@
 @echo off
 :: TaxOps print relay - run ON the reception PC (label printer attached).
-:: Prefer NSSM service (install_print_relay_service.ps1). This bat remains for manual/rollback.
+:: Prefer NSSM service (install_print_relay_service.ps1). This bat is manual/fallback.
+:: UNC-safe: cmd cannot use \\server\share as cwd — always pushd first.
 setlocal EnableExtensions
-cd /d "%~dp0taxops"
+title TaxOps Print Relay
+
+set "SHARE_ROOT=%~dp0"
+if "%SHARE_ROOT:~-1%"=="\" set "SHARE_ROOT=%SHARE_ROOT:~0,-1%"
+
+pushd "%SHARE_ROOT%" 2>nul
+if errorlevel 1 (
+  echo [FAIL] Cannot access share: %SHARE_ROOT%
+  echo        Try mapped T: or confirm \\Xcel-server\taxops is reachable.
+  pause
+  exit /b 4
+)
+set "SHARE_ROOT=%CD%"
+if "%SHARE_ROOT:~-1%"=="\" set "SHARE_ROOT=%SHARE_ROOT:~0,-1%"
+
+cd /d "%SHARE_ROOT%\taxops" 2>nul
+if errorlevel 1 (
+  echo [FAIL] Cannot cd to %SHARE_ROOT%\taxops
+  popd 2>nul
+  pause
+  exit /b 1
+)
 if not exist "filetrack\relay\server.py" (
-  echo [FAIL] Cannot find taxops\filetrack\relay\server.py under %~dp0
+  echo [FAIL] Cannot find taxops\filetrack\relay\server.py under %SHARE_ROOT%
+  popd 2>nul
   pause
   exit /b 1
 )
@@ -29,6 +52,7 @@ if not defined FILETRACK_RELAY_TOKEN (
   echo [FAIL] FILETRACK_RELAY_TOKEN not set.
   echo        Create C:\TaxOps\PrintRelay\relay.env or set the env var.
   echo        Or run: taxops\scripts\install_print_relay_service.ps1
+  popd 2>nul
   pause
   exit /b 2
 )
@@ -43,10 +67,12 @@ if not defined PY (
 if not defined PY where python >nul 2>&1 && set "PY=python"
 if not defined PY (
   echo [FAIL] Python not found. Install from python.org and check Add to PATH.
+  popd 2>nul
   pause
   exit /b 1
 )
 
+echo Share: %SHARE_ROOT%
 echo Using: %PY%
 echo Checking relay packages...
 "%PY%" -c "import flask, win32print, waitress" 2>nul
@@ -65,4 +91,5 @@ echo Keep this window open while labels need to print (or use NSSM service).
 "%PY%" -m filetrack.relay.server --port 8765
 echo.
 echo Relay exited. Press any key to close.
+popd 2>nul
 pause >nul

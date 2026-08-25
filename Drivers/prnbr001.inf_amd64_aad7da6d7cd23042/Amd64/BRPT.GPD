@@ -1,0 +1,188 @@
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: 36-Tape
+    *Option: 6-Tape
+    {
+        *Name: "6mm"
+        *PageDimensions: PAIR(84, 14173)
+        *PrintableArea: PAIR(64, 14145)
+        *PrintableOrigin: PAIR(10, 14)
+    }
+    *Option: 9-Tape
+    {
+        *Name: "9mm"
+        *PageDimensions: PAIR(128, 14173)
+        *PrintableArea: PAIR(106, 14145)
+        *PrintableOrigin: PAIR(11, 14)
+    }
+    *Option: 12-Tape
+    {
+        *Name: "12mm"
+        *PageDimensions: PAIR(170, 14173)
+        *PrintableArea: PAIR(150, 14145)
+        *PrintableOrigin: PAIR(10, 14)
+    }
+    *Option: 18-Tape
+    {
+        *Name: "18mm"
+        *PageDimensions: PAIR(256, 14173)
+        *PrintableArea: PAIR(234, 14145)
+        *PrintableOrigin: PAIR(11, 14)
+    }
+    *Option: 24-Tape
+    {
+        *Name: "24mm"
+        *PageDimensions: PAIR(340, 14173)
+        *PrintableArea: PAIR(320, 14145)
+        *PrintableOrigin: PAIR(10, 14)
+    }
+    *Option: 36-Tape
+    {
+        *Name: "36mm"
+        *PageDimensions: PAIR(512, 14173)
+        *PrintableArea: PAIR(384, 14145)
+        *PrintableOrigin: PAIR(64, 14)
+    }
+    *Option: AV1789
+    {
+        *rcNameID: 370		*% "AV1789 FILE FOLDER"
+        *PageDimensions: PAIR(240, 1263)
+        *PrintableArea: PAIR(192, 1119)
+        *PrintableOrigin: PAIR(24, 72)
+        *Command: CmdSelect
+        {
+		*Order: DOC_SETUP.1
+		*CallbackID: 4
+        }
+    }
+    *Option: AV1957
+    {
+        *rcNameID: 371		*% "AV1957 RETURN ADDRESS"
+        *PageDimensions: PAIR(272, 812)
+        *PrintableArea: PAIR(224, 668)
+        *PrintableOrigin: PAIR(24, 72)
+        *Command: CmdSelect
+        {
+		*Order: DOC_SETUP.1
+		*CallbackID: 4
+        }
+    }
+    *Option: AV2067
+    {
+        *rcNameID: 372		*% "AV2067 ADDRESS"
+        *PageDimensions: PAIR(288, 948)
+        *PrintableArea: PAIR(240, 804)
+        *PrintableOrigin: PAIR(24, 72)
+        *Command: CmdSelect
+        {
+		*Order: DOC_SETUP.1
+		*CallbackID: 4
+        }
+    }
+    *Option: Floppy1
+    {
+        *rcNameID: 450		*% "3.5" floppy disk - Large"
+        *PageDimensions: PAIR(512, 992)
+        *PrintableArea: PAIR(384, 964)
+        *PrintableOrigin: PAIR(64, 14)
+    }
+    *Option: Floppy2
+    {
+        *rcNameID: 451		*% "3.5" floppy disk - Small"
+        *PageDimensions: PAIR(340, 992)
+        *PrintableArea: PAIR(320, 964)
+        *PrintableOrigin: PAIR(10, 14)
+    }
+    *Option: CD-R
+    {
+        *rcNameID: 452		*% "CD-R case - Spine"
+        *PageDimensions: PAIR(84, 1672)
+        *PrintableArea: PAIR(64, 1644)
+        *PrintableOrigin: PAIR(10, 14)
+    }
+    *Option: VHS
+    {
+        *rcNameID: 453		*% "VHS video cassette - Spine"
+        *PageDimensions: PAIR(256, 2098)
+        *PrintableArea: PAIR(234, 2070)
+        *PrintableOrigin: PAIR(11, 14)
+    }
+    *Option: DV1
+    {
+        *rcNameID: 454		*% "Mini DV cassette - Spine"
+        *PageDimensions: PAIR(128, 652)
+        *PrintableArea: PAIR(106, 624)
+        *PrintableOrigin: PAIR(11, 14)
+    }
+    *Option: DV2
+    {
+        *rcNameID: 455		*% "Mini DV cassette - Face"
+        *PageDimensions: PAIR(256, 397)
+        *PrintableArea: PAIR(234, 369)
+        *PrintableOrigin: PAIR(11, 14)
+    }
+    *Option: 8mm1
+    {
+        *rcNameID: 456		*% "8 mm Video cassette"
+        *PageDimensions: PAIR(128, 1063)
+        *PrintableArea: PAIR(106, 1035)
+        *PrintableOrigin: PAIR(11, 14)
+    }
+    *Option: 8mm2
+    {
+        *rcNameID: 457		*% "8 mm Video cassette case - Spine"
+        *PageDimensions: PAIR(170, 1318)
+        *PrintableArea: PAIR(150, 1290)
+        *PrintableOrigin: PAIR(10, 14)
+    }
+    *Option: Audio1
+    {
+        *rcNameID: 458		*% "Audio cassette - Face"
+        *PageDimensions: PAIR(84, 1247)
+        *PrintableArea: PAIR(64, 1219)
+        *PrintableOrigin: PAIR(10, 14)
+    }
+    *Option: Audio2
+    {
+        *rcNameID: 459		*% "Audio cassette case - Spine"
+        *PageDimensions: PAIR(128, 1417)
+        *PrintableArea: PAIR(106, 1389)
+        *PrintableOrigin: PAIR(11, 14)
+    }
+    *Option: MD1
+    {
+        *rcNameID: 460		*% "Mini Disc - Face"
+        *PageDimensions: PAIR(340, 751)
+        *PrintableArea: PAIR(320, 723)
+        *PrintableOrigin: PAIR(10, 14)
+    }
+    *Option: MD2
+    {
+        *rcNameID: 461		*% "Mini Disc case - Spine"
+        *PageDimensions: PAIR(84, 1063)
+        *PrintableArea: PAIR(64, 1035)
+        *PrintableOrigin: PAIR(10, 14)
+    }
+    *Option: ORG
+    {
+        *rcNameID: 462		*% "Organizer"
+        *PageDimensions: PAIR(512, 1162)
+        *PrintableArea: PAIR(384, 1134)
+        *PrintableOrigin: PAIR(64, 14)
+    }
+    *Option: CUSTOMSIZE
+    {
+        *rcNameID: =USER_DEFINED_SIZE_DISPLAY
+        *MinSize: PAIR(82, 55)
+        *MaxSize: PAIR(513, 14173)
+	*MaxPrintableWidth: 384
+	*CustPrintableOriginX:  %d{max(10, (PhysPaperWidth-384)/2)}
+	*CustPrintableOriginY:  %d{14}
+	*CustPrintableSizeX:   %d{PhysPaperWidth-max(10, (PhysPaperWidth-384)/2)*2}
+	*CustPrintableSizeY:  %d{PhysPaperLength-28}
+	*CustCursorOriginX:  %d{max(10, (PhysPaperWidth-384)/2)}
+	*CustCursorOriginY:   %d{14}
+	*CenterPrintable?: FALSE
+    }
+}

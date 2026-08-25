@@ -147,10 +147,45 @@ def _poll_once(app) -> None:
             f"Previous poll cycle still running — skipping (skip #{_poll_skip_count})"
         )
         return
+    # Phase 3.3: exactly one watcher_heartbeat UPSERT per cycle attempt, whether
+    # it succeeds or raises — this is a write, not a read, so it does not affect
+    # the ≤1-SELECT-per-cycle invariant (see _load_sender_rules).
+    outcome_counts: dict[str, int] = {}
+    error: str | None = None
     try:
-        _poll_once_inner(app)
+        outcome_counts = _poll_once_inner(app) or {}
+    except Exception as exc:
+        error = str(exc)[:500]
+        raise
     finally:
+        _upsert_watcher_heartbeat(outcome_counts, error)
         _poll_lock.release()
+
+
+def _upsert_watcher_heartbeat(outcome_counts: dict[str, int], error: str | None) -> None:
+    """Single UPSERT of the one-row watcher_heartbeat table. Never raises —
+    a heartbeat write failure must not crash the poll loop."""
+    import json
+    from db import get_connection
+    try:
+        conn = get_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO watcher_heartbeat (id, last_poll_at, last_poll_outcome_counts, last_error)
+                VALUES (1, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    last_poll_at             = excluded.last_poll_at,
+                    last_poll_outcome_counts = excluded.last_poll_outcome_counts,
+                    last_error               = excluded.last_error
+                """,
+                (_now_utc(), json.dumps(outcome_counts), error),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("watcher_heartbeat upsert failed")
 
 
 def _get_available_folders(imap) -> set:
@@ -247,18 +282,20 @@ def _fetch_message_data(imap, uid) -> dict | None:
     body_text    = _extract_plain_text(message)
     sender_email = _extract_email_address(sender)
     sender_domain = _extract_domain(sender_email)
+    sender_name = _extract_display_name(sender)
 
     return {
         "message":       message,
         "sender":        sender,
         "sender_email":  sender_email,
         "sender_domain": sender_domain,
+        "sender_name":   sender_name,
         "subject":       subject,
         "body_text":     body_text,
     }
 
 
-def _poll_once_inner(app) -> None:
+def _poll_once_inner(app) -> dict[str, int]:
     """
     Multi-folder poll cycle:
 
@@ -271,7 +308,17 @@ def _poll_once_inner(app) -> None:
         notification > hardcoded promotional lists. Anything not
         suppressed has its attachments saved to the email_inbox holding
         area.
+
+    Returns a dict of {outcome: count} tallied during this cycle — consumed
+    by _poll_once() to upsert watcher_heartbeat (Phase 3.3). This is a
+    return value, not a new query, so it does not affect the ≤1-SELECT/cycle
+    invariant.
     """
+    outcome_counts: dict[str, int] = {}
+
+    def _count(outcome: str) -> None:
+        outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+
     from config import (
         IMAP_HOST, IMAP_PORT, IMAP_USER, IMAP_PASS,
         IMAP_FOLDERS, GMAIL_CATEGORY_FOLDERS, USE_GMAIL_CATEGORIES,
@@ -345,6 +392,7 @@ def _poll_once_inner(app) -> None:
                 for uid in new_uids:
                     uid_str = uid.decode("ascii", errors="replace") if isinstance(uid, bytes) else str(uid)
                     _upsert_processing_log(uid_str, folder, "", "", OUTCOME_SKIP)
+                    _count(OUTCOME_SKIP)
                     _add_uid_to_memo(folder, uid_str)
                 logger.info(f"Auto-skipped {len(new_uids)} message(s) from {folder!r}")
             else:
@@ -363,14 +411,16 @@ def _poll_once_inner(app) -> None:
                             logger.warning(f"Fetch returned no data uid={uid_str!r} — leaving for retry")
                             # Do NOT add to memo — leave unread for next poll cycle retry
                             _upsert_processing_log(uid_str, folder, "", "", OUTCOME_RETRY, "fetch returned no data")
+                            _count(OUTCOME_RETRY)
                     except Exception as e:
                         uid_str = uid.decode("ascii", errors="replace") if isinstance(uid, bytes) else str(uid)
                         logger.error(f"Fetch failed uid={uid_str!r}: {e}")
                         # Do NOT add to memo — leave unread for next poll cycle retry
                         _upsert_processing_log(uid_str, folder, "", "", OUTCOME_RETRY, str(e)[:200])
+                        _count(OUTCOME_RETRY)
 
         if not messages:
-            return
+            return outcome_counts
 
         # ── Phase 2+3: classify and dispatch ─────────────────────────────
         # Claim-after-success model (audit finding C1):
@@ -394,6 +444,7 @@ def _poll_once_inner(app) -> None:
                 if suppressed:
                     logger.info(f"Suppressed ({suppression_reason}): {domain}")
                     outcome = OUTCOME_SKIP
+                    _count(OUTCOME_SKIP)
                     # Log write failure handling — see audit finding C3.
                     try:
                         _upsert_processing_log(
@@ -415,6 +466,7 @@ def _poll_once_inner(app) -> None:
                 # once IMAP_DRY_RUN is turned back off.
                 if IMAP_DRY_RUN:
                     logger.info(f"[DRY RUN] Would save attachment(s) from {domain} — no writes performed")
+                    _count(OUTCOME_DRY_RUN)
                     continue
 
                 # ── Attachment save ───────────────────────────────────────
@@ -425,6 +477,7 @@ def _poll_once_inner(app) -> None:
                     msg["sender_domain"],
                     msg["subject"],
                     msg["received_at"],
+                    sender_name=msg.get("sender_name") or "",
                 )
 
                 # Fix 6 (H1): distinguish zero-attachment emails from real successes.
@@ -436,6 +489,7 @@ def _poll_once_inner(app) -> None:
                 else:
                     logger.info(f"No saveable attachments found in email from {domain}")
                     outcome = OUTCOME_NO_ATTACHMENT
+                _count(outcome)
 
                 # Log write failure handling (audit finding C3):
                 # If the DB write fails after a successful save, do NOT add the
@@ -456,12 +510,15 @@ def _poll_once_inner(app) -> None:
                 logger.error(f"Dispatch failed uid={uid_str!r} domain={domain!r}: {e}")
                 # Do NOT add to memo — leave unread for retry
                 _upsert_processing_log(uid_str, folder, domain, subject, OUTCOME_RETRY, str(e)[:200])
+                _count(OUTCOME_RETRY)
 
     finally:
         try:
             imap.logout()
         except Exception:
             pass
+
+    return outcome_counts
 
 
 # ── Processing log helpers ────────────────────────────────────────────────────
@@ -577,6 +634,25 @@ def _extract_domain(email_addr: str) -> str:
     if '@' in email_addr:
         return email_addr.split('@', 1)[1].lower()
     return ''
+
+
+def _extract_display_name(from_header: str) -> str:
+    """Extract the display-name portion of a From header, e.g.
+    'John Smith <john@x.com>' -> 'John Smith'. Returns '' when the header is
+    just a bare address or empty (nothing to fuzzy-match against).
+    Phase 3.1: stored as email_inbox.sender_name for suggestion matching —
+    never used for anything but display/matching (not an identity source of
+    truth, no privacy implications beyond what the From header already is).
+    """
+    if not from_header:
+        return ""
+    m = _re.match(r'^\s*"?([^"<]*?)"?\s*<[^>]+>\s*$', from_header)
+    if m:
+        return m.group(1).strip()
+    stripped = from_header.strip()
+    if '@' in stripped:
+        return ""  # bare address, no display name to extract
+    return stripped
 
 
 # ── Google Drive share detection ─────────────────────────────────────────────
@@ -753,6 +829,7 @@ def _save_to_inbox(
     sender_domain: str,
     subject: str,
     received_at: str,
+    sender_name: str = "",
 ) -> int:
     """
     Walk MIME parts, save allowed attachments to EMAIL_INBOX_DIR, and
@@ -820,14 +897,15 @@ def _save_to_inbox(
                 conn.execute(
                     """
                     INSERT INTO email_inbox
-                        (sender_email, sender_domain, subject_snippet, filename,
+                        (sender_email, sender_domain, sender_name, subject_snippet, filename,
                          original_filename, file_path, file_size_bytes, received_at,
                          is_assigned, is_deleted)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
                     """,
                     (
                         sender_email,
                         sender_domain,
+                        sender_name,
                         subject_snippet,
                         final_name,
                         safe["original_filename"],

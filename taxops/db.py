@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from datetime import date
 from typing import Dict, List, Optional
 
 from config import DB_PATH
@@ -10,7 +11,7 @@ from form_schema import CREATE_TABLE_FRAGMENTS_DOC7, get_form_alter_columns_by_t
 # DEBT-6: increment this integer whenever a new migration block is added to
 # _migrate_existing_tables.  The value is stored in app_settings and surfaced
 # via /health so ops can confirm a deploy applied all migrations.
-CURRENT_SCHEMA_VERSION = 20
+CURRENT_SCHEMA_VERSION = 28
 
 _log = logging.getLogger(__name__)
 
@@ -82,6 +83,141 @@ def set_schema_version(conn: sqlite3.Connection, version: int) -> None:
         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
         """,
         (str(version), now_utc),
+    )
+
+
+_ACTIVE_INTAKE_TAX_YEAR_KEY = "active_intake_tax_year"
+
+# How many prior tax years staff may open at walk-in intake relative to the
+# season's active year (active + this many prior). Keeps late/multi-year
+# catch-up possible without an unbounded free-text year field.
+INTAKE_PRIOR_TAX_YEARS = 5
+
+
+def get_active_intake_tax_year(conn: sqlite3.Connection) -> int:
+    """The default tax year for new walk-in intakes (season setting).
+
+    Deliberately NOT derived from the current calendar date on every call —
+    that's exactly what caused real intakes to silently land in an empty,
+    out-of-sync tax_year bucket (see AUDIT_INTAKE.md follow-up, July 2026).
+    Stored in app_settings and changed at season rollover
+    (set_active_intake_tax_year / /admin/season-rollover). Staff may still
+    pick a prior year per intake within allowed_intake_tax_years().
+    Falls back to (this calendar year - 1) — the office's normal
+    "extension season" convention — only if no admin has ever set it yet.
+    """
+    try:
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?",
+            (_ACTIVE_INTAKE_TAX_YEAR_KEY,),
+        ).fetchone()
+        if row and row["value"]:
+            return int(row["value"])
+    except Exception:
+        pass
+    return date.today().year - 1
+
+
+def allowed_intake_tax_years(conn: sqlite3.Connection) -> list[int]:
+    """Tax years selectable on the intake form: active year down through N prior."""
+    active = get_active_intake_tax_year(conn)
+    return list(range(active, active - INTAKE_PRIOR_TAX_YEARS - 1, -1))
+
+
+def resolve_intake_tax_year(conn: sqlite3.Connection, submitted) -> int:
+    """Validate a staff-submitted tax year for intake; default to active if blank.
+
+    Raises ValueError when the value is present but outside the allowed window
+    (or not an integer). Never silently remaps a wrong year to active — that
+    was the old per-intake dropdown bug mode.
+    """
+    active = get_active_intake_tax_year(conn)
+    allowed = allowed_intake_tax_years(conn)
+    if submitted is None:
+        return active
+    raw = str(submitted).strip()
+    if not raw:
+        return active
+    try:
+        year = int(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid tax year {raw!r}. Choose a year from {allowed[-1]} to {allowed[0]}."
+        ) from exc
+    if year not in allowed:
+        raise ValueError(
+            f"Tax year {year} is outside the allowed range "
+            f"({allowed[-1]}–{allowed[0]}). "
+            f"Season default is {active}."
+        )
+    return year
+
+
+def _iso_calendar_year(value) -> Optional[int]:
+    raw = str(value or "").strip()
+    if len(raw) >= 4 and raw[:4].isdigit():
+        year = int(raw[:4])
+        if 1990 <= year <= 2100:
+            return year
+    return None
+
+
+def next_season_log_number(
+    conn: sqlite3.Connection, *, intake_date: str | None = None
+) -> str:
+    """Next number in this season's log book (active TY), not per return tax year.
+
+    Prior-year returns logged during this season (Oscar Rivera 2015–2019 as
+    1264–1268, Nopaltitla 2022–2024 as 979–981) share the current book.
+    MAX is taken across the active tax_year bucket and anything already
+    intaken in the same calendar year so a TY2023 login cannot reuse the
+    next 2025 sticker number.
+    """
+    active_ty = get_active_intake_tax_year(conn)
+    cal = _iso_calendar_year(intake_date) or date.today().year
+    row = conn.execute(
+        """
+        SELECT MAX(CAST(log_number AS INTEGER)) AS mx
+        FROM returns
+        WHERE tax_year = ?
+           OR strftime('%Y', intake_date) = ?
+        """,
+        (active_ty, str(cal)),
+    ).fetchone()
+    return str((row["mx"] or 0) + 1)
+
+
+def return_already_logged_this_season(
+    existing_intake_date,
+    this_intake_date,
+    *,
+    tax_year: int,
+    active_tax_year: int,
+) -> bool:
+    """True when this client+TY is already on this season's work list.
+
+    A prior calendar year's row for the same TY (e.g. Jarmi Lopez TY2023
+    LOG #36 from 2024) is not this season — staff may re-log it onto the
+    current book. Missing intake_date on the active year is treated as
+    already logged (PENDING/PROCESSING shells for this season).
+    """
+    this_cal = _iso_calendar_year(this_intake_date) or date.today().year
+    existing_cal = _iso_calendar_year(existing_intake_date)
+    if existing_cal is not None:
+        return existing_cal == this_cal
+    return int(tax_year) == int(active_tax_year)
+
+
+def set_active_intake_tax_year(conn: sqlite3.Connection, year: int) -> None:
+    """Admin-only write path — see get_active_intake_tax_year() for why this
+    is a stored setting rather than a per-request calculation."""
+    now_utc = __import__("time").strftime("%Y-%m-%dT%H:%M:%SZ", __import__("time").gmtime())
+    conn.execute(
+        """
+        INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+        """,
+        (_ACTIVE_INTAKE_TAX_YEAR_KEY, str(int(year)), now_utc),
     )
 
 
@@ -550,8 +686,8 @@ def init_db(conn: sqlite3.Connection) -> None:
 def _delete_return_children(conn: sqlite3.Connection, return_id: int) -> None:
     """Delete all child rows that reference returns.id so the return can be safely removed.
 
-    Used by DEL-1's hard-delete endpoint (app.py: api_delete_return). Every table
-    below has a `return_id` FK per the CREATE TABLE statements in this module —
+    Used by DEL-1's hard-delete endpoint (app.py: api_delete_return) and by
+    client hard-delete (cascade). Every table below has a `return_id` FK —
     kept as one explicit list (rather than introspecting sqlite_master) so a
     future new return_id-bearing table is a deliberate addition here, not a
     silent gap. review_queue is NOT here on purpose: it references clients, not
@@ -559,7 +695,11 @@ def _delete_return_children(conn: sqlite3.Connection, return_id: int) -> None:
     """
     for table in (
         "notes", "status_events", "return_forms", "missing_docs",
-        "dependents", "return_documents", "extraction_queue",
+        "dependents",
+        # Typed extraction rows (FORMS) — before return_documents
+        "w2_records", "f1099_nec_records", "f1099_misc_records",
+        "f1099_int_records", "f1099_div_records",
+        "extraction_queue",
         "efile_batch_items", "extension_batch_items",
         "filetrack_status_history", "payments",
     ):
@@ -567,6 +707,23 @@ def _delete_return_children(conn: sqlite3.Connection, return_id: int) -> None:
             conn.execute(f"DELETE FROM {table} WHERE return_id = ?", (return_id,))
         except sqlite3.OperationalError:
             pass
+    # receipt_queue keys off return_documents.id, not return_id
+    try:
+        conn.execute(
+            """
+            DELETE FROM receipt_queue
+            WHERE return_document_id IN (
+              SELECT id FROM return_documents WHERE return_id = ?
+            )
+            """,
+            (return_id,),
+        )
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("DELETE FROM return_documents WHERE return_id = ?", (return_id,))
+    except sqlite3.OperationalError:
+        pass
     # email_inbox / email_processing_log reference a return without owning it —
     # null the reference out rather than deleting email/audit history.
     for table, col in (
@@ -578,6 +735,52 @@ def _delete_return_children(conn: sqlite3.Connection, return_id: int) -> None:
             conn.execute(f"UPDATE {table} SET {col} = NULL WHERE {col} = ?", (return_id,))
         except sqlite3.OperationalError:
             pass
+
+
+def _delete_client_cascade(conn: sqlite3.Connection, client_id: int) -> list[int]:
+    """Hard-delete a client and all of their returns.
+
+    Returns the list of deleted return ids (for audit). Caller owns the
+    transaction. Work orders / billing requests keep their rows but lose the
+    client_id link (optional FK) so office billing history is not wiped.
+    """
+    ret_ids = [
+        int(r["id"])
+        for r in conn.execute(
+            "SELECT id FROM returns WHERE client_id = ? ORDER BY id",
+            (client_id,),
+        ).fetchall()
+    ]
+    for rid in ret_ids:
+        _delete_return_children(conn, rid)
+        conn.execute("DELETE FROM returns WHERE id = ?", (rid,))
+
+    # Client-owned tables
+    for table in (
+        "client_dependents",
+        "client_billing",
+        "spouses",
+        "client_spouse_import",
+    ):
+        try:
+            conn.execute(f"DELETE FROM {table} WHERE client_id = ?", (client_id,))
+        except sqlite3.OperationalError:
+            pass
+
+    # Soft references — keep history, drop the link
+    for table, col in (
+        ("review_queue", "proposed_client_id"),
+        ("review_queue", "resolved_client_id"),
+        ("work_orders", "client_id"),
+        ("billing_requests", "client_id"),
+    ):
+        try:
+            conn.execute(f"UPDATE {table} SET {col} = NULL WHERE {col} = ?", (client_id,))
+        except sqlite3.OperationalError:
+            pass
+
+    conn.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+    return ret_ids
 
 
 def _merge_client_fields(conn: sqlite3.Connection, kept_id: int, discard: Dict) -> None:
@@ -607,6 +810,19 @@ def _merge_return_fields(conn: sqlite3.Connection, kept_id: int, discard: Dict) 
         if col in skip or val is None:
             continue
         if kept.get(col) is None:
+            # log_number is UNIQUE per tax_year — skip if another row (often the
+            # still-living discard return) already holds this pair.
+            if col == "log_number":
+                clash = conn.execute(
+                    """
+                    SELECT id FROM returns
+                     WHERE log_number = ? AND tax_year = ? AND id != ?
+                     LIMIT 1
+                    """,
+                    (val, kept.get("tax_year"), kept_id),
+                ).fetchone()
+                if clash:
+                    continue
             updates[col] = val
     if updates:
         set_clause = ", ".join(f"{c} = ?" for c in updates)
@@ -622,12 +838,114 @@ def _deduplicate_existing_records(conn: sqlite3.Connection) -> int:
     importer.  Keeps the client with the most returns (ties resolved by highest
     id), reassigns or merges conflicting returns, then deletes the extras.
 
+    Pass 1: same lower(last_name), lower(first_name), ssn_last4 (incl. both blank).
+    Pass 2: same exact name where at most one distinct non-empty ssn_last4 exists
+    (typical Drake re-import: one row has SSN, the twin has NULL).
+
+    Skips exact-name groups with conflicting non-empty SSN last4 values — those
+    need staff review on /merge-clients.
+
     Safe to run multiple times — exits cleanly when no duplicates exist.
     Returns the count of client rows removed.
     """
     removed = 0
 
-    # Identify duplicate groups: same lower(last_name), lower(first_name), ssn_last4
+    def _merge_discard_into_kept(kept_id: int, discard_id: int) -> None:
+        nonlocal removed
+        kept_client = dict(
+            conn.execute("SELECT * FROM clients WHERE id = ?", (kept_id,)).fetchone()
+        )
+        discard_client = dict(
+            conn.execute("SELECT * FROM clients WHERE id = ?", (discard_id,)).fetchone()
+        )
+
+        # Merge non-null contact fields from discarded client into kept
+        _merge_client_fields(conn, kept_id, discard_client)
+
+        # Reassign or merge returns
+        for dr in conn.execute(
+            "SELECT * FROM returns WHERE client_id = ?", (discard_id,)
+        ).fetchall():
+            dr_dict = dict(dr)
+            conflict = conn.execute(
+                "SELECT * FROM returns WHERE client_id = ? AND tax_year = ?",
+                (kept_id, dr_dict["tax_year"]),
+            ).fetchone()
+
+            if conflict:
+                # Merge non-null fields into kept return, then remove duplicate.
+                # Null discard log_number first so UNIQUE(log_number, tax_year)
+                # does not block copying onto kept while discard still exists.
+                conn.execute(
+                    "UPDATE returns SET log_number = NULL WHERE id = ?",
+                    (dr_dict["id"],),
+                )
+                _merge_return_fields(conn, conflict["id"], dr_dict)
+                _delete_return_children(conn, dr_dict["id"])
+                conn.execute("DELETE FROM returns WHERE id = ?", (dr_dict["id"],))
+                _log.info(
+                    "Deduplicated return: %s tax_year=%s — kept id=%s, removed id=%s",
+                    kept_client.get("last_name"),
+                    dr_dict["tax_year"],
+                    conflict["id"],
+                    dr_dict["id"],
+                )
+            else:
+                conn.execute(
+                    "UPDATE returns SET client_id = ? WHERE id = ?",
+                    (kept_id, dr_dict["id"]),
+                )
+                _log.info(
+                    "Reassigned return id=%s (tax_year=%s) from client %s → %s",
+                    dr_dict["id"],
+                    dr_dict["tax_year"],
+                    discard_id,
+                    kept_id,
+                )
+
+        # Reassign review_queue references
+        conn.execute(
+            "UPDATE review_queue SET proposed_client_id = ? WHERE proposed_client_id = ?",
+            (kept_id, discard_id),
+        )
+        conn.execute(
+            "UPDATE review_queue SET resolved_client_id = ? WHERE resolved_client_id = ?",
+            (kept_id, discard_id),
+        )
+
+        # Reassign all other tables that reference clients(id) via client_id.
+        # For tables with a UNIQUE constraint on client_id (spouses,
+        # client_spouse_import) delete the discard row when kept already has one.
+        for tbl in ("client_dependents", "client_billing"):
+            conn.execute(
+                f"UPDATE {tbl} SET client_id = ? WHERE client_id = ?",
+                (kept_id, discard_id),
+            )
+        for tbl in ("spouses", "client_spouse_import"):
+            kept_has = conn.execute(
+                f"SELECT 1 FROM {tbl} WHERE client_id = ?", (kept_id,)
+            ).fetchone()
+            if kept_has:
+                conn.execute(
+                    f"DELETE FROM {tbl} WHERE client_id = ?", (discard_id,)
+                )
+            else:
+                conn.execute(
+                    f"UPDATE {tbl} SET client_id = ? WHERE client_id = ?",
+                    (kept_id, discard_id),
+                )
+
+        conn.execute("DELETE FROM clients WHERE id = ?", (discard_id,))
+        _log.info(
+            "Deduplicated client: %s %s — kept id=%s, removed id=%s",
+            kept_client.get("last_name"),
+            kept_client.get("first_name") or "",
+            kept_id,
+            discard_id,
+        )
+        removed += 1
+
+    # ── Pass 1: identical name + identical ssn_last4 (including both blank) ──
     dupe_groups = conn.execute(
         """
         SELECT lower(last_name)                    AS ln,
@@ -643,7 +961,6 @@ def _deduplicate_existing_records(conn: sqlite3.Connection) -> int:
     ).fetchall()
 
     for grp in dupe_groups:
-        # Rank members: most returns first, then highest id
         members = conn.execute(
             """
             SELECT c.id, COUNT(r.id) AS ret_count
@@ -662,95 +979,62 @@ def _deduplicate_existing_records(conn: sqlite3.Connection) -> int:
             continue
 
         kept_id = members[0]["id"]
-        kept_client = dict(
-            conn.execute("SELECT * FROM clients WHERE id = ?", (kept_id,)).fetchone()
+        for discard_id in [m["id"] for m in members[1:]]:
+            _merge_discard_into_kept(kept_id, discard_id)
+
+    # ── Pass 2: exact name, at most one distinct non-empty ssn_last4 ─────────
+    name_groups = conn.execute(
+        """
+        SELECT lower(last_name)                AS ln,
+               lower(COALESCE(first_name, '')) AS fn,
+               COUNT(*)                        AS cnt
+        FROM clients
+        GROUP BY lower(last_name), lower(COALESCE(first_name, ''))
+        HAVING COUNT(*) > 1
+        """
+    ).fetchall()
+
+    for grp in name_groups:
+        members = conn.execute(
+            """
+            SELECT c.id,
+                   COALESCE(c.ssn_last4, '') AS ssn,
+                   COUNT(r.id) AS ret_count
+            FROM clients c
+            LEFT JOIN returns r ON r.client_id = c.id
+            WHERE lower(c.last_name)                = ?
+              AND lower(COALESCE(c.first_name, '')) = ?
+            GROUP BY c.id
+            """,
+            (grp["ln"], grp["fn"]),
+        ).fetchall()
+        if len(members) < 2:
+            continue
+
+        nonempty_ssns = {(m["ssn"] or "").strip() for m in members if (m["ssn"] or "").strip()}
+        if len(nonempty_ssns) > 1:
+            # Conflicting SSN last4 — leave for /merge-clients staff review
+            continue
+
+        # Prefer: has SSN, then most returns, then highest id
+        ranked = sorted(
+            members,
+            key=lambda m: (
+                1 if (m["ssn"] or "").strip() else 0,
+                int(m["ret_count"] or 0),
+                int(m["id"]),
+            ),
+            reverse=True,
         )
-        to_remove = [m["id"] for m in members[1:]]
-
-        for discard_id in to_remove:
-            discard_client = dict(
-                conn.execute("SELECT * FROM clients WHERE id = ?", (discard_id,)).fetchone()
-            )
-
-            # Merge non-null contact fields from discarded client into kept
-            _merge_client_fields(conn, kept_id, discard_client)
-
-            # Reassign or merge returns
-            for dr in conn.execute(
-                "SELECT * FROM returns WHERE client_id = ?", (discard_id,)
-            ).fetchall():
-                dr_dict = dict(dr)
-                conflict = conn.execute(
-                    "SELECT * FROM returns WHERE client_id = ? AND tax_year = ?",
-                    (kept_id, dr_dict["tax_year"]),
-                ).fetchone()
-
-                if conflict:
-                    # Merge non-null fields into kept return, then remove duplicate
-                    _merge_return_fields(conn, conflict["id"], dr_dict)
-                    _delete_return_children(conn, dr_dict["id"])
-                    conn.execute("DELETE FROM returns WHERE id = ?", (dr_dict["id"],))
-                    _log.info(
-                        "Deduplicated return: %s tax_year=%s — kept id=%s, removed id=%s",
-                        kept_client.get("last_name"),
-                        dr_dict["tax_year"],
-                        conflict["id"],
-                        dr_dict["id"],
-                    )
-                else:
-                    conn.execute(
-                        "UPDATE returns SET client_id = ? WHERE id = ?",
-                        (kept_id, dr_dict["id"]),
-                    )
-                    _log.info(
-                        "Reassigned return id=%s (tax_year=%s) from client %s → %s",
-                        dr_dict["id"],
-                        dr_dict["tax_year"],
-                        discard_id,
-                        kept_id,
-                    )
-
-            # Reassign review_queue references
-            conn.execute(
-                "UPDATE review_queue SET proposed_client_id = ? WHERE proposed_client_id = ?",
-                (kept_id, discard_id),
-            )
-            conn.execute(
-                "UPDATE review_queue SET resolved_client_id = ? WHERE resolved_client_id = ?",
-                (kept_id, discard_id),
-            )
-
-            # Reassign all other tables that reference clients(id) via client_id.
-            # For tables with a UNIQUE constraint on client_id (spouses,
-            # client_spouse_import) delete the discard row when kept already has one.
-            for tbl in ("client_dependents", "client_billing"):
-                conn.execute(
-                    f"UPDATE {tbl} SET client_id = ? WHERE client_id = ?",
-                    (kept_id, discard_id),
-                )
-            for tbl in ("spouses", "client_spouse_import"):
-                kept_has = conn.execute(
-                    f"SELECT 1 FROM {tbl} WHERE client_id = ?", (kept_id,)
-                ).fetchone()
-                if kept_has:
-                    conn.execute(
-                        f"DELETE FROM {tbl} WHERE client_id = ?", (discard_id,)
-                    )
-                else:
-                    conn.execute(
-                        f"UPDATE {tbl} SET client_id = ? WHERE client_id = ?",
-                        (kept_id, discard_id),
-                    )
-
-            conn.execute("DELETE FROM clients WHERE id = ?", (discard_id,))
-            _log.info(
-                "Deduplicated client: %s %s — kept id=%s, removed id=%s",
-                kept_client.get("last_name"),
-                kept_client.get("first_name") or "",
-                kept_id,
-                discard_id,
-            )
-            removed += 1
+        kept_id = ranked[0]["id"]
+        for discard in ranked[1:]:
+            # Row may already have been removed if a prior group overlapped
+            still = conn.execute(
+                "SELECT 1 FROM clients WHERE id = ?", (discard["id"],)
+            ).fetchone()
+            if not still:
+                continue
+            _merge_discard_into_kept(kept_id, int(discard["id"]))
 
     if removed:
         _log.info("Deduplication complete: removed %d duplicate client rows.", removed)
@@ -780,6 +1064,14 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "taxpayer_email TEXT",
             "spouse_email TEXT",
             "address TEXT",
+            # Schema v28 — R1 structured address (legacy `address` kept deprecated)
+            "address_street TEXT",
+            "address_city TEXT",
+            "address_state TEXT",
+            "address_zip TEXT",
+            "address_county TEXT",
+            "address_source TEXT",
+            "address_verified_at TEXT",
             "is_new_client INTEGER DEFAULT 0",
             "prior_year_log TEXT",
             # ID type: 1=SSN, 2=ITIN, NULL=unknown
@@ -809,6 +1101,8 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "created_at TEXT",
             # intake form fields
             "filing_status TEXT",
+            # Schema v28 — Drake export Filing Status (1–5); distinct from intake filing_status
+            "filing_status_drake TEXT",
             "interview_by TEXT",
             "promise_date TEXT",
             "delivered_by TEXT",
@@ -847,6 +1141,8 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             # events — see filetrack_status_history for the full timeline.
             "filetrack_status TEXT",
             "filetrack_status_updated_at TEXT",
+            # Intake scan: staff skipped "scan now" after intake — drives nav badge.
+            "scan_deferred INTEGER NOT NULL DEFAULT 0",
         ],
         "payments": [
             "refund_amount REAL",
@@ -929,6 +1225,8 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "match_score REAL",
             # 'fuzzy', 'exact', 'manual', or NULL for walk-in uploads.
             "match_method TEXT",
+            # Set to 1 after extracted_fields are flattened into return_documents_fts.
+            "ocr_text_indexed INTEGER NOT NULL DEFAULT 0",
         ],
         "auth_users": [
             # ONBOARD-1: forces password change on first login / after admin reset
@@ -1703,6 +2001,405 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         WHERE br.id IS NULL
         """,
         (_backfill_ts, _backfill_ts),
+    )
+
+    # COMPLIANCE-0: Compliance Tracker module — replaces the hand-maintained
+    # ACCOUNTING_LOG_2026.xlsx workbook (CDTFA sales/use tax filings, city
+    # business license renewals, monthly SBE/CDTFA prepayment deposits, and
+    # misc individual filings). Deliberately named compliance_clients (NOT
+    # clients) — this is a distinct business-entity roster (CDTFA/city
+    # license accounts, keyed by name/corp_number/FEIN) from the existing
+    # `clients` table (tax-return intake, keyed by last/first name + SSN),
+    # and the two may or may not overlap for a given real-world person/
+    # business. See compliance/crypto.py for the credential encryption used
+    # by compliance_credentials.encrypted_password — NEVER plaintext.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS compliance_clients (
+          id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+          name                        TEXT NOT NULL,
+          client_type                 TEXT NOT NULL DEFAULT 'business',
+          corp_number                 TEXT,
+          fein                        TEXT,
+          address                     TEXT,
+          city                        TEXT,
+          zip                         TEXT,
+          phone                       TEXT,
+          ssn_last4                   TEXT,
+          assigned_preparer_user_id   INTEGER REFERENCES auth_users(id),
+          active                      INTEGER NOT NULL DEFAULT 1,
+          created_at                  TEXT NOT NULL,
+          updated_at                  TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_compliance_clients_name "
+        "ON compliance_clients(name)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_compliance_clients_active "
+        "ON compliance_clients(active)"
+    )
+
+    # compliance_credentials — CDTFA/city portal logins. encrypted_password
+    # is Fernet ciphertext (BLOB), never plaintext (security requirement #1).
+    # shared_login flags logins like the workbook's shared "xcelfin92" so
+    # the UI can surface a "shared across N accounts" warning before anyone
+    # resets it (security requirement #4). needs_rotation is set by the
+    # one-time xlsx import for any credential that was found in plaintext
+    # in the spreadsheet, since that value must be treated as already
+    # compromised (security requirement — M0 acceptance criteria).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS compliance_credentials (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          login_username        TEXT NOT NULL,
+          encrypted_password    BLOB,
+          encryption_key_ref    TEXT NOT NULL DEFAULT 'default',
+          shared_login          INTEGER NOT NULL DEFAULT 0,
+          last_rotated_at       TEXT,
+          needs_rotation        INTEGER NOT NULL DEFAULT 0,
+          notes                 TEXT,
+          created_at            TEXT NOT NULL,
+          updated_at            TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_compliance_credentials_shared "
+        "ON compliance_credentials(shared_login)"
+    )
+
+    # compliance_accounts — one persistent row per (client, filing
+    # obligation), e.g. "Acme Corp CDTFA sales tax account" or "Acme Corp
+    # City of X business license". filing_periods below hang off this, one
+    # row per quarter/month/year as applicable to `frequency`.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS compliance_accounts (
+          id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+          compliance_client_id    INTEGER NOT NULL REFERENCES compliance_clients(id) ON DELETE CASCADE,
+          account_type            TEXT NOT NULL,
+          account_number          TEXT,
+          city_name               TEXT,
+          frequency               TEXT NOT NULL DEFAULT 'quarterly',
+          credential_id           INTEGER REFERENCES compliance_credentials(id),
+          fee                     NUMERIC,
+          active                  INTEGER NOT NULL DEFAULT 1,
+          created_at              TEXT NOT NULL,
+          updated_at              TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_compliance_accounts_client "
+        "ON compliance_accounts(compliance_client_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_compliance_accounts_type "
+        "ON compliance_accounts(account_type, active)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_compliance_accounts_credential "
+        "ON compliance_accounts(credential_id)"
+    )
+
+    # compliance_filing_periods — the Kanban card. One row per
+    # quarter/month/year per account. `status` replaces the ad hoc column
+    # flags from the old workbook (Sales In / CTFA-SBE DONE / Need report /
+    # TP Files / DONE) with a single enum + timestamps (M2 spec).
+    # period_label is a human/sort key, e.g. "2026-Q1", "2026-04", "2026".
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS compliance_filing_periods (
+          id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+          compliance_account_id     INTEGER NOT NULL REFERENCES compliance_accounts(id) ON DELETE CASCADE,
+          period_type               TEXT NOT NULL,
+          period_label              TEXT NOT NULL,
+          period_start              TEXT,
+          period_due_date           TEXT,
+          fee                       NUMERIC,
+          status                    TEXT NOT NULL DEFAULT 'needs_sales_data',
+          sales_data_received_at    TEXT,
+          filed_at                  TEXT,
+          done_at                   TEXT,
+          done_by_user_id           INTEGER REFERENCES auth_users(id),
+          notes                     TEXT,
+          created_at                TEXT NOT NULL,
+          updated_at                TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_compliance_filing_periods_account_label "
+        "ON compliance_filing_periods(compliance_account_id, period_label)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_compliance_filing_periods_status "
+        "ON compliance_filing_periods(status)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_compliance_filing_periods_due "
+        "ON compliance_filing_periods(period_due_date)"
+    )
+
+    # compliance_correspondence_log — replaces the NOTES sheet grid
+    # (client x month). password_correspondence / missing_password note
+    # types let the M5 reporting view surface "clients we're missing portal
+    # passwords for" without a separate table.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS compliance_correspondence_log (
+          id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+          compliance_client_id    INTEGER NOT NULL REFERENCES compliance_clients(id) ON DELETE CASCADE,
+          month                    TEXT NOT NULL,
+          note_type               TEXT NOT NULL DEFAULT 'general',
+          note                     TEXT,
+          created_by_user_id      INTEGER REFERENCES auth_users(id),
+          created_at               TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_compliance_correspondence_client_month "
+        "ON compliance_correspondence_log(compliance_client_id, month)"
+    )
+
+    # Schema v22 — FTS5 index for scanned/extracted document text.
+    # content='' external-content style: we manage rows explicitly from extractor.
+    # Do not fail startup if this Python/SQLite build lacks FTS5 — search degrades
+    # to metadata until FTS is available on the TaxOpsService venv.
+    try:
+        conn.execute(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS return_documents_fts USING fts5(
+                doc_text,
+                content='',
+                tokenize='porter'
+            )
+            """
+        )
+    except sqlite3.OperationalError as exc:
+        _log.warning(
+            "Schema v22: return_documents_fts not created (FTS5 unavailable?): %s",
+            exc,
+        )
+
+    # Schema v23 — Claude OCR verdict cache (sha256 of page image + prompt).
+    # PunchBridge-style: duplicate re-scans must not re-pay for API calls.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ocr_extraction_cache (
+          cache_key     TEXT PRIMARY KEY,
+          image_sha256  TEXT NOT NULL,
+          fields_json   TEXT,
+          confidence    REAL,
+          model         TEXT,
+          created_at    TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ocr_extraction_cache_image "
+        "ON ocr_extraction_cache(image_sha256)"
+    )
+
+    # Schema v24 — TY2024+ Drake CSM↔purple prefill links + JSON form counts.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS drake_prefill_links (
+          id                   INTEGER PRIMARY KEY,
+          tax_year             INTEGER NOT NULL,
+          csm_ssn_last4        TEXT    NOT NULL,
+          csm_name_raw         TEXT    NOT NULL,
+          csm_name_norm        TEXT    NOT NULL,
+          client_id            INTEGER REFERENCES clients(id),
+          prefill_status       TEXT    NOT NULL
+            CHECK (prefill_status IN (
+              'PRIOR_YEAR_FORMS_AVAILABLE',
+              'NO_PRIOR_FORM_DATA',
+              'NEEDS_MANUAL_LINK',
+              'LOW_CONFIDENCE_NO_MATCH'
+            )),
+          disposition_status   TEXT
+            CHECK (disposition_status IS NULL OR disposition_status IN (
+              'PY_FILED_ACCEPTED',
+              'PY_REJECTED',
+              'PY_EXTENDED',
+              'PY_INCOMPLETE',
+              'PY_ROLLOVER_ONLY',
+              'PY_STATUS_UNKNOWN'
+            )),
+          csm_status_raw       TEXT,
+          csm_status_as_of     TEXT,
+          csm_anchor_changed   TEXT,
+          purple_name          TEXT,
+          match_tier           TEXT
+            CHECK (match_tier IS NULL OR match_tier IN (
+              'deterministic', 'fuzzy', 'manual'
+            )),
+          match_score          REAL,
+          matched_variant      TEXT,
+          resolved_by          TEXT,
+          resolved_at          TEXT,
+          import_batch_id      INTEGER REFERENCES import_batches(id),
+          created_at           TEXT    NOT NULL,
+          updated_at           TEXT    NOT NULL,
+          UNIQUE (tax_year, csm_ssn_last4, csm_name_norm)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_drake_prefill_links_client "
+        "ON drake_prefill_links(client_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_drake_prefill_links_status "
+        "ON drake_prefill_links(tax_year, prefill_status, disposition_status)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS drake_form_prefill (
+          id            INTEGER PRIMARY KEY,
+          link_id       INTEGER NOT NULL REFERENCES drake_prefill_links(id)
+                        ON DELETE CASCADE,
+          tax_year      INTEGER NOT NULL,
+          form_counts   TEXT    NOT NULL,
+          return_type   TEXT,
+          source_files  TEXT,
+          created_at    TEXT    NOT NULL,
+          UNIQUE (link_id)
+        )
+        """
+    )
+
+    # Schema v24 extension — spouse/dependent contact payload keyed by link_id.
+    # Separate from spouses/client_dependents (those have their own review flow).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS drake_household_prefill (
+          id                 INTEGER PRIMARY KEY,
+          link_id            INTEGER NOT NULL REFERENCES drake_prefill_links(id)
+                             ON DELETE CASCADE,
+          tax_year           INTEGER NOT NULL,
+          taxpayer_dob       TEXT,
+          taxpayer_phone     TEXT,
+          taxpayer_email     TEXT,
+          spouse_name        TEXT,
+          spouse_dob         TEXT,
+          spouse_phone       TEXT,
+          dependents_json    TEXT    NOT NULL DEFAULT '[]',
+          source_file        TEXT,
+          created_at         TEXT    NOT NULL,
+          updated_at         TEXT    NOT NULL,
+          UNIQUE (link_id)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_drake_household_prefill_year "
+        "ON drake_household_prefill(tax_year)"
+    )
+
+    # Schema v25 — Wave 2A merge trail. Written in the same transaction as
+    # merge_ops.merge_client_into before DELETE clients(discard). Reconstructs
+    # discarded identity after merge (audit_log alone only has keep/discard ids).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS client_merge_history (
+          id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+          keep_id                 INTEGER NOT NULL,
+          discard_id              INTEGER NOT NULL,
+          operator                TEXT,
+          reason_code             TEXT,
+          note                    TEXT,
+          merged_at               TEXT NOT NULL,
+          discard_client_json     TEXT NOT NULL,
+          discard_returns_json    TEXT NOT NULL DEFAULT '[]',
+          returns_actions_json    TEXT NOT NULL DEFAULT '[]',
+          status_events_json      TEXT NOT NULL DEFAULT '[]',
+          filetrack_history_json  TEXT NOT NULL DEFAULT '[]'
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_client_merge_history_keep "
+        "ON client_merge_history(keep_id, merged_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_client_merge_history_discard "
+        "ON client_merge_history(discard_id, merged_at)"
+    )
+
+    # Schema v26 — Wave 4: fold clients.spouse_* names into spouses (canonical).
+    # Does not overwrite existing spouses rows. Dead clients.spouse_dob/cell/…
+    # columns left in place (SQLite drop = rebuild; deferred).
+    folded = conn.execute(
+        """
+        INSERT INTO spouses (
+          client_id, first_name, last_name, date_of_birth, source, created_at
+        )
+        SELECT
+          c.id,
+          COALESCE(NULLIF(TRIM(c.spouse_first_name), ''), 'UNKNOWN'),
+          NULLIF(TRIM(c.spouse_last_name), ''),
+          NULLIF(TRIM(c.spouse_dob), ''),
+          'wave4_clients_fold',
+          datetime('now')
+        FROM clients c
+        WHERE (
+            (c.spouse_last_name IS NOT NULL AND TRIM(c.spouse_last_name) != '')
+            OR (c.spouse_first_name IS NOT NULL AND TRIM(c.spouse_first_name) != '')
+          )
+          AND NOT EXISTS (SELECT 1 FROM spouses s WHERE s.client_id = c.id)
+        """
+    ).rowcount
+    if folded:
+        _log.info("Wave 4 spouse fold: inserted %s spouses rows from clients.*", folded)
+
+    # Schema v27 — flag non-production / scanning-test clients (proposed_migration.sql).
+    # Exclude from audits/counts; do not delete (merge/filetrack side effects).
+    if "is_test" not in _table_columns(conn, "clients"):
+        try:
+            conn.execute(
+                "ALTER TABLE clients ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0"
+            )
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_clients_is_test ON clients(is_test)"
+    )
+
+    # Schema v28 — R1 client profile backfill prerequisites (audit R1-status.md).
+    # Address structured cols + Drake FS mirror are also listed in table_columns
+    # above (idempotent ALTER). History table mirrors client_merge_history:
+    # same-transaction snapshot for every COALESCE write (Phase 3).
+    # No data backfill here — schema only.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS client_profile_backfill_history (
+          id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+          client_id             INTEGER NOT NULL,
+          run_label             TEXT NOT NULL,
+          applied_at            TEXT NOT NULL,
+          bare_log_number       INTEGER NOT NULL,
+          invoice_number        TEXT NOT NULL,
+          source_export_sha256  TEXT,
+          fields_written_json   TEXT NOT NULL,
+          before_json           TEXT NOT NULL,
+          after_json            TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cpbh_client "
+        "ON client_profile_backfill_history(client_id, applied_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cpbh_run "
+        "ON client_profile_backfill_history(run_label)"
     )
 
     # DEBT-6: stamp the schema version so /health can confirm migrations ran.

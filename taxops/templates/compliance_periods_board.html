@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Filing Periods') }} — {{ _('Compliance Tracker') }} — Tax Log{% endblock %}
+
+{% block content %}
+<div class="space-y-5 pb-10">
+  <div class="flex items-center justify-between flex-wrap gap-2">
+    <h1 class="text-xl font-bold" style="color:var(--text-primary)">{{ _('Filing Periods') }}</h1>
+    {% if can_manage_filings %}
+    <button type="button" id="cp-roll-forward-btn" class="text-sm font-semibold px-4 py-2.5 rounded-xl"
+            style="color:var(--color-primary);border:1px solid var(--color-primary)">{{ _('Roll Forward…') }}</button>
+    {% endif %}
+  </div>
+
+  <form method="get" action="/compliance/periods" class="rounded-2xl p-4 flex flex-wrap items-end gap-3"
+        style="background:var(--bg-card);border:1px solid var(--border-default)">
+    <div>
+      <label class="intake-label" for="f-period-label">{{ _('Period') }}</label>
+      <select name="period_label" id="f-period-label" class="intake-input">
+        <option value="">{{ _('All') }}</option>
+        {% for pl in period_labels %}
+        <option value="{{ pl }}" {% if filters.period_label == pl %}selected{% endif %}>{{ pl }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="intake-label" for="f-account-type">{{ _('Account Type') }}</label>
+      <select name="account_type" id="f-account-type" class="intake-input">
+        <option value="">{{ _('All') }}</option>
+        {% for t in account_types %}<option value="{{ t }}" {% if filters.account_type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="intake-label" for="f-frequency">{{ _('Frequency') }}</label>
+      <select name="frequency" id="f-frequency" class="intake-input">
+        <option value="">{{ _('All') }}</option>
+        {% for f in frequencies %}<option value="{{ f }}" {% if filters.frequency == f %}selected{% endif %}>{{ f }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="intake-label" for="f-city">{{ _('City') }}</label>
+      <input type="text" name="city" id="f-city" class="intake-input" value="{{ filters.city }}">
+    </div>
+    <div>
+      <label class="intake-label" for="f-status">{{ _('Status') }}</label>
+      <select name="status" id="f-status" class="intake-input">
+        <option value="">{{ _('All') }}</option>
+        {% for s in statuses %}<option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="intake-label" for="f-preparer">{{ _('Assigned Staff') }}</label>
+      <select name="assigned_preparer_user_id" id="f-preparer" class="intake-input">
+        <option value="">{{ _('All') }}</option>
+        {% for p in preparers %}
+        <option value="{{ p.id }}" {% if filters.assigned_preparer_user_id == p.id|string %}selected{% endif %}>{{ p.display_name or p.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="text-sm font-semibold px-4 py-2.5 rounded-xl text-white" style="background:var(--color-primary)">{{ _('Filter') }}</button>
+    <a href="/compliance/periods" class="text-sm font-medium px-3 py-2.5" style="color:var(--text-muted)">{{ _('Clear') }}</a>
+  </form>
+
+  <div class="rounded-2xl overflow-hidden" style="background:var(--bg-card);border:1px solid var(--border-default)">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left" style="color:var(--text-muted);border-bottom:1px solid var(--border-default)">
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Client') }}</th>
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Account') }}</th>
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Period') }}</th>
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Due') }}</th>
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Assigned') }}</th>
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Status') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in periods %}
+        <tr class="border-t" style="border-color:var(--border-subtle,var(--border-default))">
+          <td class="px-4 py-2.5">
+            <a href="/compliance/clients/{{ p.client_id }}" class="font-semibold" style="color:var(--color-primary)">{{ p.client_name }}</a>
+          </td>
+          <td class="px-4 py-2.5" style="color:var(--text-secondary)">
+            {{ p.account_type }} {% if p.account_number %}· {{ p.account_number }}{% endif %} {% if p.city_name %}· {{ p.city_name }}{% endif %}
+          </td>
+          <td class="px-4 py-2.5" style="color:var(--text-primary)">{{ p.period_label }}</td>
+          <td class="px-4 py-2.5" style="color:var(--text-secondary)">{{ p.period_due_date or '—' }}</td>
+          <td class="px-4 py-2.5" style="color:var(--text-secondary)">{{ p.assigned_preparer_name or p.assigned_preparer_username or '—' }}</td>
+          <td class="px-4 py-2.5">
+            {% if can_manage_filings %}
+            <select class="cp-status-select intake-input" data-period-id="{{ p.id }}">
+              {% for s in statuses %}<option value="{{ s }}" {% if p.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+            </select>
+            {% else %}
+            <span class="font-semibold" style="color:var(--text-primary)">{{ p.status }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="px-4 py-10 text-center" style="color:var(--text-muted)">{{ _('No filing periods match these filters') }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if can_manage_filings %}
+<div id="cp-roll-forward-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,0.4)">
+  <div class="rounded-2xl p-5 w-full max-w-md" style="background:var(--bg-card)">
+    <h2 class="text-lg font-bold mb-1" style="color:var(--text-primary)">{{ _('Roll Forward Period') }}</h2>
+    <p class="text-sm mb-3" style="color:var(--text-muted)">
+      {{ _('Every account with a filing period in the source period gets a new filing period for the target period, reproducing the account list without manual re-entry.') }}
+    </p>
+    <div class="space-y-3">
+      <div>
+        <label class="intake-label">{{ _('From (source period)') }}</label>
+        <select id="rf-source" class="intake-input w-full">
+          {% for pl in period_labels %}<option value="{{ pl }}">{{ pl }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="intake-label">{{ _('To (new period label)') }}</label>
+        <input type="text" id="rf-target" class="intake-input w-full" placeholder="{{ _('e.g. 2ND QTR 2026') }}">
+      </div>
+    </div>
+    <div id="rf-error" class="text-sm text-red-700 mt-2"></div>
+    <div class="flex justify-end gap-2 mt-4">
+      <button type="button" id="rf-cancel" class="text-sm font-medium px-4 py-2" style="color:var(--text-muted)">{{ _('Cancel') }}</button>
+      <button type="button" id="rf-save" class="text-sm font-semibold px-4 py-2 rounded-xl text-white" style="background:var(--color-primary)">{{ _('Roll Forward') }}</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  document.querySelectorAll('.cp-status-select').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const resp = await _csrfFetch(`/api/compliance/periods/${sel.dataset.periodId}/status`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: sel.value }),
+      });
+      const data = await resp.json();
+      if (data.error) { alert(data.error); window.location.reload(); }
+    });
+  });
+
+  const modal = document.getElementById('cp-roll-forward-modal');
+  document.getElementById('cp-roll-forward-btn').addEventListener('click', () => modal.classList.remove('hidden'));
+  document.getElementById('rf-cancel').addEventListener('click', () => modal.classList.add('hidden'));
+  document.getElementById('rf-save').addEventListener('click', async () => {
+    const errEl = document.getElementById('rf-error');
+    errEl.textContent = '';
+    const source_period_label = document.getElementById('rf-source').value;
+    const target_period_label = document.getElementById('rf-target').value.trim();
+    if (!target_period_label) { errEl.textContent = '{{ _("Target period label is required") }}'; return; }
+    const resp = await _csrfFetch('/api/compliance/periods/roll-forward', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_period_label, target_period_label }),
+    });
+    const data = await resp.json();
+    if (data.error) { errEl.textContent = data.error; return; }
+    alert('{{ _("Created") }} ' + data.created + ' {{ _("filing period(s).") }}');
+    window.location.href = '/compliance/periods?period_label=' + encodeURIComponent(target_period_label);
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

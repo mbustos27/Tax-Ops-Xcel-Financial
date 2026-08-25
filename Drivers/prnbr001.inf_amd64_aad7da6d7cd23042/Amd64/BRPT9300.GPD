@@ -1,0 +1,218 @@
+*GPDSpecVersion: "1.0"
+*GPDFileVersion: "1.0"
+*GPDFileName: "BRPT9300.GPD"
+*Include: "StdNames.gpd"
+*ModelName: "Brother PT-9300PC/9200DX"
+*MasterUnits: PAIR(360, 360)
+*ResourceDLL: "brptui.dll"
+*PrinterType: SERIAL
+*MemoryUsage: LIST(RASTER)
+*RotateCoordinate?: FALSE
+*RotateRaster?: FALSE
+*RotateFont?: FALSE
+*Feature: Resolution
+{
+    *rcNameID: =RESOLUTION_DISPLAY
+    *DefaultOption: Option1
+    *Option: Option1
+    {
+        *Name: "360 x 360 " =DOTS_PER_INCH
+        *DPI: PAIR(360, 360)
+        *TextDPI: PAIR(360, 360)
+        *SpotDiameter: 100
+        *Command: CmdSendBlockData { *Cmd : "" }
+    }
+}
+*Feature: Orientation
+{
+    *rcNameID: =ORIENTATION_DISPLAY
+    *DefaultOption: LANDSCAPE_CC270
+    *Option: PORTRAIT
+    {
+        *rcNameID: =PORTRAIT_DISPLAY
+    }
+    *Option: LANDSCAPE_CC270
+    {
+        *rcNameID: =LANDSCAPE_DISPLAY
+    }
+}
+*Feature: InputBin
+{
+    *rcNameID: =PAPER_SOURCE_DISPLAY
+    *DefaultOption: TAPE
+    *Option: TAPE
+    {
+        *rcNameID: 301	*% Cassette
+    }
+}
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: 36-Tape
+    *Option: 6-Tape
+    {
+        *Name: "6mm"
+        *PageDimensions: PAIR(84, 14173)
+        *PrintableArea: PAIR(64, 14059)
+        *PrintableOrigin: PAIR(10, 57)
+    }
+    *Option: 9-Tape
+    {
+        *Name: "9mm"
+        *PageDimensions: PAIR(128, 14173)
+        *PrintableArea: PAIR(106, 14059)
+        *PrintableOrigin: PAIR(11, 57)
+    }
+    *Option: 12-Tape
+    {
+        *Name: "12mm"
+        *PageDimensions: PAIR(170, 14173)
+        *PrintableArea: PAIR(150, 14059)
+        *PrintableOrigin: PAIR(10, 57)
+    }
+    *Option: 18-Tape
+    {
+        *Name: "18mm"
+        *PageDimensions: PAIR(256, 14173)
+        *PrintableArea: PAIR(234, 14059)
+        *PrintableOrigin: PAIR(11, 57)
+    }
+    *Option: 24-Tape
+    {
+        *Name: "24mm"
+        *PageDimensions: PAIR(340, 14173)
+        *PrintableArea: PAIR(320, 14059)
+        *PrintableOrigin: PAIR(10, 57)
+    }
+    *Option: 36-Tape
+    {
+        *Name: "36mm"
+        *PageDimensions: PAIR(512, 14173)
+        *PrintableArea: PAIR(384, 14059)
+        *PrintableOrigin: PAIR(64, 57)
+    }
+    *Option: Floppy1
+    {
+        *rcNameID: 450		*% "3.5" floppy disk - Large"  Use 36-Tape
+        *PageDimensions: PAIR(512, 992)
+        *PrintableArea: PAIR(384, 878)
+        *PrintableOrigin: PAIR(64, 57)
+    }
+    *Option: Floppy2
+    {
+        *rcNameID: 451		*% "3.5" floppy disk - Small"  Use 24-Tape
+        *PageDimensions: PAIR(340, 992)
+        *PrintableArea: PAIR(320, 878)
+        *PrintableOrigin: PAIR(10, 57)
+    }
+    *Option: CD-R
+    {
+        *rcNameID: 452		*% "CD-R case - Spine"    Use 6-Tape
+        *PageDimensions: PAIR(84, 1672)
+        *PrintableArea: PAIR(64, 1558)
+        *PrintableOrigin: PAIR(10, 57)
+    }
+    *Option: VHS
+    {
+        *rcNameID: 453		*% "VHS video cassette - Spine"   Use 18-Tape
+        *PageDimensions: PAIR(256, 2098)
+        *PrintableArea: PAIR(234, 1984)
+        *PrintableOrigin: PAIR(11, 57)
+    }
+    *Option: DV1
+    {
+        *rcNameID: 454		*% "Mini DV cassette - Spine"    Use 9-Tape
+        *PageDimensions: PAIR(128, 652)
+        *PrintableArea: PAIR(106, 538)
+        *PrintableOrigin: PAIR(11, 57)
+    }
+    *Option: DV2
+    {
+        *rcNameID: 455		*% "Mini DV cassette - Face"   Use Use 18-Tape
+        *PageDimensions: PAIR(256, 397)
+        *PrintableArea: PAIR(234, 283)
+        *PrintableOrigin: PAIR(11, 57)
+    }
+    *Option: 8mm1
+    {
+        *rcNameID: 456		*% "8mm Video cassette"    Use 9-Tape
+        *PageDimensions: PAIR(128, 1063)
+        *PrintableArea: PAIR(106, 949)
+        *PrintableOrigin: PAIR(11, 57)
+    }
+    *Option: 8mm2
+    {
+        *rcNameID: 457		*% "8mm Video cassette case - Spine"   Use 12-Tape
+        *PageDimensions: PAIR(170, 1318)
+        *PrintableArea: PAIR(150, 1204)
+        *PrintableOrigin: PAIR(10, 57)
+    }
+    *Option: Audio1
+    {
+        *rcNameID: 458		*% "Audio cassette - Face"    Use 6-Tape
+        *PageDimensions: PAIR(84, 1247)
+        *PrintableArea: PAIR(64, 1133)
+        *PrintableOrigin: PAIR(10, 57)
+    }
+    *Option: Audio2
+    {
+        *rcNameID: 459		*% "Audio cassette case - Spine"    Use 9-Tape
+        *PageDimensions: PAIR(128, 1417)
+        *PrintableArea: PAIR(106, 1303)
+        *PrintableOrigin: PAIR(11, 57)
+    }
+    *Option: MD1
+    {
+        *rcNameID: 460		*% "Mini Disc - Face"    Use 24-Tape
+        *PageDimensions: PAIR(340, 751)
+        *PrintableArea: PAIR(320, 637)
+        *PrintableOrigin: PAIR(10, 57)
+    }
+    *Option: MD2
+    {
+        *rcNameID: 461		*% "Mini Disc case - Spine"    Use 6-Tape
+        *PageDimensions: PAIR(84, 1063)
+        *PrintableArea: PAIR(64, 949)
+        *PrintableOrigin: PAIR(10, 57)
+    }
+    *Option: ORG
+    {
+        *rcNameID: 462		*% "Organizer"        Use 36-Tape
+        *PageDimensions: PAIR(512, 1162)
+        *PrintableArea: PAIR(384, 1048)
+        *PrintableOrigin: PAIR(64, 57)
+    }
+    *Option: CUSTOMSIZE
+    {
+        *rcNameID: =USER_DEFINED_SIZE_DISPLAY
+        *MinSize: PAIR(84, 384)
+        *MaxSize: PAIR(512, 14173)
+	*MaxPrintableWidth: 384
+	*CustPrintableOriginX:  %d{max(10, (PhysPaperWidth-384)/2)}
+	*CustPrintableOriginY:  %d{57}
+	*CustPrintableSizeX:   %d{PhysPaperWidth-max(10, (PhysPaperWidth-384)/2)*2}
+	*CustPrintableSizeY:  %d{PhysPaperLength-114}
+	*CustCursorOriginX:  %d{max(10, (PhysPaperWidth-384)/2)}
+	*CustCursorOriginY:   %d{57}
+	*CenterPrintable?: FALSE
+    }
+}
+*Command: CmdStartJob
+{
+    *Order: JOB_SETUP.1
+    *Cmd: "<1B>@"
+}
+*Command: CmdStartPage
+{
+	*Order: PAGE_SETUP.1
+	*CallbackID: 7
+	*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+}
+*Command: CmdEndDoc
+{
+    *Order: DOC_FINISH.1
+    *Cmd: "<1A>"
+}
+*Command: CmdCR { *Cmd : "" }
+*Command: CmdLF { *Cmd : "" }
+*Command: CmdFF { *Cmd : "" }

@@ -1,0 +1,2412 @@
+{
+  "generated_at": "2026-08-12T22:46:59Z",
+  "pinned_cut": 772,
+  "source": "W1-full-log-claimant-search.json",
+  "lucy_fixes": [
+    "QUINTANA 1103 pulled MOVE\u2192REVIEW (Jr/L; prefer 1103 via Kayla)",
+    "do_after on MOVE/CLAIM landing on bares still being cleared",
+    "REVIEW lists all Log alternatives (DURAN 640+653)",
+    "1038 MONTIEL MINT\u2192CLAIM vacant after BARAJAS MOVE",
+    "589 DENISE Log transpose note; 141 MOVEs only in priority section"
+  ],
+  "hold": [
+    "Do not split Tax Log genuine_reuse keys in TaxOps \u2014 Drake corrections only."
+  ],
+  "how_to": {
+    "MOVE": "In Drake, change this client's log/invoice FROM wrong_bare TO to_bare.",
+    "KEEP": "Leave on wrong_bare \u2014 canonical Log household for that number.",
+    "MINT": "Assign a new unused log number (bare already occupied by keeper).",
+    "CLAIM": "After clearers leave, assign this client onto the now-vacant collision bare.",
+    "REVIEW": "Ambiguous or band2 destination \u2014 confirm with preparer; see alternatives."
+  },
+  "order": [
+    "Priority case bare 141 (I7)",
+    "MOVE checklist (excludes 141 \u2014 already above)",
+    "KEEP + MINT / CLAIM (CLAIM after its do_after clearers)",
+    "REVIEW last (suffix / band2 ambiguity)"
+  ],
+  "counts": {
+    "cases": 19,
+    "tasks": 40,
+    "MOVE": 28,
+    "REVIEW": 7,
+    "KEEP": 2,
+    "MINT": 2,
+    "CLAIM": 1,
+    "priority_141_tasks": 3,
+    "move_checklist": 27,
+    "with_do_after": 3
+  },
+  "cases": [
+    {
+      "wrong_bare": "141",
+      "priority_case": true,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+      "canonical_row": 10,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": true,
+          "verb": "KEEP",
+          "internal_action": "KEEPER_CANDIDATE",
+          "wrong_bare": "141",
+          "claimant": "PEREZ, ANDRES",
+          "to_bare": "141",
+          "to_name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 10,
+          "alternatives": [
+            {
+              "to_bare": "141",
+              "to_name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 10
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+          "fuzzy_only": true,
+          "in_priority_section": true
+        },
+        {
+          "priority_case": true,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "141",
+          "claimant": "VILLAREAL, RICHARD",
+          "to_bare": "143",
+          "to_name": "VILLAREAL, RICHARD P",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 12,
+          "alternatives": [
+            {
+              "to_bare": "143",
+              "to_name": "VILLAREAL, RICHARD P",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 12
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+          "fuzzy_only": true,
+          "in_priority_section": true
+        },
+        {
+          "priority_case": true,
+          "verb": "MINT",
+          "internal_action": "MINT_NEW_LOG",
+          "wrong_bare": "141",
+          "claimant": "GOYTIA, SANDRA",
+          "to_bare": null,
+          "to_name": null,
+          "to_status": null,
+          "to_band": null,
+          "to_row": null,
+          "alternatives": [],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+          "fuzzy_only": false,
+          "in_priority_section": true
+        }
+      ],
+      "verbs": [
+        "KEEP",
+        "MINT",
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "203",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "COLLAZO, MIGUEL & MAYRA",
+      "canonical_row": 58,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "203",
+          "claimant": "LAZO, BREANNA",
+          "to_bare": "680",
+          "to_name": "LAZO, BREANNA L",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 453,
+          "alternatives": [
+            {
+              "to_bare": "680",
+              "to_name": "LAZO, BREANNA L",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 453
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "COLLAZO, MIGUEL & MAYRA",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "203",
+          "claimant": "NUNO, MARIBEL",
+          "to_bare": "199",
+          "to_name": "NUNO, MARIBEL M",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 54,
+          "alternatives": [
+            {
+              "to_bare": "199",
+              "to_name": "NUNO, MARIBEL M",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 54
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "COLLAZO, MIGUEL & MAYRA",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "206",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "SERRATO, ROCHELLE M",
+      "canonical_row": 61,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "206",
+          "claimant": "BRICENO, JUAN",
+          "to_bare": "217",
+          "to_name": "BRICENO, JUAN",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 72,
+          "alternatives": [
+            {
+              "to_bare": "217",
+              "to_name": "BRICENO, JUAN",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 72
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "SERRATO, ROCHELLE M",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "206",
+          "claimant": "DELGADO, TIFFANY",
+          "to_bare": "202",
+          "to_name": "DELGADO, TIFFANY",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 57,
+          "alternatives": [
+            {
+              "to_bare": "202",
+              "to_name": "DELGADO, TIFFANY",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 57
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "SERRATO, ROCHELLE M",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "207",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "GONZALEZ, MARTHA",
+      "canonical_row": 62,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "207",
+          "claimant": "COLLAZO, MAYRA",
+          "to_bare": "203",
+          "to_name": "COLLAZO, MIGUEL & MAYRA",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 58,
+          "alternatives": [
+            {
+              "to_bare": "203",
+              "to_name": "COLLAZO, MIGUEL & MAYRA",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 58
+            }
+          ],
+          "do_after": [
+            "LAZO, BREANNA off `203`",
+            "NUNO, MARIBEL off `203`"
+          ],
+          "note": "Do after: LAZO, BREANNA off `203`, NUNO, MARIBEL off `203`.",
+          "canonical_name": "GONZALEZ, MARTHA",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "207",
+          "claimant": "RAMOS, VALERIE",
+          "to_bare": "218",
+          "to_name": "RAMOS, VALERIE",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 73,
+          "alternatives": [
+            {
+              "to_bare": "218",
+              "to_name": "RAMOS, VALERIE",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 73
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "GONZALEZ, MARTHA",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "247",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "VILLALTA, ROSALINDA V",
+      "canonical_row": 102,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "247",
+          "claimant": "BRAVO, VICTORIA",
+          "to_bare": "242",
+          "to_name": "BRAVO, VICTORIA",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 97,
+          "alternatives": [
+            {
+              "to_bare": "242",
+              "to_name": "BRAVO, VICTORIA",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 97
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "VILLALTA, ROSALINDA V",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "MINT",
+          "internal_action": "MINT_NEW_LOG",
+          "wrong_bare": "247",
+          "claimant": "PERFECT SMILE MANAGEMENT CORP",
+          "to_bare": null,
+          "to_name": null,
+          "to_status": null,
+          "to_band": null,
+          "to_row": null,
+          "alternatives": [],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "VILLALTA, ROSALINDA V",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MINT",
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "335",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "ROSAS, RICARDO & MARTHA",
+      "canonical_row": 167,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "335",
+          "claimant": "GALLEGOS, ALEJANDRO",
+          "to_bare": "334",
+          "to_name": "GALLEGOS, ALEJANDRO & MARIA D",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 166,
+          "alternatives": [
+            {
+              "to_bare": "334",
+              "to_name": "GALLEGOS, ALEJANDRO & MARIA D",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 166
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "ROSAS, RICARDO & MARTHA",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "335",
+          "claimant": "ROJAS, LUIS",
+          "to_bare": "333",
+          "to_name": "ROJAS, LUIS & GUADALUPE MELENDREZ",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 165,
+          "alternatives": [
+            {
+              "to_bare": "333",
+              "to_name": "ROJAS, LUIS & GUADALUPE MELENDREZ",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 165
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "ROSAS, RICARDO & MARTHA",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "339",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "GOMEZ, VIVIANA",
+      "canonical_row": 171,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "339",
+          "claimant": "AGUILAR, AMBER",
+          "to_bare": "341",
+          "to_name": "AGUILAR, AMBER",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 173,
+          "alternatives": [
+            {
+              "to_bare": "341",
+              "to_name": "AGUILAR, AMBER",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 173
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "GOMEZ, VIVIANA",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "339",
+          "claimant": "LOPEZ, SAUL",
+          "to_bare": "338",
+          "to_name": "LOPEZ, SAUL & YESENIA",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 170,
+          "alternatives": [
+            {
+              "to_bare": "338",
+              "to_name": "LOPEZ, SAUL & YESENIA",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 170
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "GOMEZ, VIVIANA",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "353",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "GONZALEZ, MARQUEZ",
+      "canonical_row": 185,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "353",
+          "claimant": "AVILA, LUCY",
+          "to_bare": "349",
+          "to_name": "AVILA, LUCY & EDUARDO",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 181,
+          "alternatives": [
+            {
+              "to_bare": "349",
+              "to_name": "AVILA, LUCY & EDUARDO",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 181
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "GONZALEZ, MARQUEZ",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "353",
+          "claimant": "SALAMA, ENGIE",
+          "to_bare": "350",
+          "to_name": "SALAMA, ENGIE",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 182,
+          "alternatives": [
+            {
+              "to_bare": "350",
+              "to_name": "SALAMA, ENGIE",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 182
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "GONZALEZ, MARQUEZ",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "426",
+      "priority_case": false,
+      "classification": "c_family",
+      "canonical_name": null,
+      "canonical_row": null,
+      "canonical_status": null,
+      "canonical_band": null,
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "426",
+          "claimant": "HERNANDEZ, AMADO",
+          "to_bare": "402",
+          "to_name": "HERNANDEZ, AMADO & ARMIDA",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 234,
+          "alternatives": [
+            {
+              "to_bare": "402",
+              "to_name": "HERNANDEZ, AMADO & ARMIDA",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 234
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": null,
+          "fuzzy_only": true,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "REVIEW",
+          "internal_action": "CORRECT_DRAKE_BAND2_REVIEW",
+          "wrong_bare": "426",
+          "claimant": "HERNANDEZ, LYDIA",
+          "to_bare": "304",
+          "to_name": "HERNANDEZ, LYDIA",
+          "to_status": "PROCESSING",
+          "to_band": "band2",
+          "to_row": 970,
+          "alternatives": [
+            {
+              "to_bare": "304",
+              "to_name": "HERNANDEZ, LYDIA",
+              "to_status": "PROCESSING",
+              "to_band": "band2",
+              "to_row": 970
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": null,
+          "fuzzy_only": false,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE",
+        "REVIEW"
+      ]
+    },
+    {
+      "wrong_bare": "589",
+      "priority_case": false,
+      "classification": "c_family",
+      "canonical_name": "DENISE, SANTIAGO",
+      "canonical_row": 362,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "KEEP",
+          "internal_action": "KEEPER_CANDIDATE",
+          "wrong_bare": "589",
+          "claimant": "SANTIAGO, DENISE",
+          "to_bare": "589",
+          "to_name": "DENISE, SANTIAGO",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 362,
+          "alternatives": [
+            {
+              "to_bare": "589",
+              "to_name": "DENISE, SANTIAGO",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 362
+            }
+          ],
+          "do_after": [],
+          "note": "Log stores transposed name DENISE, SANTIAGO -- correct Log to SANTIAGO, DENISE while editing (name-tier match will keep failing).",
+          "canonical_name": "DENISE, SANTIAGO",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "589",
+          "claimant": "SANTIAGO, EUNICE",
+          "to_bare": "588",
+          "to_name": "SANTIAGO, EUNICE",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 361,
+          "alternatives": [
+            {
+              "to_bare": "588",
+              "to_name": "SANTIAGO, EUNICE",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 361
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "DENISE, SANTIAGO",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "KEEP",
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "634",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "SILVA, VINCENT & IRMA",
+      "canonical_row": 1064,
+      "canonical_status": "",
+      "canonical_band": "band2",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "634",
+          "claimant": "HERREJON, NICHOLAS",
+          "to_bare": "631",
+          "to_name": "HERREJON, NICHOLAS K",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 404,
+          "alternatives": [
+            {
+              "to_bare": "631",
+              "to_name": "HERREJON, NICHOLAS K",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 404
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "SILVA, VINCENT & IRMA",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "REVIEW",
+          "internal_action": "CORRECT_DRAKE_BAND2_REVIEW",
+          "wrong_bare": "634",
+          "claimant": "DAKAK, RAMI",
+          "to_bare": "579",
+          "to_name": "DAKAK, RAMI",
+          "to_status": "PROCESSING",
+          "to_band": "band2",
+          "to_row": 1009,
+          "alternatives": [
+            {
+              "to_bare": "579",
+              "to_name": "DAKAK, RAMI",
+              "to_status": "PROCESSING",
+              "to_band": "band2",
+              "to_row": 1009
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "SILVA, VINCENT & IRMA",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE",
+        "REVIEW"
+      ]
+    },
+    {
+      "wrong_bare": "787",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "JACKSON, IRENE",
+      "canonical_row": 534,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "787",
+          "claimant": "VICENTE, JOSE",
+          "to_bare": "775",
+          "to_name": "VICENTE, JOSE",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 522,
+          "alternatives": [
+            {
+              "to_bare": "775",
+              "to_name": "VICENTE, JOSE",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 522
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "JACKSON, IRENE",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "REVIEW",
+          "internal_action": "CORRECT_DRAKE_BAND2_REVIEW",
+          "wrong_bare": "787",
+          "claimant": "CREATE YOUR HEALTH LLC",
+          "to_bare": "597",
+          "to_name": "CREATE YOUR HEALTH LLC",
+          "to_status": "PROCESSING",
+          "to_band": "band2",
+          "to_row": 1027,
+          "alternatives": [
+            {
+              "to_bare": "597",
+              "to_name": "CREATE YOUR HEALTH LLC",
+              "to_status": "PROCESSING",
+              "to_band": "band2",
+              "to_row": 1027
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "JACKSON, IRENE",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE",
+        "REVIEW"
+      ]
+    },
+    {
+      "wrong_bare": "862",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "YANEZ, ELEUTERIO",
+      "canonical_row": 609,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "862",
+          "claimant": "LUNA, JACINTO",
+          "to_bare": "834",
+          "to_name": "LUNA, JACINTO & JUANA",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 581,
+          "alternatives": [
+            {
+              "to_bare": "834",
+              "to_name": "LUNA, JACINTO & JUANA",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 581
+            },
+            {
+              "to_bare": "64",
+              "to_name": "LUNA, JACINTO & JUANA",
+              "to_status": "OLD PICKUP",
+              "to_band": "band2",
+              "to_row": 835
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "YANEZ, ELEUTERIO",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "862",
+          "claimant": "MURILLO, JULIO",
+          "to_bare": "835",
+          "to_name": "MURILLO, JULIO & LORETTA",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 582,
+          "alternatives": [
+            {
+              "to_bare": "835",
+              "to_name": "MURILLO, JULIO & LORETTA",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 582
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "YANEZ, ELEUTERIO",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "888",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "VALENCIA, NICOLE",
+      "canonical_row": 635,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "888",
+          "claimant": "HUERTA, JESUS",
+          "to_bare": "855",
+          "to_name": "HUERTA, JESUS & EVELYN",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 602,
+          "alternatives": [
+            {
+              "to_bare": "855",
+              "to_name": "HUERTA, JESUS & EVELYN",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 602
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "VALENCIA, NICOLE",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "REVIEW",
+          "internal_action": "CORRECT_DRAKE_BAND2_REVIEW",
+          "wrong_bare": "888",
+          "claimant": "DURAN, AGUSTIN",
+          "to_bare": "640",
+          "to_name": "DURAN ROJAS, AGUSTIN & GUADALUPE",
+          "to_status": "HOLD",
+          "to_band": "band2",
+          "to_row": 1070,
+          "alternatives": [
+            {
+              "to_bare": "640",
+              "to_name": "DURAN ROJAS, AGUSTIN & GUADALUPE",
+              "to_status": "HOLD",
+              "to_band": "band2",
+              "to_row": 1070
+            },
+            {
+              "to_bare": "653",
+              "to_name": "DURAN, AGUSTIN JR",
+              "to_status": "HOLD",
+              "to_band": "band2",
+              "to_row": 1083
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "VALENCIA, NICOLE",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE",
+        "REVIEW"
+      ]
+    },
+    {
+      "wrong_bare": "910",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "GAMBOA, ALEX",
+      "canonical_row": 657,
+      "canonical_status": "LOGOUT",
+      "canonical_band": "band1",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "910",
+          "claimant": "YANEZ, ELEUTERIO",
+          "to_bare": "862",
+          "to_name": "YANEZ, ELEUTERIO",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 609,
+          "alternatives": [
+            {
+              "to_bare": "862",
+              "to_name": "YANEZ, ELEUTERIO",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 609
+            }
+          ],
+          "do_after": [
+            "LUNA, JACINTO off `862`",
+            "MURILLO, JULIO off `862`"
+          ],
+          "note": "Do after: LUNA, JACINTO off `862`, MURILLO, JULIO off `862`.",
+          "canonical_name": "GAMBOA, ALEX",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "REVIEW",
+          "internal_action": "CORRECT_DRAKE_BAND2_REVIEW",
+          "wrong_bare": "910",
+          "claimant": "GALLARDO, LORENZO",
+          "to_bare": "647",
+          "to_name": "GALLARDO, LORENZO & MARTHA",
+          "to_status": "HOLD",
+          "to_band": "band2",
+          "to_row": 1077,
+          "alternatives": [
+            {
+              "to_bare": "647",
+              "to_name": "GALLARDO, LORENZO & MARTHA",
+              "to_status": "HOLD",
+              "to_band": "band2",
+              "to_row": 1077
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "GAMBOA, ALEX",
+          "fuzzy_only": true,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE",
+        "REVIEW"
+      ]
+    },
+    {
+      "wrong_bare": "1038",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": null,
+      "canonical_row": null,
+      "canonical_status": null,
+      "canonical_band": null,
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "1038",
+          "claimant": "JORGE BARAJAS, ISRAEL",
+          "to_bare": "933",
+          "to_name": "BARAJAS, ISRAEL JORGE",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 680,
+          "alternatives": [
+            {
+              "to_bare": "933",
+              "to_name": "BARAJAS, ISRAEL JORGE",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 680
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": null,
+          "fuzzy_only": true,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "CLAIM",
+          "internal_action": "MINT_NEW_LOG",
+          "wrong_bare": "1038",
+          "claimant": "MONTIEL FREYRE, SAMANTA",
+          "to_bare": "1038",
+          "to_name": "(vacant after BARAJAS moves to 933)",
+          "to_status": "VACANT",
+          "to_band": null,
+          "to_row": null,
+          "alternatives": [],
+          "do_after": [
+            "JORGE BARAJAS, ISRAEL off `1038`"
+          ],
+          "note": "Bare 1038 has no Log row; after JORGE BARAJAS MOVE to 933 it is unissued. Log Samanta at 1038 instead of minting a new number. Do after: JORGE BARAJAS, ISRAEL off `1038`.",
+          "canonical_name": null,
+          "fuzzy_only": false,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "CLAIM",
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "1075",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": null,
+      "canonical_row": null,
+      "canonical_status": null,
+      "canonical_band": null,
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "1075",
+          "claimant": "LEDESMA, DAVID",
+          "to_bare": "955",
+          "to_name": "LEDESMA, DAVID D & ALICIA D",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 702,
+          "alternatives": [
+            {
+              "to_bare": "955",
+              "to_name": "LEDESMA, DAVID D & ALICIA D",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 702
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": null,
+          "fuzzy_only": true,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "1075",
+          "claimant": "RODRIGUEZ, LEONOR",
+          "to_bare": "954",
+          "to_name": "RODRIGUEZ, LEONOR",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 701,
+          "alternatives": [
+            {
+              "to_bare": "954",
+              "to_name": "RODRIGUEZ, LEONOR",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 701
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": null,
+          "fuzzy_only": false,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "1095",
+      "priority_case": false,
+      "classification": "c_family_plus_other",
+      "canonical_name": null,
+      "canonical_row": null,
+      "canonical_status": null,
+      "canonical_band": null,
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "1095",
+          "claimant": "GUTIERREZ, JOAO",
+          "to_bare": "968",
+          "to_name": "GUTIERREZ, JOAO",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 715,
+          "alternatives": [
+            {
+              "to_bare": "968",
+              "to_name": "GUTIERREZ, JOAO",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 715
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": null,
+          "fuzzy_only": false,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "1095",
+          "claimant": "GUTIERREZ, MERCEDES",
+          "to_bare": "967",
+          "to_name": "GUTIERREZ, MERCEDES",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 714,
+          "alternatives": [
+            {
+              "to_bare": "967",
+              "to_name": "GUTIERREZ, MERCEDES",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 714
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": null,
+          "fuzzy_only": false,
+          "in_priority_section": false
+        },
+        {
+          "priority_case": false,
+          "verb": "MOVE",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "1095",
+          "claimant": "RODRIGUEZ, JAVIER",
+          "to_bare": "962",
+          "to_name": "RODRIGUEZ, JAVIER",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 709,
+          "alternatives": [
+            {
+              "to_bare": "962",
+              "to_name": "RODRIGUEZ, JAVIER",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 709
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": null,
+          "fuzzy_only": false,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "MOVE"
+      ]
+    },
+    {
+      "wrong_bare": "1103",
+      "priority_case": false,
+      "classification": "b_genuine_reuse",
+      "canonical_name": "QUINTANA, ROGELIO JR",
+      "canonical_row": 1163,
+      "canonical_status": "REVIEW",
+      "canonical_band": "band2",
+      "tasks": [
+        {
+          "priority_case": false,
+          "verb": "REVIEW",
+          "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+          "wrong_bare": "1103",
+          "claimant": "QUINTANA, ROGELIO",
+          "to_bare": "1103",
+          "to_name": "QUINTANA, ROGELIO JR",
+          "to_status": "REVIEW",
+          "to_band": "band2",
+          "to_row": 1163,
+          "alternatives": [
+            {
+              "to_bare": "464",
+              "to_name": "QUINTANA, ROGELIO L",
+              "to_status": "LOGOUT",
+              "to_band": "band1",
+              "to_row": 259
+            },
+            {
+              "to_bare": "1103",
+              "to_name": "QUINTANA, ROGELIO JR",
+              "to_status": "REVIEW",
+              "to_band": "band2",
+              "to_row": 1163
+            }
+          ],
+          "do_after": [],
+          "note": "Jr vs L ambiguity. W5 last4 5180 has spouse KAYLA -> favors QUINTANA, ROGELIO JR on 1103 (likely KEEP). Do not MOVE to 464 (ROGELIO L) without preparer confirm.",
+          "canonical_name": "QUINTANA, ROGELIO JR",
+          "fuzzy_only": true,
+          "in_priority_section": false,
+          "preferred_to": "1103"
+        },
+        {
+          "priority_case": false,
+          "verb": "REVIEW",
+          "internal_action": "CORRECT_DRAKE_BAND2_REVIEW",
+          "wrong_bare": "1103",
+          "claimant": "SANCHEZ ARCE, EUNICE",
+          "to_bare": "1171",
+          "to_name": "SANCHEZ ARCE, EUNICE",
+          "to_status": "PROCESSING",
+          "to_band": "band2",
+          "to_row": 1231,
+          "alternatives": [
+            {
+              "to_bare": "1171",
+              "to_name": "SANCHEZ ARCE, EUNICE",
+              "to_status": "PROCESSING",
+              "to_band": "band2",
+              "to_row": 1231
+            }
+          ],
+          "do_after": [],
+          "note": null,
+          "canonical_name": "QUINTANA, ROGELIO JR",
+          "fuzzy_only": false,
+          "in_priority_section": false
+        }
+      ],
+      "verbs": [
+        "REVIEW"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "priority_case": true,
+      "verb": "KEEP",
+      "internal_action": "KEEPER_CANDIDATE",
+      "wrong_bare": "141",
+      "claimant": "PEREZ, ANDRES",
+      "to_bare": "141",
+      "to_name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 10,
+      "alternatives": [
+        {
+          "to_bare": "141",
+          "to_name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 10
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+      "fuzzy_only": true,
+      "in_priority_section": true
+    },
+    {
+      "priority_case": true,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "141",
+      "claimant": "VILLAREAL, RICHARD",
+      "to_bare": "143",
+      "to_name": "VILLAREAL, RICHARD P",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 12,
+      "alternatives": [
+        {
+          "to_bare": "143",
+          "to_name": "VILLAREAL, RICHARD P",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 12
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+      "fuzzy_only": true,
+      "in_priority_section": true
+    },
+    {
+      "priority_case": true,
+      "verb": "MINT",
+      "internal_action": "MINT_NEW_LOG",
+      "wrong_bare": "141",
+      "claimant": "GOYTIA, SANDRA",
+      "to_bare": null,
+      "to_name": null,
+      "to_status": null,
+      "to_band": null,
+      "to_row": null,
+      "alternatives": [],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+      "fuzzy_only": false,
+      "in_priority_section": true
+    },
+    {
+      "priority_case": false,
+      "verb": "KEEP",
+      "internal_action": "KEEPER_CANDIDATE",
+      "wrong_bare": "589",
+      "claimant": "SANTIAGO, DENISE",
+      "to_bare": "589",
+      "to_name": "DENISE, SANTIAGO",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 362,
+      "alternatives": [
+        {
+          "to_bare": "589",
+          "to_name": "DENISE, SANTIAGO",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 362
+        }
+      ],
+      "do_after": [],
+      "note": "Log stores transposed name DENISE, SANTIAGO -- correct Log to SANTIAGO, DENISE while editing (name-tier match will keep failing).",
+      "canonical_name": "DENISE, SANTIAGO",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "203",
+      "claimant": "LAZO, BREANNA",
+      "to_bare": "680",
+      "to_name": "LAZO, BREANNA L",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 453,
+      "alternatives": [
+        {
+          "to_bare": "680",
+          "to_name": "LAZO, BREANNA L",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 453
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "COLLAZO, MIGUEL & MAYRA",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "203",
+      "claimant": "NUNO, MARIBEL",
+      "to_bare": "199",
+      "to_name": "NUNO, MARIBEL M",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 54,
+      "alternatives": [
+        {
+          "to_bare": "199",
+          "to_name": "NUNO, MARIBEL M",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 54
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "COLLAZO, MIGUEL & MAYRA",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "206",
+      "claimant": "BRICENO, JUAN",
+      "to_bare": "217",
+      "to_name": "BRICENO, JUAN",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 72,
+      "alternatives": [
+        {
+          "to_bare": "217",
+          "to_name": "BRICENO, JUAN",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 72
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "SERRATO, ROCHELLE M",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "206",
+      "claimant": "DELGADO, TIFFANY",
+      "to_bare": "202",
+      "to_name": "DELGADO, TIFFANY",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 57,
+      "alternatives": [
+        {
+          "to_bare": "202",
+          "to_name": "DELGADO, TIFFANY",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 57
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "SERRATO, ROCHELLE M",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "207",
+      "claimant": "COLLAZO, MAYRA",
+      "to_bare": "203",
+      "to_name": "COLLAZO, MIGUEL & MAYRA",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 58,
+      "alternatives": [
+        {
+          "to_bare": "203",
+          "to_name": "COLLAZO, MIGUEL & MAYRA",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 58
+        }
+      ],
+      "do_after": [
+        "LAZO, BREANNA off `203`",
+        "NUNO, MARIBEL off `203`"
+      ],
+      "note": "Do after: LAZO, BREANNA off `203`, NUNO, MARIBEL off `203`.",
+      "canonical_name": "GONZALEZ, MARTHA",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "207",
+      "claimant": "RAMOS, VALERIE",
+      "to_bare": "218",
+      "to_name": "RAMOS, VALERIE",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 73,
+      "alternatives": [
+        {
+          "to_bare": "218",
+          "to_name": "RAMOS, VALERIE",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 73
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "GONZALEZ, MARTHA",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "247",
+      "claimant": "BRAVO, VICTORIA",
+      "to_bare": "242",
+      "to_name": "BRAVO, VICTORIA",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 97,
+      "alternatives": [
+        {
+          "to_bare": "242",
+          "to_name": "BRAVO, VICTORIA",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 97
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "VILLALTA, ROSALINDA V",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "335",
+      "claimant": "GALLEGOS, ALEJANDRO",
+      "to_bare": "334",
+      "to_name": "GALLEGOS, ALEJANDRO & MARIA D",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 166,
+      "alternatives": [
+        {
+          "to_bare": "334",
+          "to_name": "GALLEGOS, ALEJANDRO & MARIA D",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 166
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "ROSAS, RICARDO & MARTHA",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "335",
+      "claimant": "ROJAS, LUIS",
+      "to_bare": "333",
+      "to_name": "ROJAS, LUIS & GUADALUPE MELENDREZ",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 165,
+      "alternatives": [
+        {
+          "to_bare": "333",
+          "to_name": "ROJAS, LUIS & GUADALUPE MELENDREZ",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 165
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "ROSAS, RICARDO & MARTHA",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "339",
+      "claimant": "AGUILAR, AMBER",
+      "to_bare": "341",
+      "to_name": "AGUILAR, AMBER",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 173,
+      "alternatives": [
+        {
+          "to_bare": "341",
+          "to_name": "AGUILAR, AMBER",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 173
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "GOMEZ, VIVIANA",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "339",
+      "claimant": "LOPEZ, SAUL",
+      "to_bare": "338",
+      "to_name": "LOPEZ, SAUL & YESENIA",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 170,
+      "alternatives": [
+        {
+          "to_bare": "338",
+          "to_name": "LOPEZ, SAUL & YESENIA",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 170
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "GOMEZ, VIVIANA",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "353",
+      "claimant": "AVILA, LUCY",
+      "to_bare": "349",
+      "to_name": "AVILA, LUCY & EDUARDO",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 181,
+      "alternatives": [
+        {
+          "to_bare": "349",
+          "to_name": "AVILA, LUCY & EDUARDO",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 181
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "GONZALEZ, MARQUEZ",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "353",
+      "claimant": "SALAMA, ENGIE",
+      "to_bare": "350",
+      "to_name": "SALAMA, ENGIE",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 182,
+      "alternatives": [
+        {
+          "to_bare": "350",
+          "to_name": "SALAMA, ENGIE",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 182
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "GONZALEZ, MARQUEZ",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "426",
+      "claimant": "HERNANDEZ, AMADO",
+      "to_bare": "402",
+      "to_name": "HERNANDEZ, AMADO & ARMIDA",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 234,
+      "alternatives": [
+        {
+          "to_bare": "402",
+          "to_name": "HERNANDEZ, AMADO & ARMIDA",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 234
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": null,
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "589",
+      "claimant": "SANTIAGO, EUNICE",
+      "to_bare": "588",
+      "to_name": "SANTIAGO, EUNICE",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 361,
+      "alternatives": [
+        {
+          "to_bare": "588",
+          "to_name": "SANTIAGO, EUNICE",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 361
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "DENISE, SANTIAGO",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "634",
+      "claimant": "HERREJON, NICHOLAS",
+      "to_bare": "631",
+      "to_name": "HERREJON, NICHOLAS K",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 404,
+      "alternatives": [
+        {
+          "to_bare": "631",
+          "to_name": "HERREJON, NICHOLAS K",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 404
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "SILVA, VINCENT & IRMA",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "787",
+      "claimant": "VICENTE, JOSE",
+      "to_bare": "775",
+      "to_name": "VICENTE, JOSE",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 522,
+      "alternatives": [
+        {
+          "to_bare": "775",
+          "to_name": "VICENTE, JOSE",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 522
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "JACKSON, IRENE",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "862",
+      "claimant": "LUNA, JACINTO",
+      "to_bare": "834",
+      "to_name": "LUNA, JACINTO & JUANA",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 581,
+      "alternatives": [
+        {
+          "to_bare": "834",
+          "to_name": "LUNA, JACINTO & JUANA",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 581
+        },
+        {
+          "to_bare": "64",
+          "to_name": "LUNA, JACINTO & JUANA",
+          "to_status": "OLD PICKUP",
+          "to_band": "band2",
+          "to_row": 835
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "YANEZ, ELEUTERIO",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "862",
+      "claimant": "MURILLO, JULIO",
+      "to_bare": "835",
+      "to_name": "MURILLO, JULIO & LORETTA",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 582,
+      "alternatives": [
+        {
+          "to_bare": "835",
+          "to_name": "MURILLO, JULIO & LORETTA",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 582
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "YANEZ, ELEUTERIO",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "888",
+      "claimant": "HUERTA, JESUS",
+      "to_bare": "855",
+      "to_name": "HUERTA, JESUS & EVELYN",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 602,
+      "alternatives": [
+        {
+          "to_bare": "855",
+          "to_name": "HUERTA, JESUS & EVELYN",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 602
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "VALENCIA, NICOLE",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "910",
+      "claimant": "YANEZ, ELEUTERIO",
+      "to_bare": "862",
+      "to_name": "YANEZ, ELEUTERIO",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 609,
+      "alternatives": [
+        {
+          "to_bare": "862",
+          "to_name": "YANEZ, ELEUTERIO",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 609
+        }
+      ],
+      "do_after": [
+        "LUNA, JACINTO off `862`",
+        "MURILLO, JULIO off `862`"
+      ],
+      "note": "Do after: LUNA, JACINTO off `862`, MURILLO, JULIO off `862`.",
+      "canonical_name": "GAMBOA, ALEX",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "1038",
+      "claimant": "JORGE BARAJAS, ISRAEL",
+      "to_bare": "933",
+      "to_name": "BARAJAS, ISRAEL JORGE",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 680,
+      "alternatives": [
+        {
+          "to_bare": "933",
+          "to_name": "BARAJAS, ISRAEL JORGE",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 680
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": null,
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "1075",
+      "claimant": "LEDESMA, DAVID",
+      "to_bare": "955",
+      "to_name": "LEDESMA, DAVID D & ALICIA D",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 702,
+      "alternatives": [
+        {
+          "to_bare": "955",
+          "to_name": "LEDESMA, DAVID D & ALICIA D",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 702
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": null,
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "1075",
+      "claimant": "RODRIGUEZ, LEONOR",
+      "to_bare": "954",
+      "to_name": "RODRIGUEZ, LEONOR",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 701,
+      "alternatives": [
+        {
+          "to_bare": "954",
+          "to_name": "RODRIGUEZ, LEONOR",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 701
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": null,
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "1095",
+      "claimant": "GUTIERREZ, JOAO",
+      "to_bare": "968",
+      "to_name": "GUTIERREZ, JOAO",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 715,
+      "alternatives": [
+        {
+          "to_bare": "968",
+          "to_name": "GUTIERREZ, JOAO",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 715
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": null,
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "1095",
+      "claimant": "GUTIERREZ, MERCEDES",
+      "to_bare": "967",
+      "to_name": "GUTIERREZ, MERCEDES",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 714,
+      "alternatives": [
+        {
+          "to_bare": "967",
+          "to_name": "GUTIERREZ, MERCEDES",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 714
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": null,
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MOVE",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "1095",
+      "claimant": "RODRIGUEZ, JAVIER",
+      "to_bare": "962",
+      "to_name": "RODRIGUEZ, JAVIER",
+      "to_status": "LOGOUT",
+      "to_band": "band1",
+      "to_row": 709,
+      "alternatives": [
+        {
+          "to_bare": "962",
+          "to_name": "RODRIGUEZ, JAVIER",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 709
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": null,
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "CLAIM",
+      "internal_action": "MINT_NEW_LOG",
+      "wrong_bare": "1038",
+      "claimant": "MONTIEL FREYRE, SAMANTA",
+      "to_bare": "1038",
+      "to_name": "(vacant after BARAJAS moves to 933)",
+      "to_status": "VACANT",
+      "to_band": null,
+      "to_row": null,
+      "alternatives": [],
+      "do_after": [
+        "JORGE BARAJAS, ISRAEL off `1038`"
+      ],
+      "note": "Bare 1038 has no Log row; after JORGE BARAJAS MOVE to 933 it is unissued. Log Samanta at 1038 instead of minting a new number. Do after: JORGE BARAJAS, ISRAEL off `1038`.",
+      "canonical_name": null,
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "MINT",
+      "internal_action": "MINT_NEW_LOG",
+      "wrong_bare": "247",
+      "claimant": "PERFECT SMILE MANAGEMENT CORP",
+      "to_bare": null,
+      "to_name": null,
+      "to_status": null,
+      "to_band": null,
+      "to_row": null,
+      "alternatives": [],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "VILLALTA, ROSALINDA V",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "REVIEW",
+      "internal_action": "CORRECT_DRAKE_BAND2_REVIEW",
+      "wrong_bare": "426",
+      "claimant": "HERNANDEZ, LYDIA",
+      "to_bare": "304",
+      "to_name": "HERNANDEZ, LYDIA",
+      "to_status": "PROCESSING",
+      "to_band": "band2",
+      "to_row": 970,
+      "alternatives": [
+        {
+          "to_bare": "304",
+          "to_name": "HERNANDEZ, LYDIA",
+          "to_status": "PROCESSING",
+          "to_band": "band2",
+          "to_row": 970
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": null,
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "REVIEW",
+      "internal_action": "CORRECT_DRAKE_BAND2_REVIEW",
+      "wrong_bare": "634",
+      "claimant": "DAKAK, RAMI",
+      "to_bare": "579",
+      "to_name": "DAKAK, RAMI",
+      "to_status": "PROCESSING",
+      "to_band": "band2",
+      "to_row": 1009,
+      "alternatives": [
+        {
+          "to_bare": "579",
+          "to_name": "DAKAK, RAMI",
+          "to_status": "PROCESSING",
+          "to_band": "band2",
+          "to_row": 1009
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "SILVA, VINCENT & IRMA",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "REVIEW",
+      "internal_action": "CORRECT_DRAKE_BAND2_REVIEW",
+      "wrong_bare": "787",
+      "claimant": "CREATE YOUR HEALTH LLC",
+      "to_bare": "597",
+      "to_name": "CREATE YOUR HEALTH LLC",
+      "to_status": "PROCESSING",
+      "to_band": "band2",
+      "to_row": 1027,
+      "alternatives": [
+        {
+          "to_bare": "597",
+          "to_name": "CREATE YOUR HEALTH LLC",
+          "to_status": "PROCESSING",
+          "to_band": "band2",
+          "to_row": 1027
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "JACKSON, IRENE",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "REVIEW",
+      "internal_action": "CORRECT_DRAKE_BAND2_REVIEW",
+      "wrong_bare": "888",
+      "claimant": "DURAN, AGUSTIN",
+      "to_bare": "640",
+      "to_name": "DURAN ROJAS, AGUSTIN & GUADALUPE",
+      "to_status": "HOLD",
+      "to_band": "band2",
+      "to_row": 1070,
+      "alternatives": [
+        {
+          "to_bare": "640",
+          "to_name": "DURAN ROJAS, AGUSTIN & GUADALUPE",
+          "to_status": "HOLD",
+          "to_band": "band2",
+          "to_row": 1070
+        },
+        {
+          "to_bare": "653",
+          "to_name": "DURAN, AGUSTIN JR",
+          "to_status": "HOLD",
+          "to_band": "band2",
+          "to_row": 1083
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "VALENCIA, NICOLE",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "REVIEW",
+      "internal_action": "CORRECT_DRAKE_BAND2_REVIEW",
+      "wrong_bare": "910",
+      "claimant": "GALLARDO, LORENZO",
+      "to_bare": "647",
+      "to_name": "GALLARDO, LORENZO & MARTHA",
+      "to_status": "HOLD",
+      "to_band": "band2",
+      "to_row": 1077,
+      "alternatives": [
+        {
+          "to_bare": "647",
+          "to_name": "GALLARDO, LORENZO & MARTHA",
+          "to_status": "HOLD",
+          "to_band": "band2",
+          "to_row": 1077
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "GAMBOA, ALEX",
+      "fuzzy_only": true,
+      "in_priority_section": false
+    },
+    {
+      "priority_case": false,
+      "verb": "REVIEW",
+      "internal_action": "CORRECT_DRAKE_BAND1_SAFE",
+      "wrong_bare": "1103",
+      "claimant": "QUINTANA, ROGELIO",
+      "to_bare": "1103",
+      "to_name": "QUINTANA, ROGELIO JR",
+      "to_status": "REVIEW",
+      "to_band": "band2",
+      "to_row": 1163,
+      "alternatives": [
+        {
+          "to_bare": "464",
+          "to_name": "QUINTANA, ROGELIO L",
+          "to_status": "LOGOUT",
+          "to_band": "band1",
+          "to_row": 259
+        },
+        {
+          "to_bare": "1103",
+          "to_name": "QUINTANA, ROGELIO JR",
+          "to_status": "REVIEW",
+          "to_band": "band2",
+          "to_row": 1163
+        }
+      ],
+      "do_after": [],
+      "note": "Jr vs L ambiguity. W5 last4 5180 has spouse KAYLA -> favors QUINTANA, ROGELIO JR on 1103 (likely KEEP). Do not MOVE to 464 (ROGELIO L) without preparer confirm.",
+      "canonical_name": "QUINTANA, ROGELIO JR",
+      "fuzzy_only": true,
+      "in_priority_section": false,
+      "preferred_to": "1103"
+    },
+    {
+      "priority_case": false,
+      "verb": "REVIEW",
+      "internal_action": "CORRECT_DRAKE_BAND2_REVIEW",
+      "wrong_bare": "1103",
+      "claimant": "SANCHEZ ARCE, EUNICE",
+      "to_bare": "1171",
+      "to_name": "SANCHEZ ARCE, EUNICE",
+      "to_status": "PROCESSING",
+      "to_band": "band2",
+      "to_row": 1231,
+      "alternatives": [
+        {
+          "to_bare": "1171",
+          "to_name": "SANCHEZ ARCE, EUNICE",
+          "to_status": "PROCESSING",
+          "to_band": "band2",
+          "to_row": 1231
+        }
+      ],
+      "do_after": [],
+      "note": null,
+      "canonical_name": "QUINTANA, ROGELIO JR",
+      "fuzzy_only": false,
+      "in_priority_section": false
+    }
+  ]
+}

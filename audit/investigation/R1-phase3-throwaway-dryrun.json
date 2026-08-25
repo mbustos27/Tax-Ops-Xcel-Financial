@@ -1,0 +1,43 @@
+{
+  "generated_at": "2026-08-13T22:46:45Z",
+  "throwaway_db": "T:\\audit\\tmp\\taxops_r1_phase3_throwaway_20260813T224645Z.sqlite",
+  "live_untouched": "T:\\taxops\\taxops.db",
+  "export_sha256": "33bcda025ef8a4db1e7b189da13dbebbd7c7ea170d2f9c5f5220a6ca6cf529c8",
+  "n_joinable": 707,
+  "n_diff_person_excluded": 19,
+  "n_clients_touched": 707,
+  "n_fields_written": 5266,
+  "n_history_rows": 707,
+  "n_fs_drake_written": 679,
+  "field_counts": {
+    "address_street": 707,
+    "address_city": 707,
+    "address_state": 707,
+    "address_zip": 707,
+    "address_county": 707,
+    "address_source": 707,
+    "taxpayer_email": 552,
+    "taxpayer_cell": 91,
+    "taxpayer_dob": 97,
+    "spouse_dob": 240,
+    "spouse_cell": 44
+  },
+  "reconstruct_ok": 5,
+  "reconstruct_fail": 0,
+  "overwrite_bugs": 0,
+  "legacy_address_in_written": 0,
+  "sample_client_ids": [
+    264,
+    708,
+    300,
+    492,
+    461
+  ],
+  "acceptance": {
+    "history_eq_touched": true,
+    "reconstruct_sample": true,
+    "no_overwrite": true,
+    "legacy_untouched": true
+  },
+  "overall": "PASS"
+}

@@ -20,6 +20,31 @@ APIPA note: RECEPTION may show `169.254.x` adapters — disable unused NICs sepa
 
 ## Staff — restart (EN)
 
+### One command (preferred)
+On the reception PC, double-click:
+```text
+T:\GO_RECEPTION.bat
+```
+That **bootstraps from the share**, copies scripts to `C:\TaxOps\Reception\`, then runs the **local** copy (avoids UNC/flashing-window issues). Starts print + scan if needed, checks health, and verifies auto-start.
+
+Repair missing auto-start (Admin / UAC Yes):
+```text
+T:\GO_RECEPTION.bat -Repair
+```
+
+After the first sync you can also run:
+```text
+C:\TaxOps\Reception\GO_RECEPTION.bat
+```
+(re-run `T:\GO_RECEPTION.bat` whenever share scripts change — it re-syncs first)
+
+### Deprecated (do not use)
+These are frozen and exit unless you pass `-ForceDeprecated`:
+- `setup_reception_pc.bat` / `.ps1`
+- `setup_scan_agent.bat` / `.ps1`
+- `scan_agent_wizard.bat` / `.ps1`
+- `install_print_relay_nssm.ps1` → use `taxops\scripts\install_print_relay_service.ps1` instead
+
 ### Print labels not working
 1. On reception PC, open PowerShell **as Administrator**.
 2. Run:
@@ -53,6 +78,13 @@ T:\diagnose_reception_relays.bat
 ---
 
 ## Personal — reinicio (ES)
+
+### Un solo comando (recomendado)
+En la PC de recepción:
+```text
+T:\GO_RECEPTION.bat
+```
+Arranca impresión + escaneo si hace falta y verifica el autoarranque.
 
 ### No imprime etiquetas
 1. En la PC de recepción, PowerShell **como Administrador**.

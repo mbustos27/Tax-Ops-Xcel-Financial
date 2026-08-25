@@ -288,6 +288,76 @@ class TestDeduplicateExistingRecords:
         assert r1 == 0
         assert r2 == 0
 
+    def test_dedup_merges_exact_name_when_one_ssn_blank(self, tmp_path):
+        """Pass 2: same name + one blank SSN merges into the row that has SSN."""
+        conn = _fresh_conn(tmp_path)
+        cid_with = _insert_client(conn, "ABDEL HADY", first="OMAR", ssn="5921")
+        cid_blank = _insert_client(conn, "ABDEL HADY", first="OMAR", ssn=None)
+        _insert_return(conn, cid_with, 2025)
+        _insert_return(conn, cid_blank, 2024)
+
+        removed = _deduplicate_existing_records(conn)
+        conn.commit()
+        assert removed == 1
+        remaining = conn.execute(
+            "SELECT id, ssn_last4 FROM clients WHERE last_name='ABDEL HADY' AND first_name='OMAR'"
+        ).fetchall()
+        assert len(remaining) == 1
+        assert remaining[0]["id"] == cid_with
+        assert remaining[0]["ssn_last4"] == "5921"
+        years = {
+            r["tax_year"]
+            for r in conn.execute(
+                "SELECT tax_year FROM returns WHERE client_id=?", (cid_with,)
+            )
+        }
+        assert years == {2024, 2025}
+
+    def test_dedup_skips_exact_name_with_conflicting_ssn(self, tmp_path):
+        """Two same-name clients with different SSN last4 are left for staff review."""
+        conn = _fresh_conn(tmp_path)
+        _insert_client(conn, "SMITH", first="JOHN", ssn="1111")
+        _insert_client(conn, "SMITH", first="JOHN", ssn="2222")
+        removed = _deduplicate_existing_records(conn)
+        conn.commit()
+        assert removed == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM clients WHERE last_name='SMITH' AND first_name='JOHN'"
+        ).fetchone()[0] == 2
+
+    def test_dedup_same_year_returns_log_number_handoff(self, tmp_path):
+        """Kept return with NULL log can take discard's log after discard is cleared."""
+        conn = _fresh_conn(tmp_path)
+        cid_a = _insert_client(conn, "GARCIA", first="ANA", ssn="4444")
+        cid_b = _insert_client(conn, "GARCIA", first="ANA", ssn=None)
+        ts = now()
+        # Kept side: more returns so it wins, but TY2025 log is blank
+        conn.execute(
+            """INSERT INTO returns (client_id, log_number, tax_year, client_status, created_at, updated_at)
+               VALUES (?,?,?,?,?,?)""",
+            (cid_a, None, 2025, "PENDING INTAKE", ts, ts),
+        )
+        conn.execute(
+            """INSERT INTO returns (client_id, log_number, tax_year, client_status, created_at, updated_at)
+               VALUES (?,?,?,?,?,?)""",
+            (cid_a, "9001", 2024, "LOG OUT", ts, ts),
+        )
+        conn.execute(
+            """INSERT INTO returns (client_id, log_number, tax_year, client_status, created_at, updated_at)
+               VALUES (?,?,?,?,?,?)""",
+            (cid_b, "5555", 2025, "PROCESSING", ts, ts),
+        )
+        conn.commit()
+        removed = _deduplicate_existing_records(conn)
+        conn.commit()
+        assert removed == 1
+        assert conn.execute("SELECT COUNT(*) FROM clients WHERE last_name='GARCIA'").fetchone()[0] == 1
+        row = conn.execute(
+            "SELECT log_number, client_status FROM returns WHERE client_id=? AND tax_year=2025",
+            (cid_a,),
+        ).fetchone()
+        assert row["log_number"] == "5555"
+
 
 class TestDrakeStatusNormalization:
     """DRAKE_STATUS_MAP covers all status codes found in the real CSMDATA.csv."""

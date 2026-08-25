@@ -1,0 +1,1738 @@
+{
+  "clients": [
+    {
+      "cid": 0,
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 1
+    },
+    {
+      "cid": 1,
+      "name": "last_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 2,
+      "name": "first_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 3,
+      "name": "display_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 4,
+      "name": "ssn_last4",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 5,
+      "name": "referral_flag",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 6,
+      "name": "referred_by",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 7,
+      "name": "created_at",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 8,
+      "name": "updated_at",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 9,
+      "name": "spouse_last_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 10,
+      "name": "spouse_first_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 11,
+      "name": "taxpayer_dob",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 12,
+      "name": "spouse_dob",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 13,
+      "name": "taxpayer_occupation",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 14,
+      "name": "spouse_occupation",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 15,
+      "name": "taxpayer_phone",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 16,
+      "name": "taxpayer_cell",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 17,
+      "name": "taxpayer_work_phone",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 18,
+      "name": "spouse_cell",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 19,
+      "name": "spouse_work_phone",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 20,
+      "name": "taxpayer_email",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 21,
+      "name": "spouse_email",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 22,
+      "name": "address",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 23,
+      "name": "is_new_client",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 24,
+      "name": "prior_year_log",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 25,
+      "name": "id_type",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    }
+  ],
+  "returns": [
+    {
+      "cid": 0,
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 1
+    },
+    {
+      "cid": 1,
+      "name": "client_id",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 2,
+      "name": "log_number",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 3,
+      "name": "tax_year",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 4,
+      "name": "processor",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 5,
+      "name": "verified",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 6,
+      "name": "client_status",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 7,
+      "name": "intake_date",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 8,
+      "name": "transfer_2025_flag",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 9,
+      "name": "transfer_2026_flag",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 10,
+      "name": "email_marker",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 11,
+      "name": "date_emailed",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 12,
+      "name": "pickup_date",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 13,
+      "name": "logout_date",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 14,
+      "name": "updated_date",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 15,
+      "name": "is_amended",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 16,
+      "name": "has_w7",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 17,
+      "name": "is_extension",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 18,
+      "name": "transfer_flag",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 19,
+      "name": "efile_date",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 20,
+      "name": "ack_date",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 21,
+      "name": "drake_status_raw",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 22,
+      "name": "created_at",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 23,
+      "name": "updated_at",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 24,
+      "name": "filing_status",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 25,
+      "name": "interview_by",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 26,
+      "name": "promise_date",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 27,
+      "name": "delivered_by",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 28,
+      "name": "date_signatures_emailed",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 29,
+      "name": "date_reports_emailed",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 30,
+      "name": "overtime_flag",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 31,
+      "name": "insurance_type",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 32,
+      "name": "digital_assets",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 33,
+      "name": "bank_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 34,
+      "name": "bank_routing",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 35,
+      "name": "bank_account",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 36,
+      "name": "bank_account_type",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 37,
+      "name": "notes_intake",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 38,
+      "name": "estimate_irs",
+      "type": "REAL",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 39,
+      "name": "estimate_state",
+      "type": "REAL",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 40,
+      "name": "final_irs",
+      "type": "REAL",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 41,
+      "name": "final_state",
+      "type": "REAL",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 42,
+      "name": "signatures_given",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 43,
+      "name": "signatures_received",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 44,
+      "name": "contact_status",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 45,
+      "name": "last_contacted_date",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 46,
+      "name": "adjusted_gross_income",
+      "type": "REAL",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 47,
+      "name": "cancelled_fee",
+      "type": "REAL",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 48,
+      "name": "cancelled_reason",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 49,
+      "name": "cancelled_at",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 50,
+      "name": "signatures_given_method",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 51,
+      "name": "signatures_received_method",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 52,
+      "name": "extension_requested",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 53,
+      "name": "extension_filed_date",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 54,
+      "name": "extension_ack_status",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 55,
+      "name": "extension_ack_date",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 56,
+      "name": "extension_due_date",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 57,
+      "name": "filetrack_status",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 58,
+      "name": "filetrack_status_updated_at",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 59,
+      "name": "scan_deferred",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "0",
+      "pk": 0
+    }
+  ],
+  "spouses": [
+    {
+      "cid": 0,
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 1
+    },
+    {
+      "cid": 1,
+      "name": "client_id",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 2,
+      "name": "drake_spouse_id",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 3,
+      "name": "last_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 4,
+      "name": "first_name",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 5,
+      "name": "middle_initial",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 6,
+      "name": "date_of_birth",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 7,
+      "name": "derived_last_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 8,
+      "name": "source",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": "'TY2025 Drake import'",
+      "pk": 0
+    },
+    {
+      "cid": 9,
+      "name": "match_confidence",
+      "type": "REAL",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 10,
+      "name": "needs_review",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 11,
+      "name": "confirmed_at_intake",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 12,
+      "name": "created_at",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": "CURRENT_TIMESTAMP",
+      "pk": 0
+    },
+    {
+      "cid": 13,
+      "name": "taxpayer_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 14,
+      "name": "id_type",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    }
+  ],
+  "dependents": [
+    {
+      "cid": 0,
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 1
+    },
+    {
+      "cid": 1,
+      "name": "return_id",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 2,
+      "name": "full_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 3,
+      "name": "ssn_last4",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 4,
+      "name": "relationship",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 5,
+      "name": "date_of_birth",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 6,
+      "name": "medi_cal",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 7,
+      "name": "created_at",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 8,
+      "name": "is_deleted",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 9,
+      "name": "on_medicare",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "0",
+      "pk": 0
+    }
+  ],
+  "client_dependents": [
+    {
+      "cid": 0,
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 1
+    },
+    {
+      "cid": 1,
+      "name": "client_id",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 2,
+      "name": "drake_dependent_id",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 3,
+      "name": "last_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 4,
+      "name": "first_name",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 5,
+      "name": "date_of_birth",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 6,
+      "name": "relationship",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 7,
+      "name": "is_claimed_dependent",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "1",
+      "pk": 0
+    },
+    {
+      "cid": 8,
+      "name": "hoh_qualifier_only",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 9,
+      "name": "source",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": "'TY2025 Drake import'",
+      "pk": 0
+    },
+    {
+      "cid": 10,
+      "name": "match_confidence",
+      "type": "REAL",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 11,
+      "name": "needs_review",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 12,
+      "name": "confirmed_at_intake",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 13,
+      "name": "removed_for_ty2026",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 14,
+      "name": "created_at",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": "CURRENT_TIMESTAMP",
+      "pk": 0
+    },
+    {
+      "cid": 15,
+      "name": "taxpayer_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    }
+  ],
+  "client_billing": [
+    {
+      "cid": 0,
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 1
+    },
+    {
+      "cid": 1,
+      "name": "client_id",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 2,
+      "name": "balance_due",
+      "type": "REAL",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 3,
+      "name": "balance_as_of",
+      "type": "DATE",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 4,
+      "name": "source",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": "'TY2025 Drake import'",
+      "pk": 0
+    },
+    {
+      "cid": 5,
+      "name": "created_at",
+      "type": "TIMESTAMP",
+      "notnull": 0,
+      "dflt": "CURRENT_TIMESTAMP",
+      "pk": 0
+    }
+  ],
+  "drake_prefill_links": [
+    {
+      "cid": 0,
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 1
+    },
+    {
+      "cid": 1,
+      "name": "tax_year",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 2,
+      "name": "csm_ssn_last4",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 3,
+      "name": "csm_name_raw",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 4,
+      "name": "csm_name_norm",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 5,
+      "name": "client_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 6,
+      "name": "prefill_status",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 7,
+      "name": "disposition_status",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 8,
+      "name": "csm_status_raw",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 9,
+      "name": "csm_status_as_of",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 10,
+      "name": "csm_anchor_changed",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 11,
+      "name": "purple_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 12,
+      "name": "match_tier",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 13,
+      "name": "match_score",
+      "type": "REAL",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 14,
+      "name": "matched_variant",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 15,
+      "name": "resolved_by",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 16,
+      "name": "resolved_at",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 17,
+      "name": "import_batch_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 18,
+      "name": "created_at",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 19,
+      "name": "updated_at",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    }
+  ],
+  "drake_form_prefill": [
+    {
+      "cid": 0,
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 1
+    },
+    {
+      "cid": 1,
+      "name": "link_id",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 2,
+      "name": "tax_year",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 3,
+      "name": "form_counts",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 4,
+      "name": "return_type",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 5,
+      "name": "source_files",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 6,
+      "name": "created_at",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    }
+  ],
+  "drake_household_prefill": [
+    {
+      "cid": 0,
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 1
+    },
+    {
+      "cid": 1,
+      "name": "link_id",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 2,
+      "name": "tax_year",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 3,
+      "name": "taxpayer_dob",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 4,
+      "name": "taxpayer_phone",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 5,
+      "name": "taxpayer_email",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 6,
+      "name": "spouse_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 7,
+      "name": "spouse_dob",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 8,
+      "name": "spouse_phone",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 9,
+      "name": "dependents_json",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": "'[]'",
+      "pk": 0
+    },
+    {
+      "cid": 10,
+      "name": "source_file",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 11,
+      "name": "created_at",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 12,
+      "name": "updated_at",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    }
+  ],
+  "email_inbox": [
+    {
+      "cid": 0,
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 1
+    },
+    {
+      "cid": 1,
+      "name": "sender_email",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 2,
+      "name": "sender_domain",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 3,
+      "name": "subject_snippet",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 4,
+      "name": "filename",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 5,
+      "name": "original_filename",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 6,
+      "name": "file_path",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 7,
+      "name": "file_size_bytes",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 8,
+      "name": "received_at",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 9,
+      "name": "assigned_return_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 10,
+      "name": "assigned_by",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 11,
+      "name": "assigned_at",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 12,
+      "name": "is_assigned",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 13,
+      "name": "is_deleted",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 14,
+      "name": "sender_name",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 15,
+      "name": "suggested_return_id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 16,
+      "name": "suggestion_method",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 17,
+      "name": "suggestion_score",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    }
+  ],
+  "import_batches": [
+    {
+      "cid": 0,
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 1
+    },
+    {
+      "cid": 1,
+      "name": "filename",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 2,
+      "name": "file_hash",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 3,
+      "name": "imported_at",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 4,
+      "name": "status",
+      "type": "TEXT",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 5,
+      "name": "row_count",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 6,
+      "name": "success_count",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 7,
+      "name": "error_count",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 8,
+      "name": "review_count",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 9,
+      "name": "created_clients",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 10,
+      "name": "updated_clients",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 11,
+      "name": "created_returns",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 12,
+      "name": "updated_returns",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 13,
+      "name": "events_created",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    },
+    {
+      "cid": 14,
+      "name": "notes_created",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": "0",
+      "pk": 0
+    }
+  ],
+  "status_events": [
+    {
+      "cid": 0,
+      "name": "id",
+      "type": "INTEGER",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 1
+    },
+    {
+      "cid": 1,
+      "name": "return_id",
+      "type": "INTEGER",
+      "notnull": 1,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 2,
+      "name": "event_type",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 3,
+      "name": "old_status",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 4,
+      "name": "new_status",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 5,
+      "name": "event_timestamp",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 6,
+      "name": "source_file",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    },
+    {
+      "cid": 7,
+      "name": "note",
+      "type": "TEXT",
+      "notnull": 0,
+      "dflt": null,
+      "pk": 0
+    }
+  ]
+}

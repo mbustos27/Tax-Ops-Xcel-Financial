@@ -1,0 +1,425 @@
+*Include: "StdNames.gpd"
+*ResourceDLL: "brptui.dll"
+*MasterUnits: PAIR(300, 300)
+*PrinterType: SERIAL
+*MemoryUsage: LIST(RASTER)
+*RotateCoordinate?: FALSE
+*RotateRaster?: FALSE
+*RotateFont?: FALSE
+*Feature: Orientation
+{
+    *rcNameID: =ORIENTATION_DISPLAY
+    *DefaultOption: LANDSCAPE_CC270
+    *Option: PORTRAIT
+    {
+        *rcNameID: =PORTRAIT_DISPLAY
+    }
+    *Option: LANDSCAPE_CC270
+    {
+        *rcNameID: =LANDSCAPE_DISPLAY
+    }
+}
+*Feature: InputBin
+{
+    *rcNameID: =PAPER_SOURCE_DISPLAY
+    *DefaultOption: TAPE
+    *Option: TAPE
+    {
+        *rcNameID: 300	*% Tape
+    }
+}
+*Feature: Resolution
+{
+    *rcNameID: =RESOLUTION_DISPLAY
+    *DefaultOption: Option1
+    *Option: Option1
+    {
+        *Name: "300 x 300 " =DOTS_PER_INCH
+        *DPI: PAIR(300, 300)
+        *TextDPI: PAIR(300, 300)
+        *SpotDiameter: 100
+        *Command: CmdSendBlockData { *Cmd : "" }
+    }
+}
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: DC2990
+    *Option: 12-Tape
+    {
+        *Name: "12mm"
+        *PageDimensions: PAIR(142, 11811)
+        *PrintableArea: PAIR(106, 11741)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 2
+		*Params: LIST(PhysPaperWidth, PageNumber)
+        }
+    }
+    *Option: 29-Tape
+    {
+        *Name: "29mm"
+        *PageDimensions: PAIR(342, 11811)
+        *PrintableArea: PAIR(306, 11741)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 2
+		*Params: LIST(PhysPaperWidth, PageNumber)
+        }
+    }
+    *Option: 62-Tape
+    {
+        *Name: "62mm"
+        *PageDimensions: PAIR(732, 11811)
+        *PrintableArea: PAIR(696, 11741)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 2
+		*Params: LIST(PhysPaperWidth, PageNumber)
+        }
+    }
+    *Option: DC1754
+    {
+        *Name: "17mm x 54mm"
+        *PageDimensions: PAIR(201, 636)
+        *PrintableArea: PAIR(165, 566)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC1787
+    {
+        *Name: "17mm x 87mm"
+        *PageDimensions: PAIR(201, 1026)
+        *PrintableArea: PAIR(165, 956)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC2990
+    {
+        *Name: "29mm x 90mm"
+        *PageDimensions: PAIR(342, 1061)
+        *PrintableArea: PAIR(306, 991)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC3890
+    {
+        *Name: "38mm x 90mm"
+        *PageDimensions: PAIR(449, 1061)
+        *PrintableArea: PAIR(413, 991)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC5858
+    {
+        *Name: "58mm Dia"
+        *PageDimensions: PAIR(688, 688)
+        *PrintableArea: PAIR(618, 618)
+        *PrintableOrigin: PAIR(35, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC6229
+    {
+        *Name: "62mm x 29mm"
+        *PageDimensions: PAIR(732, 341)
+        *PrintableArea: PAIR(696, 271)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC62100
+    {
+        *Name: "62mm x 100mm"
+        *PageDimensions: PAIR(732, 1179)
+        *PrintableArea: PAIR(696, 1109)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC2990_1
+    {
+        *rcNameID: 350		*% "Standard Address Label"
+        *PageDimensions: PAIR(342, 1061)
+        *PrintableArea: PAIR(306, 991)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC3890_1
+    {
+        *rcNameID: 351		*% "Large Address Label"
+        *PageDimensions: PAIR(449, 1061)
+        *PrintableArea: PAIR(413, 991)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC6229_1
+    {
+        *rcNameID: 352		*% "Small Address Label"
+        *PageDimensions: PAIR(732, 341)
+        *PrintableArea: PAIR(696, 271)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC1754_1
+    {
+        *rcNameID: 353		*% "Return Address Label"
+        *PageDimensions: PAIR(201, 636)
+        *PrintableArea: PAIR(165, 566)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC62100_1
+    {
+        *rcNameID: 354		*% "Shipping Label"
+        *PageDimensions: PAIR(732, 1179)
+        *PrintableArea: PAIR(696, 1109)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC62100_2
+    {
+        *rcNameID: 355		*% "Visitor Name Badge Label"
+        *PageDimensions: PAIR(732, 1179)
+        *PrintableArea: PAIR(696, 1109)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC5858_1
+    {
+        *rcNameID: 356		*% "CD/DVD Label"
+        *PageDimensions: PAIR(688, 688)
+        *PrintableArea: PAIR(618, 618)
+        *PrintableOrigin: PAIR(35, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC1787_1
+    {
+        *rcNameID: 357		*% "File Folder Label"
+        *PageDimensions: PAIR(201, 1026)
+        *PrintableArea: PAIR(165, 956)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: DC1754_2
+    {
+        *rcNameID: 358		*% "Hanging File Folder Label"
+        *PageDimensions: PAIR(201, 636)
+        *PrintableArea: PAIR(165, 566)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 1
+		*Params: LIST(PhysPaperWidth, PhysPaperLength, PageNumber)
+        }
+    }
+    *Option: FloppyDisk
+    {
+        *rcNameID: 400		*% "Floppy Disk"
+        *PageDimensions: PAIR(732, 590)
+        *PrintableArea: PAIR(696, 520)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 2
+		*Params: LIST(PhysPaperWidth, PageNumber)
+        }
+    }
+    *Option: CompactFlash
+    {
+        *rcNameID: 401		*% "CompactFlash(TM)"
+        *PageDimensions: PAIR(142, 425)
+        *PrintableArea: PAIR(106, 355)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 2
+		*Params: LIST(PhysPaperWidth, PageNumber)
+        }
+    }
+    *Option: SmartMedia
+    {
+        *rcNameID: 402		*% "SmartMedia(TM)"
+        *PageDimensions: PAIR(142, 307)
+        *PrintableArea: PAIR(106, 237)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 2
+		*Params: LIST(PhysPaperWidth, PageNumber)
+        }
+    }
+    *Option: MemoryStick
+    {
+        *rcNameID: 403		*% "Memory Stick(TM)"
+        *PageDimensions: PAIR(142, 401)
+        *PrintableArea: PAIR(106, 331)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 2
+		*Params: LIST(PhysPaperWidth, PageNumber)
+        }
+    }
+    *Option: MO
+    {
+        *rcNameID: 404		*% "MO - Face"
+        *PageDimensions: PAIR(732, 531)
+        *PrintableArea: PAIR(696, 461)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 2
+		*Params: LIST(PhysPaperWidth, PageNumber)
+        }
+    }
+    *Option: Binder1
+    {
+        *rcNameID: 405		*% "Binder 1-1/4" - Spine"
+        *PageDimensions: PAIR(342, 2468)
+        *PrintableArea: PAIR(306, 2398)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 2
+		*Params: LIST(PhysPaperWidth, PageNumber)
+        }
+    }
+    *Option: Binder2
+    {
+        *rcNameID: 406		*% "Binder 2" - Spine"
+        *PageDimensions: PAIR(732, 2468)
+        *PrintableArea: PAIR(696, 2398)
+        *PrintableOrigin: PAIR(18, 35)
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 2
+		*Params: LIST(PhysPaperWidth, PageNumber)
+        }
+    }
+    *Option: CUSTOMSIZE
+    {
+        *rcNameID: =USER_DEFINED_SIZE_DISPLAY
+        *MinSize: PAIR(140, 293)
+        *MaxSize: PAIR(733, 11811)
+	*MaxPrintableWidth: 696
+	*CustPrintableOriginX:  %d{18}
+	*CustPrintableOriginY:  %d{35}
+	*CustPrintableSizeX:   %d{PhysPaperWidth-36}
+	*CustPrintableSizeY:  %d{PhysPaperLength-70}
+	*CustCursorOriginX:  %d{18}
+	*CustCursorOriginY:   %d{35}
+	*CenterPrintable?: FALSE
+        *Command: CmdSelect
+        {
+		*Order: PAGE_SETUP.2
+		*CallbackID: 2
+		*Params: LIST(PhysPaperWidth, PageNumber)
+        }
+    }
+}
+*Command: CmdStartJob
+{
+    *Order: JOB_SETUP.1
+    *Cmd: "<1B>@"
+}
+*Command: CmdStartPage
+{
+	*Order: PAGE_SETUP.1
+	*CallbackID: 3
+	*Params: LIST(PageNumber)
+}
+*Command: CmdEndDoc
+{
+    *Order: DOC_FINISH.1
+    *Cmd: "<1A>"
+}
+*Command: CmdCR { *Cmd : "" }
+*Command: CmdLF { *Cmd : "" }
+*Command: CmdFF { *Cmd : "" }

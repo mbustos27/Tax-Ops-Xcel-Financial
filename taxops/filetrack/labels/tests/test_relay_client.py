@@ -45,6 +45,39 @@ def test_network_failure_raises_relay_error_not_original_exception():
             print_label_via_relay("1234", relay_url="http://relay:8765/print", token="tok")
 
 
+def test_connect_timeout_message_distinguishes_unreachable_host():
+    import requests
+
+    with patch("requests.post", side_effect=requests.exceptions.ConnectTimeout("timed out")):
+        with pytest.raises(RelayError) as exc_info:
+            print_label_via_relay("1234", relay_url="http://relay:8765/print", token="tok")
+    msg = str(exc_info.value)
+    assert "TIMED OUT" in msg
+    assert "relay:8765" in msg
+    assert "DEPLOYMENT.md" in msg
+
+
+def test_connection_refused_message_distinguishes_relay_not_running():
+    import requests
+
+    with patch("requests.post", side_effect=requests.exceptions.ConnectionError("refused")):
+        with pytest.raises(RelayError) as exc_info:
+            print_label_via_relay("1234", relay_url="http://relay:8765/print", token="tok")
+    msg = str(exc_info.value)
+    assert "CONNECTION REFUSED" in msg
+    assert "not running" in msg
+
+
+def test_read_timeout_message_distinguishes_relay_hung():
+    import requests
+
+    with patch("requests.post", side_effect=requests.exceptions.ReadTimeout("no response")):
+        with pytest.raises(RelayError) as exc_info:
+            print_label_via_relay("1234", relay_url="http://relay:8765/print", token="tok")
+    msg = str(exc_info.value)
+    assert "accepted the connection but never responded" in msg
+
+
 def test_defaults_come_from_filetrack_config(monkeypatch):
     monkeypatch.setattr("filetrack.labels.relay_client.FILETRACK_RELAY_URL", "http://default-relay/print")
     monkeypatch.setattr("filetrack.labels.relay_client.FILETRACK_RELAY_TOKEN", "default-tok")

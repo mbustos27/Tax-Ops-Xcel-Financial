@@ -284,7 +284,7 @@ def _process_queue():
     try:
         pending = conn.execute(
             """
-            SELECT eq.*, rd.file_path, rd.filename, rd.doc_type
+            SELECT eq.*, rd.file_path, rd.filename, rd.doc_type, rd.source
             FROM extraction_queue eq
             JOIN return_documents rd ON eq.doc_id = rd.id
             WHERE eq.status = 'pending'
@@ -351,6 +351,7 @@ def _process_item(conn, item: dict) -> None:
     file_path = item["file_path"]
     filename = item["filename"]
     current_doc_type = item["doc_type"]
+    doc_source = (item.get("source") or "").strip().lower()
 
     if not file_path or not os.path.isfile(file_path):
         conn.execute(
@@ -394,7 +395,9 @@ def _process_item(conn, item: dict) -> None:
     conn.commit()
 
     try:
-        fields, method = _extract_fields(file_path, filename)
+        fields, method = _extract_fields(
+            file_path, filename, source=doc_source, conn=conn
+        )
 
         if method == "image_skipped":
             conn.execute(
@@ -560,6 +563,13 @@ def _process_item(conn, item: dict) -> None:
                     item_id,
                 ),
             )
+
+        try:
+            from document_fts import index_document_text
+
+            index_document_text(conn, doc_id, safe_fields)
+        except Exception as fts_exc:
+            logger.warning("FTS index failed for doc %s: %s", doc_id, fts_exc)
 
         conn.commit()
 
@@ -769,16 +779,90 @@ def _extract_json_retry_on_timeout(
     raise last_exc
 
 
+def _clean_extracted_fields(raw: dict[str, Any]) -> dict[str, Any]:
+    """Allow-list + SSN scrub — shared by Ollama and Claude paths."""
+    from utils import scrub_ssn_from_dict
+
+    scrubbed = scrub_ssn_from_dict(raw)
+    clean: dict[str, Any] = {}
+    for k, v in scrubbed.items():
+        if k not in _DOCUMENT_EXTRACT_ALLOWED_KEYS:
+            continue
+        if v is None:
+            continue
+        if k in FORM_INTEGER_COLUMNS:
+            if isinstance(v, bool):
+                clean[k] = v
+            elif isinstance(v, (int, float)):
+                clean[k] = bool(int(v))
+            else:
+                sraw = str(v).strip().lower()
+                clean[k] = sraw in ("1", "true", "yes", "y", "on")
+            continue
+        sval = str(v).strip()
+        if sval:
+            clean[k] = sval
+    return clean
+
+
+def _extract_via_claude(
+    file_path: str, filename: str, conn
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Claude vision path for scan-agent docs (cache + Haiku→Sonnet→Opus)."""
+    from ocr.claude_extract import extract_scan_document_claude
+
+    if conn is None:
+        from db import get_connection
+
+        conn = get_connection()
+        own_conn = True
+    else:
+        own_conn = False
+    try:
+        fields, method, meta = extract_scan_document_claude(
+            file_path, conn, filename=filename
+        )
+        conn.commit()
+        logger.info(
+            "Claude OCR %s for %s (cache_hit=%s api_calls=%s conf=%s)",
+            method,
+            filename,
+            meta.get("cache_hit"),
+            meta.get("api_calls"),
+            meta.get("confidence"),
+        )
+        if not fields:
+            return None, method if method else None
+        return _clean_extracted_fields(fields), method
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def _extract_fields(
-    file_path: str, filename: str
+    file_path: str,
+    filename: str,
+    *,
+    source: str | None = None,
+    conn=None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     """DEBT-8: returns (fields, method) only.  Confidence is computed separately
     by _compute_confidence once the detected_type is known.  Callers must not
     use the presence of fields as a proxy for confidence — always call
     _compute_confidence(fields, detected_type) explicitly.
+
+    When source == 'scan_agent', OCR uses Claude vision (PunchBridge-ported)
+    instead of Ollama — except native PDF text parse still wins when it works.
+    Email / manual_upload keep Ollama; vision gated by EXTRACTOR_VISION_ENABLED.
     """
     from form_store import _extract_pdf_text, _image_to_b64, _pdf_to_image_b64
-    from utils import scrub_ssn_from_dict
+
+    is_scan_agent = (source or "").strip().lower() == "scan_agent"
+    try:
+        from config import EXTRACTOR_VISION_ENABLED
+        allow_vision = bool(EXTRACTOR_VISION_ENABLED) or is_scan_agent
+    except Exception:
+        allow_vision = is_scan_agent
 
     try:
         ext = os.path.splitext(file_path)[1].lower()
@@ -791,6 +875,9 @@ def _extract_fields(
                 if native:
                     method = "native"
                     raw = native
+                elif is_scan_agent:
+                    # Scan-agent: Claude vision instead of Ollama text LLM.
+                    return _extract_via_claude(file_path, filename, conn)
                 else:
                     # Step 2: text LLM — slower but handles non-standard layouts.
                     method = "text"
@@ -807,7 +894,15 @@ def _extract_fields(
                         timeout=OLLAMA_EXTRACT_TIMEOUT_TEXT,
                     )
             else:
-                # Step 3: vision LLM — scanned / image-only PDF, no embedded text.
+                # Step 3: vision — scanned / image-only PDF, no embedded text.
+                if is_scan_agent:
+                    return _extract_via_claude(file_path, filename, conn)
+                if not allow_vision:
+                    logger.info(
+                        "Skipped vision for %s — no PDF text and vision disabled",
+                        filename,
+                    )
+                    return None, "image_skipped"
                 method = "vision"
                 image_b64 = _pdf_to_image_b64(file_path)
                 prompt = _build_vision_prompt()
@@ -824,8 +919,9 @@ def _extract_fields(
                 )
 
         elif ext in (".jpg", ".jpeg", ".png"):
-            from config import EXTRACTOR_VISION_ENABLED
-            if not EXTRACTOR_VISION_ENABLED:
+            if is_scan_agent:
+                return _extract_via_claude(file_path, filename, conn)
+            if not allow_vision:
                 logger.info(
                     "Skipped vision extraction for %s — image files are tagged manually",
                     filename,
@@ -849,29 +945,7 @@ def _extract_fields(
         if raw is None or not isinstance(raw, dict):
             return None, None
 
-        scrubbed = scrub_ssn_from_dict(raw)
-
-        allowed = _DOCUMENT_EXTRACT_ALLOWED_KEYS
-        clean: dict[str, Any] = {}
-        for k, v in scrubbed.items():
-            if k not in allowed:
-                continue
-            if v is None:
-                continue
-            if k in FORM_INTEGER_COLUMNS:
-                if isinstance(v, bool):
-                    clean[k] = v
-                elif isinstance(v, (int, float)):
-                    clean[k] = bool(int(v))
-                else:
-                    sraw = str(v).strip().lower()
-                    clean[k] = sraw in ("1", "true", "yes", "y", "on")
-                continue
-            sval = str(v).strip()
-            if sval:
-                clean[k] = sval
-
-        return clean, method
+        return _clean_extracted_fields(raw), method
 
     except Exception as e:
         logger.error("Field extraction failed for %s: %s", filename, e)

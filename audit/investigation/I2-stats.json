@@ -1,0 +1,362 @@
+{
+  "queries": {},
+  "live": {
+    "jul1_client_count": 191,
+    "timestamp_dist": [
+      {
+        "created_at": "2026-07-01 18:19:30",
+        "n": 179
+      },
+      {
+        "created_at": "2026-07-01T20:10:33Z",
+        "n": 11
+      },
+      {
+        "created_at": "2026-07-01T19:36:51+00:00",
+        "n": 1
+      }
+    ],
+    "column_fill": {
+      "has_ssn": 110,
+      "has_display": 190,
+      "has_address": 88,
+      "has_email": 0,
+      "has_cell": 88,
+      "n": 191
+    },
+    "exact_name_match_to_pre_jul1": 6,
+    "no_pre_match": 185,
+    "multi_pre_match": 0,
+    "samples_exact_pre": [
+      {
+        "jul1_id": 8,
+        "name": "ORMA SERVICES  INC, None",
+        "pre_id": 754,
+        "pre_created": "2026-04-21T22:06:58+00:00"
+      },
+      {
+        "jul1_id": 32,
+        "name": "MIAMAR FUTURE, LLC, None",
+        "pre_id": 654,
+        "pre_created": "2026-04-21T22:06:58+00:00"
+      },
+      {
+        "jul1_id": 107,
+        "name": "SANDOVAL AUTO SERVICE & TOW, None",
+        "pre_id": 1780,
+        "pre_created": "2026-04-22T21:51:31+00:00"
+      },
+      {
+        "jul1_id": 479,
+        "name": "PADILLA & GARCIA, ABEL & CLAUDIA E",
+        "pre_id": 1801,
+        "pre_created": "2026-04-28T22:13:13+00:00"
+      },
+      {
+        "jul1_id": 543,
+        "name": "GIMENEZ  & GARCIA, ENRIQUE P & LUVIA",
+        "pre_id": 1803,
+        "pre_created": "2026-04-28T22:13:13+00:00"
+      }
+    ],
+    "jul1_internal_display_dup_keys": 0,
+    "import_batches": [
+      {
+        "id": 1,
+        "filename": "TAX LOG 2025 Live.csv",
+        "file_hash": "f1dc8af055d65a377e6921aca3d3572923704ca459ad4884f5cc0c057f222867",
+        "imported_at": "2026-04-29T18:04:12.385988+00:00",
+        "status": "ok",
+        "row_count": 0,
+        "success_count": 0,
+        "error_count": 0,
+        "review_count": 0,
+        "created_clients": 0,
+        "updated_clients": 0,
+        "created_returns": 0,
+        "updated_returns": 0,
+        "events_created": 0,
+        "notes_created": 0
+      },
+      {
+        "id": 2,
+        "filename": "TAXOPS.csv",
+        "file_hash": "db293de9dc5e6d27d579c1c6e0398aa723cfc1fc8f0c0a5ace44b63400633e6a",
+        "imported_at": "2026-04-29T18:04:13.776078+00:00",
+        "status": "ok",
+        "row_count": 0,
+        "success_count": 0,
+        "error_count": 0,
+        "review_count": 0,
+        "created_clients": 0,
+        "updated_clients": 0,
+        "created_returns": 0,
+        "updated_returns": 0,
+        "events_created": 0,
+        "notes_created": 0
+      },
+      {
+        "id": 3,
+        "filename": "CSMDATA.csv",
+        "file_hash": "f5ba8f5572983e31d790bdb4065630e86c7cd2ccd0295773446d34346b8fd237",
+        "imported_at": "2026-04-29T18:04:14.764467+00:00",
+        "status": "ok",
+        "row_count": 0,
+        "success_count": 0,
+        "error_count": 0,
+        "review_count": 0,
+        "created_clients": 0,
+        "updated_clients": 0,
+        "created_returns": 0,
+        "updated_returns": 0,
+        "events_created": 0,
+        "notes_created": 0
+      },
+      {
+        "id": 4,
+        "filename": "drake_prefill_ty2024.json",
+        "file_hash": "66d0dd1b2c6a0e98ab868eaea63838509125b07c031380edfe03ed6e17fe366f",
+        "imported_at": "2026-08-07T22:04:40+00:00",
+        "status": "prefill_import",
+        "row_count": 1379,
+        "success_count": 0,
+        "error_count": 0,
+        "review_count": 0,
+        "created_clients": 0,
+        "updated_clients": 0,
+        "created_returns": 0,
+        "updated_returns": 0,
+        "events_created": 0,
+        "notes_created": 0
+      },
+      {
+        "id": 5,
+        "filename": "drake_prefill_ty2024.json",
+        "file_hash": "0e1cb6f520dc8d4f77123b4e4794e9da89b1d48fe1c72126348477d4e4773986",
+        "imported_at": "2026-08-07T23:38:12+00:00",
+        "status": "prefill_import",
+        "row_count": 1379,
+        "success_count": 0,
+        "error_count": 0,
+        "review_count": 0,
+        "created_clients": 0,
+        "updated_clients": 0,
+        "created_returns": 0,
+        "updated_returns": 0,
+        "events_created": 0,
+        "notes_created": 0
+      }
+    ]
+  },
+  "jul31": {
+    "jul1_client_count": 368,
+    "timestamp_dist": [
+      {
+        "created_at": "2026-07-01 18:19:30",
+        "n": 344
+      },
+      {
+        "created_at": "2026-07-01T20:10:33Z",
+        "n": 18
+      },
+      {
+        "created_at": "2026-07-01T20:15:12Z",
+        "n": 5
+      },
+      {
+        "created_at": "2026-07-01T19:36:51+00:00",
+        "n": 1
+      }
+    ],
+    "column_fill": {
+      "has_ssn": 0,
+      "has_display": 367,
+      "has_address": 39,
+      "has_email": 0,
+      "has_cell": 39,
+      "n": 368
+    },
+    "exact_name_match_to_pre_jul1": 159,
+    "no_pre_match": 209,
+    "multi_pre_match": 0,
+    "samples_exact_pre": [
+      {
+        "jul1_id": 8,
+        "name": "ORMA SERVICES  INC, None",
+        "pre_id": 754,
+        "pre_created": "2026-04-21T22:06:58+00:00"
+      },
+      {
+        "jul1_id": 9,
+        "name": "CATALPA DEVELOPMENT LLC, None",
+        "pre_id": 164,
+        "pre_created": "2026-04-21T22:06:58+00:00"
+      },
+      {
+        "jul1_id": 18,
+        "name": "DELGADO, NORMA A",
+        "pre_id": 240,
+        "pre_created": "2026-04-21T22:06:58+00:00"
+      },
+      {
+        "jul1_id": 32,
+        "name": "MIAMAR FUTURE, LLC, None",
+        "pre_id": 654,
+        "pre_created": "2026-04-21T22:06:58+00:00"
+      },
+      {
+        "jul1_id": 33,
+        "name": "MIAMAR INVESTMENTS INC, None",
+        "pre_id": 655,
+        "pre_created": "2026-04-21T22:06:58+00:00"
+      }
+    ],
+    "jul1_internal_display_dup_keys": 0,
+    "import_batches": [
+      {
+        "id": 1,
+        "filename": "TAX LOG 2025 Live.csv",
+        "file_hash": "f1dc8af055d65a377e6921aca3d3572923704ca459ad4884f5cc0c057f222867",
+        "imported_at": "2026-04-29T18:04:12.385988+00:00",
+        "status": "ok",
+        "row_count": 0,
+        "success_count": 0,
+        "error_count": 0,
+        "review_count": 0,
+        "created_clients": 0,
+        "updated_clients": 0,
+        "created_returns": 0,
+        "updated_returns": 0,
+        "events_created": 0,
+        "notes_created": 0
+      },
+      {
+        "id": 2,
+        "filename": "TAXOPS.csv",
+        "file_hash": "db293de9dc5e6d27d579c1c6e0398aa723cfc1fc8f0c0a5ace44b63400633e6a",
+        "imported_at": "2026-04-29T18:04:13.776078+00:00",
+        "status": "ok",
+        "row_count": 0,
+        "success_count": 0,
+        "error_count": 0,
+        "review_count": 0,
+        "created_clients": 0,
+        "updated_clients": 0,
+        "created_returns": 0,
+        "updated_returns": 0,
+        "events_created": 0,
+        "notes_created": 0
+      },
+      {
+        "id": 3,
+        "filename": "CSMDATA.csv",
+        "file_hash": "f5ba8f5572983e31d790bdb4065630e86c7cd2ccd0295773446d34346b8fd237",
+        "imported_at": "2026-04-29T18:04:14.764467+00:00",
+        "status": "ok",
+        "row_count": 0,
+        "success_count": 0,
+        "error_count": 0,
+        "review_count": 0,
+        "created_clients": 0,
+        "updated_clients": 0,
+        "created_returns": 0,
+        "updated_returns": 0,
+        "events_created": 0,
+        "notes_created": 0
+      }
+    ]
+  },
+  "aug7": {
+    "n": 244,
+    "with_ssn": 244,
+    "linked_in_prefill": 244,
+    "single_timestamp": [
+      [
+        "2026-08-07T22:27:47+00:00",
+        244
+      ]
+    ],
+    "sample": [
+      {
+        "id": 2195,
+        "name": "GARAY, ROCIO",
+        "ssn4": "6374"
+      },
+      {
+        "id": 2196,
+        "name": "S POU DENTAL CORP, None",
+        "ssn4": "1404"
+      },
+      {
+        "id": 2197,
+        "name": "DASHTINEZAHD, ZAHRA",
+        "ssn4": "6402"
+      },
+      {
+        "id": 2198,
+        "name": "RUIZ, JANETTE",
+        "ssn4": "3245"
+      },
+      {
+        "id": 2199,
+        "name": "SORIA SORIA, NORMA O",
+        "ssn4": "1945"
+      }
+    ]
+  },
+  "live_exact_name_duplicate_groups": {
+    "n_groups": 8,
+    "top": [
+      {
+        "ln": "ALVARADO",
+        "fn": "OSCAR",
+        "n": 2,
+        "ids": "1215,2272"
+      },
+      {
+        "ln": "HERNANDEZ",
+        "fn": "ABEL",
+        "n": 2,
+        "ids": "1440,2273"
+      },
+      {
+        "ln": "HERNANDEZ",
+        "fn": "ISMAEL",
+        "n": 2,
+        "ids": "659,2275"
+      },
+      {
+        "ln": "LUNA",
+        "fn": "ESTEBAN",
+        "n": 2,
+        "ids": "1278,2393"
+      },
+      {
+        "ln": "NUNO",
+        "fn": "JUAN",
+        "n": 2,
+        "ids": "731,2276"
+      },
+      {
+        "ln": "SOLOMON",
+        "fn": "LAUREN",
+        "n": 2,
+        "ids": "1709,2429"
+      },
+      {
+        "ln": "TASHAYOD",
+        "fn": "ALEX",
+        "n": 2,
+        "ids": "1506,2329"
+      },
+      {
+        "ln": "VALDEZ",
+        "fn": "SANDRA",
+        "n": 2,
+        "ids": "1344,2404"
+      }
+    ],
+    "n_groups_all": 8,
+    "extra_rows": 8
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "results": [
+    {
+      "key": "ORMA SERVICES INC",
+      "keep": 754,
+      "discard": 8,
+      "hist_id": 1,
+      "ok": true
+    },
+    {
+      "key": "MIAMAR FUTURE LLC",
+      "keep": 654,
+      "discard": 32,
+      "hist_id": 2,
+      "ok": true
+    },
+    {
+      "key": "KLEAN SOLAR SOLUTIONS LLC",
+      "keep": 517,
+      "discard": 854,
+      "hist_id": 3,
+      "ok": true
+    },
+    {
+      "key": "D R E AND ASSOCIATES",
+      "keep": 220,
+      "discard": 762,
+      "hist_id": 4,
+      "ok": true
+    },
+    {
+      "key": "SANDOVAL AUTO SERVICE TOW",
+      "keep": 1780,
+      "discard": 107,
+      "hist_id": 5,
+      "ok": true
+    },
+    {
+      "key": "PADILLA GARCIA|ABEL CLAUDIA E",
+      "keep": 1801,
+      "discard": 479,
+      "hist_id": 6,
+      "ok": true
+    },
+    {
+      "key": "GIMENEZ GARCIA|ENRIQUE P LUVIA",
+      "keep": 1803,
+      "discard": 543,
+      "hist_id": 7,
+      "ok": true
+    }
+  ],
+  "before": {
+    "clients": 1527,
+    "returns": 1615
+  },
+  "after": {
+    "clients": 1520,
+    "returns": 1606,
+    "history": 7
+  }
+}

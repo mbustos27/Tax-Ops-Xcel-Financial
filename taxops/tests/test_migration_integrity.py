@@ -176,3 +176,80 @@ def test_migration_idempotent_and_stays_valid_across_repeated_runs(pre_phase2_co
         init_db(conn)
         conn.close()
         assert _integrity_ok(pre_phase2_copy)
+
+
+# ── Phase 3.1: email_inbox.sender_name/suggested_return_id/suggestion_* ─────
+
+def _rewind_email_inbox_to_pre_3_1_shape(path: str) -> None:
+    """Roll email_inbox back to its pre-3.1 shape (no sender_name/suggestion
+    columns) with a real row, leaving every other table at current schema."""
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        DROP TABLE email_inbox;
+        CREATE TABLE email_inbox (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          sender_email        TEXT,
+          sender_domain       TEXT,
+          subject_snippet     TEXT,
+          filename            TEXT NOT NULL,
+          original_filename   TEXT,
+          file_path           TEXT NOT NULL,
+          file_size_bytes     INTEGER,
+          received_at         TEXT NOT NULL,
+          assigned_return_id  INTEGER REFERENCES returns(id),
+          assigned_by         TEXT,
+          assigned_at         TEXT,
+          is_assigned         INTEGER NOT NULL DEFAULT 0,
+          is_deleted          INTEGER NOT NULL DEFAULT 0
+        );
+
+        INSERT INTO email_inbox
+          (sender_email, sender_domain, subject_snippet, filename, original_filename,
+           file_path, file_size_bytes, received_at, is_assigned, is_deleted)
+          VALUES ('a@example.com', 'example.com', 'W-2', 'w2.pdf', 'w2.pdf',
+                  '/data/email_inbox/w2.pdf', 1024, '2026-01-01T00:00:00Z', 0, 0);
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+@pytest.fixture()
+def pre_3_1_email_inbox_copy(taxops_db_path):
+    _rewind_email_inbox_to_pre_3_1_shape(taxops_db_path)
+    return taxops_db_path
+
+
+def test_migration_adds_3_1_email_inbox_columns_and_preserves_rows(pre_3_1_email_inbox_copy):
+    from db import get_connection, init_db
+
+    assert _integrity_ok(pre_3_1_email_inbox_copy), "fixture DB must be valid before migrating"
+
+    conn = get_connection(pre_3_1_email_inbox_copy)
+    init_db(conn)
+
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(email_inbox)").fetchall()}
+    assert {"sender_name", "suggested_return_id", "suggestion_method", "suggestion_score"} <= cols
+
+    row = conn.execute(
+        "SELECT sender_email, filename, suggested_return_id, suggestion_method, sender_name "
+        "FROM email_inbox WHERE sender_email='a@example.com'"
+    ).fetchone()
+    assert row["filename"] == "w2.pdf", "pre-existing row must survive the migration"
+    assert row["suggested_return_id"] is None
+    assert row["suggestion_method"] is None
+    assert row["sender_name"] is None
+    conn.close()
+
+    assert _integrity_ok(pre_3_1_email_inbox_copy)
+
+
+def test_migration_3_1_idempotent_across_repeated_runs(pre_3_1_email_inbox_copy):
+    from db import get_connection, init_db
+
+    for _ in range(3):
+        conn = get_connection(pre_3_1_email_inbox_copy)
+        init_db(conn)
+        conn.close()
+        assert _integrity_ok(pre_3_1_email_inbox_copy)

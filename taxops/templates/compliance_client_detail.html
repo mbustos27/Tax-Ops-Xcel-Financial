@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} — {{ _('Compliance Tracker') }} — Tax Log{% endblock %}
+
+{% block content %}
+<div class="space-y-5 pb-10">
+  <div class="flex items-center justify-between">
+    <div>
+      <a href="/compliance" class="text-sm font-medium" style="color:var(--text-muted)">&larr; {{ _('Compliance Tracker') }}</a>
+      <h1 class="text-xl font-bold mt-1" style="color:var(--text-primary)">{{ client.name }}</h1>
+    </div>
+    {% if is_admin %}
+    <button type="button" id="ct-edit-client-btn" class="text-sm font-semibold px-4 py-2.5 rounded-xl"
+            style="color:var(--color-primary);border:1px solid var(--color-primary)">{{ _('Edit Client') }}</button>
+    {% endif %}
+  </div>
+
+  <!-- Client profile -->
+  <div class="rounded-2xl p-4 grid gap-3 sm:grid-cols-3" style="background:var(--bg-card);border:1px solid var(--border-default)" id="ct-client-view">
+    <div><div class="intake-label">{{ _('Type') }}</div><div style="color:var(--text-primary)">{{ _('Individual') if client.client_type == 'individual' else _('Business') }}</div></div>
+    <div><div class="intake-label">{{ _('Corp #') }}</div><div style="color:var(--text-primary)">{{ client.corp_number or '—' }}</div></div>
+    <div><div class="intake-label">{{ _('FEIN') }}</div><div style="color:var(--text-primary)">{{ client.fein or '—' }}</div></div>
+    <div><div class="intake-label">{{ _('Address') }}</div><div style="color:var(--text-primary)">{{ client.address or '—' }}</div></div>
+    <div><div class="intake-label">{{ _('City') }}</div><div style="color:var(--text-primary)">{{ client.city or '—' }}</div></div>
+    <div><div class="intake-label">{{ _('Zip') }}</div><div style="color:var(--text-primary)">{{ client.zip or '—' }}</div></div>
+    <div><div class="intake-label">{{ _('Phone') }}</div><div style="color:var(--text-primary)">{{ client.phone or '—' }}</div></div>
+    <div>
+      <div class="intake-label">{{ _('SSN (last 4)') }}</div>
+      {% if can_see_ssn %}
+        <div style="color:var(--text-primary)">{{ client.ssn_last4 or '—' }}</div>
+      {% else %}
+        <div style="color:var(--text-muted)">{{ _('Restricted — Admin or assigned preparer only') }}</div>
+      {% endif %}
+    </div>
+    <div>
+      <div class="intake-label">{{ _('Assigned Preparer') }}</div>
+      <div style="color:var(--text-primary)">
+        {% set assigned = preparers | selectattr('id', 'equalto', client.assigned_preparer_user_id) | list %}
+        {{ (assigned[0].display_name or assigned[0].username) if assigned else '—' }}
+      </div>
+    </div>
+  </div>
+
+  {% if is_admin %}
+  <div id="ct-client-edit-form" class="hidden rounded-2xl p-4 grid gap-3 sm:grid-cols-3" style="background:var(--bg-card);border:1px solid var(--border-default)">
+    <div><label class="intake-label">{{ _('Name') }}</label><input id="ce-name" class="intake-input w-full" value="{{ client.name }}"></div>
+    <div><label class="intake-label">{{ _('Type') }}</label>
+      <select id="ce-type" class="intake-input w-full">
+        <option value="business" {% if client.client_type == 'business' %}selected{% endif %}>{{ _('Business') }}</option>
+        <option value="individual" {% if client.client_type == 'individual' %}selected{% endif %}>{{ _('Individual') }}</option>
+      </select>
+    </div>
+    <div><label class="intake-label">{{ _('Corp #') }}</label><input id="ce-corp" class="intake-input w-full" value="{{ client.corp_number or '' }}"></div>
+    <div><label class="intake-label">{{ _('FEIN') }}</label><input id="ce-fein" class="intake-input w-full" value="{{ client.fein or '' }}"></div>
+    <div><label class="intake-label">{{ _('Address') }}</label><input id="ce-address" class="intake-input w-full" value="{{ client.address or '' }}"></div>
+    <div><label class="intake-label">{{ _('City') }}</label><input id="ce-city" class="intake-input w-full" value="{{ client.city or '' }}"></div>
+    <div><label class="intake-label">{{ _('Zip') }}</label><input id="ce-zip" class="intake-input w-full" value="{{ client.zip or '' }}"></div>
+    <div><label class="intake-label">{{ _('Phone') }}</label><input id="ce-phone" class="intake-input w-full" value="{{ client.phone or '' }}"></div>
+    <div><label class="intake-label">{{ _('SSN (last 4)') }}</label><input id="ce-ssn" class="intake-input w-full" maxlength="4" value="{{ client.ssn_last4 or '' }}"></div>
+    <div>
+      <label class="intake-label">{{ _('Assigned Preparer') }}</label>
+      <select id="ce-preparer" class="intake-input w-full">
+        <option value="">— {{ _('unassigned') }} —</option>
+        {% for p in preparers %}
+        <option value="{{ p.id }}" {% if client.assigned_preparer_user_id == p.id %}selected{% endif %}>{{ p.display_name or p.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="sm:col-span-3 flex justify-end gap-2">
+      <span id="ce-error" class="text-sm text-red-700 self-center"></span>
+      <button type="button" id="ce-cancel" class="text-sm font-medium px-4 py-2" style="color:var(--text-muted)">{{ _('Cancel') }}</button>
+      <button type="button" id="ce-save" class="text-sm font-semibold px-4 py-2 rounded-xl text-white" style="background:var(--color-primary)">{{ _('Save') }}</button>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Accounts -->
+  <div class="flex items-center justify-between">
+    <h2 class="text-lg font-bold" style="color:var(--text-primary)">{{ _('Accounts') }}</h2>
+    {% if is_admin %}
+    <button type="button" id="ct-new-account-btn" class="text-sm font-semibold px-4 py-2 rounded-xl"
+            style="color:var(--color-primary);border:1px solid var(--color-primary)">+ {{ _('Add Account') }}</button>
+    {% endif %}
+  </div>
+
+  {% if is_admin %}
+  <div id="ct-new-account-form" class="hidden rounded-2xl p-4 grid gap-3 sm:grid-cols-4" style="background:var(--bg-card);border:1px solid var(--border-default)">
+    <div><label class="intake-label">{{ _('Account Type') }}</label>
+      <select id="na-type" class="intake-input w-full">
+        {% for t in account_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div><label class="intake-label">{{ _('Account #') }}</label><input id="na-number" class="intake-input w-full"></div>
+    <div><label class="intake-label">{{ _('City (city_license only)') }}</label><input id="na-city" class="intake-input w-full"></div>
+    <div><label class="intake-label">{{ _('Frequency') }}</label>
+      <select id="na-frequency" class="intake-input w-full">
+        {% for f in frequencies %}<option value="{{ f }}" {% if f == 'quarterly' %}selected{% endif %}>{{ f }}</option>{% endfor %}
+      </select>
+    </div>
+    <div><label class="intake-label">{{ _('Fee') }}</label><input id="na-fee" type="number" step="0.01" class="intake-input w-full"></div>
+    <div>
+      <label class="intake-label">{{ _('Credential') }}</label>
+      <select id="na-credential" class="intake-input w-full">
+        <option value="">— {{ _('none') }} —</option>
+        {% for c in all_credentials %}
+        <option value="{{ c.id }}">{{ c.login_username_masked }}{% if c.shared_login %} ({{ _('shared') }}){% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="sm:col-span-4 flex justify-end gap-2">
+      <span id="na-error" class="text-sm text-red-700 self-center"></span>
+      <button type="button" id="na-cancel" class="text-sm font-medium px-4 py-2" style="color:var(--text-muted)">{{ _('Cancel') }}</button>
+      <button type="button" id="na-save" class="text-sm font-semibold px-4 py-2 rounded-xl text-white" style="background:var(--color-primary)">{{ _('Create') }}</button>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="grid gap-3">
+    {% for a in accounts %}
+    <div class="rounded-2xl p-4" style="background:var(--bg-card);border:1px solid var(--border-default)">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <span class="text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full" style="background:var(--color-primary);color:white">{{ a.account_type }}</span>
+          <span class="ml-2 font-semibold" style="color:var(--text-primary)">{{ a.account_number or '—' }}</span>
+          {% if a.city_name %}<span style="color:var(--text-secondary)"> · {{ a.city_name }}</span>{% endif %}
+          <span style="color:var(--text-muted)"> · {{ a.frequency }}</span>
+          {% if not a.active %}<span class="text-xs font-bold uppercase text-red-700 ml-2">{{ _('inactive') }}</span>{% endif %}
+        </div>
+        <div style="color:var(--text-secondary)">{{ _('Fee') }}: ${{ "%.2f"|format(a.fee) if a.fee is not none else '—' }}</div>
+      </div>
+      {% if a.login_username is defined and a.login_username %}
+      <div class="mt-2 text-sm flex items-center gap-2" style="color:var(--text-secondary)">
+        {{ _('Login') }}: <span class="font-mono">{{ a.login_username_masked }}</span>
+        {% if a.shared_login %}<span class="text-xs font-bold uppercase text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">{{ _('Shared login — check who else depends on it before resetting') }}</span>{% endif %}
+        {% if a.needs_rotation %}<span class="text-xs font-bold uppercase text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">{{ _('Needs rotation') }}</span>{% endif %}
+        {% if is_admin and a.has_password %}
+        <button type="button" class="ct-reveal-btn text-xs font-semibold underline" style="color:var(--color-primary)" data-credential-id="{{ a.credential_id }}">{{ _('Reveal password') }}</button>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% set periods = periods_by_account.get(a.id, []) %}
+      {% if periods %}
+      <div class="mt-3 flex flex-wrap gap-2">
+        {% for p in periods %}
+        <span class="text-xs rounded-full px-2.5 py-1 border" style="border-color:var(--border-default);color:var(--text-secondary)">
+          {{ p.period_label }} — <span class="font-semibold" style="color:var(--text-primary)">{{ p.status }}</span>
+        </span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="rounded-2xl p-6 text-center" style="background:var(--bg-card);border:1px solid var(--border-default);color:var(--text-muted)">
+      {{ _('No accounts yet') }}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Correspondence log -->
+  <h2 class="text-lg font-bold" style="color:var(--text-primary)">{{ _('Correspondence Log') }}</h2>
+  {% if can_manage_filings %}
+  <div class="rounded-2xl p-4 grid gap-3 sm:grid-cols-4" style="background:var(--bg-card);border:1px solid var(--border-default)">
+    <div><label class="intake-label">{{ _('Month') }}</label><input id="cn-month" class="intake-input w-full" placeholder="2026-03"></div>
+    <div><label class="intake-label">{{ _('Type') }}</label>
+      <select id="cn-type" class="intake-input w-full">
+        {% for t in note_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="sm:col-span-2"><label class="intake-label">{{ _('Note') }}</label><input id="cn-note" class="intake-input w-full"></div>
+    <div class="sm:col-span-4 flex justify-end gap-2">
+      <span id="cn-error" class="text-sm text-red-700 self-center"></span>
+      <button type="button" id="cn-save" class="text-sm font-semibold px-4 py-2 rounded-xl text-white" style="background:var(--color-primary)">{{ _('Add Note') }}</button>
+    </div>
+  </div>
+  {% endif %}
+  <div class="rounded-2xl overflow-hidden" style="background:var(--bg-card);border:1px solid var(--border-default)">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left" style="color:var(--text-muted);border-bottom:1px solid var(--border-default)">
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Month') }}</th>
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Type') }}</th>
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Note') }}</th>
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('By') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for n in notes %}
+        <tr class="border-t" style="border-color:var(--border-subtle,var(--border-default))">
+          <td class="px-4 py-2.5" style="color:var(--text-primary)">{{ n.month }}</td>
+          <td class="px-4 py-2.5" style="color:var(--text-secondary)">{{ n.note_type }}</td>
+          <td class="px-4 py-2.5" style="color:var(--text-primary)">{{ n.note }}</td>
+          <td class="px-4 py-2.5" style="color:var(--text-secondary)">{{ n.display_name or n.username or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="px-4 py-8 text-center" style="color:var(--text-muted)">{{ _('No notes yet') }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function () {
+  const clientId = {{ client.id }};
+
+  // Edit client toggle
+  const editBtn = document.getElementById('ct-edit-client-btn');
+  const viewBlock = document.getElementById('ct-client-view');
+  const editForm = document.getElementById('ct-client-edit-form');
+  if (editBtn) {
+    editBtn.addEventListener('click', () => { viewBlock.classList.add('hidden'); editForm.classList.remove('hidden'); });
+    document.getElementById('ce-cancel').addEventListener('click', () => { editForm.classList.add('hidden'); viewBlock.classList.remove('hidden'); });
+    document.getElementById('ce-save').addEventListener('click', async () => {
+      const errEl = document.getElementById('ce-error');
+      errEl.textContent = '';
+      const payload = {
+        name: document.getElementById('ce-name').value.trim(),
+        client_type: document.getElementById('ce-type').value,
+        corp_number: document.getElementById('ce-corp').value.trim(),
+        fein: document.getElementById('ce-fein').value.trim(),
+        address: document.getElementById('ce-address').value.trim(),
+        city: document.getElementById('ce-city').value.trim(),
+        zip: document.getElementById('ce-zip').value.trim(),
+        phone: document.getElementById('ce-phone').value.trim(),
+        ssn_last4: document.getElementById('ce-ssn').value.trim(),
+        assigned_preparer_user_id: document.getElementById('ce-preparer').value || null,
+      };
+      const resp = await _csrfFetch(`/api/compliance/clients/${clientId}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (data.error) { errEl.textContent = data.error; return; }
+      window.location.reload();
+    });
+  }
+
+  // New account toggle
+  const naBtn = document.getElementById('ct-new-account-btn');
+  const naForm = document.getElementById('ct-new-account-form');
+  if (naBtn) {
+    naBtn.addEventListener('click', () => naForm.classList.toggle('hidden'));
+    document.getElementById('na-cancel').addEventListener('click', () => naForm.classList.add('hidden'));
+    document.getElementById('na-save').addEventListener('click', async () => {
+      const errEl = document.getElementById('na-error');
+      errEl.textContent = '';
+      const payload = {
+        compliance_client_id: clientId,
+        account_type: document.getElementById('na-type').value,
+        account_number: document.getElementById('na-number').value.trim(),
+        city_name: document.getElementById('na-city').value.trim(),
+        frequency: document.getElementById('na-frequency').value,
+        fee: document.getElementById('na-fee').value || null,
+        credential_id: document.getElementById('na-credential').value || null,
+      };
+      const resp = await _csrfFetch('/api/compliance/accounts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (data.error) { errEl.textContent = data.error; return; }
+      window.location.reload();
+    });
+  }
+
+  // Correspondence note
+  const cnSave = document.getElementById('cn-save');
+  if (cnSave) {
+    cnSave.addEventListener('click', async () => {
+      const errEl = document.getElementById('cn-error');
+      errEl.textContent = '';
+      const payload = {
+        compliance_client_id: clientId,
+        month: document.getElementById('cn-month').value.trim(),
+        note_type: document.getElementById('cn-type').value,
+        note: document.getElementById('cn-note').value.trim(),
+      };
+      const resp = await _csrfFetch('/api/compliance/correspondence', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (data.error) { errEl.textContent = data.error; return; }
+      window.location.reload();
+    });
+  }
+
+  // Reveal credential — plaintext shown ONCE in a transient alert, never
+  // left sitting in the DOM (no persistent element holds the value).
+  document.querySelectorAll('.ct-reveal-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const credId = btn.getAttribute('data-credential-id');
+      if (!confirm('{{ _("This reveal will be logged in the audit trail with your username and the time. Continue?") }}')) return;
+      const resp = await _csrfFetch(`/api/compliance/credentials/${credId}/reveal`, { method: 'POST' });
+      const data = await resp.json();
+      if (data.error) { alert(data.error); return; }
+      alert('{{ _("Username") }}: ' + data.login_username + '\n{{ _("Password") }}: ' + data.password);
+    });
+  });
+})();
+</script>
+{% endblock %}

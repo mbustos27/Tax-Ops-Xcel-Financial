@@ -1,0 +1,232 @@
+{
+  "generated_at": "2026-08-13T22:46:00Z",
+  "sha256": "33bcda025ef8a4db1e7b189da13dbebbd7c7ea170d2f9c5f5220a6ca6cf529c8",
+  "n_joinable": 707,
+  "n_clients_live": 1493,
+  "n_diff_person_excluded": 19,
+  "fs_counts_joinable": {
+    "4": 158,
+    "1": 284,
+    "2": 232,
+    "3": 4,
+    "5": 1
+  },
+  "single_with_spouse": 15,
+  "mfj_no_spouse": 48,
+  "extrapolate_single_spouse": 32,
+  "extrapolate_mfj_none": 101,
+  "samples_single_spouse": [
+    {
+      "client_id": 1079,
+      "invoice": "251256",
+      "bare": "1256",
+      "name": "HERRERA, BERTHA",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 940,
+      "invoice": "250503",
+      "bare": "503",
+      "name": "SANDOVAL, ADRIANA",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 498,
+      "invoice": "250168",
+      "bare": "168",
+      "name": "LOPEZ, JUAN",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 1326,
+      "invoice": "251258",
+      "bare": "1258",
+      "name": "CHAVARRIA, ALFREDO",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 527,
+      "invoice": "251080",
+      "bare": "1080",
+      "name": "LAZO, ANNABEL",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 143,
+      "invoice": "250364",
+      "bare": "364",
+      "name": "CARDONA, HECTOR",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 352,
+      "invoice": "250394",
+      "bare": "394",
+      "name": "VEGA, DIANA",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 994,
+      "invoice": "251087",
+      "bare": "1087",
+      "name": "LEMUS, EVELYN",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 644,
+      "invoice": "250855",
+      "bare": "855",
+      "name": "MENDEZ, SERGIO",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 672,
+      "invoice": "250771",
+      "bare": "771",
+      "name": "MONTEJO GONZALEZ, MIGUEL",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 523,
+      "invoice": "251143",
+      "bare": "1143",
+      "name": "LANDEROS, AURELIO",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 747,
+      "invoice": "251059",
+      "bare": "1059",
+      "name": "OLEA, ALEJANDRA",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 222,
+      "invoice": "250674",
+      "bare": "674",
+      "name": "DAKAK, JASMINE",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 731,
+      "invoice": "250591",
+      "bare": "591",
+      "name": "NUNO, JUAN",
+      "drake_spouse": ""
+    },
+    {
+      "client_id": 119,
+      "invoice": "250150",
+      "bare": "150",
+      "name": "HERAS, SANTANA",
+      "drake_spouse": ""
+    }
+  ],
+  "samples_mfj_none": [
+    {
+      "client_id": 1542,
+      "invoice": "250702",
+      "bare": "702",
+      "name": "HUERTA, JACOB",
+      "drake_spouse": "STEPHANIE ALANIS"
+    },
+    {
+      "client_id": 1534,
+      "invoice": "250427",
+      "bare": "427",
+      "name": "JIMENEZ ESCOTO, RAUL",
+      "drake_spouse": "VIRGINIA MORENO BERNAL"
+    },
+    {
+      "client_id": 432,
+      "invoice": "250479",
+      "bare": "479",
+      "name": "ARROYO HERNANDEZ, HUMBERTO",
+      "drake_spouse": "MARIA HERNANDEZ"
+    },
+    {
+      "client_id": 1683,
+      "invoice": "250458",
+      "bare": "458",
+      "name": "BRAVO, VINCENT",
+      "drake_spouse": "ELISA BRAVO"
+    },
+    {
+      "client_id": 7,
+      "invoice": "250181",
+      "bare": "181",
+      "name": "VELASQUEZ, CARLOS G",
+      "drake_spouse": "MARIA E VELASQUEZ"
+    },
+    {
+      "client_id": 2128,
+      "invoice": "251253",
+      "bare": "1253",
+      "name": "LOPEZ, AURELIO",
+      "drake_spouse": "LUCERO LOPEZ"
+    },
+    {
+      "client_id": 957,
+      "invoice": "251043",
+      "bare": "1043",
+      "name": "RAMIREZ, ROBERT",
+      "drake_spouse": "MARIA BALBOA"
+    },
+    {
+      "client_id": 1627,
+      "invoice": "250175",
+      "bare": "175",
+      "name": "MUNGUIA, FEDERICO",
+      "drake_spouse": "MARIBEL MUNOZ"
+    },
+    {
+      "client_id": 307,
+      "invoice": "250347",
+      "bare": "347",
+      "name": "LIMA-MARROQUIN, ALFONSO",
+      "drake_spouse": "T TORRES"
+    },
+    {
+      "client_id": 690,
+      "invoice": "250745",
+      "bare": "745",
+      "name": "YANEZ, ANGEL",
+      "drake_spouse": "MARGARITA MENDOZA"
+    },
+    {
+      "client_id": 1448,
+      "invoice": "250188",
+      "bare": "188",
+      "name": "GOMEZ, CAROLINA",
+      "drake_spouse": "JUAN GOMEZ"
+    },
+    {
+      "client_id": 643,
+      "invoice": "250698",
+      "bare": "698",
+      "name": "MICLAT JR, ALEX",
+      "drake_spouse": "ELIZABETH MICLAT"
+    },
+    {
+      "client_id": 1506,
+      "invoice": "250700",
+      "bare": "700",
+      "name": "TASHAYOD, ALEX",
+      "drake_spouse": "SHIDEH ALEDAVOOD"
+    },
+    {
+      "client_id": 999,
+      "invoice": "251092",
+      "bare": "1092",
+      "name": "REYES SOLIS, GASPAR",
+      "drake_spouse": "N AGUILAR"
+    },
+    {
+      "client_id": 1081,
+      "invoice": "251180",
+      "bare": "1180",
+      "name": "TAREEN, MOHAMMED",
+      "drake_spouse": "FARHAT CHOUDHRY"
+    }
+  ]
+}

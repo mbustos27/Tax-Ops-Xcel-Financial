@@ -1,0 +1,1042 @@
+{
+  "generated_at": "2026-08-11T23:58:30Z",
+  "pinned_cut": 772,
+  "named_log_rows_searched": 1251,
+  "drake_collision_keys": 19,
+  "n_claimants": 40,
+  "action_counts": {
+    "CORRECT_DRAKE_BAND1_SAFE": 29,
+    "MINT_NEW_LOG": 3,
+    "KEEPER_CANDIDATE": 2,
+    "CORRECT_DRAKE_BAND2_REVIEW": 6
+  },
+  "band_safety": {
+    "band1_safe": 29,
+    "mint": 3,
+    "keeper": 2,
+    "band2_review": 6
+  },
+  "note": "Cut=772. CORRECT_DRAKE_BAND1_SAFE are cleared for office. BAND2_REVIEW need human. Bare 141 first for I7. Canonical: tax_year then Drake/TaxOps agree.",
+  "collisions": [
+    {
+      "bare_log": "1095",
+      "classification": "c_family_plus_other",
+      "canonical_on_bare": null,
+      "log_rows_on_bare": [],
+      "claimant_outcomes": [
+        {
+          "claimant": "GUTIERREZ, JOAO",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `968` (row 715, GUTIERREZ, JOAO, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `1095`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "968",
+              "source_row": 715,
+              "name": "GUTIERREZ, JOAO",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "GUTIERREZ, MERCEDES",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `967` (row 714, GUTIERREZ, MERCEDES, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `1095`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "967",
+              "source_row": 714,
+              "name": "GUTIERREZ, MERCEDES",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "RODRIGUEZ, JAVIER",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `962` (row 709, RODRIGUEZ, JAVIER, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `1095`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "962",
+              "source_row": 709,
+              "name": "RODRIGUEZ, JAVIER",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "141",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 10,
+        "name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 10,
+          "name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        },
+        {
+          "source_row": 912,
+          "name": "CHAN, THY",
+          "yr": 24,
+          "status": "PROCESSING",
+          "band": "band2"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "GOYTIA, SANDRA",
+          "action": "MINT_NEW_LOG",
+          "action_detail": "No Log entry for `GOYTIA, SANDRA`. Mint after keeper chosen.",
+          "fuzzy_only": false,
+          "log_hits": []
+        },
+        {
+          "claimant": "PEREZ, ANDRES",
+          "action": "KEEPER_CANDIDATE",
+          "action_detail": "Found on Log only under collision bare `141` (rows [10]). Likely keeper.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "141",
+              "source_row": 10,
+              "name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "VILLAREAL, RICHARD",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `143` (row 12, VILLAREAL, RICHARD P, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `141`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "143",
+              "source_row": 12,
+              "name": "VILLAREAL, RICHARD P",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "247",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 102,
+        "name": "VILLALTA, ROSALINDA V",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 102,
+          "name": "VILLALTA, ROSALINDA V",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "BRAVO, VICTORIA",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `242` (row 97, BRAVO, VICTORIA, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `247`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "242",
+              "source_row": 97,
+              "name": "BRAVO, VICTORIA",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "PERFECT SMILE MANAGEMENT CORP",
+          "action": "MINT_NEW_LOG",
+          "action_detail": "No Log entry for `PERFECT SMILE MANAGEMENT CORP`. Mint after keeper chosen.",
+          "fuzzy_only": false,
+          "log_hits": []
+        }
+      ]
+    },
+    {
+      "bare_log": "787",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 534,
+        "name": "JACKSON, IRENE",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 534,
+          "name": "JACKSON, IRENE",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "CREATE YOUR HEALTH LLC",
+          "action": "CORRECT_DRAKE_BAND2_REVIEW",
+          "action_detail": "Claimant already on Log bare `597` (row 1027, CREATE YOUR HEALTH LLC, yr=25, status=PROCESSING, band2). Correct Drake away from collision bare `787`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "597",
+              "source_row": 1027,
+              "name": "CREATE YOUR HEALTH LLC",
+              "yr": 25,
+              "status": "PROCESSING",
+              "band": "band2"
+            }
+          ]
+        },
+        {
+          "claimant": "VICENTE, JOSE",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `775` (row 522, VICENTE, JOSE, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `787`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "775",
+              "source_row": 522,
+              "name": "VICENTE, JOSE",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "203",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 58,
+        "name": "COLLAZO, MIGUEL & MAYRA",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 58,
+          "name": "COLLAZO, MIGUEL & MAYRA",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "LAZO, BREANNA",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `680` (row 453, LAZO, BREANNA L, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `203`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "680",
+              "source_row": 453,
+              "name": "LAZO, BREANNA L",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "NUNO, MARIBEL",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `199` (row 54, NUNO, MARIBEL M, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `203`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "199",
+              "source_row": 54,
+              "name": "NUNO, MARIBEL M",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "207",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 62,
+        "name": "GONZALEZ, MARTHA",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 62,
+          "name": "GONZALEZ, MARTHA",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "COLLAZO, MAYRA",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `203` (row 58, COLLAZO, MIGUEL & MAYRA, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `207`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "203",
+              "source_row": 58,
+              "name": "COLLAZO, MIGUEL & MAYRA",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "RAMOS, VALERIE",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `218` (row 73, RAMOS, VALERIE, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `207`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "218",
+              "source_row": 73,
+              "name": "RAMOS, VALERIE",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "1103",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 1163,
+        "name": "QUINTANA, ROGELIO JR",
+        "yr": 25,
+        "status": "REVIEW",
+        "band": "band2"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 1163,
+          "name": "QUINTANA, ROGELIO JR",
+          "yr": 25,
+          "status": "REVIEW",
+          "band": "band2"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "QUINTANA, ROGELIO",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `464` (row 259, QUINTANA, ROGELIO L, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `1103`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "464",
+              "source_row": 259,
+              "name": "QUINTANA, ROGELIO L",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            },
+            {
+              "bare_log": "1103",
+              "source_row": 1163,
+              "name": "QUINTANA, ROGELIO JR",
+              "yr": 25,
+              "status": "REVIEW",
+              "band": "band2"
+            }
+          ]
+        },
+        {
+          "claimant": "SANCHEZ ARCE, EUNICE",
+          "action": "CORRECT_DRAKE_BAND2_REVIEW",
+          "action_detail": "Claimant already on Log bare `1171` (row 1231, SANCHEZ ARCE, EUNICE, yr=25, status=PROCESSING, band2). Correct Drake away from collision bare `1103`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "1171",
+              "source_row": 1231,
+              "name": "SANCHEZ ARCE, EUNICE",
+              "yr": 25,
+              "status": "PROCESSING",
+              "band": "band2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "339",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 171,
+        "name": "GOMEZ, VIVIANA",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 171,
+          "name": "GOMEZ, VIVIANA",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "AGUILAR, AMBER",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `341` (row 173, AGUILAR, AMBER, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `339`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "341",
+              "source_row": 173,
+              "name": "AGUILAR, AMBER",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "LOPEZ, SAUL",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `338` (row 170, LOPEZ, SAUL & YESENIA, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `339`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "338",
+              "source_row": 170,
+              "name": "LOPEZ, SAUL & YESENIA",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "206",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 61,
+        "name": "SERRATO, ROCHELLE M",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 61,
+          "name": "SERRATO, ROCHELLE M",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "BRICENO, JUAN",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `217` (row 72, BRICENO, JUAN, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `206`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "217",
+              "source_row": 72,
+              "name": "BRICENO, JUAN",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "DELGADO, TIFFANY",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `202` (row 57, DELGADO, TIFFANY, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `206`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "202",
+              "source_row": 57,
+              "name": "DELGADO, TIFFANY",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "888",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 635,
+        "name": "VALENCIA, NICOLE",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 635,
+          "name": "VALENCIA, NICOLE",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "DURAN, AGUSTIN",
+          "action": "CORRECT_DRAKE_BAND2_REVIEW",
+          "action_detail": "Claimant already on Log bare `653` (row 1083, DURAN, AGUSTIN JR, yr=25, status=HOLD, band2). Correct Drake away from collision bare `888`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "640",
+              "source_row": 1070,
+              "name": "DURAN ROJAS, AGUSTIN & GUADALUPE",
+              "yr": 25,
+              "status": "HOLD",
+              "band": "band2"
+            },
+            {
+              "bare_log": "653",
+              "source_row": 1083,
+              "name": "DURAN, AGUSTIN JR",
+              "yr": 25,
+              "status": "HOLD",
+              "band": "band2"
+            }
+          ]
+        },
+        {
+          "claimant": "HUERTA, JESUS",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `855` (row 602, HUERTA, JESUS & EVELYN, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `888`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "855",
+              "source_row": 602,
+              "name": "HUERTA, JESUS & EVELYN",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "1038",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": null,
+      "log_rows_on_bare": [],
+      "claimant_outcomes": [
+        {
+          "claimant": "JORGE BARAJAS, ISRAEL",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `933` (row 680, BARAJAS, ISRAEL JORGE, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `1038`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "933",
+              "source_row": 680,
+              "name": "BARAJAS, ISRAEL JORGE",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "MONTIEL FREYRE, SAMANTA",
+          "action": "MINT_NEW_LOG",
+          "action_detail": "No Log entry for `MONTIEL FREYRE, SAMANTA`. Mint after keeper chosen.",
+          "fuzzy_only": false,
+          "log_hits": []
+        }
+      ]
+    },
+    {
+      "bare_log": "1075",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": null,
+      "log_rows_on_bare": [],
+      "claimant_outcomes": [
+        {
+          "claimant": "LEDESMA, DAVID",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `955` (row 702, LEDESMA, DAVID D & ALICIA D, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `1075`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "955",
+              "source_row": 702,
+              "name": "LEDESMA, DAVID D & ALICIA D",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "RODRIGUEZ, LEONOR",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `954` (row 701, RODRIGUEZ, LEONOR, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `1075`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "954",
+              "source_row": 701,
+              "name": "RODRIGUEZ, LEONOR",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "910",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 657,
+        "name": "GAMBOA, ALEX",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 657,
+          "name": "GAMBOA, ALEX",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "GALLARDO, LORENZO",
+          "action": "CORRECT_DRAKE_BAND2_REVIEW",
+          "action_detail": "Claimant already on Log bare `647` (row 1077, GALLARDO, LORENZO & MARTHA, yr=25, status=HOLD, band2). Correct Drake away from collision bare `910`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "647",
+              "source_row": 1077,
+              "name": "GALLARDO, LORENZO & MARTHA",
+              "yr": 25,
+              "status": "HOLD",
+              "band": "band2"
+            }
+          ]
+        },
+        {
+          "claimant": "YANEZ, ELEUTERIO",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `862` (row 609, YANEZ, ELEUTERIO, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `910`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "862",
+              "source_row": 609,
+              "name": "YANEZ, ELEUTERIO",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "862",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 609,
+        "name": "YANEZ, ELEUTERIO",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 609,
+          "name": "YANEZ, ELEUTERIO",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "LUNA, JACINTO",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `834` (row 581, LUNA, JACINTO & JUANA, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `862`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "834",
+              "source_row": 581,
+              "name": "LUNA, JACINTO & JUANA",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            },
+            {
+              "bare_log": "64",
+              "source_row": 835,
+              "name": "LUNA, JACINTO & JUANA",
+              "yr": 24,
+              "status": "OLD PICKUP",
+              "band": "band2"
+            }
+          ]
+        },
+        {
+          "claimant": "MURILLO, JULIO",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `835` (row 582, MURILLO, JULIO & LORETTA, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `862`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "835",
+              "source_row": 582,
+              "name": "MURILLO, JULIO & LORETTA",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "634",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 1064,
+        "name": "SILVA, VINCENT & IRMA",
+        "yr": 25,
+        "status": "",
+        "band": "band2"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 407,
+          "name": "AN ADVISORS",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        },
+        {
+          "source_row": 1064,
+          "name": "SILVA, VINCENT & IRMA",
+          "yr": 25,
+          "status": "",
+          "band": "band2"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "DAKAK, RAMI",
+          "action": "CORRECT_DRAKE_BAND2_REVIEW",
+          "action_detail": "Claimant already on Log bare `579` (row 1009, DAKAK, RAMI, yr=25, status=PROCESSING, band2). Correct Drake away from collision bare `634`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "579",
+              "source_row": 1009,
+              "name": "DAKAK, RAMI",
+              "yr": 25,
+              "status": "PROCESSING",
+              "band": "band2"
+            }
+          ]
+        },
+        {
+          "claimant": "HERREJON, NICHOLAS",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `631` (row 404, HERREJON, NICHOLAS K, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `634`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "631",
+              "source_row": 404,
+              "name": "HERREJON, NICHOLAS K",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "426",
+      "classification": "c_family",
+      "canonical_on_bare": null,
+      "log_rows_on_bare": [],
+      "claimant_outcomes": [
+        {
+          "claimant": "HERNANDEZ, AMADO",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `402` (row 234, HERNANDEZ, AMADO & ARMIDA, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `426`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "402",
+              "source_row": 234,
+              "name": "HERNANDEZ, AMADO & ARMIDA",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "HERNANDEZ, LYDIA",
+          "action": "CORRECT_DRAKE_BAND2_REVIEW",
+          "action_detail": "Claimant already on Log bare `304` (row 970, HERNANDEZ, LYDIA, yr=25, status=PROCESSING, band2). Correct Drake away from collision bare `426`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "304",
+              "source_row": 970,
+              "name": "HERNANDEZ, LYDIA",
+              "yr": 25,
+              "status": "PROCESSING",
+              "band": "band2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "353",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 185,
+        "name": "GONZALEZ, MARQUEZ",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 185,
+          "name": "GONZALEZ, MARQUEZ",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "AVILA, LUCY",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `349` (row 181, AVILA, LUCY & EDUARDO, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `353`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "349",
+              "source_row": 181,
+              "name": "AVILA, LUCY & EDUARDO",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "SALAMA, ENGIE",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `350` (row 182, SALAMA, ENGIE, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `353`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "350",
+              "source_row": 182,
+              "name": "SALAMA, ENGIE",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "589",
+      "classification": "c_family",
+      "canonical_on_bare": {
+        "source_row": 362,
+        "name": "DENISE, SANTIAGO",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 362,
+          "name": "DENISE, SANTIAGO",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        },
+        {
+          "source_row": 1019,
+          "name": "KIKB ENTERPRISES",
+          "yr": 25,
+          "status": "FINALIZE",
+          "band": "band2"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "SANTIAGO, DENISE",
+          "action": "KEEPER_CANDIDATE",
+          "action_detail": "Found on Log only under collision bare `589` (rows [362]). Likely keeper.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "589",
+              "source_row": 362,
+              "name": "DENISE, SANTIAGO",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "SANTIAGO, EUNICE",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `588` (row 361, SANTIAGO, EUNICE, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `589`.",
+          "fuzzy_only": false,
+          "log_hits": [
+            {
+              "bare_log": "588",
+              "source_row": 361,
+              "name": "SANTIAGO, EUNICE",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "335",
+      "classification": "b_genuine_reuse",
+      "canonical_on_bare": {
+        "source_row": 167,
+        "name": "ROSAS, RICARDO & MARTHA",
+        "yr": 25,
+        "status": "LOGOUT",
+        "band": "band1"
+      },
+      "log_rows_on_bare": [
+        {
+          "source_row": 167,
+          "name": "ROSAS, RICARDO & MARTHA",
+          "yr": 25,
+          "status": "LOGOUT",
+          "band": "band1"
+        }
+      ],
+      "claimant_outcomes": [
+        {
+          "claimant": "GALLEGOS, ALEJANDRO",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `334` (row 166, GALLEGOS, ALEJANDRO & MARIA D, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `335`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "334",
+              "source_row": 166,
+              "name": "GALLEGOS, ALEJANDRO & MARIA D",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        },
+        {
+          "claimant": "ROJAS, LUIS",
+          "action": "CORRECT_DRAKE_BAND1_SAFE",
+          "action_detail": "Claimant already on Log bare `333` (row 165, ROJAS, LUIS & GUADALUPE MELENDREZ, yr=25, status=LOGOUT, band1). Correct Drake away from collision bare `335`.",
+          "fuzzy_only": true,
+          "log_hits": [
+            {
+              "bare_log": "333",
+              "source_row": 165,
+              "name": "ROJAS, LUIS & GUADALUPE MELENDREZ",
+              "yr": 25,
+              "status": "LOGOUT",
+              "band": "band1"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,18 +1,11 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Guided install + repair wizard for TaxOps Scan Agent (Epson WIA on reception PC).
+  DEPRECATED — use T:\GO_SCAN_AGENT.bat / install_scan_agent_task.ps1 / GO_RECEPTION.bat
 
 .DESCRIPTION
-  Numbered steps with OK/FAIL. Installs Python deps, registers pywin32 COM,
-  saves token, firewall, kills stale :8766, runs selftest, starts agent,
-  verifies /health returns code_rev=com_sta_v4.
-
-  Run ON the reception PC (Admin / UAC Yes):
-    \\Xcel-server\taxops\scan_agent_wizard.bat
-
-.PARAMETER Mode
-  Install (default) | Repair | TestOnly
+  NSSM-era guided wizard. Scan requires Interactive AtLogOn scheduled task.
+  Pass -ForceDeprecated to run anyway.
 #>
 param(
     [ValidateSet("Install", "Repair", "TestOnly")]
@@ -22,10 +15,29 @@ param(
     [string]$TokenFile = "",
     [string]$HostBind = "0.0.0.0",
     [int]$Port = 8766,
-    [switch]$Quiet
+    [switch]$Quiet,
+    [switch]$ForceDeprecated
 )
 
 $ErrorActionPreference = "Continue"
+
+if (-not $Quiet) {
+    Write-Host ""
+    Write-Host "========================================================" -ForegroundColor Yellow
+    Write-Host " DEPRECATED: scan_agent_wizard.ps1" -ForegroundColor Yellow
+    Write-Host "========================================================" -ForegroundColor Yellow
+    Write-Host " Use:  T:\GO_RECEPTION.bat  |  T:\GO_SCAN_AGENT.bat" -ForegroundColor Cyan
+    Write-Host "       taxops\scripts\install_scan_agent_task.ps1" -ForegroundColor Cyan
+    Write-Host ""
+}
+if (-not $ForceDeprecated) {
+    Write-Host "Refusing to run. Pass -ForceDeprecated only if you must." -ForegroundColor Red
+    exit 2
+}
+if (-not $Quiet) {
+    Write-Host "[WARN] Continuing with deprecated scan_agent_wizard..." -ForegroundColor Yellow
+}
+
 $localRoot = "C:\TaxOps\ScanAgent"
 $tokenEnvPath = Join-Path $localRoot "token.env"
 $pidFile = Join-Path $localRoot "agent.pid"
@@ -260,6 +272,7 @@ if (-not (Test-IsAdmin) -and $Mode -ne "TestOnly") {
         "-TokenFile", $tf
     )
     if ($Quiet) { $argList += "-Quiet" }
+    if ($ForceDeprecated) { $argList += "-ForceDeprecated" }
     Start-Process powershell.exe -Verb RunAs -WorkingDirectory $wd -ArgumentList $argList
     exit 0
 }

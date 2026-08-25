@@ -21,6 +21,11 @@ env/
 .env
 taxops/.secret_key
 
+# Compliance Tracker — dev-only Fernet key fallback (compliance/crypto.py).
+# Never commit: this decrypts every stored CDTFA/city-portal password.
+# Production must set COMPLIANCE_ENCRYPTION_KEY instead of relying on this file.
+taxops/.compliance_key
+
 # Name reconciliation tool — output files contain client names and must not
 # be committed.  The verdict cache is also an audit log of every LLM judgment
 # and may contain client names.
@@ -70,3 +75,10 @@ backups/
 taxops/backups/
 # LedgerBridge is a separate sub-app not yet integrated into this repo's history.
 ledgerbridge/
+
+# Client audit tool — findings workbooks and audit DBs contain PII; never commit.
+audit/output/
+audit/snapshots/
+audit/audit_*.sqlite
+audit/**/*.xlsx
+!audit/fixtures/**

@@ -1,0 +1,43 @@
+*GPDSpecVersion: "1.0"
+*GPDFileName: "BRHL730P.GPD"
+*GPDFileVersion: "1.0"
+*Include: "brhbp.gpd"
+*ModelName: "Brother HL-730+"
+*PrintRate: 6
+*PrintRatePPM: 6
+*PrintRateUnit: PPM
+
+*Feature: Memory
+{
+    *rcNameID: =PRINTER_MEMORY_DISPLAY
+    *DefaultOption: 512KB
+
+        *MemConfigKB: PAIR(512, 369)
+
+        *MemConfigKB: PAIR(2048, 1931)
+}
+*Feature: SleepTime
+{
+    *rcNameID: 262
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: Auto
+
+    *Option: Auto
+    {
+        *rcNameID: 263
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.4
+            *CallbackID: 10
+        }
+    }
+    *Option: ManualSettings
+    {
+        *rcNameID: 264
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.4
+            *CallbackID: 10
+        }
+    }
+}

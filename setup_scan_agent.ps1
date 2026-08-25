@@ -1,18 +1,11 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Install / start the TaxOps Scan Agent (Epson WIA -> PDF) on the reception PC.
+  DEPRECATED — use T:\GO_SCAN_AGENT.bat / install_scan_agent_task.ps1 / GO_RECEPTION.bat
 
 .DESCRIPTION
-  Prefer user-session start (like start_print_relay.bat) so WIA can see the Epson.
-  NSSM is optional. Token is written to C:\TaxOps\ScanAgent\token.env so values
-  with + / = are not mangled by Start-Process or NSSM AppEnvironmentExtra.
-
-  Run ON the workstation with the Epson scanner (Admin / UAC Yes).
-  Does NOT touch TaxOpsService on the server.
-
-.EXAMPLE
-  \\Xcel-server\taxops\setup_scan_agent.bat
+  Legacy scan install (NSSM-oriented). Scan must use Interactive AtLogOn task.
+  Pass -ForceDeprecated to run anyway.
 #>
 param(
     [string]$UncRoot = "\\Xcel-server\taxops",
@@ -22,10 +15,29 @@ param(
     [string]$ServiceName = "ScanAgent",
     [switch]$NoNssm,
     [switch]$Quiet,
-    [string]$TokenFile = ""   # internal: elevated relaunch reads token from file
+    [string]$TokenFile = "",   # internal: elevated relaunch reads token from file
+    [switch]$ForceDeprecated
 )
 
 $ErrorActionPreference = "Continue"
+
+if (-not $Quiet) {
+    Write-Host ""
+    Write-Host "========================================================" -ForegroundColor Yellow
+    Write-Host " DEPRECATED: setup_scan_agent.ps1" -ForegroundColor Yellow
+    Write-Host "========================================================" -ForegroundColor Yellow
+    Write-Host " Use:  T:\GO_RECEPTION.bat  |  T:\GO_SCAN_AGENT.bat" -ForegroundColor Cyan
+    Write-Host "       taxops\scripts\install_scan_agent_task.ps1" -ForegroundColor Cyan
+    Write-Host ""
+}
+if (-not $ForceDeprecated) {
+    Write-Host "Refusing to run. Pass -ForceDeprecated only if you must." -ForegroundColor Red
+    exit 2
+}
+if (-not $Quiet) {
+    Write-Host "[WARN] Continuing with deprecated setup_scan_agent..." -ForegroundColor Yellow
+}
+
 $localRoot = "C:\TaxOps\ScanAgent"
 $tokenEnvPath = Join-Path $localRoot "token.env"
 
@@ -278,6 +290,7 @@ if (-not (Test-IsAdmin)) {
     )
     if ($NoNssm) { $argList += "-NoNssm" }
     if ($Quiet) { $argList += "-Quiet" }
+    if ($ForceDeprecated) { $argList += "-ForceDeprecated" }
     Start-Process powershell.exe -Verb RunAs -WorkingDirectory $wd -ArgumentList $argList
     exit 0
 }

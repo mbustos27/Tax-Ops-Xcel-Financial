@@ -1,0 +1,5 @@
+*GPDSpecVersion: "1.0"
+*GPDFileVersion: "1.0"
+*GPDFileName: "BRQL550.GPD"
+*ModelName: "Brother QL-550"
+*Include: "BRQL.gpd"

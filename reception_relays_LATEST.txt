@@ -1,0 +1,96 @@
+﻿TaxOps reception relay diagnostic
+Started: 2026-07-29 16:49:56
+Log file: C:\TaxOps\diagnostics\reception_relays_20260729_164955.txt
+ShareRoot: T:
+StartMissing: True
+
+======== Machine ========
+  Computer: RECEPTION
+  User:     RECEPTION\Windows 10
+  OS:       Microsoft Windows NT 10.0.19045.0
+  PS:       5.1.19041.6456
+  Admin:    False
+  IPv4:     169.254.150.153, 169.254.100.56, 192.168.1.9, 169.254.56.129
+
+======== Share / scripts present ========
+  [OK]   taxops\filetrack\relay\server.py
+  [OK]   taxops\scan_agent\server.py
+  [OK]   start_print_relay.bat
+  [OK]   start_scan_agent.bat
+  [OK]   GO_SCAN_AGENT.bat
+  [OK]   sync_scan_agent_local.ps1
+
+======== Python ========
+  [OK]   Python: C:\Users\Windows 10\AppData\Local\Programs\Python\Python314\python.exe
+  [..]   Version:   File "<string>", line 1
+  [OK]   import flask
+  [OK]   import win32print
+  [OK]   import win32com.client
+  [OK]   import pythoncom
+  [OK]   import PIL
+
+======== Tokens (masked) ========
+  [..]   FILETRACK_RELAY_TOKEN: zv8z...ttdq (len=32)
+  [..]   SCAN_AGENT_TOKEN:      4TJr...AJY= (len=44)
+  [..]   FILETRACK_PRINTER:     4BARCODE 4B-2054A
+
+======== PRINT RELAY (TCP 8765) ========
+  [..]   No FiletrackRelay Windows service (console/startup bat is OK)
+  [FAIL] Print /health failed: Unable to connect to the remote server
+  [..]   Port 8765 not listening
+  [..]   Attempting to start print relay...
+  [..]   Started PID 7796 (logs C:\TaxOps\diagnostics\print_relay_stdout_20260729_164955.txt / C:\TaxOps\diagnostics\print_relay_stderr_20260729_164955.txt)
+  [OK]   Print relay UP after start - {"printer_configured":"4BARCODE 4B-2054A","printer_found":true,"status":"ok"}
+
+  [..]   Enumerating Windows printers via win32print...
+  [..]   Printer count: 12
+    - OneNote for Windows 10
+    - RICOH MP C4504ex [5838791DE9B5]
+    - RICOH C5502 Printer
+    - PCL6 V4 Driver for Universal Print (Copy 1)
+    - PCL6 V4 Driver for Universal Print
+    - OneNote (Desktop)
+    - Microsoft XPS Document Writer
+    - Microsoft Print to PDF
+    - HOU2
+    - Fax
+    - ABS PDF Driver v400
+    - 4BARCODE 4B-2054A
+  [OK]   Configured printer present: 4BARCODE 4B-2054A
+
+======== SCAN AGENT (TCP 8766) ========
+  [OK]   Local server.py: C:\TaxOps\ScanAgent\app\scan_agent\server.py
+  [..]   Local: REQUIRED_CODE_REV = "com_sta_v4"
+  [OK]   Local copy contains com_sta_v4
+  [OK]   Share server.py has com_sta_v4
+  [..]   Service ScanAgent: Stopped
+  [FAIL] Scan /health failed: The operation has timed out.
+  [..]   Port 8766 not listening
+  [..]   Attempting to start scan agent via GO_SCAN_AGENT / start_scan_agent...
+  [..]   Killed PID 9368 on port 8766
+  [..]   Launched start_scan_agent.bat (visible window - leave it open)
+  [OK]   Scan agent UP - {"agent_ok":true,"code_rev":"com_sta_v4","com_detail":"CoInitializeEx hr=None","com_sta":true,"scanner_found":false,"scanner_ok":false,"service":"scan_agent","status":"ok","tips":["Agent is up (com_sta_v4 STA pump). Scanner not probed on this call \u2014 UI/status uses ?wia=1 (4s timeout)."],"wia_probed":false}
+
+
+======== SCAN WIA probe (?wia=1, 6s cap) ========
+  [..]   WIA body: {"agent_ok":true,"code_rev":"com_sta_v4","com_detail":"CoInitializeEx hr=None","com_sta":true,"scanner_found":true,"scanner_names":"EPSON ES-500WII | HOU2","scanner_ok":true,"scanners":[{"device_id":"{6BDD1FC6-810F-11D0-BEC7-08002BE2092F}\\0003","name":"EPSON ES-500WII","type":1},{"device_id":"{6BDD1FC6-810F-11D0-BEC7-08002BE2092F}\\0002","name":"HOU2","type":1}],"service":"scan_agent","status":"ok","tips":[],"wia_probed":true}
+
+  [FAIL] WIA path still reports CoInitialize
+
+======== Epson Device Manager snapshot ========
+  [OK]   EPSON ES-500WII | Status=OK | Class=Image | Problem=CM_PROB_NONE
+  [OK]   EPSON Utility | Status=OK | Class=USBDevice | Problem=CM_PROB_NONE
+
+======== Firewall rules ========
+
+======== scan_agent import check (local PYTHONPATH) ========
+  [OK]   import scan_agent.server -> com_sta_v4
+
+======== SUMMARY ========
+  OK=21  WARN=0  FAIL=3
+  Report: C:\TaxOps\diagnostics\reception_relays_20260729_164955.txt
+  Latest: C:\TaxOps\diagnostics\reception_relays_LATEST.txt
+  RESULT: FAIL - read [FAIL] lines above; leave relay windows open if started
+  Print start:  start_print_relay.bat
+  Scan start:   GO_SCAN_AGENT.bat   (must show READY com_sta_v4)
+

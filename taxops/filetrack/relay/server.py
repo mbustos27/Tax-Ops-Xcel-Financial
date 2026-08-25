@@ -64,19 +64,53 @@ def handle_print_job(
         )
         return 401, {"error": "Unauthorized"}
 
-    log_number = payload.get("log_number")
-    if not log_number:
-        return 400, {"error": "log_number is required"}
-
-    from filetrack.labels.print_label import print_label
     from filetrack.labels.printer import (
         PrinterNotFoundError,
         PrinterUnavailableError,
         SpoolerError,
+        send_zpl,
     )
 
+    # Optional raw ZPL path — used for layout test prints without re-rendering
+    # the template. Prefer this when the caller already has final ZPL bytes.
+    raw_zpl = payload.get("zpl")
+    if isinstance(raw_zpl, str) and raw_zpl.strip():
+        if "^XA" not in raw_zpl.upper() or "^XZ" not in raw_zpl.upper():
+            return 400, {"error": "zpl must look like a ZPL job (^XA … ^XZ)"}
+        try:
+            send_zpl(raw_zpl)
+        except (PrinterNotFoundError, PrinterUnavailableError, SpoolerError) as exc:
+            logger.error("filetrack.relay: raw ZPL print failed: %s", exc)
+            return 500, {"error": str(exc)}
+        except Exception:
+            logger.exception("filetrack.relay: unexpected error printing raw ZPL")
+            return 500, {"error": "internal error"}
+        logger.info("filetrack.relay: printed raw ZPL (%d chars)", len(raw_zpl))
+        return 200, {"success": True, "mode": "raw_zpl"}
+
+    log_number = payload.get("log_number")
+    if not log_number:
+        return 400, {"error": "log_number is required (or pass zpl for a raw test print)"}
+
+    from filetrack.labels.print_label import print_label
+
+    # Optional name fields for bottom-right abbreviated client (never SSN).
+    name_kwargs = {
+        "client_name": str(payload.get("client_name") or ""),
+        "last_name": str(payload.get("last_name") or ""),
+        "first_name": str(payload.get("first_name") or ""),
+        "display_name": str(payload.get("display_name") or ""),
+    }
+    if payload.get("log_in_date"):
+        name_kwargs["log_in_date"] = str(payload.get("log_in_date") or "").strip()
+    if payload.get("tax_year") is not None and str(payload.get("tax_year") or "").strip():
+        try:
+            name_kwargs["tax_year"] = int(payload.get("tax_year"))
+        except (TypeError, ValueError):
+            pass
+
     try:
-        print_label(log_number, log_in_date=payload.get("log_in_date") or None)
+        print_label(log_number, **name_kwargs)
     except (PrinterNotFoundError, PrinterUnavailableError, SpoolerError) as exc:
         logger.error("filetrack.relay: print failed for log_number=%s: %s", log_number, exc)
         return 500, {"error": str(exc)}

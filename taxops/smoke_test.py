@@ -6,7 +6,7 @@ Usage::
 
     cd taxops
     python smoke_test.py                          # targets http://127.0.0.1:5000
-    python smoke_test.py http://192.168.1.141:5000
+    python smoke_test.py http://192.168.1.173:5000
 
 Exit codes:
     0  all probes passed
@@ -25,7 +25,7 @@ import urllib.request
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-DEFAULT_BASE = "http://192.168.1.141:5000"
+DEFAULT_BASE = "http://192.168.1.173:5000"
 LOG_PATH = r"C:\TaxOps\logs\smoke.log"
 TIMEOUT = 20.0
 

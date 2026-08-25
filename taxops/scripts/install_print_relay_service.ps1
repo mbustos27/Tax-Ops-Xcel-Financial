@@ -44,14 +44,26 @@ function Find-Nssm([string]$Hint) {
 }
 
 $thisScript = $MyInvocation.MyCommand.Path
+$TaxOpsUncRoot = "\\Xcel-server\taxops"
 if (-not $ShareRoot) {
     # ...\taxops\scripts\this.ps1 -> share root two levels up
     $ShareRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $thisScript))
 }
 $ShareRoot = $ShareRoot.Trim().TrimEnd('\')
-$appDir = Join-Path $ShareRoot "taxops"
-$relayPy = Join-Path $appDir "filetrack\relay\server.py"
-if (-not (Test-Path -LiteralPath $relayPy)) {
+# Services cannot see mapped drives (T:). Always prefer UNC for AppDirectory.
+if ($ShareRoot -match '^[A-Za-z]:$' -or -not $ShareRoot) {
+    $ShareRoot = $TaxOpsUncRoot
+}
+# Verify share reachable via string path (Join-Path fails on missing PSDrive)
+$relayProbe = "$ShareRoot\taxops\filetrack\relay\server.py"
+if (-not [System.IO.File]::Exists($relayProbe)) {
+    # Last chance: try UNC even if hint was something else
+    $ShareRoot = $TaxOpsUncRoot
+    $relayProbe = "$ShareRoot\taxops\filetrack\relay\server.py"
+}
+$appDir = "$ShareRoot\taxops"
+$relayPy = "$appDir\filetrack\relay\server.py"
+if (-not [System.IO.File]::Exists($relayPy)) {
     throw "Relay source missing: $relayPy"
 }
 

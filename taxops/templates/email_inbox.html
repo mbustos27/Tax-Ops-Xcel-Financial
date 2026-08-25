@@ -5,7 +5,7 @@
 <div class="max-w-screen-xl mx-auto px-4 py-6">
 
   <!-- Page header -->
-  <div class="flex items-center justify-between mb-5">
+  <div class="flex items-center justify-between mb-3">
     <div>
       <h1 class="text-xl font-bold" style="color:var(--text-primary)">Email Inbox</h1>
       <p class="text-sm mt-0.5" style="color:var(--text-muted)">
@@ -13,10 +13,30 @@
       </p>
     </div>
     <span id="count-badge"
-          class="text-sm font-semibold px-3 py-1 rounded-full"
+          class="text-sm font-semibold px-3 py-1 rounded-full whitespace-nowrap"
           style="background:var(--badge-bg);color:var(--badge-text)">
-      {{ unassigned_count }} unassigned
+      {{ unassigned_count }} {{ _('unassigned') }}{% if older_than_7d_count %} — {{ older_than_7d_count }} {{ _('older than 7 days') }}{% endif %}
     </span>
+  </div>
+
+  <!-- Phase 3.2: triage filter chips — server-side filtering via ?filter=, chips are plain links -->
+  <div class="flex flex-wrap gap-2 mb-5">
+    {% set _chips = [
+        ('', _('All')),
+        ('needs_manual_tagging', _('Needs manual tagging')),
+        ('has_suggestion', _('Has suggestion')),
+        ('older_than_7d', _('Older than 7 days')),
+      ] %}
+    {% if show_deleted_filter %}
+    {% set _chips = _chips + [('deleted', _('Deleted items'))] %}
+    {% endif %}
+    {% for value, label in _chips %}
+    <a href="{{ '/email-inbox' if not value else '/email-inbox?filter=' + value }}"
+       class="text-xs font-semibold px-3 py-1.5 rounded-full border transition-opacity hover:opacity-80"
+       style="{% if active_filter == value %}background:var(--color-primary);color:#fff;border-color:var(--color-primary);{% else %}background:var(--card-bg);color:var(--text-secondary);border-color:var(--border-subtle);{% endif %}">
+      {{ label }}
+    </a>
+    {% endfor %}
   </div>
 
   <!-- Two-panel layout -->
@@ -35,20 +55,30 @@
         <div id="inbox-list" class="divide-y" style="border-color:var(--border-subtle)">
           {% if inbox_items %}
             {% for item in inbox_items %}
-            <div class="inbox-card px-5 py-4 cursor-pointer hover:opacity-90 transition-opacity"
+            <div class="inbox-card px-5 py-4 {{ 'cursor-pointer hover:opacity-90 transition-opacity' if active_filter != 'deleted' }}"
                  data-id="{{ item.id }}"
                  data-filename="{{ item.filename | e }}"
                  data-original="{{ (item.original_filename or item.filename) | e }}"
                  data-sender="{{ (item.sender_email or '') | e }}"
                  data-subject="{{ (item.subject_snippet or '') | e }}"
                  data-received="{{ item.received_at | e }}"
-                 onclick="selectCard(this)"
+                 {% if active_filter != 'deleted' %}onclick="selectCard(this)"{% endif %}
                  style="border-color:var(--border-subtle)">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0 flex-1">
-                  <p class="font-semibold text-sm truncate" style="color:var(--text-primary)">
-                    {{ item.original_filename or item.filename }}
-                  </p>
+                  <div class="flex items-center gap-1.5">
+                    <p class="font-semibold text-sm truncate" style="color:var(--text-primary)">
+                      {{ item.original_filename or item.filename }}
+                    </p>
+                    {% set _age_vars = {
+                         'green':  ('--status-finalize-bg', '--status-finalize-text'),
+                         'amber':  ('--status-hold-bg', '--status-hold-text'),
+                         'red':    ('--status-rejected-bg', '--status-rejected-text'),
+                       }[item.age_bucket] %}
+                    <span class="shrink-0 inline-block w-2 h-2 rounded-full"
+                          style="background:var({{ _age_vars[1] }})"
+                          title="{{ item.received_at }}"></span>
+                  </div>
                   {% if item.needs_manual_tagging %}
                   <span class="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
                         style="background:var(--badge-bg);color:var(--badge-text)"
@@ -64,11 +94,31 @@
                     {{ item.subject_snippet[:60] }}{% if item.subject_snippet|length > 60 %}…{% endif %}
                   </p>
                   {% endif %}
+                  {% if item.suggested_return_id %}
+                  {% set _reason = {
+                       'exact_email': _('exact email match'),
+                       'domain_hint': _('domain match'),
+                       'fuzzy': _('name match'),
+                     }.get(item.suggestion_method, item.suggestion_method) %}
+                  <div class="mt-1.5 rounded-lg px-2 py-1.5 text-xs flex items-center justify-between gap-2"
+                       style="background:var(--badge-bg);color:var(--badge-text)">
+                    <span class="min-w-0 truncate">
+                      {{ _('Suggested') }}: <strong>{{ item.suggested_client_name }}</strong>{% if item.suggested_log_number %} ({{ _('log #') }}{{ item.suggested_log_number }}){% endif %}
+                      — {{ _reason }}{% if item.suggestion_method == 'fuzzy' and item.suggestion_score is not none %} ({{ item.suggestion_score }}%){% endif %}
+                    </span>
+                    <button type="button"
+                            onclick="event.stopPropagation(); assignToSuggested({{ item.id }}, {{ item.suggested_return_id }}, this)"
+                            class="shrink-0 font-semibold underline whitespace-nowrap">
+                      {{ _('Assign to suggested') }}
+                    </button>
+                  </div>
+                  {% endif %}
                   <p class="text-xs mt-1" style="color:var(--text-muted)">
                     <span class="relative-time" data-ts="{{ item.received_at }}">{{ item.received_at }}</span>
                   </p>
                 </div>
                 <div class="flex flex-col items-end gap-2 shrink-0">
+                  {% if active_filter != 'deleted' %}
                   <a href="/api/email-inbox/{{ item.id }}/file"
                      target="_blank"
                      onclick="event.stopPropagation()"
@@ -82,6 +132,14 @@
                           style="border-color:var(--border-subtle);color:var(--text-muted)">
                     Dismiss
                   </button>
+                  {% else %}
+                  <button type="button"
+                          onclick="event.stopPropagation(); restoreItem({{ item.id }}, this)"
+                          class="text-xs px-2 py-1 rounded font-medium"
+                          style="background:color-mix(in srgb,#16a34a 12%,transparent);color:#16a34a">
+                    {{ _('Restore') }}
+                  </button>
+                  {% endif %}
                 </div>
               </div>
             </div>
@@ -246,7 +304,7 @@
       if (!r.ok) throw new Error('server error');
       const card = btn.closest('.inbox-card');
       if (card) card.remove();
-      _updateCountBadge(-1);
+      _refreshCountBadge();
       if (_selectedItemId === itemId) {
         _selectedItemId = null;
         _selectedCardEl = null;
@@ -257,6 +315,23 @@
     } catch (e) {
       btn.disabled = false;
       alert('Could not dismiss attachment. Try again.');
+    }
+  };
+
+  // ── Restore from Deleted items view (Phase 3.5, Admin only) ────────────────
+  window.restoreItem = async function (itemId, btn) {
+    btn.disabled = true;
+    try {
+      const r = await _csrfFetch(`/api/email-inbox/${itemId}/restore`, { method: 'POST' });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'server error');
+      const card = btn.closest('.inbox-card');
+      if (card) card.remove();
+      _refreshCountBadge();
+      _checkEmptyState();
+    } catch (e) {
+      btn.disabled = false;
+      alert(`Could not restore: ${e.message}`);
     }
   };
 
@@ -371,7 +446,7 @@
 
       // Remove card from list
       if (_selectedCardEl) _selectedCardEl.remove();
-      _updateCountBadge(-1);
+      _refreshCountBadge();
       _checkEmptyState();
 
       // Show success
@@ -393,15 +468,50 @@
     }
   };
 
-  // ── Count badge helpers ────────────────────────────────────────────────────
-  function _updateCountBadge(delta) {
+  // ── Assign to suggested (Phase 3.1) ─────────────────────────────────────────
+  window.assignToSuggested = async function (itemId, returnId, btn) {
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = '…';
+    try {
+      const r = await _csrfFetch(`/api/email-inbox/${itemId}/assign`, {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json'},
+        body:    JSON.stringify({ return_id: returnId }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'server error');
+
+      const card = btn.closest('.inbox-card');
+      if (card) card.remove();
+      _refreshCountBadge();
+      _checkEmptyState();
+
+      if (_selectedItemId === itemId) {
+        _selectedItemId = null;
+        _selectedCardEl = null;
+        document.getElementById('no-selection').classList.remove('hidden');
+        document.getElementById('assignment-panel').classList.add('hidden');
+      }
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = original;
+      alert(`Assignment failed: ${e.message}`);
+    }
+  };
+
+  // ── Count badge helpers (Phase 3.2: reflects the whole queue, not just the
+  //    currently-filtered view — always refetches unfiltered totals) ─────────
+  async function _refreshCountBadge() {
     const badge = document.getElementById('count-badge');
     if (!badge) return;
-    const m = badge.textContent.match(/(\d+)/);
-    if (m) {
-      const n = Math.max(0, parseInt(m[1]) + delta);
-      badge.textContent = `${n} unassigned`;
-    }
+    try {
+      const r    = await fetch('/api/email-inbox/items');
+      const data = await r.json();
+      const n    = data.unassigned_total ?? (data.items || []).length;
+      const old7 = data.older_than_7d_total || 0;
+      badge.textContent = old7 > 0 ? `${n} unassigned — ${old7} older than 7 days` : `${n} unassigned`;
+    } catch (_) {}
   }
 
   function _checkEmptyState() {
@@ -421,15 +531,7 @@
   }
 
   // ── Auto-refresh badge every 90 s ────────────────────────────────────────
-  setInterval(async () => {
-    try {
-      const r    = await fetch('/api/email-inbox/items');
-      const data = await r.json();
-      const n    = (data.items || []).length;
-      const badge = document.getElementById('count-badge');
-      if (badge) badge.textContent = `${n} unassigned`;
-    } catch (_) {}
-  }, 90000);
+  setInterval(_refreshCountBadge, 90000);
 
   // ── _csrfFetch helper (matches app-wide pattern) ───────────────────────────
   function _csrfFetch(url, opts = {}) {

@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-08-12T22:12:52Z",
+  "applied": true,
+  "source": "wave5_lucy_split",
+  "summary": {
+    "lucy_open": 0,
+    "acked": 8,
+    "resolved": 33
+  },
+  "staff_diff": [],
+  "export_gap": [
+    {
+      "entity_key": "spouse_unrecovered|9799|BURGOS GARCIA|JESUS",
+      "resolved_by": "wave5_export_gap"
+    },
+    {
+      "entity_key": "spouse_unrecovered|4032|RIOS|TRINY",
+      "resolved_by": "wave5_export_gap"
+    },
+    {
+      "entity_key": "spouse_unrecovered|5336|ROBLEDO|PEDRO",
+      "resolved_by": "wave5_export_gap"
+    }
+  ],
+  "intake_gap": [
+    {
+      "entity_key": "spouse_unrecovered|8686|AVALOS PEREZ|JOSE",
+      "resolved_by": "wave5_intake_gap"
+    },
+    {
+      "entity_key": "spouse_unrecovered|4972|CALZADILLA FLORES|ENRIQUE",
+      "resolved_by": "wave5_intake_gap"
+    },
+    {
+      "entity_key": "spouse_unrecovered|1859|JORGE BARAJAS|ISRAEL",
+      "resolved_by": "wave5_intake_gap"
+    },
+    {
+      "entity_key": "spouse_unrecovered|9169|OLEA|ANTONIO",
+      "resolved_by": "wave5_intake_gap"
+    },
+    {
+      "entity_key": "spouse_unrecovered|3546|REYES SOLIS|GASPAR",
+      "resolved_by": "wave5_intake_gap"
+    }
+  ]
+}

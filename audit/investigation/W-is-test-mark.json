@@ -1,0 +1,259 @@
+{
+  "generated_at": "2026-08-12T00:02:25Z",
+  "marked_n": 28,
+  "already_n": 0,
+  "clients_is_test_total": 28,
+  "marked": [
+    {
+      "client_id": 2155,
+      "already": false,
+      "name": "TEST TEST2",
+      "last4": "1111",
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2156,
+      "already": false,
+      "name": "TEST3 TEST",
+      "last4": "3313",
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2157,
+      "already": false,
+      "name": "FRANCO ELIZA`",
+      "last4": "7569",
+      "in_batch": true,
+      "name_hit": false
+    },
+    {
+      "client_id": 2158,
+      "already": false,
+      "name": "TESTTTT TEST2",
+      "last4": "5151",
+      "in_batch": true,
+      "name_hit": false
+    },
+    {
+      "client_id": 2159,
+      "already": false,
+      "name": "TEST TEST",
+      "last4": "1111",
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2162,
+      "already": false,
+      "name": "TESTTTTT TEST",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2165,
+      "already": false,
+      "name": "TEST TEST2222",
+      "last4": "1111",
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2166,
+      "already": false,
+      "name": "TEST TESTTTTTT32",
+      "last4": "1111",
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2167,
+      "already": false,
+      "name": "TEST TESTERRRRRR",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2168,
+      "already": false,
+      "name": "TEST TEST2345",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2169,
+      "already": false,
+      "name": "TEZT YEST",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2171,
+      "already": false,
+      "name": "SCAN TEST2",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2172,
+      "already": false,
+      "name": "SCAN3 TEST",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2173,
+      "already": false,
+      "name": "SCAN TEST3",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2174,
+      "already": false,
+      "name": "SCAN TEST4",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2175,
+      "already": false,
+      "name": "TEST3 SCAN",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2176,
+      "already": false,
+      "name": "TEST4 SCAN",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2177,
+      "already": false,
+      "name": "SCAN4 TEST",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2180,
+      "already": false,
+      "name": "SCAN5 TEST",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2181,
+      "already": false,
+      "name": "VILLANUEVA VAZQUEZ JUAN A",
+      "last4": "1111",
+      "in_batch": true,
+      "name_hit": false
+    },
+    {
+      "client_id": 2182,
+      "already": false,
+      "name": "TEST5 SCAN5",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": false
+    },
+    {
+      "client_id": 2183,
+      "already": false,
+      "name": "SCAN6 TEST",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2184,
+      "already": false,
+      "name": "SCAN TEST6",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2186,
+      "already": false,
+      "name": "SCAN TEST7",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2187,
+      "already": false,
+      "name": "TEST7 SCAN",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2188,
+      "already": false,
+      "name": "TEST SCAN",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2189,
+      "already": false,
+      "name": "SCAN TEST5",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    },
+    {
+      "client_id": 2190,
+      "already": false,
+      "name": "TEST",
+      "last4": null,
+      "in_batch": true,
+      "name_hit": true
+    }
+  ],
+  "phantom_false_positive_n": 23,
+  "phantom_false_positive_keys": [
+    "TEST|TEST2",
+    "TEST3|TEST",
+    "TEST|TEST",
+    "TESTTTTT|TEST",
+    "TEST|TEST2222",
+    "TEST|TESTTTTTT32",
+    "TEST|TESTERRRRRR",
+    "TEST|TEST2345",
+    "SCAN|TEST2",
+    "SCAN3|TEST",
+    "SCAN|TEST3",
+    "SCAN|TEST4",
+    "TEST3|SCAN",
+    "TEST4|SCAN",
+    "SCAN4|TEST",
+    "SCAN5|TEST",
+    "SCAN6|TEST",
+    "SCAN|TEST6",
+    "SCAN|TEST7",
+    "TEST7|SCAN",
+    "TEST|SCAN",
+    "SCAN|TEST5",
+    "TEST|"
+  ],
+  "fingerprint_fix": "disposition SPOUSE_STORE_DIVERGENCE entity_key now client_id|last4|norm_name (always includes last4 slot + client_id)"
+}

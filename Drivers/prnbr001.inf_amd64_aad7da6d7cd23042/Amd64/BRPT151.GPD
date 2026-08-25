@@ -1,0 +1,187 @@
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: 24-Tape
+    *Option: 6-Tape
+    {
+        *Name: "6mm"
+        *PageDimensions: PAIR(42, 7086)
+        *PrintableArea: PAIR(32, 7028)
+        *PrintableOrigin: PAIR(5, 29)
+    }
+    *Option: 9-Tape
+    {
+        *Name: "9mm"
+        *PageDimensions: PAIR(64, 7086)
+        *PrintableArea: PAIR(50, 7028)
+        *PrintableOrigin: PAIR(7, 29)
+    }
+    *Option: 12-Tape
+    {
+        *Name: "12mm"
+        *PageDimensions: PAIR(84, 7086)
+        *PrintableArea: PAIR(70, 7028)
+        *PrintableOrigin: PAIR(7, 29)
+    }
+    *Option: 18-Tape
+    {
+        *Name: "18mm"
+        *PageDimensions: PAIR(128, 7086)
+        *PrintableArea: PAIR(112, 7028)
+        *PrintableOrigin: PAIR(8, 29)
+    }
+    *Option: 24-Tape
+    {
+        *Name: "24mm"
+        *PageDimensions: PAIR(170, 7086)
+        *PrintableArea: PAIR(112, 7028)
+        *PrintableOrigin: PAIR(29, 29)
+    }
+    *Option: Floppy
+    {
+        *rcNameID: 500		*% "3.5" Floppy disk - Face (24mm)"  Use 24-Tape
+        *PageDimensions: PAIR(170, 496)
+        *PrintableArea: PAIR(112, 438)
+        *PrintableOrigin: PAIR(29, 29)
+    }
+    *Option: CD-R
+    {
+        *rcNameID: 501		*% "CD-R case - Spine (6mm)"    Use 6-Tape
+        *PageDimensions: PAIR(42, 836)
+        *PrintableArea: PAIR(32, 778)
+        *PrintableOrigin: PAIR(5, 29)
+    }
+    *Option: MO1
+    {
+        *rcNameID: 502		*% "MO - Face (24mm)"    Use 24-Tape
+        *PageDimensions: PAIR(170, 496)
+        *PrintableArea: PAIR(112, 438)
+        *PrintableOrigin: PAIR(29, 29)
+    }
+    *Option: MO2
+    {
+        *rcNameID: 503		*% "MO Case - Spine (6mm)"    Use 6-Tape
+        *PageDimensions: PAIR(42, 638)
+        *PrintableArea: PAIR(32, 580)
+        *PrintableOrigin: PAIR(5, 29)
+    }
+    *Option: VHS
+    {
+        *rcNameID: 504		*% "VHS Video Cassette (18mm)"   Use 18-Tape
+        *PageDimensions: PAIR(128, 1049)
+        *PrintableArea: PAIR(112, 991)
+        *PrintableOrigin: PAIR(8, 29)
+    }
+    *Option: DV1
+    {
+        *rcNameID: 505		*% "mini DV Cassette - Spine (9mm)"    Use 9-Tape
+        *PageDimensions: PAIR(64, 326)
+        *PrintableArea: PAIR(50, 268)
+        *PrintableOrigin: PAIR(7, 29)
+    }
+    *Option: DV2
+    {
+        *rcNameID: 506		*% "mini DV Cassette - Face (18mm)"   Use Use 18-Tape
+        *PageDimensions: PAIR(128, 199)
+        *PrintableArea: PAIR(112, 141)
+        *PrintableOrigin: PAIR(8, 29)
+    }
+    *Option: DV3
+    {
+        *rcNameID: 507		*% "mini DV Cassette Case (12mm)"   Use Use 12-Tape
+        *PageDimensions: PAIR(84, 461)
+        *PrintableArea: PAIR(70, 403)
+        *PrintableOrigin: PAIR(7, 29)
+    }
+    *Option: 8mm1
+    {
+        *rcNameID: 508		*% "8mm Video Cassette (9mm)"    Use 9-Tape
+        *PageDimensions: PAIR(64, 532)
+        *PrintableArea: PAIR(50, 474)
+        *PrintableOrigin: PAIR(7, 29)
+    }
+    *Option: 8mm2
+    {
+        *rcNameID: 509		*% "8mm Video Cassette Case (12mm)" Use 12-Tape
+        *PageDimensions: PAIR(84, 659)
+        *PrintableArea: PAIR(70, 601)
+        *PrintableOrigin: PAIR(7, 29)
+    }
+    *Option: 8mm3
+    {
+        *rcNameID: 510		*% "8mm Video Cassette Case (24mm)" Use 24-Tape
+        *PageDimensions: PAIR(170, 659)
+        *PrintableArea: PAIR(112, 601)
+        *PrintableOrigin: PAIR(29, 29)
+    }
+    *Option: Audio1
+    {
+        *rcNameID: 511		*% "Audio Cassette - Face (6mm)"    Use 6-Tape
+        *PageDimensions: PAIR(42, 624)
+        *PrintableArea: PAIR(32, 566)
+        *PrintableOrigin: PAIR(5, 29)
+    }
+    *Option: Audio2
+    {
+        *rcNameID: 512		*% "Audio Cassette Case (9mm)"    Use 9-Tape
+        *PageDimensions: PAIR(64, 709)
+        *PrintableArea: PAIR(50, 651)
+        *PrintableOrigin: PAIR(7, 29)
+    }
+    *Option: MD1
+    {
+        *rcNameID: 513		*% "Mini Disc - Face (24mm)"    Use 24-Tape
+        *PageDimensions: PAIR(170, 376)
+        *PrintableArea: PAIR(112, 318)
+        *PrintableOrigin: PAIR(29, 29)
+    }
+    *Option: MD2
+    {
+        *rcNameID: 514		*% "Mini Disc Case - Spine (6mm)"    Use 6-Tape
+        *PageDimensions: PAIR(42, 532)
+        *PrintableArea: PAIR(32, 474)
+        *PrintableOrigin: PAIR(5, 29)
+    }
+    *Option: MD3
+    {
+        *rcNameID: 515		*% "Mini Disc Case - Face (24mm)"    Use 24-Tape
+        *PageDimensions: PAIR(170, 503)
+        *PrintableArea: PAIR(112, 445)
+        *PrintableOrigin: PAIR(29, 29)
+    }
+    *Option: DAT
+    {
+        *rcNameID: 516		*% "DAT Cassette - Spine (6mm)"    Use 6-Tape
+        *PageDimensions: PAIR(42, 376)
+        *PrintableArea: PAIR(32, 318)
+        *PrintableOrigin: PAIR(5, 29)
+    }
+    *Option: ORG1
+    {
+        *rcNameID: 517		*% "Organizer - Large (24mm)"    Use 24-Tape
+        *PageDimensions: PAIR(170, 581)
+        *PrintableArea: PAIR(112, 523)
+        *PrintableOrigin: PAIR(29, 29)
+    }
+    *Option: ORG2
+    {
+        *rcNameID: 518		*% "Organizer - Small (24mm)"    Use 24-Tape
+        *PageDimensions: PAIR(170, 461)
+        *PrintableArea: PAIR(112, 403)
+        *PrintableOrigin: PAIR(29, 29)
+    }
+    *Option: CUSTOMSIZE
+    {
+        *rcNameID: =USER_DEFINED_SIZE_DISPLAY
+        *MinSize: PAIR(42, 59)
+        *MaxSize: PAIR(170, 7086)
+	*MaxPrintableWidth: 112
+	*CustPrintableOriginX:  %d{max(5, (PhysPaperWidth-112)/2)}
+	*CustPrintableOriginY:  %d{29}
+	*CustPrintableSizeX:   %d{PhysPaperWidth-max(5, (PhysPaperWidth-112)/2)*2}
+	*CustPrintableSizeY:  %d{PhysPaperLength-58}
+	*CustCursorOriginX:  %d{max(5, (PhysPaperWidth-112)/2)}
+	*CustCursorOriginY:   %d{29}
+	*CenterPrintable?: FALSE
+    }
+}

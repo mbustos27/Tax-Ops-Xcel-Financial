@@ -1,7 +1,7 @@
 """filetrack.labels.template — pure ZPL rendering for file (LOG) labels.
 
-Loads LABEL_CLEAN_EDITABLE.zpl (24-dot L/R margins), injects LOG# + Code128 +
-abbreviated client name + LOG-IN date, enforces 2.625\" x 1\" geometry.
+Loads LABEL_CLEAN_EDITABLE.zpl (24-dot L/R margins), injects LOG# + TY +
+Code128 + abbreviated client name + LOG-IN date, enforces 2.625\" x 1\" geometry.
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ _BARCODE_PLACEHOLDER = "{BARCODE}"
 _CLIENT_PLACEHOLDER = "{CLIENT}"
 _LOG_IN_DATE_PLACEHOLDER = "{LOG_IN_DATE}"
 _EXT_YEAR_PLACEHOLDER = "{EXT_YEAR}"
+_TY_PLACEHOLDER = "{TY}"
 
 # Fits right of bottom barcode text on 2.625\" stock (~210-dot field).
 _CLIENT_MAX_LEN = 16
@@ -41,6 +42,23 @@ def load_template(template_path: str | None = None) -> str:
 def barcode_payload_for_log(log_number) -> str:
     """`LOG:<zero-padded log number>` barcode payload."""
     return f"{LOG_PREFIX}{PREFIX_DELIMITER}{format_log_number(log_number)}"
+
+
+def format_ty_suffix(tax_year=None) -> str:
+    """Return ``  TY2024`` for the LOG# line, or ``\"\"`` if year is missing/invalid.
+
+    Leading spaces keep ``LOG# 00123  TY2024`` readable when present; omitting
+    them when absent avoids a trailing blank after the log number.
+    """
+    if tax_year is None or (isinstance(tax_year, str) and not tax_year.strip()):
+        return ""
+    try:
+        year = int(tax_year)
+    except (TypeError, ValueError):
+        return ""
+    if year < 1900 or year > 2100:
+        return ""
+    return f"  TY{year}"
 
 
 def format_log_in_date(value=None) -> str:
@@ -123,13 +141,15 @@ def render_label(
     first_name: str = "",
     display_name: str = "",
     log_in_date=None,
+    tax_year=None,
     **fields,
 ) -> str:
     """Render one LOG file label's ZPL for `log_number`.
 
     Optional client name fields become an abbreviated ``{CLIENT}`` on the
-    bottom-right. ``log_in_date`` fills ``LOG-IN`` (defaults to today);
-    EXT stays a blank ``__/__/YYYY`` with the year from that same date.
+    bottom-right. ``tax_year`` becomes ``  TY####`` after the log number.
+    ``log_in_date`` fills ``LOG-IN`` (defaults to today); EXT stays a blank
+    ``__/__/YYYY`` with the year from that same date.
     Geometry locked to 2.625\" x 1\".
     """
     formatted = format_log_number(log_number)
@@ -140,14 +160,18 @@ def render_label(
         display_name=display_name,
         client_name=client_name,
     )
-    # Allow legacy callers that stuffed the date into **fields.
+    # Allow legacy callers that stuffed values into **fields.
     if log_in_date is None and "log_in_date" in fields:
         log_in_date = fields.get("log_in_date")
+    if tax_year is None and "tax_year" in fields:
+        tax_year = fields.get("tax_year")
     log_in = format_log_in_date(log_in_date)
     ext_year = log_in[-4:] if len(log_in) >= 4 else str(date.today().year)
+    ty_suffix = format_ty_suffix(tax_year)
 
     zpl = load_template(template_path)
     zpl = zpl.replace(_LOGNUM_PLACEHOLDER, formatted)
+    zpl = zpl.replace(_TY_PLACEHOLDER, ty_suffix)
     zpl = zpl.replace(_BARCODE_PLACEHOLDER, payload)
     zpl = zpl.replace(_CLIENT_PLACEHOLDER, client)
     zpl = zpl.replace(_LOG_IN_DATE_PLACEHOLDER, log_in)

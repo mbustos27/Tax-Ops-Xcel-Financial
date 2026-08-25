@@ -32,8 +32,26 @@ alwaysApply: true
   columns and rely on the schema default — that silent-drift bug is what this rule exists
   to prevent.
 - Walk-in uploads via `routes/documents.py` must have `match_confirmed=1, match_method='manual'`.
+- Suggestion-assisted assign (Phase 3.1, `email_suggest.py`): when the assigned `return_id`
+  matches the item's cached `suggested_return_id`, set `match_method='email_suggested'` and
+  `match_score=<cached suggestion score, or NULL for exact_email/domain_hint>`. Any other
+  `return_id` (including a suggestion the staff overrode) stays `email_manual`/`NULL`. Both
+  are equally confirmed — the distinction exists only to audit suggestion quality later.
 - `match_confirmed=0` is reserved for a future path where software proposes a match a human
   has not yet ratified. No such path currently exists — do not set it to 0 anywhere today.
+
+## Suggested client matching (non-binding, Phase 3.1)
+
+- `email_suggest.py` computes suggestions only from `/email-inbox` and `/api/email-inbox/items`
+  — never from the IMAP poll cycle. `mail_watcher.py` must never import `email_suggest`.
+- Chain (first hit wins): exact email on `clients.taxpayer_email`/`spouse_email` > domain hint
+  (`CLIENT_HINT_DOMAINS`, exactly one client on that domain) > fuzzy name (`name_matcher.
+  find_client()`, gated at `FUZZY_SUGGEST_THRESHOLD=90`). Ambiguous exact/domain matches and
+  fuzzy scores below 90 yield no suggestion — a wrong suggestion is worse than none.
+- Suggestions are cached on `email_inbox.suggested_return_id`/`suggestion_method`/
+  `suggestion_score` and recomputed only when `suggested_return_id IS NULL`.
+- Suggestion UI/API fields are display-only: client name + log number. Never SSN/EIN/TIN/
+  `file_path`.
 
 ## Suppression rules (sender allow/block)
 

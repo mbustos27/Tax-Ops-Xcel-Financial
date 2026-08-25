@@ -1,0 +1,5 @@
+*GPDSpecVersion: "1.0"
+*GPDFileVersion: "1.0"
+*GPDFileName: "BRMW120.GPD"
+*ModelName: "Brother MW-120"
+*Include: "BRMW.gpd"

@@ -1,0 +1,300 @@
+{
+  "generated_at": "2026-08-13T21:55:54Z",
+  "source": "F:\\DRAKE25\\DT\\5\\4F24A262\\Documents\\TAXPAYER.csv",
+  "canonical": "T:\\audit\\investigation\\exports\\TAXPAYER.csv",
+  "sha256": "33bcda025ef8a4db1e7b189da13dbebbd7c7ea170d2f9c5f5220a6ca6cf529c8",
+  "prev_sha256_note": "prior ingest e79e54aa\u2026 (no ZIP/FS)",
+  "as_of": "As of 08-13-2026",
+  "n_cols": 17,
+  "columns": [
+    "Taxpayer First Name",
+    "Taxpayer Last Name",
+    "Taxpayer Date of Birth",
+    "Taxpayer Daytime Phone",
+    "Taxpayer Email Address",
+    "Spouse Name",
+    "Spouse Daytime Phone",
+    "Spouse Date of Birth",
+    "Dependent First Name",
+    "Dependent Last Name",
+    "Invoice Number",
+    "State",
+    "City",
+    "County",
+    "Filing Status",
+    "ZIP Code",
+    "Street Address"
+  ],
+  "data_rows": 1328,
+  "widths": {
+    "17": 1327,
+    "1": 1
+  },
+  "ragged_rows": 1,
+  "invoice_strict_rows": 1072,
+  "invoice_bad": 30,
+  "invoice_empty": 226,
+  "bad_invoice_top": [
+    [
+      "250",
+      3
+    ],
+    [
+      "25141",
+      2
+    ],
+    [
+      "25549",
+      2
+    ],
+    [
+      "25537",
+      2
+    ],
+    [
+      "2501177",
+      2
+    ],
+    [
+      "25488",
+      2
+    ],
+    [
+      "25",
+      1
+    ],
+    [
+      "251",
+      1
+    ],
+    [
+      "25063",
+      1
+    ],
+    [
+      "2500892",
+      1
+    ],
+    [
+      "25037",
+      1
+    ],
+    [
+      "2500786",
+      1
+    ],
+    [
+      "25392",
+      1
+    ],
+    [
+      "210273",
+      1
+    ],
+    [
+      "50688",
+      1
+    ],
+    [
+      "25678",
+      1
+    ],
+    [
+      "23229",
+      1
+    ],
+    [
+      "25735",
+      1
+    ],
+    [
+      "2501016",
+      1
+    ],
+    [
+      "25055",
+      1
+    ]
+  ],
+  "fills": {
+    "city": 1327,
+    "state": 1327,
+    "county": 1327,
+    "zip": 1327,
+    "street": 1327,
+    "dep": 1328,
+    "fs": 1217,
+    "email": 1011,
+    "phone": 1155,
+    "dob": 1217,
+    "spouse": 492,
+    "spouse_dob": 493,
+    "spouse_phone": 78
+  },
+  "fs_counts": {
+    "1": 404,
+    "4": 327,
+    "2": 481,
+    "3": 4,
+    "5": 1
+  },
+  "zip_digit_lens": {
+    "5": 1303,
+    "9": 24
+  },
+  "zip_odd_sample": [],
+  "has_zip": true,
+  "has_street": true,
+  "has_filing_status": true,
+  "strict_distinct_invoices": 824,
+  "collapsed_strict": 824,
+  "multi_row_invoices": 158,
+  "multi_same_person": 139,
+  "multi_dep_driven": 139,
+  "multi_diff_person": 19,
+  "bare_collisions_after_collapse": 0,
+  "diff_person_examples": [
+    {
+      "invoice": "250247",
+      "rows": [
+        {
+          "t": "PERFECT SMILE MANAGEMENT CORP, ",
+          "dob": "",
+          "dep": ", ",
+          "zip": "90632"
+        },
+        {
+          "t": "BRAVO, VICTORIA",
+          "dob": "12/11/1997",
+          "dep": ", ",
+          "zip": "91744"
+        }
+      ]
+    },
+    {
+      "invoice": "250787",
+      "rows": [
+        {
+          "t": "CREATE YOUR HEALTH LLC, ",
+          "dob": "",
+          "dep": ", ",
+          "zip": "92234"
+        },
+        {
+          "t": "VICENTE, JOSE",
+          "dob": "09/02/1970",
+          "dep": "DE VICENTE, MARIO",
+          "zip": "90006"
+        }
+      ]
+    },
+    {
+      "invoice": "251095",
+      "rows": [
+        {
+          "t": "RODRIGUEZ, JAVIER",
+          "dob": "10/18/1978",
+          "dep": ", EMMA",
+          "zip": "92336"
+        },
+        {
+          "t": "GUTIERREZ, JOAO",
+          "dob": "03/07/1977",
+          "dep": ", ",
+          "zip": "90065"
+        },
+        {
+          "t": "GUTIERREZ, MERCEDES",
+          "dob": "04/15/1944",
+          "dep": ", ",
+          "zip": "90065"
+        }
+      ]
+    },
+    {
+      "invoice": "250339",
+      "rows": [
+        {
+          "t": "LOPEZ, SAUL",
+          "dob": "09/02/1980",
+          "dep": "LOPEZ, JOSE",
+          "zip": "90033"
+        },
+        {
+          "t": "LOPEZ, SAUL",
+          "dob": "09/02/1980",
+          "dep": "PINEDA, ADRIAN",
+          "zip": "90033"
+        },
+        {
+          "t": "LOPEZ, SAUL",
+          "dob": "09/02/1980",
+          "dep": "LOPEZ, SARAHI",
+          "zip": "90033"
+        },
+        {
+          "t": "LOPEZ, SAUL",
+          "dob": "09/02/1980",
+          "dep": "LOPEZ, SAUL",
+          "zip": "90033"
+        },
+        {
+          "t": "LOPEZ, SAUL",
+          "dob": "09/02/1980",
+          "dep": "LOPEZ, ALIANA",
+          "zip": "90033"
+        },
+        {
+          "t": "AGUILAR, AMBER",
+          "dob": "06/01/1990",
+          "dep": "AGUILAR, JAHSIEL",
+          "zip": "90041"
+        },
+        {
+          "t": "AGUILAR, AMBER",
+          "dob": "06/01/1990",
+          "dep": "AGUILAR, VIDA",
+          "zip": "90041"
+        }
+      ]
+    },
+    {
+      "invoice": "250207",
+      "rows": [
+        {
+          "t": "RAMOS, VALERIE",
+          "dob": "10/09/1964",
+          "dep": ", MARK",
+          "zip": "90038"
+        },
+        {
+          "t": "COLLAZO, MAYRA",
+          "dob": "09/30/1964",
+          "dep": "ALEJANDRE, GERARDO",
+          "zip": "90032"
+        },
+        {
+          "t": "COLLAZO, MAYRA",
+          "dob": "09/30/1964",
+          "dep": "COLLAZO, OSCAR",
+          "zip": "90032"
+        },
+        {
+          "t": "COLLAZO, MAYRA",
+          "dob": "09/30/1964",
+          "dep": "ALEJANDRE, HUGO",
+          "zip": "90032"
+        }
+      ]
+    }
+  ],
+  "phase0_gates": {
+    "0.1_city_state": true,
+    "0.1_zip": true,
+    "0.1_street": true,
+    "0.2_filing_status": true,
+    "0.2_ragged": true
+  },
+  "address_schema_unblocked": true,
+  "address_schema_partial": false
+}

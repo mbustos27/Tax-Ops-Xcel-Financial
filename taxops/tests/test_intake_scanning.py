@@ -143,14 +143,12 @@ def test_resolve_upload_provenance_scan_agent():
         assert docs_mod._resolve_upload_provenance() == ("walk_in", "manual")
 
 
-def test_document_delete_requires_preparer():
+def test_document_delete_requires_manage_permission():
     import inspect
     from routes import documents as docs_mod
 
-    src = inspect.getsource(docs_mod.return_document_delete)
-    # Decorators aren't in getsource of the function body — check module source around delete
     mod_src = inspect.getsource(docs_mod)
-    assert '@role_required("preparer")' in mod_src
+    assert '@permission_required("can_manage_return_documents")' in mod_src
     assert "def return_document_delete" in mod_src
 
 
@@ -159,6 +157,7 @@ def test_can_scan_intake_docs_permission():
 
     assert "can_scan_intake_docs" in ROLE_PERMISSIONS
     assert "receptionist" in ROLE_PERMISSIONS["can_scan_intake_docs"]
+    assert "receptionist" in ROLE_PERMISSIONS["can_manage_return_documents"]
 
 
 def test_pages_to_pdf_roundtrip():
@@ -360,3 +359,27 @@ def test_scan_agent_wia_paths_use_com_sta():
     assert "CoInitializeEx" in src
     assert "_StaWiaPump" in src
     assert "sys.coinit_flags" in src
+
+
+def test_return_detail_exposes_scan_restart_and_reactivate(client_logged_in, taxops_db_path):
+    """Deferred returns show Start intake scan; modal has Restart timer."""
+    from db import get_connection
+
+    rid = _seed_return(taxops_db_path)
+    conn = get_connection(taxops_db_path)
+    conn.execute("UPDATE returns SET scan_deferred = 1 WHERE id = ?", (rid,))
+    conn.commit()
+    row = conn.execute(
+        "SELECT scan_deferred FROM returns WHERE id = ?", (rid,)
+    ).fetchone()
+    assert int(row["scan_deferred"] or 0) == 1
+    conn.close()
+
+    resp = client_logged_in.get(f"/return/{rid}")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "scan-modal-restart" in html
+    assert "restartScanCountdown" in html
+    assert "reactivateIntakeScan" in html
+    assert "scan-deferred-banner" in html
+    assert "Start intake scan" in html or "Scan documents now" in html

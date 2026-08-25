@@ -62,9 +62,9 @@ Write-Host "PROD-1 — NSSM: AppExit Default Restart, staggered restart delay, A
 
 Write-Host 'Base environment — first KEY=value MUST NOT start with ":"'
 Write-Host '  To ONLY fix OLLAMA_BASE_URL without retyping other NSSM vars, use:' -ForegroundColor Cyan
-Write-Host "    .\scripts\nssm-set-ollama-url.ps1 -Service $Service -OllamaUrl http://192.168.1.141:11434" -ForegroundColor Gray
+Write-Host "    .\scripts\nssm-set-ollama-url.ps1 -Service $Service -OllamaUrl http://192.168.1.173:11434" -ForegroundColor Gray
 Write-Host ""
-& $NSSM set $Service AppEnvironmentExtra "OLLAMA_BASE_URL=http://192.168.1.141:11434"
+& $NSSM set $Service AppEnvironmentExtra "OLLAMA_BASE_URL=http://192.168.1.173:11434"
 
 # ── PROD-2: structured rotating JSON logs (GitHub Tax-Ops-Xcel-Financial #90) ─
 # Mirrors .env.example: path under $Logs matches stdout/stderr; console off avoids duplicate NSSM dumps.

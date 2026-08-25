@@ -1,0 +1,9 @@
+*%
+*% Copyright (c) 1997 - 1999 Microsoft Corporation
+*% All Rights Reserved.
+*%
+*GPDSpecVersion: "1.0"
+*GPDFileName: "BRMP2500.GPD"
+*GPDFileVersion: "1.0"
+*ModelName: "Brother MFC-P2500"
+*Include: "BRHL125x.GPD"

@@ -7,7 +7,7 @@
 ## 1. What the Application Is
 
 **TaxOps** is an internal tax-office management platform built for a small US tax preparation firm.  
-It runs as a **single Python process** (Flask + Waitress) on a Windows Server LAN machine (`192.168.1.141:5000`), managed by **NSSM** as a Windows service (`TaxOpsService`).  
+It runs as a **single Python process** (Flask + Waitress) on a Windows Server LAN machine (`192.168.1.173:5000`), managed by **NSSM** as a Windows service (`TaxOpsService`).  
 There is no public internet exposure. Staff access it from workstations on the same LAN.
 
 **Core jobs the software performs:**

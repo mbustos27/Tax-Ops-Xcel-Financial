@@ -1,0 +1,63 @@
+{
+  "generated_at": "2026-08-12T22:12:51Z",
+  "applied": true,
+  "plans": [
+    {
+      "case": "HUERTA",
+      "client_id": 495,
+      "spouse_id": 93,
+      "before": "HUERTA, EVELYN",
+      "taxpayer_name": "JESUS & EVELYN HUERTA",
+      "after": "HUERTA, BRIDGET",
+      "action": "REPLACE_CONTAM",
+      "entity_key": "spouse_unrecovered|1313|HUERTA|DANNY"
+    },
+    {
+      "case": "RAMON",
+      "client_id": 139,
+      "spouse_id": 1598,
+      "before": "B, MARIA",
+      "taxpayer_name": null,
+      "after": "MORENO, MARIA",
+      "action": "REPLACE_TRUNC",
+      "entity_key": "spouse_unrecovered|1697|RAMON RODRIGUEZ|CRESCENCIANO"
+    },
+    {
+      "case": "MONTANEZ",
+      "real_client": {
+        "id": 670,
+        "last_name": "MONTANEZ",
+        "first_name": "PABLO G & JOANNA",
+        "ssn_last4": "6693",
+        "spouse_last_name": "MONTANEZ",
+        "spouse_first_name": "JOANNA"
+      },
+      "real_spouse": {
+        "id": 1665,
+        "last_name": "MONTANEZ",
+        "first_name": "JOANNA",
+        "source": "wave4_clients_fold"
+      },
+      "last4_6789_clients": [
+        {
+          "id": 546,
+          "last_name": "LEVINE",
+          "first_name": "ROSALIND",
+          "ssn_last4": "6789"
+        },
+        {
+          "id": 2397,
+          "last_name": "TAXPAYER",
+          "first_name": "SAMPLE",
+          "ssn_last4": "6789"
+        }
+      ],
+      "action": "FALSE_POSITIVE_WRONG_LAST4",
+      "entity_key": "spouse_unrecovered|6789|MONTANEZ|PABLO"
+    }
+  ],
+  "applied_cases": [
+    "HUERTA",
+    "RAMON"
+  ]
+}

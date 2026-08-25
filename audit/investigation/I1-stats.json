@@ -1,0 +1,571 @@
+{
+  "db": "T:\\audit\\investigation\\snapshot\\taxops.db",
+  "tables": {
+    "clients": {
+      "total_rows": 1526,
+      "columns": {
+        "last_name": {
+          "fill_rate": 1.0,
+          "filled": 1526,
+          "distinct_filled": 878,
+          "max_len": 39,
+          "exact_len_counts": {
+            "39": 2
+          },
+          "len_ge_39": 2
+        },
+        "first_name": {
+          "fill_rate": 0.901,
+          "filled": 1375,
+          "distinct_filled": 1032,
+          "max_len": 31,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "display_name": {
+          "fill_rate": 0.2484,
+          "filled": 379,
+          "distinct_filled": 379,
+          "max_len": 40,
+          "exact_len_counts": {
+            "39": 3,
+            "40": 1
+          },
+          "len_ge_39": 4
+        },
+        "ssn_last4": {
+          "fill_rate": 0.9037,
+          "filled": 1379,
+          "distinct_filled": 1294,
+          "max_len": 4,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "spouse_last_name": {
+          "fill_rate": 0.2654,
+          "filled": 405,
+          "distinct_filled": 280,
+          "max_len": 19,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "spouse_first_name": {
+          "fill_rate": 0.2457,
+          "filled": 375,
+          "distinct_filled": 261,
+          "max_len": 11,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "taxpayer_dob": {
+          "fill_rate": 0.555,
+          "filled": 847,
+          "distinct_filled": 830,
+          "max_len": 10,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "spouse_dob": {
+          "fill_rate": 0.0,
+          "filled": 0,
+          "distinct_filled": 0,
+          "max_len": null,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "taxpayer_phone": {
+          "fill_rate": 0.0485,
+          "filled": 74,
+          "distinct_filled": 70,
+          "max_len": 14,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "taxpayer_cell": {
+          "fill_rate": 0.6088,
+          "filled": 929,
+          "distinct_filled": 855,
+          "max_len": 14,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "taxpayer_work_phone": {
+          "fill_rate": 0.0,
+          "filled": 0,
+          "distinct_filled": 0,
+          "max_len": null,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "spouse_cell": {
+          "fill_rate": 0.0,
+          "filled": 0,
+          "distinct_filled": 0,
+          "max_len": null,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "spouse_work_phone": {
+          "fill_rate": 0.0,
+          "filled": 0,
+          "distinct_filled": 0,
+          "max_len": null,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "taxpayer_email": {
+          "fill_rate": 0.036,
+          "filled": 55,
+          "distinct_filled": 53,
+          "max_len": 36,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "spouse_email": {
+          "fill_rate": 0.0,
+          "filled": 0,
+          "distinct_filled": 0,
+          "max_len": null,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "address": {
+          "fill_rate": 0.6239,
+          "filled": 952,
+          "distinct_filled": 793,
+          "max_len": 34,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "prior_year_log": {
+          "fill_rate": 0.0288,
+          "filled": 44,
+          "distinct_filled": 44,
+          "max_len": 4,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "referred_by": {
+          "fill_rate": 0.002,
+          "filled": 3,
+          "distinct_filled": 3,
+          "max_len": 27,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "created_at": {
+          "fill_rate": 1.0,
+          "filled": 1526,
+          "distinct_filled": 42,
+          "max_len": 25,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "updated_at": {
+          "fill_rate": 1.0,
+          "filled": 1526,
+          "distinct_filled": 126,
+          "max_len": 25,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "is_new_client": {
+          "fill_rate": 1.0,
+          "filled": 1526,
+          "distinct_filled": 2,
+          "max_len": 1,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "id_type": {
+          "fill_rate": 0.5328,
+          "filled": 813,
+          "distinct_filled": 2,
+          "max_len": 1,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        }
+      }
+    },
+    "returns": {
+      "total_rows": 1613,
+      "columns": {
+        "log_number": {
+          "fill_rate": 0.7433,
+          "filled": 1199,
+          "distinct_filled": 1199,
+          "max_len": 4,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "tax_year": {
+          "fill_rate": 1.0,
+          "filled": 1613,
+          "distinct_filled": 13,
+          "max_len": 4,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "client_status": {
+          "fill_rate": 1.0,
+          "filled": 1613,
+          "distinct_filled": 13,
+          "max_len": 14,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "processor": {
+          "fill_rate": 0.7303,
+          "filled": 1178,
+          "distinct_filled": 4,
+          "max_len": 13,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "intake_date": {
+          "fill_rate": 0.92,
+          "filled": 1484,
+          "distinct_filled": 172,
+          "max_len": 10,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "filing_status": {
+          "fill_rate": 0.0031,
+          "filled": 5,
+          "distinct_filled": 2,
+          "max_len": 6,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "bank_name": {
+          "fill_rate": 0.0006,
+          "filled": 1,
+          "distinct_filled": 1,
+          "max_len": 15,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "bank_routing": {
+          "fill_rate": 0.0,
+          "filled": 0,
+          "distinct_filled": 0,
+          "max_len": null,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "bank_account": {
+          "fill_rate": 0.0,
+          "filled": 0,
+          "distinct_filled": 0,
+          "max_len": null,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "bank_account_type": {
+          "fill_rate": 0.0,
+          "filled": 0,
+          "distinct_filled": 0,
+          "max_len": null,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "notes_intake": {
+          "fill_rate": 0.0019,
+          "filled": 3,
+          "distinct_filled": 3,
+          "max_len": 437,
+          "exact_len_counts": {},
+          "len_ge_39": 3
+        },
+        "drake_status_raw": {
+          "fill_rate": 0.5406,
+          "filled": 872,
+          "distinct_filled": 9,
+          "max_len": 39,
+          "exact_len_counts": {
+            "39": 1
+          },
+          "len_ge_39": 1
+        },
+        "created_at": {
+          "fill_rate": 1.0,
+          "filled": 1613,
+          "distinct_filled": 19,
+          "max_len": 25,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "updated_at": {
+          "fill_rate": 1.0,
+          "filled": 1613,
+          "distinct_filled": 123,
+          "max_len": 26,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        }
+      }
+    },
+    "spouses": {
+      "total_rows": 166,
+      "columns": {
+        "drake_spouse_id": {
+          "fill_rate": 1.0,
+          "filled": 166,
+          "distinct_filled": 166,
+          "max_len": 9,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "last_name": {
+          "fill_rate": 0.7289,
+          "filled": 121,
+          "distinct_filled": 117,
+          "max_len": 20,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "first_name": {
+          "fill_rate": 1.0,
+          "filled": 166,
+          "distinct_filled": 135,
+          "max_len": 11,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "middle_initial": {
+          "fill_rate": 0.4217,
+          "filled": 70,
+          "distinct_filled": 19,
+          "max_len": 1,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "date_of_birth": {
+          "fill_rate": 1.0,
+          "filled": 166,
+          "distinct_filled": 166,
+          "max_len": 10,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "derived_last_name": {
+          "fill_rate": 1.0,
+          "filled": 166,
+          "distinct_filled": 159,
+          "max_len": 20,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "source": {
+          "fill_rate": 1.0,
+          "filled": 166,
+          "distinct_filled": 1,
+          "max_len": 19,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "taxpayer_name": {
+          "fill_rate": 1.0,
+          "filled": 166,
+          "distinct_filled": 166,
+          "max_len": 48,
+          "exact_len_counts": {
+            "39": 3,
+            "40": 2
+          },
+          "len_ge_39": 16
+        },
+        "match_confidence": {
+          "fill_rate": 1.0,
+          "filled": 166,
+          "distinct_filled": 33,
+          "max_len": 5,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        }
+      }
+    },
+    "client_dependents": {
+      "total_rows": 706,
+      "columns": {
+        "drake_dependent_id": {
+          "fill_rate": 1.0,
+          "filled": 706,
+          "distinct_filled": 673,
+          "max_len": 9,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "first_name": {
+          "fill_rate": 1.0,
+          "filled": 706,
+          "distinct_filled": 498,
+          "max_len": 16,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "last_name": {
+          "fill_rate": 0.8059,
+          "filled": 569,
+          "distinct_filled": 296,
+          "max_len": 17,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "relationship": {
+          "fill_rate": 1.0,
+          "filled": 706,
+          "distinct_filled": 15,
+          "max_len": 12,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "date_of_birth": {
+          "fill_rate": 1.0,
+          "filled": 706,
+          "distinct_filled": 643,
+          "max_len": 10,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "ssn_last4": {
+          "error": "no such column: ssn_last4"
+        },
+        "taxpayer_name": {
+          "fill_rate": 1.0,
+          "filled": 706,
+          "distinct_filled": 416,
+          "max_len": 51,
+          "exact_len_counts": {
+            "39": 3,
+            "40": 13
+          },
+          "len_ge_39": 49
+        }
+      }
+    },
+    "drake_prefill_links": {
+      "total_rows": 1379,
+      "columns": {
+        "csm_ssn_last4": {
+          "fill_rate": 1.0,
+          "filled": 1379,
+          "distinct_filled": 1233,
+          "max_len": 4,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "csm_name_raw": {
+          "fill_rate": 1.0,
+          "filled": 1379,
+          "distinct_filled": 1376,
+          "max_len": 40,
+          "exact_len_counts": {
+            "39": 24,
+            "40": 74
+          },
+          "len_ge_39": 98
+        },
+        "csm_name_norm": {
+          "fill_rate": 1.0,
+          "filled": 1379,
+          "distinct_filled": 1376,
+          "max_len": 41,
+          "exact_len_counts": {
+            "39": 30,
+            "40": 66
+          },
+          "len_ge_39": 98
+        },
+        "purple_name": {
+          "fill_rate": 0.9449,
+          "filled": 1303,
+          "distinct_filled": 1295,
+          "max_len": 51,
+          "exact_len_counts": {
+            "39": 7,
+            "40": 12
+          },
+          "len_ge_39": 54
+        },
+        "purple_name_norm": {
+          "error": "no such column: purple_name_norm"
+        },
+        "client_id": {
+          "fill_rate": 0.9166,
+          "filled": 1264,
+          "distinct_filled": 1264,
+          "max_len": 4,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "prefill_status": {
+          "fill_rate": 1.0,
+          "filled": 1379,
+          "distinct_filled": 4,
+          "max_len": 26,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "match_tier": {
+          "fill_rate": 0.9449,
+          "filled": 1303,
+          "distinct_filled": 3,
+          "max_len": 13,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "match_score": {
+          "fill_rate": 0.9376,
+          "filled": 1293,
+          "distinct_filled": 56,
+          "max_len": 16,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        },
+        "match_variant": {
+          "error": "no such column: match_variant"
+        },
+        "csm_status_raw": {
+          "fill_rate": 0.9768,
+          "filled": 1347,
+          "distinct_filled": 6,
+          "max_len": 17,
+          "exact_len_counts": {},
+          "len_ge_39": 0
+        }
+      }
+    }
+  },
+  "truncation_suspects": [
+    {
+      "table": "clients",
+      "column": "last_name",
+      "max_len": 39,
+      "n_at_max": 2,
+      "len_ge_39": 2
+    },
+    {
+      "table": "clients",
+      "column": "display_name",
+      "max_len": 40,
+      "n_at_max": 1,
+      "len_ge_39": 4
+    },
+    {
+      "table": "returns",
+      "column": "drake_status_raw",
+      "max_len": 39,
+      "n_at_max": 1,
+      "len_ge_39": 1
+    },
+    {
+      "table": "drake_prefill_links",
+      "column": "csm_name_raw",
+      "max_len": 40,
+      "n_at_max": 74,
+      "len_ge_39": 98
+    }
+  ]
+}

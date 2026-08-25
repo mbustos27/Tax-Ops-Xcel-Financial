@@ -55,8 +55,20 @@ def test_render_label_preserves_template_structure():
     assert "LOG-IN __/__/" not in zpl
     assert "^LH0,0" in zpl
     assert "^FO24,12^FDLOG# " in zpl
-    assert "^FO248,6^FB260,1,0,R,0^FDLOG-IN " in zpl
+    assert "^FO300,6^FB208,1,0,R,0^FDLOG-IN " in zpl
     assert "^FO132,76^BCN,70,N,N,N" in zpl
+
+
+def test_render_label_includes_tax_year_after_log_number():
+    zpl = render_label("123", tax_year=2024)
+    assert "LOG# 00123  TY2024" in zpl
+    assert "{TY}" not in zpl
+
+
+def test_render_label_omits_ty_when_tax_year_missing():
+    zpl = render_label("123")
+    assert "^FDLOG# 00123^FS" in zpl
+    assert "TY20" not in zpl
 
 
 def test_render_label_zero_pads_to_five_digits():
@@ -77,15 +89,17 @@ def test_render_label_does_not_mutate_template_file_on_disk():
     assert "{CLIENT}" in after
     assert "{LOG_IN_DATE}" in after
     assert "{EXT_YEAR}" in after
+    assert "{TY}" in after
 
 
 def test_render_label_no_leftover_placeholders():
-    zpl = render_label("456", last_name="Lee")
+    zpl = render_label("456", last_name="Lee", tax_year=2025)
     assert "{LOGNUM}" not in zpl
     assert "{BARCODE}" not in zpl
     assert "{CLIENT}" not in zpl
     assert "{LOG_IN_DATE}" not in zpl
     assert "{EXT_YEAR}" not in zpl
+    assert "{TY}" not in zpl
 
 
 def test_render_label_log_in_date_override():
@@ -102,6 +116,16 @@ def test_format_log_in_date_defaults_to_today():
     assert format_log_in_date(None) == f"{d.month:02d}/{d.day:02d}/{d.year:04d}"
     assert format_log_in_date("2025-12-01") == "12/01/2025"
     assert format_log_in_date("1/2/2025") == "01/02/2025"
+
+
+def test_format_ty_suffix():
+    from filetrack.labels.template import format_ty_suffix
+
+    assert format_ty_suffix(2024) == "  TY2024"
+    assert format_ty_suffix("2023") == "  TY2023"
+    assert format_ty_suffix(None) == ""
+    assert format_ty_suffix("") == ""
+    assert format_ty_suffix("nope") == ""
 
 
 def test_template_module_never_imports_printer():

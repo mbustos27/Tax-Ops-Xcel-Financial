@@ -12,7 +12,7 @@ If -NssmExe is omitted, the script looks for nssm.exe on PATH, then common insta
 You can also pass the real full path, e.g. C:\Tools\nssm-2.24\win64\nssm.exe (do not use a fake path).
 
 Example:
-  .\nssm-set-ollama-url.ps1 -Service TaxOpsService -OllamaUrl http://192.168.1.141:11434
+  .\nssm-set-ollama-url.ps1 -Service TaxOpsService -OllamaUrl http://192.168.1.173:11434
   Restart-Service TaxOpsService
 #>
 param(
@@ -20,7 +20,7 @@ param(
     [string] $Service = 'TaxOpsService',
 
     [Parameter(Mandatory = $false)]
-    [string] $OllamaUrl = 'http://192.168.1.141:11434',
+    [string] $OllamaUrl = 'http://192.168.1.173:11434',
 
     # Default 'nssm.exe' = search PATH and common folders. Or pass the real full path to nssm.exe.
     [string] $NssmExe = 'nssm.exe'

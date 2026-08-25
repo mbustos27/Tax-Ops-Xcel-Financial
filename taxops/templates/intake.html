@@ -125,9 +125,17 @@
 
       <div>
         <label class="intake-label" for="field-tax_year">{{ _('Tax Year') }}</label>
-        <select name="tax_year" id="field-tax_year" class="intake-input">
-          {% for y in [2026, 2025, 2024, 2023] %}
-          <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
+        {# Defaults to the season's active year. Staff may pick a prior year
+           (active through active−5) so late / multi-year returns can be logged
+           this season. Server validates via resolve_intake_tax_year — out-of-
+           range values are rejected, never silently remapped. #}
+        <select name="tax_year" id="field-tax_year" class="intake-input" required
+                aria-label="{{ _('Tax Year') }}">
+          {% for y in intake_tax_years %}
+          <option value="{{ y }}"
+            {% if (selected_tax_year|default(active_intake_tax_year)|int) == y %}selected{% endif %}>
+            {{ y }}{% if y == active_intake_tax_year %} — {{ _('season default') }}{% endif %}
+          </option>
           {% endfor %}
         </select>
       </div>
@@ -143,7 +151,9 @@
 
       <div>
         <label class="intake-label" for="field-prior_year_log">{{ _('Prior Year Log #') }}</label>
-        <input type="text" name="prior_year_log" class="intake-input" placeholder="{{ _('e.g. 24') }}" id="field-prior_year_log" data-year-input>
+        {# Do NOT use data-year-input here — that expands 2-digit values as calendar
+           years (36 → 1936) and corrupts real log numbers. #}
+        <input type="text" name="prior_year_log" class="intake-input" placeholder="{{ _('e.g. 24') }}" id="field-prior_year_log" inputmode="numeric" autocomplete="off">
       </div>
 
       <div>
@@ -924,7 +934,9 @@
       const target = _activeIdx >= 0 ? btns[_activeIdx] : btns[0];
       if (target) {
         _activeIdx = -1;
-        selectClient(target.dataset.id, target.dataset.name);
+        let nm = target.dataset.name || '';
+        try { nm = decodeURIComponent(nm); } catch (err) { /* keep raw */ }
+        selectClient(target.dataset.id, nm);
       }
     }
   });
@@ -953,33 +965,127 @@
           ${t('no_results')} — {{ _('will create new') }}.
         </p>`;
     } else {
-      resultsBox.innerHTML = items.map(c => `
-        <button type="button" data-id="${c.id}" data-name="${c.name}"
+      resultsBox.innerHTML = items.map(c => {
+        const years = (c.existing_years || []).slice(0, 4).map(y =>
+          `TY${y.tax_year}${y.log_number ? ' #' + y.log_number : ''}`
+        ).join(' · ');
+        const multi = (c.existing_years || []).length > 1;
+        return `
+        <button type="button" data-id="${c.id}" data-name="${encodeURIComponent(c.name || '')}"
                 class="client-pick w-full text-left px-4 py-2.5 transition-colors border-b last:border-0"
                 style="border-color:var(--border-subtle)">
-          <span class="font-semibold text-sm" style="color:var(--text-primary)">${c.name}</span>
-          ${c.last_year
-            ? `<span class="ml-2 text-xs" style="color:var(--text-muted)">Last filed: TY${c.last_year}</span>`
+          <span class="font-semibold text-sm" style="color:var(--text-primary)">${(c.name || '').replace(/</g,'&lt;')}</span>
+          ${c.preintake
+            ? `<span class="ml-2 text-xs font-semibold px-1.5 py-0.5 rounded"
+                     style="background:#ede9fe;color:#5b21b6">Preintake</span>`
             : ''}
-        </button>`).join('');
+          ${c.prior_year_forms
+            ? `<span class="ml-2 text-xs font-semibold px-1.5 py-0.5 rounded"
+                     style="background:#ecfdf5;color:#065f46">Prior forms</span>`
+            : ''}
+          ${multi
+            ? `<span class="ml-2 text-xs font-semibold px-1.5 py-0.5 rounded"
+                     style="background:#fffbeb;color:#92400e">Multi-year</span>`
+            : ''}
+          ${years
+            ? `<div class="text-xs mt-0.5" style="color:var(--text-muted)">${years}</div>`
+            : (c.last_year
+              ? `<span class="ml-2 text-xs" style="color:var(--text-muted)">Last filed: TY${c.last_year}</span>`
+              : '')}
+        </button>`;
+      }).join('');
       // Auto-highlight first result so Enter immediately selects it
       _highlightItem(0);
     }
     resultsBox.classList.remove('hidden');
     resultsBox.querySelectorAll('.client-pick').forEach(btn => {
-      btn.addEventListener('click', () => selectClient(btn.dataset.id, btn.dataset.name));
+      btn.addEventListener('click', () => {
+        let nm = btn.dataset.name || '';
+        try { nm = decodeURIComponent(nm); } catch (e) { /* keep raw */ }
+        selectClient(btn.dataset.id, nm);
+      });
       btn.addEventListener('mouseover', () => _highlightItem(_getPickBtns().indexOf(btn)));
       btn.addEventListener('mouseleave', () => { btn.style.background = ''; });
     });
+  }
+
+  /** Last-resort name fill from the search hit label (``LAST, FIRST & SPOUSE``). */
+  function ensureNamesFromLookupLabel(displayName) {
+    const lastEl = document.getElementById('field-last_name');
+    const firstEl = document.getElementById('field-first_name');
+    if (!lastEl || (lastEl.value || '').trim()) return;
+    const s = (displayName || '').trim();
+    if (!s) return;
+    if (s.includes(',')) {
+      const comma = s.indexOf(',');
+      const last = s.slice(0, comma).trim();
+      let rest = s.slice(comma + 1).trim();
+      let spFirst = '';
+      if (rest.includes('&')) {
+        const amp = rest.indexOf('&');
+        spFirst = rest.slice(amp + 1).trim().split(/\s+/)[0] || '';
+        rest = rest.slice(0, amp).trim();
+      }
+      lastEl.value = last;
+      if (firstEl && !(firstEl.value || '').trim() && rest) firstEl.value = rest;
+      const spF = document.getElementById('field-spouse_first_name');
+      const spL = document.getElementById('field-spouse_last_name');
+      if (spFirst && spF && !(spF.value || '').trim()) spF.value = spFirst;
+      if (spFirst && spL && !(spL.value || '').trim()) spL.value = last;
+    } else {
+      lastEl.value = s; // business / no-comma display
+    }
   }
 
   async function selectClient(id, name) {
     resultsBox.classList.add('hidden');
     lookupInput.value = name;
 
-    const res  = await _csrfFetch(`/api/clients/${id}/reintake`);
-    const { client, last_return, dependents, drake_deps_prefilled, drake_spouse, habit_profile,
-            has_spouse_row, spouse_id_type, spouse_first_for_flag } = await res.json();
+    const taxYearEl = document.getElementById('field-tax_year');
+    const taxYear = taxYearEl ? taxYearEl.value : '';
+    const intendedTaxYear = taxYear;
+    const reintakeUrl = `/api/clients/${id}/reintake` +
+      (taxYear ? `?tax_year=${encodeURIComponent(taxYear)}` : '');
+
+    let payload;
+    try {
+      const res = await _csrfFetch(reintakeUrl, {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' },
+      });
+      const raw = await res.text();
+      try {
+        payload = raw ? JSON.parse(raw) : {};
+      } catch (parseErr) {
+        console.error('reintake non-JSON', id, res.status, raw.slice(0, 300));
+        alert(
+          'Re-intake lookup failed: server returned a web page instead of data (HTTP ' +
+          res.status + '). Refresh and sign in again, then retry.'
+        );
+        return;
+      }
+      if (!res.ok) {
+        const msg = (payload && payload.error) || ('HTTP ' + res.status);
+        console.error('reintake failed', id, msg, payload);
+        alert('Re-intake lookup failed: ' + msg);
+        return;
+      }
+    } catch (err) {
+      console.error('reintake error', id, err);
+      alert('Re-intake lookup failed: ' + (err && err.message ? err.message : err));
+      return;
+    }
+
+    try {
+      const { client, last_return: last_return_raw, dependents, drake_deps_prefilled, drake_spouse, habit_profile,
+              has_spouse_row, spouse_id_type, spouse_first_for_flag,
+              other_returns, existing_years } = payload;
+      if (!client) {
+        console.error('reintake missing client', id, payload);
+        alert('Re-intake lookup returned no client data');
+        return;
+      }
+      const last_return = last_return_raw || {};
 
     // ── Client-level fields ───────────────────────────────────────────────
     // Name/log fields are silently filled; contact/demographic fields get amber
@@ -991,6 +1097,9 @@
       'spouse_cell','spouse_work_phone','spouse_email',
     ]);
     CLIENT_TEXT.forEach(key => prefillText(key, client[key], CLIENT_HIGHLIGHT.has(key)));
+
+    // Hard guarantee: if API left last_name blank, take it from the search label
+    ensureNamesFromLookupLabel(name);
 
     // SPOUSES: if Drake supplied a spouse not in the client record, prefill it
     const spouseNotice = document.getElementById('drake-spouse-notice');
@@ -1060,11 +1169,19 @@
     if (discountEl) discountEl.value = '';
 
     const prevYear = last_return.tax_year;
-    const newYear  = document.querySelector('[name=tax_year]').value;
+    if (taxYearEl && intendedTaxYear) taxYearEl.value = intendedTaxYear;
+    const newYear  = (taxYearEl && taxYearEl.value) || intendedTaxYear;
+    const otherYears = (other_returns || existing_years || [])
+      .filter(y => String(y.tax_year) !== String(newYear));
+    const otherBits = otherYears.slice(0, 4).map(y =>
+      `TY${y.tax_year}${y.log_number ? ' #' + y.log_number : ''}`
+    ).join(', ');
     selectedInfo.innerHTML = prevYear
       ? `Pre-filled from <strong>TY${prevYear}</strong> (Log #${last_return.log_number || '—'}).
-         Highlighted fields carried over — update anything that changed for <strong>TY${newYear}</strong>.`
-      : `Existing client found. A new TY${newYear} return will be created.`;
+         Highlighted fields carried over — update anything that changed for <strong>TY${newYear}</strong>.
+         ${otherBits ? `<br><span style="color:var(--text-muted)">Also on file: ${otherBits}. This intake adds/opens <strong>TY${newYear}</strong> only — stays on this season's list.</span>` : ''}`
+      : `Existing client found. A new <strong>TY${newYear}</strong> return will be created
+         ${otherBits ? `(already has ${otherBits})` : ''} and stay on this season's list.`;
     selectedInfo.classList.remove('hidden');
     renderHabitProfile(habit_profile);
     renderIdFlags(client, has_spouse_row, spouse_id_type, spouse_first_for_flag);
@@ -1087,6 +1204,22 @@
 
     // Highlight any fields that are still empty after prefill
     markGaps();
+    } catch (err) {
+      console.error('reintake apply error', id, err);
+      alert('Re-intake data loaded but form fill failed: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  // Changing Tax Year after a client is selected re-runs the same /reintake
+  // pull (Drake + profile + prior return) for the newly chosen TY.
+  const taxYearSelect = document.getElementById('field-tax_year');
+  if (taxYearSelect) {
+    taxYearSelect.addEventListener('change', () => {
+      const cid = (clientIdField && clientIdField.value || '').trim();
+      if (!cid) return;
+      const nm = (lookupInput && lookupInput.value) || '';
+      selectClient(cid, nm);
+    });
   }
 
   // LIFE-2: prior year fee suggestion
@@ -1203,6 +1336,7 @@
   }
 
   function prefillSelect(key, val, highlight) {
+    if (key === 'tax_year') return; // never overwrite the year staff is logging
     const el = document.getElementById(`field-${key}`);
     if (!el || val == null || val === '') return;
     el.value = val;
@@ -1313,6 +1447,11 @@
   // Spouse fields — only when MFJ or MFS
   const SPOUSE_GAP_FIELDS = ['spouse_first_name', 'spouse_dob'];
 
+  function filingNeedsSpouse(fs) {
+    const v = (fs || '').trim().toUpperCase();
+    return v === 'MFJ' || v === 'MFS';
+  }
+
   function _clearGaps() {
     document.querySelectorAll('.needs-info').forEach(el => el.classList.remove('needs-info'));
     document.querySelectorAll('.needs-info-tag').forEach(el => el.remove());
@@ -1322,7 +1461,7 @@
 
   function _flagGap(key) {
     const el = document.getElementById(`field-${key}`);
-    if (!el || el.value.trim()) return false;
+    if (!el || el.disabled || el.value.trim()) return false;
     el.classList.add('needs-info');
     const lbl = document.querySelector(`label[for="field-${key}"]`);
     if (lbl && !lbl.querySelector('.needs-info-tag')) {
@@ -1336,7 +1475,8 @@
 
   function markGaps() {
     _clearGaps();
-    // Only run when a client has been selected
+    // Only run gap banner when a client has been selected (re-intake path).
+    // Spouse required sync still runs for new clients via syncSpouseSection().
     if (!clientIdField.value) return;
 
     let count = 0;
@@ -1354,7 +1494,7 @@
 
     // Spouse fields — only when MFJ or MFS
     const fs = document.getElementById('field-filing_status')?.value || '';
-    if (fs === 'MFJ' || fs === 'MFS') {
+    if (filingNeedsSpouse(fs)) {
       for (const key of SPOUSE_GAP_FIELDS) count += _flagGap(key) ? 1 : 0;
     }
 
@@ -1393,8 +1533,11 @@
   // Also handle <select> changes (e.g. filing_status)
   document.addEventListener('change', e => {
     const el = e.target;
-    // Re-evaluate gaps when filing status changes (spouse section appears/disappears)
-    if (el.id === 'field-filing_status' && clientIdField.value) {
+    // Re-evaluate gaps when filing status changes (spouse section appears/disappears).
+    // syncSpouseSection (on the same select) owns show/hide + required toggles;
+    // always re-run markGaps here so MFJ→SINGLE clears spouse "Ask" highlights
+    // even when no client is loaded yet (markGaps no-ops safely).
+    if (el.id === 'field-filing_status') {
       markGaps();
       return;
     }
@@ -1448,13 +1591,18 @@
   // ── ID / ITIN flags ────────────────────────────────────────────────────────
 
   const idFlagsPanel = document.getElementById('id-flags-panel');
+  let _idFlagState = null; // last args so filing-status changes can re-render
 
   function renderIdFlags(client, hasSpouseRow, spouseIdType, spouseFirstName) {
+    _idFlagState = { client, hasSpouseRow, spouseIdType, spouseFirstName };
     idFlagsPanel.innerHTML = '';
     const flags = [];
+    const spouseFiling = filingNeedsSpouse(
+      document.getElementById('field-filing_status')?.value || ''
+    );
 
     // Taxpayer ITIN
-    if (client.id_type === 2) {
+    if (client && client.id_type === 2) {
       flags.push({
         id:    'itin-tp',
         color: '#b45309',   // amber-700
@@ -1466,8 +1614,8 @@
       });
     }
 
-    // Spouse ID required (any spouse row, regardless of id_type)
-    if (hasSpouseRow) {
+    // Spouse ID / ITIN only when filing status still needs a spouse (MFJ/MFS)
+    if (spouseFiling && hasSpouseRow) {
       const spName = spouseFirstName ? `for ${spouseFirstName}` : '';
       flags.push({
         id:    'id-spouse',
@@ -1480,8 +1628,7 @@
       });
     }
 
-    // Spouse ITIN
-    if (spouseIdType === 2) {
+    if (spouseFiling && spouseIdType === 2) {
       const spName = spouseFirstName ? `${spouseFirstName} is` : 'Spouse is';
       flags.push({
         id:    'itin-sp',
@@ -1523,6 +1670,18 @@
 
     idFlagsPanel.classList.remove('hidden');
   }
+
+  // Bridge for the filing-status spouse sync script (separate IIFE below).
+  window.__refreshIntakeIdFlags = function () {
+    if (_idFlagState) {
+      renderIdFlags(
+        _idFlagState.client,
+        _idFlagState.hasSpouseRow,
+        _idFlagState.spouseIdType,
+        _idFlagState.spouseFirstName
+      );
+    }
+  };
 
   // ── Clear ──────────────────────────────────────────────────────────────────
 
@@ -1668,7 +1827,7 @@
     if (newRadio) newRadio.checked = true;
 
     // Change 1: hide spouse section on clear
-    const spouseEl = document.getElementById('filing_status');
+    const spouseEl = document.getElementById('field-filing_status');
     if (spouseEl) spouseEl.dispatchEvent(new Event('change'));
   });
 
@@ -1911,6 +2070,13 @@
   form.addEventListener('submit', function (e) {
     var errors = [];
     form.querySelectorAll('[required]').forEach(function (el) {
+      if (el.disabled) return;
+      // Hidden spouse block: required is cleared by syncSpouseSection, but
+      // skip anything inside a hidden ancestor as a safety net.
+      if (el.closest && el.closest('#spouse-section') &&
+          el.closest('#spouse-section').classList.contains('hidden')) {
+        return;
+      }
       if (!el.value.trim()) {
         var label = form.querySelector('label[for="' + el.id + '"]');
         var labelText = label ? (label.textContent || label.innerText || '').trim() : (el.name || el.id);
@@ -1967,25 +2133,62 @@ function toggleSection(bodyId, btn) {
   hint.textContent = isHidden ? 'tap to expand' : 'tap to collapse';
 }
 
-// Change 1: spouse section show/hide based on filing status
+// Change 1: spouse section show/hide + required fields track filing status
 (function() {
   const fsEl      = document.getElementById('field-filing_status');
   const spouseDiv = document.getElementById('spouse-section');
   if (!fsEl || !spouseDiv) return;
 
-  function updateSpouse() {
-    const v = fsEl.value;
-    if (v === 'MFJ' || v === 'MFS') {
-      spouseDiv.classList.remove('hidden');
-    } else {
-      spouseDiv.classList.add('hidden');
+  const SPOUSE_FIELD_IDS = [
+    'field-spouse_last_name', 'field-spouse_first_name', 'field-spouse_dob',
+    'field-spouse_ssn_full', 'field-spouse_occupation', 'field-spouse_cell',
+    'field-spouse_work_phone', 'field-spouse_email',
+  ];
+  // HTML5 / WCAG submit summary — only these are required when MFJ/MFS
+  const SPOUSE_REQUIRED_IDS = ['field-spouse_first_name', 'field-spouse_dob'];
+
+  function syncSpouseSection() {
+    const needs = (fsEl.value === 'MFJ' || fsEl.value === 'MFS');
+    spouseDiv.classList.toggle('hidden', !needs);
+
+    SPOUSE_FIELD_IDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.disabled = !needs;
+      if (!needs) {
+        el.removeAttribute('required');
+        el.removeAttribute('aria-invalid');
+        el.classList.remove('needs-info');
+        document.querySelector(`label[for="${id}"]`)
+          ?.querySelector('.needs-info-tag')?.remove();
+        const err = document.getElementById('err-' + id);
+        if (err) { err.textContent = ''; err.classList.remove('visible'); }
+      }
+    });
+
+    SPOUSE_REQUIRED_IDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (needs) el.setAttribute('required', 'required');
+      else el.removeAttribute('required');
+    });
+
+    // Hide Drake spouse notice when spouse block is not in play
+    if (!needs) {
+      const spouseNotice = document.getElementById('drake-spouse-notice');
+      if (spouseNotice) spouseNotice.classList.add('hidden');
+    }
+
+    // Re-evaluate spouse ID / ITIN prompts against current filing status
+    if (typeof window.__refreshIntakeIdFlags === 'function') {
+      window.__refreshIntakeIdFlags();
     }
   }
 
-  fsEl.addEventListener('change', updateSpouse);
+  fsEl.addEventListener('change', syncSpouseSection);
   // Run on page load to handle back-navigation or error-repopulation
-  document.addEventListener('DOMContentLoaded', updateSpouse);
-  updateSpouse();
+  document.addEventListener('DOMContentLoaded', syncSpouseSection);
+  syncSpouseSection();
 })();
 
 // Section sidebar — scroll tracking + click-to-jump

@@ -1,0 +1,118 @@
+*Include: "StdNames.gpd"
+*MasterUnits: PAIR(300, 300)
+*PrinterType: SERIAL
+*MemoryUsage: LIST(RASTER)
+*RotateCoordinate?: FALSE
+*RotateRaster?: FALSE
+*RotateFont?: FALSE
+*MirrorRasterPage?: TRUE
+*Feature: Orientation
+{
+    *rcNameID: =ORIENTATION_DISPLAY
+    *DefaultOption: PORTRAIT
+    *Option: PORTRAIT
+    {
+        *rcNameID: =PORTRAIT_DISPLAY
+    }
+    *Option: LANDSCAPE_CC270
+    {
+        *rcNameID: =LANDSCAPE_DISPLAY
+    }
+}
+*Feature: InputBin
+{
+    *rcNameID: =PAPER_SOURCE_DISPLAY
+    *DefaultOption: AUTO
+    *Option: AUTO
+    {
+        *rcNameID: =AUTO_DISPLAY
+    }
+}
+*Feature: Resolution
+{
+    *rcNameID: =RESOLUTION_DISPLAY
+    *DefaultOption: Option1
+    *Option: Option1
+    {
+        *Name: "300 x 300 " =DOTS_PER_INCH
+        *DPI: PAIR(300, 300)
+        *TextDPI: PAIR(300, 300)
+        *SpotDiameter: 100
+        *Command: CmdSendBlockData { *Cmd : "" }
+    }
+}
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: LETTER-A7
+    *Option: A7
+    {
+       *Name: "A7"
+       *PageDimensions: PAIR(876, 1240)
+       *PrintableArea: PAIR(816, 1180)
+       *PrintableOrigin: PAIR(30, 30)
+    }
+    *Option: A4-A7
+    {
+       *Name: "A4 -> A7"
+       *PageDimensions: PAIR(2480, 3508)
+       *PrintableArea: PAIR(2310, 3338)
+       *PrintableOrigin: PAIR(85, 85)
+    }
+    *Option: LETTER-A7
+    {
+       *Name: "LETTER -> A7"
+       *PageDimensions: PAIR(2550, 3300)
+       *PrintableArea: PAIR(2390, 3140)
+       *PrintableOrigin: PAIR(80, 80)
+    }
+    *Option: A5-A7
+    {
+       *Name: "A5 -> A7"
+       *PageDimensions: PAIR(1748, 2480)
+       *PrintableArea: PAIR(1628, 2360)
+       *PrintableOrigin: PAIR(60, 60)
+    }
+    *Option: B5-A7
+    {
+       *Name: "B5 -> A7"
+       *PageDimensions: PAIR(2148, 3034)
+       *PrintableArea: PAIR(2002, 2888)
+       *PrintableOrigin: PAIR(73, 73)
+    }
+}
+*Feature: ColorMode
+{
+	*rcNameID: =COLOR_PRINTING_MODE_DISPLAY
+	*DefaultOption:Gray
+	*Option:Gray
+	{
+		*Name: "Nomal"
+		*DevNumOfPlanes:1
+		*DevBPP:8
+		*DrvBPP:8
+		*PaletteSize:256
+		*PaletteProgrammable? : FALSE
+		*IPCallbackID:100
+		*RasterMode:DIRECT
+		*Color?:FALSE
+	}
+}
+*Command: CmdStartJob
+{
+    *Order: JOB_SETUP.1
+    *Cmd: "<1B>@"
+}
+*Command: CmdStartPage
+{
+    *Order: PAGE_SETUP.1
+    *Cmd: "<1B694B80><4D02>"
+}
+*Command: CmdEndPage
+{
+    *Order: PAGE_FINISH.1
+    *Cmd: "<1A>"
+}
+*Command: CmdCR { *Cmd : "" }
+*Command: CmdLF { *Cmd : "" }
+*Command: CmdFF { *Cmd : "" }

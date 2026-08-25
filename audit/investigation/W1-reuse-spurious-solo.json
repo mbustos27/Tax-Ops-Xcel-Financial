@@ -1,0 +1,5806 @@
+{
+  "generated_at": "2026-08-12T23:14:11Z",
+  "log_path": "C:\\Users\\Windows 10\\OneDrive - Xcel Financial Services LLC\\Shared\\Logs\\TAX LOG 2025 Live.xlsx",
+  "n_named_bares": 1041,
+  "n_solo_bares": 835,
+  "n_repeat_bares": 206,
+  "n_genuine_reuse": 204,
+  "n_two_person_reuse": 200,
+  "outcomes": {
+    "RESOLVE_SINGLE": 19,
+    "STILL_COLLISION": 184,
+    "ALL_SPURIOUS": 1
+  },
+  "cases": [
+    {
+      "bare_log": "1",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "AZUSA HOMES LLC|",
+          "name": "AZUSA HOMES LLC",
+          "source_row": 772,
+          "solo_homes": [
+            {
+              "bare_log": "90",
+              "source_row": 861,
+              "name": "AZUSA HOMES LLC"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "CEST LA VIE APPAERL INC|",
+          "name": "CEST LA VIE APPAERL INC",
+          "source_row": 6,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "CEST LA VIE APPAERL INC",
+        "person_key": "CEST LA VIE APPAERL INC|",
+        "source_row": 6
+      },
+      "drop": [
+        {
+          "name": "AZUSA HOMES LLC",
+          "source_row": 772,
+          "keep_on_bares": [
+            "90"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "2",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "BRAVO|BYRON M",
+          "name": "BRAVO, BYRON M",
+          "source_row": 7,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "LIONS FUMIGATION INC|",
+          "name": "LIONS FUMIGATION INC",
+          "source_row": 773,
+          "solo_homes": [
+            {
+              "bare_log": "63",
+              "source_row": 834,
+              "name": "LIONS FUMIGATION INC"
+            },
+            {
+              "bare_log": "1024",
+              "source_row": 771,
+              "name": "LIONS FUMIGATION INC"
+            }
+          ],
+          "spurious": true
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "BRAVO, BYRON M",
+        "person_key": "BRAVO|BYRON M",
+        "source_row": 7
+      },
+      "drop": [
+        {
+          "name": "LIONS FUMIGATION INC",
+          "source_row": 773,
+          "keep_on_bares": [
+            "63",
+            "1024"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "3",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "BOCANEGRA GALLEGOS|URIEL ADRIANA",
+          "name": "BOCANEGRA GALLEGOS, URIEL & ADRIANA",
+          "source_row": 774,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "CHEANG|SARAH",
+          "name": "CHEANG, SARAH",
+          "source_row": 8,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "4",
+      "n_rows": 3,
+      "n_people": 3,
+      "occupants": [
+        {
+          "person_key": "MACKAY|JEANNE",
+          "name": "MACKAY, JEANNE",
+          "source_row": 105,
+          "solo_homes": [
+            {
+              "bare_log": "249",
+              "source_row": 104,
+              "name": "MACKAY, JEANNE"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "ORMA SERVICES INC|",
+          "name": "ORMA SERVICES, INC",
+          "source_row": 775,
+          "solo_homes": [
+            {
+              "bare_log": "12",
+              "source_row": 783,
+              "name": "ORMA SERVICES  INC"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "PEREZ|NORA L",
+          "name": "PEREZ, NORA L",
+          "source_row": 9,
+          "solo_homes": [
+            {
+              "bare_log": "1117",
+              "source_row": 1177,
+              "name": "PEREZ, NORA L"
+            }
+          ],
+          "spurious": true
+        }
+      ],
+      "n_spurious": 3,
+      "n_keepers": 0,
+      "outcome": "ALL_SPURIOUS",
+      "resolved_holder": null,
+      "drop": [
+        {
+          "name": "MACKAY, JEANNE",
+          "source_row": 105,
+          "keep_on_bares": [
+            "249"
+          ]
+        },
+        {
+          "name": "ORMA SERVICES, INC",
+          "source_row": 775,
+          "keep_on_bares": [
+            "12"
+          ]
+        },
+        {
+          "name": "PEREZ, NORA L",
+          "source_row": 9,
+          "keep_on_bares": [
+            "1117"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "5",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CASILLAS|MARIA DEL CARMEN",
+          "name": "CASILLAS, MARIA DEL CARMEN",
+          "source_row": 776,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "PADILLA|CRISTIAN F",
+          "name": "PADILLA, CRISTIAN F",
+          "source_row": 106,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "6",
+      "n_rows": 3,
+      "n_people": 3,
+      "occupants": [
+        {
+          "person_key": "ALDAMA|MAYRA",
+          "name": "ALDAMA, MAYRA",
+          "source_row": 930,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ORMA SERVICES INC|",
+          "name": "ORMA SERVICES, INC",
+          "source_row": 777,
+          "solo_homes": [
+            {
+              "bare_log": "12",
+              "source_row": 783,
+              "name": "ORMA SERVICES  INC"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "SOTELO|MICHELLE",
+          "name": "SOTELO, MICHELLE",
+          "source_row": 107,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": [
+        {
+          "name": "ORMA SERVICES, INC",
+          "source_row": 777,
+          "keep_on_bares": [
+            "12"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "7",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CASILLAS|MARIA DEL CARMEN",
+          "name": "CASILLAS, MARIA DEL CARMEN",
+          "source_row": 778,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "GARCIA PARTIDA|JACQUELINE",
+          "name": "GARCIA PARTIDA, JACQUELINE",
+          "source_row": 108,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "8",
+      "n_rows": 3,
+      "n_people": 3,
+      "occupants": [
+        {
+          "person_key": "ALVARADO|ERNESTO G REBECCA",
+          "name": "ALVARADO, ERNESTO G & REBECCA",
+          "source_row": 110,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ORMA SERVICES INC|",
+          "name": "ORMA SERVICES  INC",
+          "source_row": 779,
+          "solo_homes": [
+            {
+              "bare_log": "12",
+              "source_row": 783,
+              "name": "ORMA SERVICES  INC"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "PARTIDA|DYMENIQUE",
+          "name": "PARTIDA, DYMENIQUE",
+          "source_row": 109,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": [
+        {
+          "name": "ORMA SERVICES  INC",
+          "source_row": 779,
+          "keep_on_bares": [
+            "12"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "9",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CATALPA DEVELOPMENT LLC|",
+          "name": "CATALPA DEVELOPMENT LLC",
+          "source_row": 780,
+          "solo_homes": [
+            {
+              "bare_log": "93",
+              "source_row": 864,
+              "name": "CATALPA DEVELOPMENT LLC"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "LECHUGA|REBECCA",
+          "name": "LECHUGA, REBECCA",
+          "source_row": 111,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "LECHUGA, REBECCA",
+        "person_key": "LECHUGA|REBECCA",
+        "source_row": 111
+      },
+      "drop": [
+        {
+          "name": "CATALPA DEVELOPMENT LLC",
+          "source_row": 780,
+          "keep_on_bares": [
+            "93"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "141",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CHAN|THY",
+          "name": "CHAN, THY",
+          "source_row": 912,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "PEREZ GARCIA VILLAREAL|ANDRES IRAZU",
+          "name": "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+          "source_row": 10,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "142",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "AGUILAR GARCIA ENTERPRISES|",
+          "name": "AGUILAR & GARCIA ENTERPRISES",
+          "source_row": 11,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "L A AUTO SERVICE LLC|",
+          "name": "L.A. AUTO SERVICE LLC",
+          "source_row": 913,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "143",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LA MESA AUTO SALES INC |",
+          "name": "LA MESA AUTO SALES INC.",
+          "source_row": 914,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VILLAREAL|RICHARD P",
+          "name": "VILLAREAL, RICHARD P",
+          "source_row": 12,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "144",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "RECENDEZ|FRANCISCO D DAISY CASAS",
+          "name": "RECENDEZ, FRANCISCO D & DAISY CASAS",
+          "source_row": 13,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SALAS|SERGIO D",
+          "name": "SALAS, SERGIO D",
+          "source_row": 915,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "145",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "BEDARD|PETER A",
+          "name": "BEDARD, PETER A",
+          "source_row": 916,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "GALICIA MELCHOR|GISELA",
+          "name": "GALICIA MELCHOR, GISELA",
+          "source_row": 14,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "146",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "BURGOIN|LOUIE FRANCES A",
+          "name": "BURGOIN, LOUIE & FRANCES A",
+          "source_row": 15,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANDOVAL AUTO SERVICE TOW|",
+          "name": "SANDOVAL AUTO SERVICE & TOW",
+          "source_row": 917,
+          "solo_homes": [
+            {
+              "bare_log": "131",
+              "source_row": 902,
+              "name": "SANDOVAL AUTO SERVICE & TOW"
+            },
+            {
+              "bare_log": "129",
+              "source_row": 900,
+              "name": "SANDOVAL AUTO SERVICE & TOW"
+            },
+            {
+              "bare_log": "130",
+              "source_row": 901,
+              "name": "SANDOVAL AUTO SERVICE & TOW"
+            },
+            {
+              "bare_log": "128",
+              "source_row": 899,
+              "name": "SANDOVAL AUTO SERVICE & TOW"
+            }
+          ],
+          "spurious": true
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "BURGOIN, LOUIE & FRANCES A",
+        "person_key": "BURGOIN|LOUIE FRANCES A",
+        "source_row": 15
+      },
+      "drop": [
+        {
+          "name": "SANDOVAL AUTO SERVICE & TOW",
+          "source_row": 917,
+          "keep_on_bares": [
+            "131",
+            "129",
+            "130",
+            "128"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "147",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "SANDOVAL|RUDY CLAIRE",
+          "name": "SANDOVAL, RUDY & CLAIRE",
+          "source_row": 918,
+          "solo_homes": [
+            {
+              "bare_log": "124",
+              "source_row": 895,
+              "name": "SANDOVAL, RUDY & CLAIRE"
+            },
+            {
+              "bare_log": "126",
+              "source_row": 897,
+              "name": "SANDOVAL, RUDY & CLAIRE"
+            },
+            {
+              "bare_log": "125",
+              "source_row": 896,
+              "name": "SANDOVAL, RUDY & CLAIRE"
+            },
+            {
+              "bare_log": "127",
+              "source_row": 898,
+              "name": "SANDOVAL, RUDY & CLAIRE"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "SANTANA|HERAS",
+          "name": "SANTANA, HERAS",
+          "source_row": 16,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "SANTANA, HERAS",
+        "person_key": "SANTANA|HERAS",
+        "source_row": 16
+      },
+      "drop": [
+        {
+          "name": "SANDOVAL, RUDY & CLAIRE",
+          "source_row": 918,
+          "keep_on_bares": [
+            "124",
+            "126",
+            "125",
+            "127"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "148",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LOS BOMBEROS DE LA COUNTY|",
+          "name": "LOS BOMBEROS DE LA COUNTY",
+          "source_row": 919,
+          "solo_homes": [
+            {
+              "bare_log": "36",
+              "source_row": 807,
+              "name": "LOS BOMBEROS DE LA COUNTY"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "TAREEN|ZULQARNIAN FOUZIA",
+          "name": "TAREEN, ZULQARNIAN & FOUZIA",
+          "source_row": 17,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "TAREEN, ZULQARNIAN & FOUZIA",
+        "person_key": "TAREEN|ZULQARNIAN FOUZIA",
+        "source_row": 17
+      },
+      "drop": [
+        {
+          "name": "LOS BOMBEROS DE LA COUNTY",
+          "source_row": 919,
+          "keep_on_bares": [
+            "36"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "149",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DORIA|RUDY J DORIA",
+          "name": "DORIA, RUDY J DORIA",
+          "source_row": 18,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "LOPEZ|JUAN",
+          "name": "LOPEZ, JUAN",
+          "source_row": 920,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "150",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "SANDOVAL|GERARDO V",
+          "name": "SANDOVAL, GERARDO V",
+          "source_row": 19,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VIDAL|LUIS M",
+          "name": "VIDAL, LUIS M",
+          "source_row": 921,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "151",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GARCIA|FRANCISCO",
+          "name": "GARCIA, FRANCISCO",
+          "source_row": 20,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MULTICARD SYSTEMS|",
+          "name": "MULTICARD SYSTEMS",
+          "source_row": 922,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "152",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CARRANZA|MAURICIO A",
+          "name": "CARRANZA, MAURICIO A",
+          "source_row": 21,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "PACIFIC TRUCK|",
+          "name": "PACIFIC TRUCK",
+          "source_row": 923,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "181",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ABU TAHA|QAIS AHMAD YOUNIS",
+          "name": "ABU TAHA, QAIS AHMAD YOUNIS",
+          "source_row": 36,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VELASQUEZ|CARLOS MARIA E",
+          "name": "VELASQUEZ, CARLOS & MARIA E",
+          "source_row": 924,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "182",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CORNWELL|JOHN",
+          "name": "CORNWELL, JOHN",
+          "source_row": 925,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "GUERRERO|VICTOR M",
+          "name": "GUERRERO, VICTOR M",
+          "source_row": 37,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "183",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CORNWELL|JOHN",
+          "name": "CORNWELL, JOHN",
+          "source_row": 926,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "JUAREZ|EDWVIGES",
+          "name": "JUAREZ, EDWVIGES",
+          "source_row": 38,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "184",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CORNWELL|JOHN",
+          "name": "CORNWELL, JOHN",
+          "source_row": 927,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "JUAREZ|EDWVIGES",
+          "name": "JUAREZ, EDWVIGES",
+          "source_row": 39,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "185",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CORNWELL|JOHN",
+          "name": "CORNWELL, JOHN",
+          "source_row": 928,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MACIAS|DENNIS N",
+          "name": "MACIAS, DENNIS N",
+          "source_row": 40,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "186",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CAZARES|MARIA E",
+          "name": "CAZARES, MARIA E",
+          "source_row": 929,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TRIGEROUS|NOELLE M",
+          "name": "TRIGEROUS, NOELLE M",
+          "source_row": 41,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "271",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GONZALEZ|SHAWN M",
+          "name": "GONZALEZ, SHAWN M",
+          "source_row": 113,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VARGAS|CELESTINO L",
+          "name": "VARGAS, CELESTINO L",
+          "source_row": 937,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "272",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GONZALEZ|AURELIO R",
+          "name": "GONZALEZ, AURELIO R",
+          "source_row": 114,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ROMERO|GRISELDA",
+          "name": "ROMERO, GRISELDA",
+          "source_row": 938,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "273",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CHEVEZ|LEONEL MARY",
+          "name": "CHEVEZ, LEONEL & MARY",
+          "source_row": 115,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SALAZAR QUIROZ|ROSA M",
+          "name": "SALAZAR QUIROZ, ROSA M",
+          "source_row": 939,
+          "solo_homes": [
+            {
+              "bare_log": "293",
+              "source_row": 135,
+              "name": "SALAZAR QUIROZ, ROSA M"
+            }
+          ],
+          "spurious": true
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "CHEVEZ, LEONEL & MARY",
+        "person_key": "CHEVEZ|LEONEL MARY",
+        "source_row": 115
+      },
+      "drop": [
+        {
+          "name": "SALAZAR QUIROZ, ROSA M",
+          "source_row": 939,
+          "keep_on_bares": [
+            "293"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "274",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "PEREZ GONZALEZ|MICHAEL J CRYSTAL",
+          "name": "PEREZ & GONZALEZ, MICHAEL J & CRYSTAL",
+          "source_row": 940,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "YOUSEF|QASEM",
+          "name": "YOUSEF, QASEM",
+          "source_row": 116,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "275",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "FLORES|CIPRIANO MARIA",
+          "name": "FLORES, CIPRIANO & MARIA",
+          "source_row": 117,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "THE PRINCESS MATTRESS INC|",
+          "name": "THE PRINCESS MATTRESS INC",
+          "source_row": 941,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "276",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "AGUIRRE JIMENEZ|AMALIA",
+          "name": "AGUIRRE JIMENEZ, AMALIA",
+          "source_row": 118,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "HUERTA|JUAN ALICIA",
+          "name": "HUERTA, JUAN & ALICIA",
+          "source_row": 942,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "277",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CRUZ|GEORGE L",
+          "name": "CRUZ, GEORGE L",
+          "source_row": 119,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SERRANOS TIRES AUTO REPAIRS CORP|",
+          "name": "SERRANOS TIRES & AUTO REPAIRS CORP",
+          "source_row": 943,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "278",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MONARREZ CERVANTES|BEATRIZ JUAN",
+          "name": "MONARREZ & CERVANTES, BEATRIZ & JUAN",
+          "source_row": 120,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SERRANO LOPEZ|JESUS JOVITA",
+          "name": "SERRANO LOPEZ, JESUS & JOVITA",
+          "source_row": 944,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "279",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "RAMIREZ|ELIZABETH",
+          "name": "RAMIREZ, ELIZABETH",
+          "source_row": 121,
+          "solo_homes": [
+            {
+              "bare_log": "758",
+              "source_row": 505,
+              "name": "RAMIREZ, ELIZABETH"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "SERRANO|JORGE",
+          "name": "SERRANO, JORGE",
+          "source_row": 945,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "SERRANO, JORGE",
+        "person_key": "SERRANO|JORGE",
+        "source_row": 945
+      },
+      "drop": [
+        {
+          "name": "RAMIREZ, ELIZABETH",
+          "source_row": 121,
+          "keep_on_bares": [
+            "758"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "280",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "BARRIOS|SELVIN",
+          "name": "BARRIOS, SELVIN",
+          "source_row": 122,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "RODRIGUEZ|AMADO",
+          "name": "RODRIGUEZ, AMADO",
+          "source_row": 946,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "281",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "BARRIOS OROZCO|ISABEL A",
+          "name": "BARRIOS OROZCO, ISABEL A",
+          "source_row": 123,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MELENDREZ|JOSE KARLA",
+          "name": "MELENDREZ, JOSE & KARLA",
+          "source_row": 947,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "282",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LEDESMA|BLANCA ADRIAN",
+          "name": "LEDESMA, BLANCA & ADRIAN",
+          "source_row": 124,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANCHEZ|JORGE",
+          "name": "SANCHEZ, JORGE",
+          "source_row": 948,
+          "solo_homes": [
+            {
+              "bare_log": "477",
+              "source_row": 271,
+              "name": "SANCHEZ, JORGE"
+            }
+          ],
+          "spurious": true
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "LEDESMA, BLANCA & ADRIAN",
+        "person_key": "LEDESMA|BLANCA ADRIAN",
+        "source_row": 124
+      },
+      "drop": [
+        {
+          "name": "SANCHEZ, JORGE",
+          "source_row": 948,
+          "keep_on_bares": [
+            "477"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "283",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ARRUE CORLETO|NELSON A",
+          "name": "ARRUE CORLETO, NELSON A",
+          "source_row": 949,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ORTEGA|MARTHA",
+          "name": "ORTEGA, MARTHA",
+          "source_row": 125,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "284",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MYM ORGANICS LLC|",
+          "name": "MYM ORGANICS LLC",
+          "source_row": 950,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TASHAYOD|TARA",
+          "name": "TASHAYOD, TARA",
+          "source_row": 126,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "285",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "RESENDEZ|FRANCISCO MARICRUZ",
+          "name": "RESENDEZ, FRANCISCO & MARICRUZ",
+          "source_row": 951,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "RIOS|ELIZABETH",
+          "name": "RIOS, ELIZABETH",
+          "source_row": 127,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "286",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "FRANK S REFINISHING INC|",
+          "name": "FRANK'S REFINISHING INC",
+          "source_row": 952,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TRUJILLO|FRANCISCO",
+          "name": "TRUJILLO, FRANCISCO",
+          "source_row": 128,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "287",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "AZAMAR|MISAEL",
+          "name": "AZAMAR, MISAEL",
+          "source_row": 953,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "CASTILLO|JESUS MARTHA",
+          "name": "CASTILLO, JESUS & MARTHA",
+          "source_row": 129,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "288",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CAMERO|EDNA",
+          "name": "CAMERO, EDNA",
+          "source_row": 130,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "CARDONA|HECTOR",
+          "name": "CARDONA, HECTOR",
+          "source_row": 954,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "289",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ACOSTA|BRYANA",
+          "name": "ACOSTA, BRYANA",
+          "source_row": 131,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "OROZCO SOTO|JULIO",
+          "name": "OROZCO SOTO, JULIO",
+          "source_row": 955,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "290",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "RECENDEZ|GILBERTO",
+          "name": "RECENDEZ, GILBERTO",
+          "source_row": 956,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "WRIGHT|CAGE",
+          "name": "WRIGHT, CAGE",
+          "source_row": 132,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "291",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DIAZ|DANIEL",
+          "name": "DIAZ, DANIEL",
+          "source_row": 957,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "LIMA|ERASMO",
+          "name": "LIMA, ERASMO",
+          "source_row": 133,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "292",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MELENDEZ CORVERA|ELVIS M",
+          "name": "MELENDEZ CORVERA, ELVIS M",
+          "source_row": 958,
+          "solo_homes": [
+            {
+              "bare_log": "364",
+              "source_row": 196,
+              "name": "MELENDEZ CORVERA, ELVIS M"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "MORENO|WILLIAM MARIA",
+          "name": "MORENO, WILLIAM & MARIA",
+          "source_row": 134,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "MORENO, WILLIAM & MARIA",
+        "person_key": "MORENO|WILLIAM MARIA",
+        "source_row": 134
+      },
+      "drop": [
+        {
+          "name": "MELENDEZ CORVERA, ELVIS M",
+          "source_row": 958,
+          "keep_on_bares": [
+            "364"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "294",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MARTINEZ|ELENA",
+          "name": "MARTINEZ, ELENA",
+          "source_row": 136,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MEDINA|YESENIA",
+          "name": "MEDINA, YESENIA",
+          "source_row": 960,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "295",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MORENO GONZALEZ LUNA|JESSICA",
+          "name": "MORENO GONZALEZ & LUNA, JESSICA",
+          "source_row": 961,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TORRES DE REYES|EVA",
+          "name": "TORRES DE REYES, EVA",
+          "source_row": 137,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "296",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MARTINEZ|MEGAN G",
+          "name": "MARTINEZ, MEGAN G",
+          "source_row": 138,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MORALES|WILLIAM J",
+          "name": "MORALES, WILLIAM J",
+          "source_row": 962,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "297",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "AGUAYO|MARGARITA P",
+          "name": "AGUAYO, MARGARITA P",
+          "source_row": 139,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ALEMAN|JOSE M",
+          "name": "ALEMAN, JOSE M",
+          "source_row": 963,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "298",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MAYA CASTILLO|FELIX ALICIA ALEMAN",
+          "name": "MAYA CASTILLO, FELIX & ALICIA ALEMAN",
+          "source_row": 964,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VARELA PARRA|FRANCISCO",
+          "name": "VARELA PARRA, FRANCISCO",
+          "source_row": 140,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "299",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ABU TAHA|ZAID AHMED Y GIULIANA",
+          "name": "ABU TAHA, ZAID AHMED Y & GIULIANA",
+          "source_row": 965,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "YANEZ|AMBER",
+          "name": "YANEZ, AMBER",
+          "source_row": 141,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "300",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GARZA|RUMALDO",
+          "name": "GARZA, RUMALDO",
+          "source_row": 142,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANDOVAL|RAMON ALMA",
+          "name": "SANDOVAL, RAMON & ALMA",
+          "source_row": 966,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "301",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "URIAS|MARTHA E",
+          "name": "URIAS, MARTHA E",
+          "source_row": 967,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VELEZ|SALVADOR ZONIA",
+          "name": "VELEZ, SALVADOR & ZONIA",
+          "source_row": 143,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "302",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ESTRADA|FRANCISCO LIGIA",
+          "name": "ESTRADA, FRANCISCO & LIGIA",
+          "source_row": 144,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SOTO LOPEZ|MARIBEL",
+          "name": "SOTO LOPEZ, MARIBEL",
+          "source_row": 968,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "307",
+      "n_rows": 3,
+      "n_people": 3,
+      "occupants": [
+        {
+          "person_key": "AJRAB|YOUSEF NATALIE KDEISS",
+          "name": "AJRAB, YOUSEF & NATALIE KDEISS",
+          "source_row": 145,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "CALISTRO|FRANK R",
+          "name": "CALISTRO, FRANK R",
+          "source_row": 973,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "RAMOS|ANTONIO",
+          "name": "RAMOS, ANTONIO",
+          "source_row": 146,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 3,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "308",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CONCHAS|JOSE B MARIA D J MOJARRO",
+          "name": "CONCHAS, JOSE B & MARIA D J MOJARRO",
+          "source_row": 974,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MC GILL|ROSEMARIE",
+          "name": "MC GILL, ROSEMARIE",
+          "source_row": 147,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "310",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CASTANEDA|OSIEL ROCIO",
+          "name": "CASTANEDA, OSIEL & ROCIO",
+          "source_row": 976,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "GALINDO SOTO|PATRICIA",
+          "name": "GALINDO SOTO, PATRICIA",
+          "source_row": 148,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "311",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MORENO|DAVID",
+          "name": "MORENO, DAVID",
+          "source_row": 149,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "PANDURO|SONIA A",
+          "name": "PANDURO, SONIA A",
+          "source_row": 977,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "312",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "RIVAS|LUIS H",
+          "name": "RIVAS, LUIS H",
+          "source_row": 150,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SOSA|CRISTINA",
+          "name": "SOSA, CRISTINA",
+          "source_row": 978,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "313",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CRUZ|LAURA V",
+          "name": "CRUZ, LAURA V",
+          "source_row": 151,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VELASCO|DELIA",
+          "name": "VELASCO, DELIA",
+          "source_row": 979,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "314",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "RODAS|GUSTAVO CARIDAD",
+          "name": "RODAS, GUSTAVO & CARIDAD",
+          "source_row": 980,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SOTELO|BRENDA",
+          "name": "SOTELO, BRENDA",
+          "source_row": 152,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "315",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "BRAVO|VINCENT II",
+          "name": "BRAVO, VINCENT II",
+          "source_row": 981,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MIJARES|REYMUNDO DEBORAH L",
+          "name": "MIJARES, REYMUNDO & DEBORAH L",
+          "source_row": 153,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "316",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "AGUILAR|HORACIO ROBERTA G",
+          "name": "AGUILAR, HORACIO & ROBERTA G",
+          "source_row": 154,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ESPI|CARMEN A",
+          "name": "ESPI, CARMEN A",
+          "source_row": 982,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "317",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ACOSTA|VERONICA RUBEN",
+          "name": "ACOSTA, VERONICA & RUBEN",
+          "source_row": 155,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SALAZAR NUNEZ|JESUS M CRIZTAL N",
+          "name": "SALAZAR NUNEZ, JESUS M & CRIZTAL N",
+          "source_row": 983,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "318",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ARROYO HERNANDEZ|HUMBERTO MARIA",
+          "name": "ARROYO & HERNANDEZ, HUMBERTO & MARIA",
+          "source_row": 984,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "HENDERSON|DIANA",
+          "name": "HENDERSON, DIANA",
+          "source_row": 156,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "319",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "RODAS|RENAN",
+          "name": "RODAS, RENAN",
+          "source_row": 985,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VASQUEZ DURAN|ROBERT K PALOMA",
+          "name": "VASQUEZ & DURAN, ROBERT K & PALOMA",
+          "source_row": 157,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "320",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DAVILA|VANESSA",
+          "name": "DAVILA, VANESSA",
+          "source_row": 158,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "G S DELIVERY SERVICES|",
+          "name": "G'S DELIVERY SERVICES",
+          "source_row": 986,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "327",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "JORGE DE LA OSA DENTAL CORP|",
+          "name": "JORGE DE LA OSA DENTAL CORP",
+          "source_row": 993,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TRILLOS PEINADO|YERSINO",
+          "name": "TRILLOS PEINADO, YERSINO",
+          "source_row": 159,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "328",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "IMAS INDUSTRIAL MACHINE AUTOMATION INC|",
+          "name": "IMAS INDUSTRIAL MACHINE AUTOMATION INC",
+          "source_row": 994,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "OROZCO|CYNTHIA",
+          "name": "OROZCO, CYNTHIA",
+          "source_row": 160,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "329",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MC5 ENTERPRISES INC |",
+          "name": "MC5 ENTERPRISES INC.",
+          "source_row": 995,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TINOCO ROGERS|LILIANA BRANDON",
+          "name": "TINOCO & ROGERS, LILIANA & BRANDON",
+          "source_row": 161,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "330",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "JUAREZ|CRUZ MARISOL ESCOBAR SANCHEZ",
+          "name": "JUAREZ, CRUZ & MARISOL ESCOBAR SANCHEZ",
+          "source_row": 996,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "WARNKE SARDINAS|KARINA MARIO",
+          "name": "WARNKE & SARDINAS, KARINA & MARIO",
+          "source_row": 162,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "331",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GARFIAS|PAULINA",
+          "name": "GARFIAS, PAULINA",
+          "source_row": 163,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ZAMORA|JACOB R",
+          "name": "ZAMORA, JACOB R",
+          "source_row": 997,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "332",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MORALES ITZEP|JUAN O",
+          "name": "MORALES & ITZEP, JUAN O",
+          "source_row": 164,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ZAMORA|CASSANDRA",
+          "name": "ZAMORA, CASSANDRA",
+          "source_row": 998,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "333",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ROJAS|LUIS GUADALUPE MELENDREZ",
+          "name": "ROJAS, LUIS & GUADALUPE MELENDREZ",
+          "source_row": 165,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SOLOMON|LAUREN",
+          "name": "SOLOMON, LAUREN",
+          "source_row": 999,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "571",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "J DE LA OSA DENTAL INC|",
+          "name": "J DE LA OSA DENTAL INC",
+          "source_row": 1001,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "PRINCIC|KARL",
+          "name": "PRINCIC, KARL",
+          "source_row": 346,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "572",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "PRINCIC|ALFREDA",
+          "name": "PRINCIC, ALFREDA",
+          "source_row": 347,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SUPER DISCOUNT FAMILY STORE|",
+          "name": "SUPER DISCOUNT FAMILY STORE",
+          "source_row": 1002,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "573",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MARISCAL|ROBERTO VERONICA",
+          "name": "MARISCAL, ROBERTO & VERONICA",
+          "source_row": 348,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SIGUENCIA|FERNANDO",
+          "name": "SIGUENCIA, FERNANDO",
+          "source_row": 1003,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "574",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ABOU ABDOU|AHMED HIND ABED",
+          "name": "ABOU ABDOU, AHMED & HIND ABED",
+          "source_row": 349,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ESCALANTE CASTRO|KARINA A",
+          "name": "ESCALANTE CASTRO, KARINA A",
+          "source_row": 1004,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "575",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CORONA|BRIAN M",
+          "name": "CORONA, BRIAN M",
+          "source_row": 350,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "GAMBOA|RAFAEL MONARREZ",
+          "name": "GAMBOA, RAFAEL MONARREZ",
+          "source_row": 1005,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "576",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "PALENCIA|VIVIAN A",
+          "name": "PALENCIA, VIVIAN A",
+          "source_row": 1006,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "RIVERA|OSCAR H JR",
+          "name": "RIVERA, OSCAR H JR",
+          "source_row": 351,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "577",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GUTIERREZ|FRANCISCO",
+          "name": "GUTIERREZ, FRANCISCO",
+          "source_row": 352,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SHARK TAND TRENDS INC|",
+          "name": "SHARK TAND TRENDS INC",
+          "source_row": 1007,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "578",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DAKAK|KALID K SUMER",
+          "name": "DAKAK, KALID K & SUMER",
+          "source_row": 1008,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MORALES|GUSTAVO A",
+          "name": "MORALES, GUSTAVO A",
+          "source_row": 353,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "579",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DAKAK|RAMI",
+          "name": "DAKAK, RAMI",
+          "source_row": 1009,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "GARCIA CORONA|NICANOR KRISTAL",
+          "name": "GARCIA & CORONA, NICANOR & KRISTAL",
+          "source_row": 354,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "580",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "NIETO AVENDANO|GIOVANNI HEIN",
+          "name": "NIETO AVENDANO, GIOVANNI & HEIN",
+          "source_row": 355,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "NUNO|WILLIAM",
+          "name": "NUNO, WILLIAM",
+          "source_row": 1010,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "581",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GARCIA|MAGDALENA",
+          "name": "GARCIA, MAGDALENA",
+          "source_row": 356,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "PALMS GROVE LEASING LLC|",
+          "name": "PALMS GROVE LEASING LLC",
+          "source_row": 1011,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "582",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GONZALEZ|ARACELY",
+          "name": "GONZALEZ, ARACELY",
+          "source_row": 357,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SERRANO|JAVIER",
+          "name": "SERRANO, JAVIER",
+          "source_row": 1012,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "583",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GONZALEZ|EDUARDO",
+          "name": "GONZALEZ, EDUARDO",
+          "source_row": 358,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "NESTOR|ELSY",
+          "name": "NESTOR, ELSY",
+          "source_row": 1013,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "586",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GIRON|ESMERALDA",
+          "name": "GIRON, ESMERALDA",
+          "source_row": 359,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SOUTHBAY RESTORATION INC|",
+          "name": "SOUTHBAY RESTORATION INC",
+          "source_row": 1016,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "587",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "PEREZ|ALYSSA M",
+          "name": "PEREZ, ALYSSA M",
+          "source_row": 1017,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANTIAGO|CARMELA ROY",
+          "name": "SANTIAGO, CARMELA & ROY",
+          "source_row": 360,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "588",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "RODDIS|JAMIE",
+          "name": "RODDIS, JAMIE",
+          "source_row": 1018,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANTIAGO|EUNICE",
+          "name": "SANTIAGO, EUNICE",
+          "source_row": 361,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "589",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DENISE|SANTIAGO",
+          "name": "DENISE, SANTIAGO",
+          "source_row": 362,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "KIKB ENTERPRISES|",
+          "name": "KIKB ENTERPRISES",
+          "source_row": 1019,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "590",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "NUNO|CYNTHIA",
+          "name": "NUNO, CYNTHIA",
+          "source_row": 363,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "OSUA|IVAN KARINA",
+          "name": "OSUA, IVAN & KARINA",
+          "source_row": 1020,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "591",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "NUNO|JUAN",
+          "name": "NUNO, JUAN",
+          "source_row": 364,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VEGA|ERIN",
+          "name": "VEGA, ERIN",
+          "source_row": 1021,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "592",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CASTELLANOS|ROBERTO A CELIA",
+          "name": "CASTELLANOS, ROBERTO A & CELIA",
+          "source_row": 1022,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "GEORGE|DARON",
+          "name": "GEORGE, DARON",
+          "source_row": 365,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "593",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ASCENCION|FATIMA B",
+          "name": "ASCENCION, FATIMA B",
+          "source_row": 366,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANCHEZ|AYLEEN",
+          "name": "SANCHEZ, AYLEEN",
+          "source_row": 1023,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "594",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "RUIZ GONZALEZ|MIGUEL A",
+          "name": "RUIZ GONZALEZ, MIGUEL A",
+          "source_row": 367,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANCHEZ|BRYAN A",
+          "name": "SANCHEZ, BRYAN A",
+          "source_row": 1024,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "595",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GIMENEZ GARCIA|ENRIQUE P LUVIA",
+          "name": "GIMENEZ  & GARCIA, ENRIQUE P & LUVIA",
+          "source_row": 368,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANCHEZ|KEVIN IVAN",
+          "name": "SANCHEZ, KEVIN IVAN",
+          "source_row": 1025,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "596",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "HUERTA|JACOB STEPHANIE A",
+          "name": "HUERTA, JACOB & STEPHANIE A",
+          "source_row": 1026,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "PEREZ MENDEZ|GENOVEVA",
+          "name": "PEREZ MENDEZ, GENOVEVA",
+          "source_row": 369,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "597",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CREATE YOUR HEALTH LLC|",
+          "name": "CREATE YOUR HEALTH LLC",
+          "source_row": 1027,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SCHOEN|RAYMOND A",
+          "name": "SCHOEN, RAYMOND A",
+          "source_row": 370,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "598",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ROBLEDO CORONA CORTES|PEDRO F MARIA",
+          "name": "ROBLEDO & CORONA CORTES, PEDRO F & MARIA",
+          "source_row": 1028,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ROJAS|ALEXANDER A",
+          "name": "ROJAS, ALEXANDER A",
+          "source_row": 371,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "599",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "COVARRUBIAS FERNANDEZ|MARIO MONICA",
+          "name": "COVARRUBIAS & FERNANDEZ, MARIO & MONICA",
+          "source_row": 372,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ESCANDON|EDWARD M",
+          "name": "ESCANDON, EDWARD M",
+          "source_row": 1029,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "600",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "KDEISS|RAYMOND E LINDA R",
+          "name": "KDEISS, RAYMOND E & LINDA R",
+          "source_row": 373,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MORENO|ISRAEL",
+          "name": "MORENO, ISRAEL",
+          "source_row": 1030,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "601",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GERRI CAN HELP INC|",
+          "name": "GERRI CAN HELP INC",
+          "source_row": 1031,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "RAMIREZ HUERTA|ISMAEL",
+          "name": "RAMIREZ HUERTA, ISMAEL",
+          "source_row": 374,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "602",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ENRIQUEZ REYES|MARCO MARIA",
+          "name": "ENRIQUEZ REYES, MARCO & MARIA",
+          "source_row": 375,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "FRANCO|CLAUDIA V",
+          "name": "FRANCO, CLAUDIA V",
+          "source_row": 1032,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "603",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CARDENAS|MIGUEL",
+          "name": "CARDENAS, MIGUEL",
+          "source_row": 376,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "FRESH GARDEN FLOWERS|WHOLESALE INC",
+          "name": "FRESH GARDEN FLOWERS, WHOLESALE INC",
+          "source_row": 1033,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "604",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ANGUIANO R|JOSE R ELSA R LANDEROS P",
+          "name": "ANGUIANO R, JOSE R & ELSA R LANDEROS P",
+          "source_row": 1034,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "CABRERA|CAZARES",
+          "name": "CABRERA, CAZARES",
+          "source_row": 377,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "605",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DIAZ LOPEZ|MARIA",
+          "name": "DIAZ LOPEZ, MARIA",
+          "source_row": 378,
+          "solo_homes": [
+            {
+              "bare_log": "97",
+              "source_row": 868,
+              "name": "DIAZ LOPEZ, MARIA"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "GONZALEZ ROSAS|MELISSA",
+          "name": "GONZALEZ ROSAS, MELISSA",
+          "source_row": 1035,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "GONZALEZ ROSAS, MELISSA",
+        "person_key": "GONZALEZ ROSAS|MELISSA",
+        "source_row": 1035
+      },
+      "drop": [
+        {
+          "name": "DIAZ LOPEZ, MARIA",
+          "source_row": 378,
+          "keep_on_bares": [
+            "97"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "606",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LAGUNA GARCIA|SERGIO A",
+          "name": "LAGUNA GARCIA, SERGIO A",
+          "source_row": 1036,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANCHEZ|CARLOS",
+          "name": "SANCHEZ, CARLOS",
+          "source_row": 379,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "607",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MELENDEZ|YOLANDA",
+          "name": "MELENDEZ, YOLANDA",
+          "source_row": 380,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MOROYOQUI|JULIO",
+          "name": "MOROYOQUI, JULIO",
+          "source_row": 1037,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "608",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ARULLENDRAN|MAHENDRAN DHANUSHA",
+          "name": "ARULLENDRAN, MAHENDRAN & DHANUSHA",
+          "source_row": 381,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MOROYOQUI|JULIO",
+          "name": "MOROYOQUI, JULIO",
+          "source_row": 1038,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "609",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CORONA|MARIO C SARAH M",
+          "name": "CORONA, MARIO C & SARAH M",
+          "source_row": 382,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MOROYOQUI|JULIO",
+          "name": "MOROYOQUI, JULIO",
+          "source_row": 1039,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "610",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MOROYOQUI|JULIO",
+          "name": "MOROYOQUI, JULIO",
+          "source_row": 1040,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TAMASHIRO|KEVIN BRENDA",
+          "name": "TAMASHIRO, KEVIN & BRENDA",
+          "source_row": 383,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "611",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CORONA|ZOYLA A",
+          "name": "CORONA, ZOYLA A",
+          "source_row": 384,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "RIOS CAZAR|TRINY MARIA",
+          "name": "RIOS & CAZAR, TRINY & MARIA",
+          "source_row": 1041,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "612",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "SOBERANES|MAYA V",
+          "name": "SOBERANES, MAYA V",
+          "source_row": 1042,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VILLEGAS|JEANNETTE HECTOR",
+          "name": "VILLEGAS, JEANNETTE & HECTOR",
+          "source_row": 385,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "613",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GARZA LOPEZ|LAURA ARTURO",
+          "name": "GARZA LOPEZ, LAURA & ARTURO",
+          "source_row": 386,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "J H MECHANICAL|INC",
+          "name": "J&H MECHANICAL, INC",
+          "source_row": 1043,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "614",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "HERNANDEZ|",
+          "name": "HERNANDEZ, ?",
+          "source_row": 1044,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "OLIVAREZ|RICHARD",
+          "name": "OLIVAREZ, RICHARD",
+          "source_row": 387,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "615",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "M H GENERAL ENGINEERING INC|",
+          "name": "M H GENERAL ENGINEERING INC",
+          "source_row": 1045,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TRINIDAD|JEANETTE",
+          "name": "TRINIDAD, JEANETTE",
+          "source_row": 388,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "616",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GUERRERO|MICHAEL",
+          "name": "GUERRERO, MICHAEL",
+          "source_row": 389,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "RIZKALLAH|EMAD MUNA",
+          "name": "RIZKALLAH, EMAD & MUNA",
+          "source_row": 1046,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "617",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "PMQ SOLUTIONS INC|",
+          "name": "PMQ SOLUTIONS INC",
+          "source_row": 1047,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SCHELSKE|DUSTIN N",
+          "name": "SCHELSKE, DUSTIN N",
+          "source_row": 390,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "618",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "BRENES RUIZ|JESUS ROSSANNA",
+          "name": "BRENES RUIZ, JESUS & ROSSANNA",
+          "source_row": 1048,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SCHELSKE|MICHAEL L JOCELYNE",
+          "name": "SCHELSKE, MICHAEL L & JOCELYNE",
+          "source_row": 391,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "619",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CORONA|MARCUS M",
+          "name": "CORONA, MARCUS M",
+          "source_row": 1049,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ZUNIGA|NETZAHUALCOYOTL MARLLEN C GARC",
+          "name": "ZUNIGA, NETZAHUALCOYOTL & MARLLEN C GARC",
+          "source_row": 392,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "620",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LOPEZ VILLANUEVA|FRANCISCO",
+          "name": "LOPEZ VILLANUEVA, FRANCISCO",
+          "source_row": 1050,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ROJAS|ALEX ELVIA",
+          "name": "ROJAS, ALEX & ELVIA",
+          "source_row": 393,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "621",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DRE AND ASSOCIATES|",
+          "name": "DRE AND ASSOCIATES",
+          "source_row": 1051,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "FALATOONZADEH|HOSSEIN SARA VAFAENIA",
+          "name": "FALATOONZADEH, HOSSEIN & SARA VAFAENIA",
+          "source_row": 394,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "622",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GALLEGOS|JOSE NANCY BARRERA",
+          "name": "GALLEGOS, JOSE & NANCY BARRERA",
+          "source_row": 395,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "M C ENGRAVING JEWELRY INC|",
+          "name": "M C ENGRAVING & JEWELRY INC",
+          "source_row": 1052,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "624",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GONZALEZ|NATHALIE",
+          "name": "GONZALEZ, NATHALIE",
+          "source_row": 397,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "THOME|SUSAN",
+          "name": "THOME, SUSAN",
+          "source_row": 1054,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "625",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ESPINOZA|MARIA",
+          "name": "ESPINOZA, MARIA",
+          "source_row": 398,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MORALES|KELLY A",
+          "name": "MORALES, KELLY A",
+          "source_row": 1055,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "626",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GUTIERREZ|ASHLEY",
+          "name": "GUTIERREZ, ASHLEY",
+          "source_row": 399,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SILVA SANCHEZ|JUAN CARLOS",
+          "name": "SILVA SANCHEZ, JUAN CARLOS",
+          "source_row": 1056,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "627",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DARWICH|NASSER M JESSICA M",
+          "name": "DARWICH, NASSER M & JESSICA M",
+          "source_row": 1057,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MELENDREZ BRAVO|GABRIELA",
+          "name": "MELENDREZ BRAVO, GABRIELA",
+          "source_row": 400,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "628",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "HUERTA MURO|JUAN C MIRIAM L R",
+          "name": "HUERTA MURO, JUAN C & MIRIAM L R",
+          "source_row": 401,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VALENZUELA|MARGARITA G",
+          "name": "VALENZUELA, MARGARITA G",
+          "source_row": 1058,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "630",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CALASANZ CHILDRENS FOUNDATION|",
+          "name": "CALASANZ CHILDRENS FOUNDATION",
+          "source_row": 403,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "OLIVA|CAREN J",
+          "name": "OLIVA, CAREN J",
+          "source_row": 1060,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "631",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "HERREJON|NICHOLAS K",
+          "name": "HERREJON, NICHOLAS K",
+          "source_row": 404,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SUAREZ|RAQUEL E",
+          "name": "SUAREZ, RAQUEL E",
+          "source_row": 1061,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "632",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ALL IN FUMIGATION|",
+          "name": "ALL IN FUMIGATION",
+          "source_row": 1062,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "RODRIGUEZ|RAMIRO BARBARITA",
+          "name": "RODRIGUEZ, RAMIRO & BARBARITA",
+          "source_row": 405,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "633",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "NUNO|ALEJANDRO",
+          "name": "NUNO, ALEJANDRO",
+          "source_row": 406,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VELEZ|GERARDO JAZMIN H",
+          "name": "VELEZ, GERARDO & JAZMIN H",
+          "source_row": 1063,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "634",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "AN ADVISORS|",
+          "name": "AN ADVISORS",
+          "source_row": 407,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SILVA|VINCENT IRMA",
+          "name": "SILVA, VINCENT & IRMA",
+          "source_row": 1064,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "635",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ELSIE SILVA ESTATE|",
+          "name": "ELSIE SILVA ESTATE",
+          "source_row": 1065,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "REVOLORIO|SALVADOR B",
+          "name": "REVOLORIO, SALVADOR B",
+          "source_row": 408,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "636",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DARWICH|KATRINA F",
+          "name": "DARWICH, KATRINA F",
+          "source_row": 1066,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VALENZUELA|ALEX SANDRA",
+          "name": "VALENZUELA, ALEX & SANDRA",
+          "source_row": 409,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "637",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "COVARRUBIAS II|JAVIER",
+          "name": "COVARRUBIAS II, JAVIER",
+          "source_row": 410,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "DIAZ GUTIERREZ|ELIJAH B",
+          "name": "DIAZ GUTIERREZ, ELIJAH B",
+          "source_row": 1067,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "638",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "COVARRUBIAS|DELIA",
+          "name": "COVARRUBIAS, DELIA",
+          "source_row": 411,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MARTINEZ|ARNULFO SUSANNA",
+          "name": "MARTINEZ, ARNULFO & SUSANNA",
+          "source_row": 1068,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "639",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CUENCA|MARIA",
+          "name": "CUENCA, MARIA",
+          "source_row": 412,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "NOPALTITLA|CINTIA",
+          "name": "NOPALTITLA, CINTIA",
+          "source_row": 1069,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "640",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DURAN ROJAS|AGUSTIN GUADALUPE",
+          "name": "DURAN ROJAS, AGUSTIN & GUADALUPE",
+          "source_row": 1070,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TRAN|MARTIN",
+          "name": "TRAN, MARTIN",
+          "source_row": 413,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "641",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CHEANG|SARAH",
+          "name": "CHEANG, SARAH",
+          "source_row": 1071,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "COLLAZO|MICHAEL",
+          "name": "COLLAZO, MICHAEL",
+          "source_row": 414,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "642",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CHEANG|SARAH",
+          "name": "CHEANG, SARAH",
+          "source_row": 1072,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "GONZALEZ NAVARRO|REYES",
+          "name": "GONZALEZ NAVARRO, REYES",
+          "source_row": 415,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "643",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CHEANG|LAURA",
+          "name": "CHEANG, LAURA",
+          "source_row": 1073,
+          "solo_homes": [
+            {
+              "bare_log": "856",
+              "source_row": 603,
+              "name": "CHEANG, LAURA"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "TULLIO|SHERRY",
+          "name": "TULLIO, SHERRY",
+          "source_row": 416,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "TULLIO, SHERRY",
+        "person_key": "TULLIO|SHERRY",
+        "source_row": 416
+      },
+      "drop": [
+        {
+          "name": "CHEANG, LAURA",
+          "source_row": 1073,
+          "keep_on_bares": [
+            "856"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "644",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CHEANG|LAURA",
+          "name": "CHEANG, LAURA",
+          "source_row": 1074,
+          "solo_homes": [
+            {
+              "bare_log": "856",
+              "source_row": 603,
+              "name": "CHEANG, LAURA"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "GALINDO|NANCY D",
+          "name": "GALINDO, NANCY D",
+          "source_row": 417,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "GALINDO, NANCY D",
+        "person_key": "GALINDO|NANCY D",
+        "source_row": 417
+      },
+      "drop": [
+        {
+          "name": "CHEANG, LAURA",
+          "source_row": 1074,
+          "keep_on_bares": [
+            "856"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "645",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ASFOUR|EMAD RANDY K",
+          "name": "ASFOUR, EMAD & RANDY K",
+          "source_row": 418,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "CHEANG|VICTOR NANCY",
+          "name": "CHEANG, VICTOR & NANCY",
+          "source_row": 1075,
+          "solo_homes": [
+            {
+              "bare_log": "857",
+              "source_row": 604,
+              "name": "CHEANG, VICTOR & NANCY"
+            }
+          ],
+          "spurious": true
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "ASFOUR, EMAD & RANDY K",
+        "person_key": "ASFOUR|EMAD RANDY K",
+        "source_row": 418
+      },
+      "drop": [
+        {
+          "name": "CHEANG, VICTOR & NANCY",
+          "source_row": 1075,
+          "keep_on_bares": [
+            "857"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "646",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MARISCAL|MARIA E",
+          "name": "MARISCAL, MARIA E",
+          "source_row": 1076,
+          "solo_homes": [
+            {
+              "bare_log": "861",
+              "source_row": 608,
+              "name": "MARISCAL, MARIA E"
+            },
+            {
+              "bare_log": "860",
+              "source_row": 607,
+              "name": "MARISCAL, MARIA E"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "MONTANO ANDA|YVETTE",
+          "name": "MONTANO-ANDA, YVETTE",
+          "source_row": 419,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "MONTANO-ANDA, YVETTE",
+        "person_key": "MONTANO ANDA|YVETTE",
+        "source_row": 419
+      },
+      "drop": [
+        {
+          "name": "MARISCAL, MARIA E",
+          "source_row": 1076,
+          "keep_on_bares": [
+            "861",
+            "860"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "647",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GALLARDO|LORENZO MARTHA",
+          "name": "GALLARDO, LORENZO & MARTHA",
+          "source_row": 1077,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TORREZ|AIDA A",
+          "name": "TORREZ, AIDA A",
+          "source_row": 420,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "648",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "JUAREZ|BEATRIZ M",
+          "name": "JUAREZ, BEATRIZ M",
+          "source_row": 421,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANCHEZ|JUAN MELANIA",
+          "name": "SANCHEZ, JUAN & MELANIA",
+          "source_row": 1078,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "649",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DEL TORO|ISAEL",
+          "name": "DEL TORO, ISAEL",
+          "source_row": 422,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "HERNANDEZ|GERARDO HERNANDEZ",
+          "name": "HERNANDEZ, GERARDO HERNANDEZ",
+          "source_row": 1079,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "650",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "TAREEN|ILYAS",
+          "name": "TAREEN, ILYAS",
+          "source_row": 423,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "YANEZ RODRIGUEZ|LUIS M",
+          "name": "YANEZ RODRIGUEZ, LUIS M",
+          "source_row": 1080,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "651",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LLAMAS|YADIRA",
+          "name": "LLAMAS, YADIRA",
+          "source_row": 1081,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "RAMIREZ|ESTEBAN C",
+          "name": "RAMIREZ, ESTEBAN C",
+          "source_row": 424,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "652",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LUM|ELLEN",
+          "name": "LUM, ELLEN",
+          "source_row": 1082,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "YANEZ|ELVIRA",
+          "name": "YANEZ, ELVIRA",
+          "source_row": 425,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "653",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DURAN|AGUSTIN JR",
+          "name": "DURAN, AGUSTIN JR",
+          "source_row": 1083,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "YANEZ|ELVIA",
+          "name": "YANEZ, ELVIA",
+          "source_row": 426,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "654",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "KLEAN SOLAR SOLUTIONS|LLC",
+          "name": "KLEAN SOLAR SOLUTIONS, LLC",
+          "source_row": 1084,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SALAZAR|ROSA",
+          "name": "SALAZAR, ROSA",
+          "source_row": 427,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "655",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "AGUIRRE|KAETE",
+          "name": "AGUIRRE, KAETE",
+          "source_row": 428,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANDOVAL|GUSTAVO SABRINA",
+          "name": "SANDOVAL, GUSTAVO & SABRINA",
+          "source_row": 1085,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "656",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LUM|ANTHONY CHAYA",
+          "name": "LUM, ANTHONY & CHAYA",
+          "source_row": 429,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANCHEZ|VALERIA",
+          "name": "SANCHEZ, VALERIA",
+          "source_row": 1086,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "657",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MALCOM|DAVID W MARIANA C",
+          "name": "MALCOM, DAVID W & MARIANA C",
+          "source_row": 1087,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "RODDIS|LILIA",
+          "name": "RODDIS, LILIA",
+          "source_row": 430,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "658",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DAKAK|RAED K WIDA R",
+          "name": "DAKAK, RAED K WIDA R",
+          "source_row": 431,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ESTATE OF DON A SEGESDY|",
+          "name": "ESTATE OF DON A SEGESDY",
+          "source_row": 1088,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "659",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DAKAK|JASMINE",
+          "name": "DAKAK, JASMINE",
+          "source_row": 432,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MESSARRA|NOAH S",
+          "name": "MESSARRA, NOAH S",
+          "source_row": 1089,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "660",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "DAKAK|KALIL",
+          "name": "DAKAK, KALIL",
+          "source_row": 433,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "GARCIA|JULIO D ROXSANY Y",
+          "name": "GARCIA, JULIO D & ROXSANY Y",
+          "source_row": 1090,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "661",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CALIFORNIA LIVEWIRE INC|",
+          "name": "CALIFORNIA LIVEWIRE INC",
+          "source_row": 1091,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "GARCIA VEGA|JOSE",
+          "name": "GARCIA VEGA, JOSE",
+          "source_row": 434,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "662",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "POLANCO|RICHARD",
+          "name": "POLANCO, RICHARD",
+          "source_row": 1092,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VEGA|JUAN",
+          "name": "VEGA, JUAN",
+          "source_row": 435,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "663",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MUNOZ|JOSHUA",
+          "name": "MUNOZ, JOSHUA",
+          "source_row": 436,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VOID|",
+          "name": "VOID",
+          "source_row": 1093,
+          "solo_homes": [
+            {
+              "bare_log": "1121",
+              "source_row": 1181,
+              "name": "VOID"
+            }
+          ],
+          "spurious": true
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "MUNOZ, JOSHUA",
+        "person_key": "MUNOZ|JOSHUA",
+        "source_row": 436
+      },
+      "drop": [
+        {
+          "name": "VOID",
+          "source_row": 1093,
+          "keep_on_bares": [
+            "1121"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "664",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GONZALEZ|IVAN GREISY",
+          "name": "GONZALEZ, IVAN & GREISY",
+          "source_row": 1094,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MUNOZ|JOSHUA",
+          "name": "MUNOZ, JOSHUA",
+          "source_row": 437,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "665",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GAMBOA|SAUL",
+          "name": "GAMBOA, SAUL",
+          "source_row": 1095,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "JOHNSON LOPEZ JOHNSON|ALLEN S CHRISTINE",
+          "name": "JOHNSON & LOPEZ JOHNSON, ALLEN S & CHRISTINE",
+          "source_row": 438,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "666",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CARDONA|PEDRO",
+          "name": "CARDONA, PEDRO",
+          "source_row": 1096,
+          "solo_homes": [
+            {
+              "bare_log": "887",
+              "source_row": 634,
+              "name": "CARDONA, PEDRO"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "REYNOSO|RICARDO SANDY",
+          "name": "REYNOSO, RICARDO & SANDY",
+          "source_row": 439,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "REYNOSO, RICARDO & SANDY",
+        "person_key": "REYNOSO|RICARDO SANDY",
+        "source_row": 439
+      },
+      "drop": [
+        {
+          "name": "CARDONA, PEDRO",
+          "source_row": 1096,
+          "keep_on_bares": [
+            "887"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "667",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LEDESMA|LILIANA",
+          "name": "LEDESMA, LILIANA",
+          "source_row": 1097,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VILLALTA|CARLOS V",
+          "name": "VILLALTA, CARLOS V",
+          "source_row": 440,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "668",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "PORTALES|NORMAN JR",
+          "name": "PORTALES, NORMAN JR",
+          "source_row": 1098,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TORRES ARAIZA|LESLIE D",
+          "name": "TORRES ARAIZA, LESLIE D",
+          "source_row": 441,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "669",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ARMENTA|LUISA",
+          "name": "ARMENTA, LUISA",
+          "source_row": 442,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "PORTALES|NORMAN LIGIA",
+          "name": "PORTALES, NORMAN & LIGIA",
+          "source_row": 1099,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "671",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MARISCOS EL KORA DE NAYARIT|",
+          "name": "MARISCOS EL KORA DE NAYARIT",
+          "source_row": 1101,
+          "solo_homes": [
+            {
+              "bare_log": "894",
+              "source_row": 641,
+              "name": "MARISCOS EL KORA DE NAYARIT"
+            }
+          ],
+          "spurious": true
+        },
+        {
+          "person_key": "RIOS|OSCAR",
+          "name": "RIOS, OSCAR",
+          "source_row": 444,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "RIOS, OSCAR",
+        "person_key": "RIOS|OSCAR",
+        "source_row": 444
+      },
+      "drop": [
+        {
+          "name": "MARISCOS EL KORA DE NAYARIT",
+          "source_row": 1101,
+          "keep_on_bares": [
+            "894"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "672",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "RAMOS|MARITZA",
+          "name": "RAMOS, MARITZA",
+          "source_row": 1102,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "RIOS|OSCAR",
+          "name": "RIOS, OSCAR",
+          "source_row": 445,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "673",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "HERNANDEZ|GERARDO",
+          "name": "HERNANDEZ, GERARDO",
+          "source_row": 446,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "NOPALTITLA|MIGUEL A REYNA",
+          "name": "NOPALTITLA, MIGUEL A & REYNA",
+          "source_row": 1103,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "674",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "HERNANDEZ|MAURICIO A",
+          "name": "HERNANDEZ, MAURICIO A",
+          "source_row": 1104,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MERCADO|HECTOR",
+          "name": "MERCADO, HECTOR",
+          "source_row": 447,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "675",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "HUERTA|JOSE CECILIA",
+          "name": "HUERTA, JOSE & CECILIA",
+          "source_row": 1105,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VERGARA|JOSE MANUEL",
+          "name": "VERGARA, JOSE MANUEL",
+          "source_row": 448,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "676",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MICLAT|ALEX JR ELIZABETH",
+          "name": "MICLAT, ALEX JR & ELIZABETH",
+          "source_row": 449,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "OROZCO|LUCIA",
+          "name": "OROZCO, LUCIA",
+          "source_row": 1106,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "677",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CAMACHO GARCIA|CLAUDIA L",
+          "name": "CAMACHO GARCIA, CLAUDIA L",
+          "source_row": 1107,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MADRIGAL|ELADIO",
+          "name": "MADRIGAL, ELADIO",
+          "source_row": 450,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "678",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "JUAREZ|JOSE G",
+          "name": "JUAREZ, JOSE G",
+          "source_row": 1108,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TASHAYOD|ALEX",
+          "name": "TASHAYOD, ALEX",
+          "source_row": 451,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "679",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GARCIA|LIONEL P",
+          "name": "GARCIA, LIONEL P",
+          "source_row": 452,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "NOPALTITLA|MIGUEL A REYNA",
+          "name": "NOPALTITLA, MIGUEL A & REYNA",
+          "source_row": 1109,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "680",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LAZO|BREANNA L",
+          "name": "LAZO, BREANNA L",
+          "source_row": 453,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "NOPALTITLA|MIGUEL A REYNA",
+          "name": "NOPALTITLA, MIGUEL A & REYNA",
+          "source_row": 1110,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "681",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GARCIA HUBLER|SANDRA",
+          "name": "GARCIA-HUBLER, SANDRA",
+          "source_row": 454,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "NOPALTITLA|MIGUEL A REYNA",
+          "name": "NOPALTITLA, MIGUEL A & REYNA",
+          "source_row": 1111,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "682",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MICLAT|BRIANA",
+          "name": "MICLAT, BRIANA",
+          "source_row": 455,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "O CAMPO|MARIA",
+          "name": "O'CAMPO, MARIA",
+          "source_row": 1112,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "683",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MICLAT III|ALEX M",
+          "name": "MICLAT III, ALEX M",
+          "source_row": 456,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "O CAMPO|MARIA",
+          "name": "O'CAMPO, MARIA",
+          "source_row": 1113,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "684",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "MURILLO|MARISA M",
+          "name": "MURILLO, MARISA M",
+          "source_row": 457,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "OCHOA|SERGIO MARTHA",
+          "name": "OCHOA, SERGIO & MARTHA",
+          "source_row": 1114,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "685",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ALVARADO|OSCAR DESIREE",
+          "name": "ALVARADO, OSCAR & DESIREE",
+          "source_row": 458,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "FIBER ERA INC|",
+          "name": "FIBER ERA INC",
+          "source_row": 1115,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "686",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ARANDA|HUGO GEORGINA",
+          "name": "ARANDA, HUGO & GEORGINA",
+          "source_row": 1116,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "CARDENAS NAVARRO|MARIA DEL CARMEN",
+          "name": "CARDENAS NAVARRO, MARIA DEL CARMEN",
+          "source_row": 459,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "687",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "APK PLUMBING INC|",
+          "name": "APK PLUMBING INC",
+          "source_row": 1117,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VELASQUEZ|BRYAN O",
+          "name": "VELASQUEZ, BRYAN O",
+          "source_row": 460,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "714",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "HERNANDEZ|ISMAEL",
+          "name": "HERNANDEZ, ISMAEL",
+          "source_row": 461,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MAR FIBER COMMUNICATIONS|LLC",
+          "name": "MAR FIBER COMMUNICATIONS, LLC",
+          "source_row": 1144,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "715",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "ANGULO CASTANEDA|JOSE E",
+          "name": "ANGULO CASTANEDA, JOSE E",
+          "source_row": 462,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "PEREZ|TERRY",
+          "name": "PEREZ, TERRY",
+          "source_row": 1145,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "716",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LOPEZ|RAFAEL",
+          "name": "LOPEZ, RAFAEL",
+          "source_row": 1146,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "VELASQUEZ|MAYNOR",
+          "name": "VELASQUEZ, MAYNOR",
+          "source_row": 463,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "717",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "JIMENEZ|LETICIA C",
+          "name": "JIMENEZ, LETICIA C",
+          "source_row": 464,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "ORTIZ|ISRAEL",
+          "name": "ORTIZ, ISRAEL",
+          "source_row": 1147,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "721",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LAZO|ANNABEL",
+          "name": "LAZO, ANNABEL",
+          "source_row": 1151,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "SANCHEZ HERNANDEZ|ADRIAN ADRIANA",
+          "name": "SANCHEZ HERNANDEZ, ADRIAN & ADRIANA",
+          "source_row": 468,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "722",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "HERNANDEZ CUELLAR|SALVADOR NORA",
+          "name": "HERNANDEZ CUELLAR, SALVADOR & NORA",
+          "source_row": 469,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MENDEZ|SERGIO",
+          "name": "MENDEZ, SERGIO",
+          "source_row": 1152,
+          "solo_homes": [
+            {
+              "bare_log": "829",
+              "source_row": 576,
+              "name": "MENDEZ, SERGIO"
+            }
+          ],
+          "spurious": true
+        }
+      ],
+      "n_spurious": 1,
+      "n_keepers": 1,
+      "outcome": "RESOLVE_SINGLE",
+      "resolved_holder": {
+        "name": "HERNANDEZ CUELLAR, SALVADOR & NORA",
+        "person_key": "HERNANDEZ CUELLAR|SALVADOR NORA",
+        "source_row": 469
+      },
+      "drop": [
+        {
+          "name": "MENDEZ, SERGIO",
+          "source_row": 1152,
+          "keep_on_bares": [
+            "829"
+          ]
+        }
+      ]
+    },
+    {
+      "bare_log": "723",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "HERNANDEZ|ADELAIDA",
+          "name": "HERNANDEZ, ADELAIDA",
+          "source_row": 470,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "LEMUS|EVELYN C",
+          "name": "LEMUS, EVELYN C",
+          "source_row": 1153,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "724",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "EDWARD LOPEZ AMERICAN DENTAL INC|",
+          "name": "EDWARD LOPEZ AMERICAN DENTAL INC",
+          "source_row": 1154,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "HERNANDEZ|SERGIO",
+          "name": "HERNANDEZ, SERGIO",
+          "source_row": 471,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "725",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "BETANCOURT|RUDY",
+          "name": "BETANCOURT, RUDY",
+          "source_row": 1155,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "HERNANDEZ|SALVADOR G",
+          "name": "HERNANDEZ, SALVADOR G",
+          "source_row": 472,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "726",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "LOPEZ|WILFREDO MERCEDES",
+          "name": "LOPEZ, WILFREDO & MERCEDES",
+          "source_row": 473,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MANDIN|EDMOND A",
+          "name": "MANDIN, EDMOND A",
+          "source_row": 1156,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "727",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "REYES SOLIS|GASPAR NORMA",
+          "name": "REYES SOLIS, GASPAR & NORMA",
+          "source_row": 1157,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "TINOCO|JOSE ESMERALDA",
+          "name": "TINOCO, JOSE & ESMERALDA",
+          "source_row": 474,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "728",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "GUTIERREZ|IVAN DEANA",
+          "name": "GUTIERREZ, IVAN & DEANA",
+          "source_row": 1158,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MARQUEZ|JOANNA",
+          "name": "MARQUEZ, JOANNA",
+          "source_row": 475,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "729",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "CAMACHO|ADRIAN KARINA",
+          "name": "CAMACHO, ADRIAN & KARINA",
+          "source_row": 1159,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "MARQUEZ|RICARDO NORMA",
+          "name": "MARQUEZ, RICARDO & NORMA",
+          "source_row": 476,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    },
+    {
+      "bare_log": "730",
+      "n_rows": 2,
+      "n_people": 2,
+      "occupants": [
+        {
+          "person_key": "BRENES|REYNA E",
+          "name": "BRENES, REYNA E",
+          "source_row": 1160,
+          "solo_homes": [],
+          "spurious": false
+        },
+        {
+          "person_key": "PEREZ|EDMUNDO O HONORINA",
+          "name": "PEREZ, EDMUNDO O & HONORINA",
+          "source_row": 477,
+          "solo_homes": [],
+          "spurious": false
+        }
+      ],
+      "n_spurious": 0,
+      "n_keepers": 2,
+      "outcome": "STILL_COLLISION",
+      "resolved_holder": null,
+      "drop": []
+    }
+  ]
+}

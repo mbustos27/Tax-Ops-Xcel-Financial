@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Not Found') }} — Tax Log{% endblock %}
+{% block content %}
+<div class="rounded-2xl p-10 text-center" style="background:var(--bg-card);border:1px solid var(--border-default)">
+  <h1 class="text-lg font-bold mb-2" style="color:var(--text-primary)">{{ _('Compliance client not found') }}</h1>
+  <a href="/compliance" class="text-sm font-semibold" style="color:var(--color-primary)">{{ _('Back to Compliance Tracker') }}</a>
+</div>
+{% endblock %}

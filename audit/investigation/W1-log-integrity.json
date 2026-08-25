@@ -1,0 +1,3880 @@
+{
+  "generated_at": "2026-08-11T22:09:34Z",
+  "invoice_layout": "link_5",
+  "l0_eligible": 815,
+  "bare_log_max": 1316,
+  "drake_collisions": [
+    {
+      "bare_log": "1095",
+      "raw_invoices": [
+        "251095"
+      ],
+      "claimants": [
+        {
+          "name": "GUTIERREZ, JOAO",
+          "last": "GUTIERREZ",
+          "first": "JOAO",
+          "raw_invoices": [
+            "251095"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "GUTIERREZ, MERCEDES",
+          "last": "GUTIERREZ",
+          "first": "MERCEDES",
+          "raw_invoices": [
+            "251095"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "RODRIGUEZ, JAVIER",
+          "last": "RODRIGUEZ",
+          "first": "JAVIER",
+          "raw_invoices": [
+            "251095"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "c_family_plus_other",
+        "flags": [
+          "FAMILY_PARTIAL_SAME_SURNAME"
+        ],
+        "shared_surnames": [
+          "GUTIERREZ"
+        ],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "251095"
+        ],
+        "n_claimants": 3,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 0,
+        "names": [],
+        "classification": {
+          "kind": "absent_from_log",
+          "n_rows": 0,
+          "names": []
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "GUTIERREZ, MERCEDES"
+        ],
+        "return_ids": [
+          464
+        ],
+        "client_ids": [
+          423
+        ]
+      },
+      "office_fix": "Family share + outsider on 1095: peel the unrelated claimant to a new log; then apply household rule to the family remainder."
+    },
+    {
+      "bare_log": "141",
+      "raw_invoices": [
+        "250141",
+        "25141"
+      ],
+      "claimants": [
+        {
+          "name": "GOYTIA, SANDRA",
+          "last": "GOYTIA",
+          "first": "SANDRA",
+          "raw_invoices": [
+            "250141"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "PEREZ, ANDRES",
+          "last": "PEREZ",
+          "first": "ANDRES",
+          "raw_invoices": [
+            "25141"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "VILLAREAL, RICHARD",
+          "last": "VILLAREAL",
+          "first": "RICHARD",
+          "raw_invoices": [
+            "250141"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [
+          "FORMAT_VARIANT"
+        ],
+        "shared_surnames": [],
+        "format_variant": true,
+        "distinct_raw_invoices": [
+          "250141",
+          "25141"
+        ],
+        "n_claimants": 3,
+        "n_surnames": 3
+      },
+      "tax_log": {
+        "n_rows": 2,
+        "names": [
+          "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU",
+          "CHAN, THY"
+        ],
+        "classification": {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CHAN, THY",
+            "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "VERDUZCO BALTAZAR, NESTOR"
+        ],
+        "return_ids": [
+          150
+        ],
+        "client_ids": [
+          112
+        ]
+      },
+      "office_fix": "Genuine reuse of log 141: issue a new log to every Drake claimant except the keeper. TaxOps return 150 is `VERDUZCO BALTAZAR, NESTOR` \u2014 **name does not overlap** Drake/Log claimants; do not treat TaxOps as keeper \u2014 reconcile all three systems. Also normalize raw Invoice spellings ['250141', '25141']."
+    },
+    {
+      "bare_log": "247",
+      "raw_invoices": [
+        "250247"
+      ],
+      "claimants": [
+        {
+          "name": "BRAVO, VICTORIA",
+          "last": "BRAVO",
+          "first": "VICTORIA",
+          "raw_invoices": [
+            "250247"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "PERFECT SMILE MANAGEMENT CORP",
+          "last": "PERFECT SMILE MANAGEMENT CORP",
+          "first": "",
+          "raw_invoices": [
+            "250247"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250247"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 1,
+        "names": [
+          "VILLALTA, ROSALINDA V"
+        ],
+        "classification": {
+          "kind": "single_row",
+          "n_rows": 1,
+          "names": [
+            "VILLALTA, ROSALINDA V"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "BRAVO, VICTORIA"
+        ],
+        "return_ids": [
+          143
+        ],
+        "client_ids": [
+          113
+        ]
+      },
+      "office_fix": "Genuine reuse of log 247: issue a new log to every Drake claimant except the keeper. TaxOps already holds `BRAVO, VICTORIA` (return 143) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "787",
+      "raw_invoices": [
+        "250787"
+      ],
+      "claimants": [
+        {
+          "name": "CREATE YOUR HEALTH LLC",
+          "last": "CREATE YOUR HEALTH LLC",
+          "first": "",
+          "raw_invoices": [
+            "250787"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "VICENTE, JOSE",
+          "last": "VICENTE",
+          "first": "JOSE",
+          "raw_invoices": [
+            "250787"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250787"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 1,
+        "names": [
+          "JACKSON, IRENE"
+        ],
+        "classification": {
+          "kind": "single_row",
+          "n_rows": 1,
+          "names": [
+            "JACKSON, IRENE"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "VICENTE, JOSE"
+        ],
+        "return_ids": [
+          2422
+        ],
+        "client_ids": [
+          1590
+        ]
+      },
+      "office_fix": "Genuine reuse of log 787: issue a new log to every Drake claimant except the keeper. TaxOps already holds `VICENTE, JOSE` (return 2422) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "203",
+      "raw_invoices": [
+        "250203"
+      ],
+      "claimants": [
+        {
+          "name": "LAZO, BREANNA",
+          "last": "LAZO",
+          "first": "BREANNA",
+          "raw_invoices": [
+            "250203"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "NUNO, MARIBEL",
+          "last": "NUNO",
+          "first": "MARIBEL",
+          "raw_invoices": [
+            "250203"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250203"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 1,
+        "names": [
+          "COLLAZO, MIGUEL & MAYRA"
+        ],
+        "classification": {
+          "kind": "single_row",
+          "n_rows": 1,
+          "names": [
+            "COLLAZO, MIGUEL & MAYRA"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "NUNO, MARIBEL M"
+        ],
+        "return_ids": [
+          786
+        ],
+        "client_ids": [
+          733
+        ]
+      },
+      "office_fix": "Genuine reuse of log 203: issue a new log to every Drake claimant except the keeper. TaxOps already holds `NUNO, MARIBEL M` (return 786) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "207",
+      "raw_invoices": [
+        "250207"
+      ],
+      "claimants": [
+        {
+          "name": "COLLAZO, MAYRA",
+          "last": "COLLAZO",
+          "first": "MAYRA",
+          "raw_invoices": [
+            "250207"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "RAMOS, VALERIE",
+          "last": "RAMOS",
+          "first": "VALERIE",
+          "raw_invoices": [
+            "250207"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250207"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 1,
+        "names": [
+          "GONZALEZ, MARTHA"
+        ],
+        "classification": {
+          "kind": "single_row",
+          "n_rows": 1,
+          "names": [
+            "GONZALEZ, MARTHA"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "COLLAZO, MIGUEL & MAYRA"
+        ],
+        "return_ids": [
+          209
+        ],
+        "client_ids": [
+          173
+        ]
+      },
+      "office_fix": "Genuine reuse of log 207: issue a new log to every Drake claimant except the keeper. TaxOps already holds `COLLAZO, MIGUEL & MAYRA` (return 209) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "1103",
+      "raw_invoices": [
+        "251103"
+      ],
+      "claimants": [
+        {
+          "name": "QUINTANA, ROGELIO",
+          "last": "QUINTANA",
+          "first": "ROGELIO",
+          "raw_invoices": [
+            "251103"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "SANCHEZ ARCE, EUNICE",
+          "last": "SANCHEZ ARCE",
+          "first": "EUNICE",
+          "raw_invoices": [
+            "251103"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "251103"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 1,
+        "names": [
+          "QUINTANA, ROGELIO JR"
+        ],
+        "classification": {
+          "kind": "single_row",
+          "n_rows": 1,
+          "names": [
+            "QUINTANA, ROGELIO JR"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "QUINTANA JR, ROGELIO & KAYLA M QUINTANA"
+        ],
+        "return_ids": [
+          878
+        ],
+        "client_ids": [
+          819
+        ]
+      },
+      "office_fix": "Genuine reuse of log 1103: issue a new log to every Drake claimant except the keeper. TaxOps already holds `QUINTANA JR, ROGELIO & KAYLA M QUINTANA` (return 878) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "339",
+      "raw_invoices": [
+        "250339"
+      ],
+      "claimants": [
+        {
+          "name": "AGUILAR, AMBER",
+          "last": "AGUILAR",
+          "first": "AMBER",
+          "raw_invoices": [
+            "250339"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "LOPEZ, SAUL",
+          "last": "LOPEZ",
+          "first": "SAUL",
+          "raw_invoices": [
+            "250339"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250339"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 1,
+        "names": [
+          "GOMEZ, VIVIANA"
+        ],
+        "classification": {
+          "kind": "single_row",
+          "n_rows": 1,
+          "names": [
+            "GOMEZ, VIVIANA"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "LOPEZ, SAUL & YESENIA"
+        ],
+        "return_ids": [
+          612
+        ],
+        "client_ids": [
+          566
+        ]
+      },
+      "office_fix": "Genuine reuse of log 339: issue a new log to every Drake claimant except the keeper. TaxOps already holds `LOPEZ, SAUL & YESENIA` (return 612) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "206",
+      "raw_invoices": [
+        "250206"
+      ],
+      "claimants": [
+        {
+          "name": "BRICENO, JUAN",
+          "last": "BRICENO",
+          "first": "JUAN",
+          "raw_invoices": [
+            "250206"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "DELGADO, TIFFANY",
+          "last": "DELGADO",
+          "first": "TIFFANY",
+          "raw_invoices": [
+            "250206"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250206"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 1,
+        "names": [
+          "SERRATO, ROCHELLE M"
+        ],
+        "classification": {
+          "kind": "single_row",
+          "n_rows": 1,
+          "names": [
+            "SERRATO, ROCHELLE M"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "DELGADO, TIFFANY"
+        ],
+        "return_ids": [
+          2301
+        ],
+        "client_ids": [
+          1638
+        ]
+      },
+      "office_fix": "Genuine reuse of log 206: issue a new log to every Drake claimant except the keeper. TaxOps already holds `DELGADO, TIFFANY` (return 2301) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "888",
+      "raw_invoices": [
+        "250888"
+      ],
+      "claimants": [
+        {
+          "name": "DURAN, AGUSTIN",
+          "last": "DURAN",
+          "first": "AGUSTIN",
+          "raw_invoices": [
+            "250888"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "HUERTA, JESUS",
+          "last": "HUERTA",
+          "first": "JESUS",
+          "raw_invoices": [
+            "250888"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250888"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 1,
+        "names": [
+          "VALENCIA, NICOLE"
+        ],
+        "classification": {
+          "kind": "single_row",
+          "n_rows": 1,
+          "names": [
+            "VALENCIA, NICOLE"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "DURAN, AGUSTIN"
+        ],
+        "return_ids": [
+          2475
+        ],
+        "client_ids": [
+          1670
+        ]
+      },
+      "office_fix": "Genuine reuse of log 888: issue a new log to every Drake claimant except the keeper. TaxOps already holds `DURAN, AGUSTIN` (return 2475) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "1038",
+      "raw_invoices": [
+        "251038"
+      ],
+      "claimants": [
+        {
+          "name": "JORGE BARAJAS, ISRAEL",
+          "last": "JORGE BARAJAS",
+          "first": "ISRAEL",
+          "raw_invoices": [
+            "251038"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "MONTIEL FREYRE, SAMANTA",
+          "last": "MONTIEL FREYRE",
+          "first": "SAMANTA",
+          "raw_invoices": [
+            "251038"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "251038"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 0,
+        "names": [],
+        "classification": {
+          "kind": "absent_from_log",
+          "n_rows": 0,
+          "names": []
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "JORGE BARAJAS, ISRAEL"
+        ],
+        "return_ids": [
+          2463
+        ],
+        "client_ids": [
+          1749
+        ]
+      },
+      "office_fix": "Genuine reuse of log 1038: issue a new log to every Drake claimant except the keeper. TaxOps already holds `JORGE BARAJAS, ISRAEL` (return 2463) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "1075",
+      "raw_invoices": [
+        "251075"
+      ],
+      "claimants": [
+        {
+          "name": "LEDESMA, DAVID",
+          "last": "LEDESMA",
+          "first": "DAVID",
+          "raw_invoices": [
+            "251075"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "RODRIGUEZ, LEONOR",
+          "last": "RODRIGUEZ",
+          "first": "LEONOR",
+          "raw_invoices": [
+            "251075"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "251075"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 0,
+        "names": [],
+        "classification": {
+          "kind": "absent_from_log",
+          "n_rows": 0,
+          "names": []
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "LEDESMA, DAVID D & ALICIA D"
+        ],
+        "return_ids": [
+          580
+        ],
+        "client_ids": [
+          535
+        ]
+      },
+      "office_fix": "Genuine reuse of log 1075: issue a new log to every Drake claimant except the keeper. TaxOps already holds `LEDESMA, DAVID D & ALICIA D` (return 580) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "910",
+      "raw_invoices": [
+        "250910"
+      ],
+      "claimants": [
+        {
+          "name": "GALLARDO, LORENZO",
+          "last": "GALLARDO",
+          "first": "LORENZO",
+          "raw_invoices": [
+            "250910"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "YANEZ, ELEUTERIO",
+          "last": "YANEZ",
+          "first": "ELEUTERIO",
+          "raw_invoices": [
+            "250910"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250910"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 1,
+        "names": [
+          "GAMBOA, ALEX"
+        ],
+        "classification": {
+          "kind": "single_row",
+          "n_rows": 1,
+          "names": [
+            "GAMBOA, ALEX"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "GALLARDO, LORENZO & MARTHA"
+        ],
+        "return_ids": [
+          365
+        ],
+        "client_ids": [
+          327
+        ]
+      },
+      "office_fix": "Genuine reuse of log 910: issue a new log to every Drake claimant except the keeper. TaxOps already holds `GALLARDO, LORENZO & MARTHA` (return 365) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "862",
+      "raw_invoices": [
+        "250862"
+      ],
+      "claimants": [
+        {
+          "name": "LUNA, JACINTO",
+          "last": "LUNA",
+          "first": "JACINTO",
+          "raw_invoices": [
+            "250862"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "MURILLO, JULIO",
+          "last": "MURILLO",
+          "first": "JULIO",
+          "raw_invoices": [
+            "250862"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250862"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 1,
+        "names": [
+          "YANEZ, ELEUTERIO"
+        ],
+        "classification": {
+          "kind": "single_row",
+          "n_rows": 1,
+          "names": [
+            "YANEZ, ELEUTERIO"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "MURILLO, JULIO & LORETTA"
+        ],
+        "return_ids": [
+          852
+        ],
+        "client_ids": [
+          795
+        ]
+      },
+      "office_fix": "Genuine reuse of log 862: issue a new log to every Drake claimant except the keeper. TaxOps already holds `MURILLO, JULIO & LORETTA` (return 852) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "634",
+      "raw_invoices": [
+        "250634"
+      ],
+      "claimants": [
+        {
+          "name": "DAKAK, RAMI",
+          "last": "DAKAK",
+          "first": "RAMI",
+          "raw_invoices": [
+            "250634"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "HERREJON, NICHOLAS",
+          "last": "HERREJON",
+          "first": "NICHOLAS",
+          "raw_invoices": [
+            "250634"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250634"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 2,
+        "names": [
+          "AN ADVISORS",
+          "SILVA, VINCENT & IRMA"
+        ],
+        "classification": {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "AN ADVISORS",
+            "SILVA, VINCENT & IRMA"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "DAKAK, RAMI"
+        ],
+        "return_ids": [
+          262
+        ],
+        "client_ids": [
+          226
+        ]
+      },
+      "office_fix": "Genuine reuse of log 634: issue a new log to every Drake claimant except the keeper. TaxOps already holds `DAKAK, RAMI` (return 262) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "426",
+      "raw_invoices": [
+        "250426"
+      ],
+      "claimants": [
+        {
+          "name": "HERNANDEZ, AMADO",
+          "last": "HERNANDEZ",
+          "first": "AMADO",
+          "raw_invoices": [
+            "250426"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "HERNANDEZ, LYDIA",
+          "last": "HERNANDEZ",
+          "first": "LYDIA",
+          "raw_invoices": [
+            "250426"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "c_family",
+        "flags": [
+          "FAMILY_ALL_SAME_SURNAME"
+        ],
+        "shared_surnames": [
+          "HERNANDEZ"
+        ],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250426"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 1
+      },
+      "tax_log": {
+        "n_rows": 0,
+        "names": [],
+        "classification": {
+          "kind": "absent_from_log",
+          "n_rows": 0,
+          "names": []
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "HERNANDEZ, LYDIA"
+        ],
+        "return_ids": [
+          507
+        ],
+        "client_ids": [
+          463
+        ]
+      },
+      "office_fix": "Household under log 426: pick one Drake primary (or issue spouse a new log). Do not merge TaxOps clients until Wave 2A trail exists."
+    },
+    {
+      "bare_log": "353",
+      "raw_invoices": [
+        "250353"
+      ],
+      "claimants": [
+        {
+          "name": "AVILA, LUCY",
+          "last": "AVILA",
+          "first": "LUCY",
+          "raw_invoices": [
+            "250353"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "SALAMA, ENGIE",
+          "last": "SALAMA",
+          "first": "ENGIE",
+          "raw_invoices": [
+            "250353"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250353"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 1,
+        "names": [
+          "GONZALEZ, MARQUEZ"
+        ],
+        "classification": {
+          "kind": "single_row",
+          "n_rows": 1,
+          "names": [
+            "GONZALEZ, MARQUEZ"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "AVILA, LUCY & EDUARDO"
+        ],
+        "return_ids": [
+          351
+        ],
+        "client_ids": [
+          313
+        ]
+      },
+      "office_fix": "Genuine reuse of log 353: issue a new log to every Drake claimant except the keeper. TaxOps already holds `AVILA, LUCY & EDUARDO` (return 351) \u2014 prefer that claim if it matches Log; re-key the others."
+    },
+    {
+      "bare_log": "589",
+      "raw_invoices": [
+        "250589"
+      ],
+      "claimants": [
+        {
+          "name": "SANTIAGO, DENISE",
+          "last": "SANTIAGO",
+          "first": "DENISE",
+          "raw_invoices": [
+            "250589"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "SANTIAGO, EUNICE",
+          "last": "SANTIAGO",
+          "first": "EUNICE",
+          "raw_invoices": [
+            "250589"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "c_family",
+        "flags": [
+          "FAMILY_ALL_SAME_SURNAME"
+        ],
+        "shared_surnames": [
+          "SANTIAGO"
+        ],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250589"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 1
+      },
+      "tax_log": {
+        "n_rows": 2,
+        "names": [
+          "DENISE, SANTIAGO",
+          "KIKB ENTERPRISES"
+        ],
+        "classification": {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DENISE, SANTIAGO",
+            "KIKB ENTERPRISES"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "DENISE, SANTIAGO"
+        ],
+        "return_ids": [
+          582
+        ],
+        "client_ids": [
+          537
+        ]
+      },
+      "office_fix": "Household under log 589: pick one Drake primary (or issue spouse a new log). Do not merge TaxOps clients until Wave 2A trail exists."
+    },
+    {
+      "bare_log": "335",
+      "raw_invoices": [
+        "250335"
+      ],
+      "claimants": [
+        {
+          "name": "GALLEGOS, ALEJANDRO",
+          "last": "GALLEGOS",
+          "first": "ALEJANDRO",
+          "raw_invoices": [
+            "250335"
+          ],
+          "row_count": 1
+        },
+        {
+          "name": "ROJAS, LUIS",
+          "last": "ROJAS",
+          "first": "LUIS",
+          "raw_invoices": [
+            "250335"
+          ],
+          "row_count": 1
+        }
+      ],
+      "classification": {
+        "primary": "b_genuine_reuse",
+        "flags": [],
+        "shared_surnames": [],
+        "format_variant": false,
+        "distinct_raw_invoices": [
+          "250335"
+        ],
+        "n_claimants": 2,
+        "n_surnames": 2
+      },
+      "tax_log": {
+        "n_rows": 1,
+        "names": [
+          "ROSAS, RICARDO & MARTHA"
+        ],
+        "classification": {
+          "kind": "single_row",
+          "n_rows": 1,
+          "names": [
+            "ROSAS, RICARDO & MARTHA"
+          ]
+        }
+      },
+      "taxops": {
+        "n_returns": 1,
+        "names": [
+          "GALLEGOS, ALEJANDRO"
+        ],
+        "return_ids": [
+          2327
+        ],
+        "client_ids": [
+          1359
+        ]
+      },
+      "office_fix": "Genuine reuse of log 335: issue a new log to every Drake claimant except the keeper. TaxOps already holds `GALLEGOS, ALEJANDRO` (return 2327) \u2014 prefer that claim if it matches Log; re-key the others."
+    }
+  ],
+  "drake_collision_counts": {
+    "c_family_plus_other": 1,
+    "b_genuine_reuse": 16,
+    "c_family": 2
+  },
+  "malformed": [
+    {
+      "invoice": "25",
+      "bare_log": "",
+      "name": "GR INDUSTRIES INC",
+      "reason": "empty_bare_after_normalize",
+      "note": "",
+      "bucket": "truncated_season_only",
+      "office_fix": "Replace truncated Invoice (25 / 250) with the real season-padded log in Drake.",
+      "tax_log_names": [],
+      "taxops_names": []
+    },
+    {
+      "invoice": "250",
+      "bare_log": "",
+      "name": "LA MESA AUTO SALES INC",
+      "reason": "empty_bare_after_normalize",
+      "note": "",
+      "bucket": "truncated_season_only",
+      "office_fix": "Replace truncated Invoice (25 / 250) with the real season-padded log in Drake.",
+      "tax_log_names": [],
+      "taxops_names": []
+    },
+    {
+      "invoice": "250",
+      "bare_log": "",
+      "name": "GARCIA, GILBERT",
+      "reason": "empty_bare_after_normalize",
+      "note": "",
+      "bucket": "truncated_season_only",
+      "office_fix": "Replace truncated Invoice (25 / 250) with the real season-padded log in Drake.",
+      "tax_log_names": [],
+      "taxops_names": []
+    },
+    {
+      "invoice": "210273",
+      "bare_log": "210273",
+      "name": "CHEVEZ, LEONEL",
+      "reason": "out_of_range",
+      "note": "raw_does_not_start_with_season_prefix",
+      "bucket": "prior_or_non_season",
+      "office_fix": "Confirm whether this is a prior-season invoice left on the TY2025 return; clear or replace with the TY2025 log, or move the return to the correct season.",
+      "tax_log_names": [],
+      "taxops_names": []
+    },
+    {
+      "invoice": "251355",
+      "bare_log": "1355",
+      "name": "HARRIS JR, EDDIE",
+      "reason": "out_of_range",
+      "note": "",
+      "bucket": "out_of_range_bare",
+      "office_fix": "Bare 1355 exceeds observed ceiling 1316. Verify digits (typo / extra digit) against Tax Log assignment.",
+      "tax_log_names": [],
+      "taxops_names": []
+    },
+    {
+      "invoice": "50688",
+      "bare_log": "50688",
+      "name": "ARMENTA, LUISA",
+      "reason": "out_of_range",
+      "note": "raw_does_not_start_with_season_prefix",
+      "bucket": "prior_or_non_season",
+      "office_fix": "Confirm whether this is a prior-season invoice left on the TY2025 return; clear or replace with the TY2025 log, or move the return to the correct season.",
+      "tax_log_names": [],
+      "taxops_names": []
+    },
+    {
+      "invoice": "23229",
+      "bare_log": "23229",
+      "name": "AYALA, VIRGINIA",
+      "reason": "out_of_range",
+      "note": "raw_does_not_start_with_season_prefix",
+      "bucket": "prior_or_non_season",
+      "office_fix": "Confirm whether this is a prior-season invoice left on the TY2025 return; clear or replace with the TY2025 log, or move the return to the correct season.",
+      "tax_log_names": [],
+      "taxops_names": []
+    },
+    {
+      "invoice": "250",
+      "bare_log": "",
+      "name": "ARRUE, SILVIA",
+      "reason": "empty_bare_after_normalize",
+      "note": "",
+      "bucket": "truncated_season_only",
+      "office_fix": "Replace truncated Invoice (25 / 250) with the real season-padded log in Drake.",
+      "tax_log_names": [],
+      "taxops_names": []
+    },
+    {
+      "invoice": "251685",
+      "bare_log": "1685",
+      "name": "MORALES, JOSE",
+      "reason": "out_of_range",
+      "note": "",
+      "bucket": "out_of_range_bare",
+      "office_fix": "Bare 1685 exceeds observed ceiling 1316. Verify digits (typo / extra digit) against Tax Log assignment.",
+      "tax_log_names": [],
+      "taxops_names": []
+    },
+    {
+      "invoice": "210729",
+      "bare_log": "210729",
+      "name": "MARQUEZ, RICARDO",
+      "reason": "out_of_range",
+      "note": "raw_does_not_start_with_season_prefix",
+      "bucket": "prior_or_non_season",
+      "office_fix": "Confirm whether this is a prior-season invoice left on the TY2025 return; clear or replace with the TY2025 log, or move the return to the correct season.",
+      "tax_log_names": [],
+      "taxops_names": []
+    },
+    {
+      "invoice": "2507598",
+      "bare_log": "7598",
+      "name": "RAMIREZ, NATALIE",
+      "reason": "out_of_range",
+      "note": "",
+      "bucket": "out_of_range_bare",
+      "office_fix": "Bare 7598 exceeds observed ceiling 1316. Verify digits (typo / extra digit) against Tax Log assignment.",
+      "tax_log_names": [],
+      "taxops_names": []
+    }
+  ],
+  "malformed_counts": {
+    "truncated_season_only": 4,
+    "prior_or_non_season": 4,
+    "out_of_range_bare": 3
+  },
+  "tax_log": {
+    "path": "C:\\Users\\Windows 10\\OneDrive - Xcel Financial Services LLC\\Shared\\Logs\\TAX LOG 2025 Live.xlsx",
+    "named_nonempty_log_rows": 1251,
+    "distinct_bare_logs": 1041,
+    "repeated_bare_logs": 206,
+    "repeat_kind_counts": {
+      "genuine_reuse": 204,
+      "family_same_surname": 2
+    },
+    "repeat_kind_row_sums": {
+      "genuine_reuse": 412,
+      "family_same_surname": 4
+    },
+    "repeats_by_kind": {
+      "genuine_reuse": [
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 3,
+          "n_distinct_people": 3,
+          "n_surnames": 3,
+          "shared_surnames": [],
+          "names": [
+            "MACKAY, JEANNE",
+            "ORMA SERVICES, INC",
+            "PEREZ, NORA L"
+          ],
+          "bare_log": "4"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 3,
+          "n_distinct_people": 3,
+          "n_surnames": 3,
+          "shared_surnames": [],
+          "names": [
+            "ALDAMA, MAYRA",
+            "ORMA SERVICES, INC",
+            "SOTELO, MICHELLE"
+          ],
+          "bare_log": "6"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 3,
+          "n_distinct_people": 3,
+          "n_surnames": 3,
+          "shared_surnames": [],
+          "names": [
+            "ALVARADO, ERNESTO G & REBECCA",
+            "ORMA SERVICES  INC",
+            "PARTIDA, DYMENIQUE"
+          ],
+          "bare_log": "8"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 3,
+          "n_distinct_people": 3,
+          "n_surnames": 3,
+          "shared_surnames": [],
+          "names": [
+            "AJRAB, YOUSEF & NATALIE KDEISS",
+            "CALISTRO, FRANK R",
+            "RAMOS, ANTONIO"
+          ],
+          "bare_log": "307"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "AZUSA HOMES LLC",
+            "CEST LA VIE APPAERL INC"
+          ],
+          "bare_log": "1"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "BRAVO, BYRON M",
+            "LIONS FUMIGATION INC"
+          ],
+          "bare_log": "2"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "BOCANEGRA GALLEGOS, URIEL & ADRIANA",
+            "CHEANG, SARAH"
+          ],
+          "bare_log": "3"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CHAN, THY",
+            "PEREZ & GARCIA VILLAREAL, ANDRES & IRAZU"
+          ],
+          "bare_log": "141"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "AGUILAR & GARCIA ENTERPRISES",
+            "L.A. AUTO SERVICE LLC"
+          ],
+          "bare_log": "142"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LA MESA AUTO SALES INC.",
+            "VILLAREAL, RICHARD P"
+          ],
+          "bare_log": "143"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "RECENDEZ, FRANCISCO D & DAISY CASAS",
+            "SALAS, SERGIO D"
+          ],
+          "bare_log": "144"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "BEDARD, PETER A",
+            "GALICIA MELCHOR, GISELA"
+          ],
+          "bare_log": "145"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "BURGOIN, LOUIE & FRANCES A",
+            "SANDOVAL AUTO SERVICE & TOW"
+          ],
+          "bare_log": "146"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "SANDOVAL, RUDY & CLAIRE",
+            "SANTANA, HERAS"
+          ],
+          "bare_log": "147"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LOS BOMBEROS DE LA COUNTY",
+            "TAREEN, ZULQARNIAN & FOUZIA"
+          ],
+          "bare_log": "148"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DORIA, RUDY J DORIA",
+            "LOPEZ, JUAN"
+          ],
+          "bare_log": "149"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "SANDOVAL, GERARDO V",
+            "VIDAL, LUIS M"
+          ],
+          "bare_log": "150"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GARCIA, FRANCISCO",
+            "MULTICARD SYSTEMS"
+          ],
+          "bare_log": "151"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CARRANZA, MAURICIO A",
+            "PACIFIC TRUCK"
+          ],
+          "bare_log": "152"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ABU TAHA, QAIS AHMAD YOUNIS",
+            "VELASQUEZ, CARLOS & MARIA E"
+          ],
+          "bare_log": "181"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CORNWELL, JOHN",
+            "GUERRERO, VICTOR M"
+          ],
+          "bare_log": "182"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CORNWELL, JOHN",
+            "JUAREZ, EDWVIGES"
+          ],
+          "bare_log": "183"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CORNWELL, JOHN",
+            "JUAREZ, EDWVIGES"
+          ],
+          "bare_log": "184"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CORNWELL, JOHN",
+            "MACIAS, DENNIS N"
+          ],
+          "bare_log": "185"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CAZARES, MARIA E",
+            "TRIGEROUS, NOELLE M"
+          ],
+          "bare_log": "186"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CASILLAS, MARIA DEL CARMEN",
+            "PADILLA, CRISTIAN F"
+          ],
+          "bare_log": "5"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CASILLAS, MARIA DEL CARMEN",
+            "GARCIA PARTIDA, JACQUELINE"
+          ],
+          "bare_log": "7"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CATALPA DEVELOPMENT LLC",
+            "LECHUGA, REBECCA"
+          ],
+          "bare_log": "9"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GONZALEZ, SHAWN M",
+            "VARGAS, CELESTINO L"
+          ],
+          "bare_log": "271"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GONZALEZ, AURELIO R",
+            "ROMERO, GRISELDA"
+          ],
+          "bare_log": "272"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CHEVEZ, LEONEL & MARY",
+            "SALAZAR QUIROZ, ROSA M"
+          ],
+          "bare_log": "273"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "PEREZ & GONZALEZ, MICHAEL J & CRYSTAL",
+            "YOUSEF, QASEM"
+          ],
+          "bare_log": "274"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "FLORES, CIPRIANO & MARIA",
+            "THE PRINCESS MATTRESS INC"
+          ],
+          "bare_log": "275"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "AGUIRRE JIMENEZ, AMALIA",
+            "HUERTA, JUAN & ALICIA"
+          ],
+          "bare_log": "276"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CRUZ, GEORGE L",
+            "SERRANOS TIRES & AUTO REPAIRS CORP"
+          ],
+          "bare_log": "277"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MONARREZ & CERVANTES, BEATRIZ & JUAN",
+            "SERRANO LOPEZ, JESUS & JOVITA"
+          ],
+          "bare_log": "278"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "RAMIREZ, ELIZABETH",
+            "SERRANO, JORGE"
+          ],
+          "bare_log": "279"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "BARRIOS, SELVIN",
+            "RODRIGUEZ, AMADO"
+          ],
+          "bare_log": "280"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "BARRIOS OROZCO, ISABEL A",
+            "MELENDREZ, JOSE & KARLA"
+          ],
+          "bare_log": "281"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LEDESMA, BLANCA & ADRIAN",
+            "SANCHEZ, JORGE"
+          ],
+          "bare_log": "282"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ARRUE CORLETO, NELSON A",
+            "ORTEGA, MARTHA"
+          ],
+          "bare_log": "283"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MYM ORGANICS LLC",
+            "TASHAYOD, TARA"
+          ],
+          "bare_log": "284"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "RESENDEZ, FRANCISCO & MARICRUZ",
+            "RIOS, ELIZABETH"
+          ],
+          "bare_log": "285"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "FRANK'S REFINISHING INC",
+            "TRUJILLO, FRANCISCO"
+          ],
+          "bare_log": "286"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "AZAMAR, MISAEL",
+            "CASTILLO, JESUS & MARTHA"
+          ],
+          "bare_log": "287"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CAMERO, EDNA",
+            "CARDONA, HECTOR"
+          ],
+          "bare_log": "288"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ACOSTA, BRYANA",
+            "OROZCO SOTO, JULIO"
+          ],
+          "bare_log": "289"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "RECENDEZ, GILBERTO",
+            "WRIGHT, CAGE"
+          ],
+          "bare_log": "290"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DIAZ, DANIEL",
+            "LIMA, ERASMO"
+          ],
+          "bare_log": "291"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MELENDEZ CORVERA, ELVIS M",
+            "MORENO, WILLIAM & MARIA"
+          ],
+          "bare_log": "292"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MARTINEZ, ELENA",
+            "MEDINA, YESENIA"
+          ],
+          "bare_log": "294"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MORENO GONZALEZ & LUNA, JESSICA",
+            "TORRES DE REYES, EVA"
+          ],
+          "bare_log": "295"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MARTINEZ, MEGAN G",
+            "MORALES, WILLIAM J"
+          ],
+          "bare_log": "296"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "AGUAYO, MARGARITA P",
+            "ALEMAN, JOSE M"
+          ],
+          "bare_log": "297"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MAYA CASTILLO, FELIX & ALICIA ALEMAN",
+            "VARELA PARRA, FRANCISCO"
+          ],
+          "bare_log": "298"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ABU TAHA, ZAID AHMED Y & GIULIANA",
+            "YANEZ, AMBER"
+          ],
+          "bare_log": "299"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GARZA, RUMALDO",
+            "SANDOVAL, RAMON & ALMA"
+          ],
+          "bare_log": "300"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "URIAS, MARTHA E",
+            "VELEZ, SALVADOR & ZONIA"
+          ],
+          "bare_log": "301"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ESTRADA, FRANCISCO & LIGIA",
+            "SOTO LOPEZ, MARIBEL"
+          ],
+          "bare_log": "302"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CONCHAS, JOSE B & MARIA D J MOJARRO",
+            "MC GILL, ROSEMARIE"
+          ],
+          "bare_log": "308"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CASTANEDA, OSIEL & ROCIO",
+            "GALINDO SOTO, PATRICIA"
+          ],
+          "bare_log": "310"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MORENO, DAVID",
+            "PANDURO, SONIA A"
+          ],
+          "bare_log": "311"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "RIVAS, LUIS H",
+            "SOSA, CRISTINA"
+          ],
+          "bare_log": "312"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CRUZ, LAURA V",
+            "VELASCO, DELIA"
+          ],
+          "bare_log": "313"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "RODAS, GUSTAVO & CARIDAD",
+            "SOTELO, BRENDA"
+          ],
+          "bare_log": "314"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "BRAVO, VINCENT II",
+            "MIJARES, REYMUNDO & DEBORAH L"
+          ],
+          "bare_log": "315"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "AGUILAR, HORACIO & ROBERTA G",
+            "ESPI, CARMEN A"
+          ],
+          "bare_log": "316"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ACOSTA, VERONICA & RUBEN",
+            "SALAZAR NUNEZ, JESUS M & CRIZTAL N"
+          ],
+          "bare_log": "317"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ARROYO & HERNANDEZ, HUMBERTO & MARIA",
+            "HENDERSON, DIANA"
+          ],
+          "bare_log": "318"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "RODAS, RENAN",
+            "VASQUEZ & DURAN, ROBERT K & PALOMA"
+          ],
+          "bare_log": "319"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DAVILA, VANESSA",
+            "G'S DELIVERY SERVICES"
+          ],
+          "bare_log": "320"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "JORGE DE LA OSA DENTAL CORP",
+            "TRILLOS PEINADO, YERSINO"
+          ],
+          "bare_log": "327"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "IMAS INDUSTRIAL MACHINE AUTOMATION INC",
+            "OROZCO, CYNTHIA"
+          ],
+          "bare_log": "328"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MC5 ENTERPRISES INC.",
+            "TINOCO & ROGERS, LILIANA & BRANDON"
+          ],
+          "bare_log": "329"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "JUAREZ, CRUZ & MARISOL ESCOBAR SANCHEZ",
+            "WARNKE & SARDINAS, KARINA & MARIO"
+          ],
+          "bare_log": "330"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GARFIAS, PAULINA",
+            "ZAMORA, JACOB R"
+          ],
+          "bare_log": "331"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MORALES & ITZEP, JUAN O",
+            "ZAMORA, CASSANDRA"
+          ],
+          "bare_log": "332"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ROJAS, LUIS & GUADALUPE MELENDREZ",
+            "SOLOMON, LAUREN"
+          ],
+          "bare_log": "333"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "J DE LA OSA DENTAL INC",
+            "PRINCIC, KARL"
+          ],
+          "bare_log": "571"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "PRINCIC, ALFREDA",
+            "SUPER DISCOUNT FAMILY STORE"
+          ],
+          "bare_log": "572"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MARISCAL, ROBERTO & VERONICA",
+            "SIGUENCIA, FERNANDO"
+          ],
+          "bare_log": "573"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ABOU ABDOU, AHMED & HIND ABED",
+            "ESCALANTE CASTRO, KARINA A"
+          ],
+          "bare_log": "574"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CORONA, BRIAN M",
+            "GAMBOA, RAFAEL MONARREZ"
+          ],
+          "bare_log": "575"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "PALENCIA, VIVIAN A",
+            "RIVERA, OSCAR H JR"
+          ],
+          "bare_log": "576"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GUTIERREZ, FRANCISCO",
+            "SHARK TAND TRENDS INC"
+          ],
+          "bare_log": "577"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DAKAK, KALID K & SUMER",
+            "MORALES, GUSTAVO A"
+          ],
+          "bare_log": "578"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DAKAK, RAMI",
+            "GARCIA & CORONA, NICANOR & KRISTAL"
+          ],
+          "bare_log": "579"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "NIETO AVENDANO, GIOVANNI & HEIN",
+            "NUNO, WILLIAM"
+          ],
+          "bare_log": "580"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GARCIA, MAGDALENA",
+            "PALMS GROVE LEASING LLC"
+          ],
+          "bare_log": "581"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GONZALEZ, ARACELY",
+            "SERRANO, JAVIER"
+          ],
+          "bare_log": "582"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GONZALEZ, EDUARDO",
+            "NESTOR, ELSY"
+          ],
+          "bare_log": "583"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GIRON, ESMERALDA",
+            "SOUTHBAY RESTORATION INC"
+          ],
+          "bare_log": "586"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "PEREZ, ALYSSA M",
+            "SANTIAGO, CARMELA & ROY"
+          ],
+          "bare_log": "587"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "RODDIS, JAMIE",
+            "SANTIAGO, EUNICE"
+          ],
+          "bare_log": "588"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DENISE, SANTIAGO",
+            "KIKB ENTERPRISES"
+          ],
+          "bare_log": "589"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "NUNO, CYNTHIA",
+            "OSUA, IVAN & KARINA"
+          ],
+          "bare_log": "590"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "NUNO, JUAN",
+            "VEGA, ERIN"
+          ],
+          "bare_log": "591"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CASTELLANOS, ROBERTO A & CELIA",
+            "GEORGE, DARON"
+          ],
+          "bare_log": "592"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ASCENCION, FATIMA B",
+            "SANCHEZ, AYLEEN"
+          ],
+          "bare_log": "593"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "RUIZ GONZALEZ, MIGUEL A",
+            "SANCHEZ, BRYAN A"
+          ],
+          "bare_log": "594"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GIMENEZ  & GARCIA, ENRIQUE P & LUVIA",
+            "SANCHEZ, KEVIN IVAN"
+          ],
+          "bare_log": "595"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "HUERTA, JACOB & STEPHANIE A",
+            "PEREZ MENDEZ, GENOVEVA"
+          ],
+          "bare_log": "596"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CREATE YOUR HEALTH LLC",
+            "SCHOEN, RAYMOND A"
+          ],
+          "bare_log": "597"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ROBLEDO & CORONA CORTES, PEDRO F & MARIA",
+            "ROJAS, ALEXANDER A"
+          ],
+          "bare_log": "598"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "COVARRUBIAS & FERNANDEZ, MARIO & MONICA",
+            "ESCANDON, EDWARD M"
+          ],
+          "bare_log": "599"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "KDEISS, RAYMOND E & LINDA R",
+            "MORENO, ISRAEL"
+          ],
+          "bare_log": "600"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GERRI CAN HELP INC",
+            "RAMIREZ HUERTA, ISMAEL"
+          ],
+          "bare_log": "601"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ENRIQUEZ REYES, MARCO & MARIA",
+            "FRANCO, CLAUDIA V"
+          ],
+          "bare_log": "602"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CARDENAS, MIGUEL",
+            "FRESH GARDEN FLOWERS, WHOLESALE INC"
+          ],
+          "bare_log": "603"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ANGUIANO R, JOSE R & ELSA R LANDEROS P",
+            "CABRERA, CAZARES"
+          ],
+          "bare_log": "604"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DIAZ LOPEZ, MARIA",
+            "GONZALEZ ROSAS, MELISSA"
+          ],
+          "bare_log": "605"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LAGUNA GARCIA, SERGIO A",
+            "SANCHEZ, CARLOS"
+          ],
+          "bare_log": "606"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MELENDEZ, YOLANDA",
+            "MOROYOQUI, JULIO"
+          ],
+          "bare_log": "607"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ARULLENDRAN, MAHENDRAN & DHANUSHA",
+            "MOROYOQUI, JULIO"
+          ],
+          "bare_log": "608"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CORONA, MARIO C & SARAH M",
+            "MOROYOQUI, JULIO"
+          ],
+          "bare_log": "609"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MOROYOQUI, JULIO",
+            "TAMASHIRO, KEVIN & BRENDA"
+          ],
+          "bare_log": "610"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CORONA, ZOYLA A",
+            "RIOS & CAZAR, TRINY & MARIA"
+          ],
+          "bare_log": "611"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "SOBERANES, MAYA V",
+            "VILLEGAS, JEANNETTE & HECTOR"
+          ],
+          "bare_log": "612"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GARZA LOPEZ, LAURA & ARTURO",
+            "J&H MECHANICAL, INC"
+          ],
+          "bare_log": "613"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "HERNANDEZ, ?",
+            "OLIVAREZ, RICHARD"
+          ],
+          "bare_log": "614"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "M H GENERAL ENGINEERING INC",
+            "TRINIDAD, JEANETTE"
+          ],
+          "bare_log": "615"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GUERRERO, MICHAEL",
+            "RIZKALLAH, EMAD & MUNA"
+          ],
+          "bare_log": "616"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "PMQ SOLUTIONS INC",
+            "SCHELSKE, DUSTIN N"
+          ],
+          "bare_log": "617"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "BRENES RUIZ, JESUS & ROSSANNA",
+            "SCHELSKE, MICHAEL L & JOCELYNE"
+          ],
+          "bare_log": "618"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CORONA, MARCUS M",
+            "ZUNIGA, NETZAHUALCOYOTL & MARLLEN C GARC"
+          ],
+          "bare_log": "619"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LOPEZ VILLANUEVA, FRANCISCO",
+            "ROJAS, ALEX & ELVIA"
+          ],
+          "bare_log": "620"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DRE AND ASSOCIATES",
+            "FALATOONZADEH, HOSSEIN & SARA VAFAENIA"
+          ],
+          "bare_log": "621"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GALLEGOS, JOSE & NANCY BARRERA",
+            "M C ENGRAVING & JEWELRY INC"
+          ],
+          "bare_log": "622"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GONZALEZ, NATHALIE",
+            "THOME, SUSAN"
+          ],
+          "bare_log": "624"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ESPINOZA, MARIA",
+            "MORALES, KELLY A"
+          ],
+          "bare_log": "625"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GUTIERREZ, ASHLEY",
+            "SILVA SANCHEZ, JUAN CARLOS"
+          ],
+          "bare_log": "626"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DARWICH, NASSER M & JESSICA M",
+            "MELENDREZ BRAVO, GABRIELA"
+          ],
+          "bare_log": "627"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "HUERTA MURO, JUAN C & MIRIAM L R",
+            "VALENZUELA, MARGARITA G"
+          ],
+          "bare_log": "628"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CALASANZ CHILDRENS FOUNDATION",
+            "OLIVA, CAREN J"
+          ],
+          "bare_log": "630"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "HERREJON, NICHOLAS K",
+            "SUAREZ, RAQUEL E"
+          ],
+          "bare_log": "631"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ALL IN FUMIGATION",
+            "RODRIGUEZ, RAMIRO & BARBARITA"
+          ],
+          "bare_log": "632"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "NUNO, ALEJANDRO",
+            "VELEZ, GERARDO & JAZMIN H"
+          ],
+          "bare_log": "633"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "AN ADVISORS",
+            "SILVA, VINCENT & IRMA"
+          ],
+          "bare_log": "634"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ELSIE SILVA ESTATE",
+            "REVOLORIO, SALVADOR B"
+          ],
+          "bare_log": "635"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DARWICH, KATRINA F",
+            "VALENZUELA, ALEX & SANDRA"
+          ],
+          "bare_log": "636"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "COVARRUBIAS II, JAVIER",
+            "DIAZ GUTIERREZ, ELIJAH B"
+          ],
+          "bare_log": "637"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "COVARRUBIAS, DELIA",
+            "MARTINEZ, ARNULFO & SUSANNA"
+          ],
+          "bare_log": "638"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CUENCA, MARIA",
+            "NOPALTITLA, CINTIA"
+          ],
+          "bare_log": "639"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DURAN ROJAS, AGUSTIN & GUADALUPE",
+            "TRAN, MARTIN"
+          ],
+          "bare_log": "640"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CHEANG, SARAH",
+            "COLLAZO, MICHAEL"
+          ],
+          "bare_log": "641"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CHEANG, SARAH",
+            "GONZALEZ NAVARRO, REYES"
+          ],
+          "bare_log": "642"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CHEANG, LAURA",
+            "TULLIO, SHERRY"
+          ],
+          "bare_log": "643"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CHEANG, LAURA",
+            "GALINDO, NANCY D"
+          ],
+          "bare_log": "644"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ASFOUR, EMAD & RANDY K",
+            "CHEANG, VICTOR & NANCY"
+          ],
+          "bare_log": "645"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MARISCAL, MARIA E",
+            "MONTANO-ANDA, YVETTE"
+          ],
+          "bare_log": "646"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GALLARDO, LORENZO & MARTHA",
+            "TORREZ, AIDA A"
+          ],
+          "bare_log": "647"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "JUAREZ, BEATRIZ M",
+            "SANCHEZ, JUAN & MELANIA"
+          ],
+          "bare_log": "648"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DEL TORO, ISAEL",
+            "HERNANDEZ, GERARDO HERNANDEZ"
+          ],
+          "bare_log": "649"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "TAREEN, ILYAS",
+            "YANEZ RODRIGUEZ, LUIS M"
+          ],
+          "bare_log": "650"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LLAMAS, YADIRA",
+            "RAMIREZ, ESTEBAN C"
+          ],
+          "bare_log": "651"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LUM, ELLEN",
+            "YANEZ, ELVIRA"
+          ],
+          "bare_log": "652"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DURAN, AGUSTIN JR",
+            "YANEZ, ELVIA"
+          ],
+          "bare_log": "653"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "KLEAN SOLAR SOLUTIONS, LLC",
+            "SALAZAR, ROSA"
+          ],
+          "bare_log": "654"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "AGUIRRE, KAETE",
+            "SANDOVAL, GUSTAVO & SABRINA"
+          ],
+          "bare_log": "655"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LUM, ANTHONY & CHAYA",
+            "SANCHEZ, VALERIA"
+          ],
+          "bare_log": "656"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MALCOM, DAVID W & MARIANA C",
+            "RODDIS, LILIA"
+          ],
+          "bare_log": "657"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DAKAK, RAED K WIDA R",
+            "ESTATE OF DON A SEGESDY"
+          ],
+          "bare_log": "658"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DAKAK, JASMINE",
+            "MESSARRA, NOAH S"
+          ],
+          "bare_log": "659"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "DAKAK, KALIL",
+            "GARCIA, JULIO D & ROXSANY Y"
+          ],
+          "bare_log": "660"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CALIFORNIA LIVEWIRE INC",
+            "GARCIA VEGA, JOSE"
+          ],
+          "bare_log": "661"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "POLANCO, RICHARD",
+            "VEGA, JUAN"
+          ],
+          "bare_log": "662"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MUNOZ, JOSHUA",
+            "VOID"
+          ],
+          "bare_log": "663"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GONZALEZ, IVAN & GREISY",
+            "MUNOZ, JOSHUA"
+          ],
+          "bare_log": "664"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GAMBOA, SAUL",
+            "JOHNSON & LOPEZ JOHNSON, ALLEN S & CHRISTINE"
+          ],
+          "bare_log": "665"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CARDONA, PEDRO",
+            "REYNOSO, RICARDO & SANDY"
+          ],
+          "bare_log": "666"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LEDESMA, LILIANA",
+            "VILLALTA, CARLOS V"
+          ],
+          "bare_log": "667"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "PORTALES, NORMAN JR",
+            "TORRES ARAIZA, LESLIE D"
+          ],
+          "bare_log": "668"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ARMENTA, LUISA",
+            "PORTALES, NORMAN & LIGIA"
+          ],
+          "bare_log": "669"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MARISCOS EL KORA DE NAYARIT",
+            "RIOS, OSCAR"
+          ],
+          "bare_log": "671"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "RAMOS, MARITZA",
+            "RIOS, OSCAR"
+          ],
+          "bare_log": "672"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "HERNANDEZ, GERARDO",
+            "NOPALTITLA, MIGUEL A & REYNA"
+          ],
+          "bare_log": "673"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "HERNANDEZ, MAURICIO A",
+            "MERCADO, HECTOR"
+          ],
+          "bare_log": "674"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "HUERTA, JOSE & CECILIA",
+            "VERGARA, JOSE MANUEL"
+          ],
+          "bare_log": "675"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MICLAT, ALEX JR & ELIZABETH",
+            "OROZCO, LUCIA"
+          ],
+          "bare_log": "676"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CAMACHO GARCIA, CLAUDIA L",
+            "MADRIGAL, ELADIO"
+          ],
+          "bare_log": "677"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "JUAREZ, JOSE G",
+            "TASHAYOD, ALEX"
+          ],
+          "bare_log": "678"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GARCIA, LIONEL P",
+            "NOPALTITLA, MIGUEL A & REYNA"
+          ],
+          "bare_log": "679"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LAZO, BREANNA L",
+            "NOPALTITLA, MIGUEL A & REYNA"
+          ],
+          "bare_log": "680"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GARCIA-HUBLER, SANDRA",
+            "NOPALTITLA, MIGUEL A & REYNA"
+          ],
+          "bare_log": "681"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MICLAT, BRIANA",
+            "O'CAMPO, MARIA"
+          ],
+          "bare_log": "682"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MICLAT III, ALEX M",
+            "O'CAMPO, MARIA"
+          ],
+          "bare_log": "683"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "MURILLO, MARISA M",
+            "OCHOA, SERGIO & MARTHA"
+          ],
+          "bare_log": "684"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ALVARADO, OSCAR & DESIREE",
+            "FIBER ERA INC"
+          ],
+          "bare_log": "685"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ARANDA, HUGO & GEORGINA",
+            "CARDENAS NAVARRO, MARIA DEL CARMEN"
+          ],
+          "bare_log": "686"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "APK PLUMBING INC",
+            "VELASQUEZ, BRYAN O"
+          ],
+          "bare_log": "687"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "HERNANDEZ, ISMAEL",
+            "MAR FIBER COMMUNICATIONS, LLC"
+          ],
+          "bare_log": "714"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "ANGULO CASTANEDA, JOSE E",
+            "PEREZ, TERRY"
+          ],
+          "bare_log": "715"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LOPEZ, RAFAEL",
+            "VELASQUEZ, MAYNOR"
+          ],
+          "bare_log": "716"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "JIMENEZ, LETICIA C",
+            "ORTIZ, ISRAEL"
+          ],
+          "bare_log": "717"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LAZO, ANNABEL",
+            "SANCHEZ HERNANDEZ, ADRIAN & ADRIANA"
+          ],
+          "bare_log": "721"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "HERNANDEZ CUELLAR, SALVADOR & NORA",
+            "MENDEZ, SERGIO"
+          ],
+          "bare_log": "722"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "HERNANDEZ, ADELAIDA",
+            "LEMUS, EVELYN C"
+          ],
+          "bare_log": "723"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "EDWARD LOPEZ AMERICAN DENTAL INC",
+            "HERNANDEZ, SERGIO"
+          ],
+          "bare_log": "724"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "BETANCOURT, RUDY",
+            "HERNANDEZ, SALVADOR G"
+          ],
+          "bare_log": "725"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "LOPEZ, WILFREDO & MERCEDES",
+            "MANDIN, EDMOND A"
+          ],
+          "bare_log": "726"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "REYES SOLIS, GASPAR & NORMA",
+            "TINOCO, JOSE & ESMERALDA"
+          ],
+          "bare_log": "727"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "GUTIERREZ, IVAN & DEANA",
+            "MARQUEZ, JOANNA"
+          ],
+          "bare_log": "728"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "CAMACHO, ADRIAN & KARINA",
+            "MARQUEZ, RICARDO & NORMA"
+          ],
+          "bare_log": "729"
+        },
+        {
+          "kind": "genuine_reuse",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 2,
+          "shared_surnames": [],
+          "names": [
+            "BRENES, REYNA E",
+            "PEREZ, EDMUNDO O & HONORINA"
+          ],
+          "bare_log": "730"
+        }
+      ],
+      "family_same_surname": [
+        {
+          "kind": "family_same_surname",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 1,
+          "shared_surnames": [
+            "GONZALEZ"
+          ],
+          "names": [
+            "GONZALEZ, GLORIA",
+            "GONZALEZ, PEDRO & MARIA"
+          ],
+          "bare_log": "623"
+        },
+        {
+          "kind": "family_same_surname",
+          "n_rows": 2,
+          "n_distinct_people": 2,
+          "n_surnames": 1,
+          "shared_surnames": [
+            "GARCIA"
+          ],
+          "names": [
+            "GARCIA SERNAS, ANGELICA M",
+            "GARCIA, JAVIER & ANA R NUNO FRANCO"
+          ],
+          "bare_log": "720"
+        }
+      ]
+    }
+  },
+  "taxops": {
+    "path": "\\\\Xcel-server\\taxops\\taxops\\taxops.db",
+    "filled_distinct_note": "TaxOps returns.log_number is unique per tax_year (ux constraint).",
+    "n_logs_with_return": 1017
+  },
+  "i7_blocker": {
+    "bare_log": "141",
+    "note": "I7 pass-2 created return id=2842 log=141 PEREZ & GARCIA VILLAREAL, ANDRES \u2014 resolves only after bare-141 collision is cleared in Drake/Log."
+  }
+}

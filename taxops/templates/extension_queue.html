@@ -215,7 +215,6 @@
 {% block scripts %}
 <script>
 (function () {
-  const filterInput = document.getElementById('table-filter');
   const selectAll   = document.getElementById('select-all');
   const batchPanel  = document.getElementById('batch-panel');
   const selCountEl  = document.getElementById('sel-count');
@@ -235,20 +234,13 @@
 
   selectAll.addEventListener('change', () => {
     document.querySelectorAll('.row-check').forEach(cb => {
-      if (cb.closest('tr').style.display !== 'none') cb.checked = selectAll.checked;
+      const tr = cb.closest('tr');
+      if (tr && !tr.classList.contains('tr-filter-hidden')) cb.checked = selectAll.checked;
     });
     updateSelectionUI();
   });
 
-  if (filterInput) {
-    filterInput.addEventListener('input', () => {
-      const q = filterInput.value.toLowerCase();
-      document.querySelectorAll('tbody tr[data-search]').forEach(row => {
-        row.style.display = row.dataset.search.toLowerCase().includes(q) ? '' : 'none';
-      });
-      updateSelectionUI();
-    });
-  }
+  document.addEventListener('taxops:table-filtered', updateSelectionUI);
 })();
 </script>
 {% endblock %}

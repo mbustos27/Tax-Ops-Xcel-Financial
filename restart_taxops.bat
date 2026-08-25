@@ -17,7 +17,7 @@ cd /d "%~dp0taxops"
 REM CACHE #141: After JS/CSS changes, bump TAXOPS_VERSION or TAXOPS_APP_VERSION (NSSM / taxops\.env) and restart.
 :: WSGI: app.py serves with Waitress (multi-threaded) unless FLASK_DEBUG=1 — see GitHub #136
 set FLASK_DEBUG=0
-set OLLAMA_BASE_URL=http://192.168.1.141:11434
+set OLLAMA_BASE_URL=http://192.168.1.173:11434
 start "" python app.py
 
 :: Wait up to 15 s for Waitress to bind port 5000 (SMOKE-3)
@@ -39,7 +39,7 @@ goto :done
 :: SMOKE-3: run smoke_test.py after confirmed startup
 :smoke
 echo Running smoke tests...
-python smoke_test.py http://192.168.1.141:5000
+python smoke_test.py http://192.168.1.173:5000
 if %errorlevel% NEQ 0 (
     echo.
     echo  SMOKE TEST FAILED — check C:\TaxOps\logs\smoke.log for details.

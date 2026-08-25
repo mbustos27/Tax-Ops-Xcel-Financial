@@ -21,11 +21,11 @@
 .EXAMPLE
     .\scripts\restart_service.ps1
     .\scripts\restart_service.ps1 -SkipSmoke
-    .\scripts\restart_service.ps1 -BaseUrl http://192.168.1.141:5000
+    .\scripts\restart_service.ps1 -BaseUrl http://192.168.1.173:5000
 #>
 param(
     [string]$ServiceName = "TaxOpsService",
-    [string]$BaseUrl     = "http://192.168.1.141:5000",
+    [string]$BaseUrl     = "http://192.168.1.173:5000",
     [switch]$SkipSmoke
 )
 

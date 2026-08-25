@@ -1,0 +1,282 @@
+[
+  {
+    "name": "archive_email_classifications",
+    "row_count": 175,
+    "sql": "CREATE TABLE \"archive_email_classifications\" (\n          id              INTEGER PRIMARY KEY AUTOINCREMENT,\n          sender_email    TEXT,\n          sender_domain   TEXT,\n          subject_snippet TEXT,\n          classification  TEXT NOT NULL,\n          confirmed_by    TEXT,\n          confirmed_at    TEXT,\n          created_at      TEXT NOT NULL,\n          source          TEXT NOT NULL DEFAULT 'auto'\n        , reviewed_missed INTEGER NOT NULL DEFAULT 0, email_routed_ok INTEGER NOT NULL DEFAULT 0, match_score INTEGER, matched_client_id INTEGER, match_status TEXT NOT NULL DEFAULT 'auto')"
+  },
+  {
+    "name": "audit_log",
+    "row_count": 911,
+    "sql": "CREATE TABLE audit_log (\n          id           INTEGER PRIMARY KEY AUTOINCREMENT,\n          user_id      TEXT,\n          action       TEXT NOT NULL,\n          entity_type  TEXT NOT NULL,\n          entity_id    TEXT,\n          before_json  TEXT,\n          after_json   TEXT,\n          ip_address   TEXT,\n          created_at   TEXT NOT NULL\n        )"
+  },
+  {
+    "name": "auth_users",
+    "row_count": 13,
+    "sql": "CREATE TABLE auth_users (\n          id               INTEGER PRIMARY KEY AUTOINCREMENT,\n          username         TEXT NOT NULL UNIQUE,\n          password_hash    TEXT NOT NULL,\n          display_name     TEXT,\n          role             TEXT NOT NULL DEFAULT 'staff',\n          is_active        INTEGER NOT NULL DEFAULT 1,\n          created_at       TEXT NOT NULL,\n          last_login_at    TEXT,\n          failed_attempts  INTEGER NOT NULL DEFAULT 0,\n          locked_until     TEXT\n        , must_change_password INTEGER NOT NULL DEFAULT 0, has_seen_orientation INTEGER NOT NULL DEFAULT 0)"
+  },
+  {
+    "name": "billing_requests",
+    "row_count": 3,
+    "sql": "CREATE TABLE billing_requests (\n          id                  INTEGER PRIMARY KEY AUTOINCREMENT,\n          work_order_id       INTEGER NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,\n          client_id           INTEGER REFERENCES clients(id),\n          client_name         TEXT NOT NULL,\n          amount              NUMERIC NOT NULL DEFAULT 0,\n          status              TEXT NOT NULL DEFAULT 'pending',\n          created_by_user_id  INTEGER REFERENCES auth_users(id),\n          created_at          TEXT NOT NULL,\n          updated_at          TEXT NOT NULL\n        )"
+  },
+  {
+    "name": "client_billing",
+    "row_count": 848,
+    "sql": "CREATE TABLE client_billing (\n        id            INTEGER PRIMARY KEY AUTOINCREMENT,\n        client_id     INTEGER NOT NULL REFERENCES clients(id),\n        balance_due   REAL,\n        balance_as_of DATE,\n        source        TEXT DEFAULT 'TY2025 Drake import',\n        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n    )"
+  },
+  {
+    "name": "client_dependents",
+    "row_count": 706,
+    "sql": "CREATE TABLE client_dependents (\n          id                    INTEGER PRIMARY KEY AUTOINCREMENT,\n          client_id             INTEGER NOT NULL REFERENCES clients(id),\n          drake_dependent_id    TEXT,\n          last_name             TEXT,\n          first_name            TEXT NOT NULL,\n          date_of_birth         TEXT,\n          relationship          TEXT,\n          is_claimed_dependent  INTEGER NOT NULL DEFAULT 1,\n          hoh_qualifier_only    INTEGER NOT NULL DEFAULT 0,\n          source                TEXT DEFAULT 'TY2025 Drake import',\n          match_confidence      REAL,\n          needs_review          INTEGER NOT NULL DEFAULT 0,\n          confirmed_at_intake   INTEGER NOT NULL DEFAULT 0,\n          removed_for_ty2026    INTEGER NOT NULL DEFAULT 0,\n          created_at            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\n        , taxpayer_name TEXT)"
+  },
+  {
+    "name": "client_spouse_import",
+    "row_count": 0,
+    "sql": "CREATE TABLE client_spouse_import (\n          id                    INTEGER PRIMARY KEY AUTOINCREMENT,\n          client_id             INTEGER NOT NULL REFERENCES clients(id),\n          taxpayer_name         TEXT,\n          spouse_last_name      TEXT,\n          spouse_first_name     TEXT NOT NULL,\n          spouse_dob            TEXT,\n          filing_status         TEXT,\n          source                TEXT DEFAULT 'TY2025 Drake import',\n          match_confidence      REAL,\n          needs_review          INTEGER NOT NULL DEFAULT 0,\n          applied_at            TEXT,\n          created_at            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\n        )"
+  },
+  {
+    "name": "clients",
+    "row_count": 1526,
+    "sql": "CREATE TABLE clients (\n          id INTEGER PRIMARY KEY,\n          last_name TEXT,\n          first_name TEXT,\n          display_name TEXT,\n          ssn_last4 TEXT,\n          referral_flag INTEGER,\n          referred_by TEXT,\n          created_at TEXT,\n          updated_at TEXT\n        , spouse_last_name TEXT, spouse_first_name TEXT, taxpayer_dob TEXT, spouse_dob TEXT, taxpayer_occupation TEXT, spouse_occupation TEXT, taxpayer_phone TEXT, taxpayer_cell TEXT, taxpayer_work_phone TEXT, spouse_cell TEXT, spouse_work_phone TEXT, taxpayer_email TEXT, spouse_email TEXT, address TEXT, is_new_client INTEGER DEFAULT 0, prior_year_log TEXT, id_type INTEGER)"
+  },
+  {
+    "name": "compliance_accounts",
+    "row_count": 0,
+    "sql": "CREATE TABLE compliance_accounts (\n          id                      INTEGER PRIMARY KEY AUTOINCREMENT,\n          compliance_client_id    INTEGER NOT NULL REFERENCES compliance_clients(id) ON DELETE CASCADE,\n          account_type            TEXT NOT NULL,\n          account_number          TEXT,\n          city_name               TEXT,\n          frequency               TEXT NOT NULL DEFAULT 'quarterly',\n          credential_id           INTEGER REFERENCES compliance_credentials(id),\n          fee                     NUMERIC,\n          active                  INTEGER NOT NULL DEFAULT 1,\n          created_at              TEXT NOT NULL,\n          updated_at              TEXT NOT NULL\n        )"
+  },
+  {
+    "name": "compliance_clients",
+    "row_count": 0,
+    "sql": "CREATE TABLE compliance_clients (\n          id                          INTEGER PRIMARY KEY AUTOINCREMENT,\n          name                        TEXT NOT NULL,\n          client_type                 TEXT NOT NULL DEFAULT 'business',\n          corp_number                 TEXT,\n          fein                        TEXT,\n          address                     TEXT,\n          city                        TEXT,\n          zip                         TEXT,\n          phone                       TEXT,\n          ssn_last4                   TEXT,\n          assigned_preparer_user_id   INTEGER REFERENCES auth_users(id),\n          active                      INTEGER NOT NULL DEFAULT 1,\n          created_at                  TEXT NOT NULL,\n          updated_at                  TEXT NOT NULL\n        )"
+  },
+  {
+    "name": "compliance_correspondence_log",
+    "row_count": 0,
+    "sql": "CREATE TABLE compliance_correspondence_log (\n          id                      INTEGER PRIMARY KEY AUTOINCREMENT,\n          compliance_client_id    INTEGER NOT NULL REFERENCES compliance_clients(id) ON DELETE CASCADE,\n          month                    TEXT NOT NULL,\n          note_type               TEXT NOT NULL DEFAULT 'general',\n          note                     TEXT,\n          created_by_user_id      INTEGER REFERENCES auth_users(id),\n          created_at               TEXT NOT NULL\n        )"
+  },
+  {
+    "name": "compliance_credentials",
+    "row_count": 0,
+    "sql": "CREATE TABLE compliance_credentials (\n          id                    INTEGER PRIMARY KEY AUTOINCREMENT,\n          login_username        TEXT NOT NULL,\n          encrypted_password    BLOB,\n          encryption_key_ref    TEXT NOT NULL DEFAULT 'default',\n          shared_login          INTEGER NOT NULL DEFAULT 0,\n          last_rotated_at       TEXT,\n          needs_rotation        INTEGER NOT NULL DEFAULT 0,\n          notes                 TEXT,\n          created_at            TEXT NOT NULL,\n          updated_at            TEXT NOT NULL\n        )"
+  },
+  {
+    "name": "dashboard_saved_filters",
+    "row_count": 0,
+    "sql": "CREATE TABLE dashboard_saved_filters (\n          id INTEGER PRIMARY KEY AUTOINCREMENT,\n          user_id TEXT NOT NULL,\n          name TEXT NOT NULL,\n          filter_json TEXT NOT NULL,\n          is_default INTEGER NOT NULL DEFAULT 0,\n          is_shared INTEGER NOT NULL DEFAULT 0,\n          created_at TEXT NOT NULL\n        )"
+  },
+  {
+    "name": "dependents",
+    "row_count": 0,
+    "sql": "CREATE TABLE dependents (\n          id INTEGER PRIMARY KEY,\n          return_id INTEGER NOT NULL,\n          full_name TEXT,\n          ssn_last4 TEXT,\n          relationship TEXT,\n          date_of_birth TEXT,\n          medi_cal INTEGER DEFAULT 0,\n          created_at TEXT, is_deleted INTEGER NOT NULL DEFAULT 0, on_medicare INTEGER NOT NULL DEFAULT 0,\n          FOREIGN KEY (return_id) REFERENCES returns(id)\n        )"
+  },
+  {
+    "name": "drake_form_prefill",
+    "row_count": 1264,
+    "sql": "CREATE TABLE drake_form_prefill (\n          id            INTEGER PRIMARY KEY,\n          link_id       INTEGER NOT NULL REFERENCES drake_prefill_links(id)\n                        ON DELETE CASCADE,\n          tax_year      INTEGER NOT NULL,\n          form_counts   TEXT    NOT NULL,\n          return_type   TEXT,\n          source_files  TEXT,\n          created_at    TEXT    NOT NULL,\n          UNIQUE (link_id)\n        )"
+  },
+  {
+    "name": "drake_household_prefill",
+    "row_count": 1302,
+    "sql": "CREATE TABLE drake_household_prefill (\n          id                 INTEGER PRIMARY KEY,\n          link_id            INTEGER NOT NULL REFERENCES drake_prefill_links(id)\n                             ON DELETE CASCADE,\n          tax_year           INTEGER NOT NULL,\n          taxpayer_dob       TEXT,\n          taxpayer_phone     TEXT,\n          taxpayer_email     TEXT,\n          spouse_name        TEXT,\n          spouse_dob         TEXT,\n          spouse_phone       TEXT,\n          dependents_json    TEXT    NOT NULL DEFAULT '[]',\n          source_file        TEXT,\n          created_at         TEXT    NOT NULL,\n          updated_at         TEXT    NOT NULL,\n          UNIQUE (link_id)\n        )"
+  },
+  {
+    "name": "drake_prefill_links",
+    "row_count": 1379,
+    "sql": "CREATE TABLE drake_prefill_links (\n          id                   INTEGER PRIMARY KEY,\n          tax_year             INTEGER NOT NULL,\n          csm_ssn_last4        TEXT    NOT NULL,\n          csm_name_raw         TEXT    NOT NULL,\n          csm_name_norm        TEXT    NOT NULL,\n          client_id            INTEGER REFERENCES clients(id),\n          prefill_status       TEXT    NOT NULL\n            CHECK (prefill_status IN (\n              'PRIOR_YEAR_FORMS_AVAILABLE',\n              'NO_PRIOR_FORM_DATA',\n              'NEEDS_MANUAL_LINK',\n              'LOW_CONFIDENCE_NO_MATCH'\n            )),\n          disposition_status   TEXT\n            CHECK (disposition_status IS NULL OR disposition_status IN (\n              'PY_FILED_ACCEPTED',\n              'PY_REJECTED',\n              'PY_EXTENDED',\n              'PY_INCOMPLETE',\n              'PY_ROLLOVER_ONLY',\n              'PY_STATUS_UNKNOWN'\n            )),\n          csm_status_raw       TEXT,\n          csm_status_as_of     TEXT,\n          csm_anchor_changed   TEXT,\n          purple_name          TEXT,\n          match_tier           TEXT\n            CHECK (match_tier IS NULL OR match_tier IN (\n              'deterministic', 'fuzzy', 'manual'\n            )),\n          match_score          REAL,\n          matched_variant      TEXT,\n          resolved_by          TEXT,\n          resolved_at          TEXT,\n          import_batch_id      INTEGER REFERENCES import_batches(id),\n          created_at           TEXT    NOT NULL,\n          updated_at           TEXT    NOT NULL,\n          UNIQUE (tax_year, csm_ssn_last4, csm_name_norm)\n        )"
+  },
+  {
+    "name": "efile_batch_items",
+    "row_count": 33,
+    "sql": "CREATE TABLE efile_batch_items (\n          id               INTEGER PRIMARY KEY,\n          batch_id         INTEGER NOT NULL,\n          return_id        INTEGER NOT NULL,\n          log_number       TEXT,\n          client_name      TEXT,\n          ssn_last4        TEXT,\n          tax_year         INTEGER,\n          receipt_number   TEXT,\n          fee_paid         REAL,\n          pickup_date      TEXT,\n          transmission_date TEXT,\n          ack_status       TEXT NOT NULL DEFAULT 'pending',\n          ack_date         TEXT,\n          rejection_code   TEXT,\n          rejection_reason TEXT,\n          needs_calculation INTEGER NOT NULL DEFAULT 0,\n          created_at       TEXT NOT NULL, cc_fee REAL,\n          FOREIGN KEY (batch_id)  REFERENCES efile_batches(id),\n          FOREIGN KEY (return_id) REFERENCES returns(id),\n          UNIQUE (batch_id, return_id)\n        )"
+  },
+  {
+    "name": "email_inbox",
+    "row_count": 268,
+    "sql": "CREATE TABLE email_inbox (\n          id                  INTEGER PRIMARY KEY AUTOINCREMENT,\n          sender_email        TEXT,\n          sender_domain       TEXT,\n          subject_snippet     TEXT,\n          filename            TEXT NOT NULL,\n          original_filename   TEXT,\n          file_path           TEXT NOT NULL,\n          file_size_bytes     INTEGER,\n          received_at         TEXT NOT NULL,\n          assigned_return_id  INTEGER REFERENCES returns(id),\n          assigned_by         TEXT,\n          assigned_at         TEXT,\n          is_assigned         INTEGER NOT NULL DEFAULT 0,\n          is_deleted          INTEGER NOT NULL DEFAULT 0\n        , sender_name TEXT, suggested_return_id INTEGER REFERENCES returns(id), suggestion_method TEXT, suggestion_score INTEGER)"
+  },
+  {
+    "name": "email_processing_log",
+    "row_count": 1686,
+    "sql": "CREATE TABLE email_processing_log (\n          id               INTEGER PRIMARY KEY AUTOINCREMENT,\n          message_uid      TEXT NOT NULL,\n          imap_folder      TEXT NOT NULL,\n          sender_domain    TEXT,\n          subject_snippet  TEXT,\n          outcome          TEXT NOT NULL,\n          attempt_count    INTEGER NOT NULL DEFAULT 1,\n          last_attempt_at  TEXT NOT NULL,\n          error_message    TEXT,\n          doc_id           INTEGER REFERENCES return_documents(id),\n          return_id        INTEGER REFERENCES returns(id), suppression_reason TEXT,\n          UNIQUE(message_uid, imap_folder)\n        )"
+  },
+  {
+    "name": "email_sender_rules",
+    "row_count": 11,
+    "sql": "CREATE TABLE email_sender_rules (\n          id          INTEGER PRIMARY KEY AUTOINCREMENT,\n          domain      TEXT NOT NULL UNIQUE,\n          rule_type   TEXT NOT NULL DEFAULT 'always_promotional',\n          note        TEXT,\n          created_by  TEXT,\n          created_at  TEXT NOT NULL\n        , rule_scope TEXT NOT NULL DEFAULT 'domain', action TEXT NOT NULL DEFAULT 'block')"
+  },
+  {
+    "name": "extension_batch_items",
+    "row_count": 1,
+    "sql": "CREATE TABLE extension_batch_items (\n          id               INTEGER PRIMARY KEY,\n          batch_id         INTEGER NOT NULL,\n          return_id        INTEGER NOT NULL,\n          log_number       TEXT,\n          client_name      TEXT,\n          tax_year         INTEGER,\n          filing_date      TEXT,\n          ack_status       TEXT NOT NULL DEFAULT 'pending',\n          ack_date         TEXT,\n          rejection_reason TEXT,\n          created_at       TEXT NOT NULL,\n          FOREIGN KEY (batch_id)  REFERENCES extension_batches(id),\n          FOREIGN KEY (return_id) REFERENCES returns(id),\n          UNIQUE (batch_id, return_id)\n        )"
+  },
+  {
+    "name": "extraction_queue",
+    "row_count": 2,
+    "sql": "CREATE TABLE extraction_queue (\n          id INTEGER PRIMARY KEY AUTOINCREMENT,\n          doc_id INTEGER NOT NULL REFERENCES return_documents(id),\n          return_id INTEGER NOT NULL REFERENCES returns(id),\n          status TEXT NOT NULL DEFAULT 'pending',\n          confidence REAL,\n          detected_form_type TEXT,\n          extracted_fields TEXT,\n          extraction_method TEXT,\n          error_message TEXT,\n          attempts INTEGER NOT NULL DEFAULT 0,\n          created_at TEXT NOT NULL,\n          processed_at TEXT,\n          reviewed_by TEXT,\n          reviewed_at TEXT\n        )"
+  },
+  {
+    "name": "f1099_div_records",
+    "row_count": 0,
+    "sql": "CREATE TABLE f1099_div_records (\n          id INTEGER PRIMARY KEY AUTOINCREMENT,\n          return_id INTEGER NOT NULL REFERENCES returns(id),\n          doc_id INTEGER REFERENCES return_documents(id),\n          payer_name TEXT,\n          total_ordinary_dividends TEXT,\n          qualified_dividends TEXT,\n          total_capital_gain TEXT,\n          federal_income_tax_withheld TEXT,\n          tax_year TEXT,\n          source TEXT NOT NULL DEFAULT 'extracted',\n          created_at TEXT NOT NULL,\n          updated_at TEXT,\n          is_deleted INTEGER NOT NULL DEFAULT 0\n        , payer_address TEXT, box1a_total_ordinary_dividends TEXT, box1b_qualified_dividends TEXT, box2a_total_capital_gain TEXT, box2b_unrecap_sec1250_gain TEXT, box2c_section_1202_gain TEXT, box2d_collectibles_gain TEXT, box2e_section_897_ordinary_dividends TEXT, box2f_section_897_capital_gain TEXT, box3_nondividend_distributions TEXT, box4_federal_income_tax_withheld TEXT, box5_section_199a_dividends TEXT, box6_investment_expenses TEXT, box7_foreign_tax_paid TEXT, box8_foreign_country TEXT, box9_cash_liquidation_distributions TEXT, box10_noncash_liquidation_distributions TEXT, box11_fatca_filing_requirement INTEGER DEFAULT 0, box12_exempt_interest_dividends TEXT, box13_specified_private_activity_bond TEXT, box14_state TEXT, box15_state_identification TEXT, box16_state_tax_withheld TEXT)"
+  },
+  {
+    "name": "f1099_int_records",
+    "row_count": 0,
+    "sql": "CREATE TABLE f1099_int_records (\n          id INTEGER PRIMARY KEY AUTOINCREMENT,\n          return_id INTEGER NOT NULL REFERENCES returns(id),\n          doc_id INTEGER REFERENCES return_documents(id),\n          payer_name TEXT,\n          interest_income TEXT,\n          early_withdrawal_penalty TEXT,\n          us_savings_bond_interest TEXT,\n          federal_income_tax_withheld TEXT,\n          tax_year TEXT,\n          source TEXT NOT NULL DEFAULT 'extracted',\n          created_at TEXT NOT NULL,\n          updated_at TEXT,\n          is_deleted INTEGER NOT NULL DEFAULT 0\n        , payer_address TEXT, box1_interest_income TEXT, box2_early_withdrawal_penalty TEXT, box3_us_savings_bond_treasury_interest TEXT, box4_federal_income_tax_withheld TEXT, box5_investment_expenses TEXT, box6_foreign_tax_paid TEXT, box7_foreign_country TEXT, box8_tax_exempt_interest TEXT, box9_specified_private_activity_bond_interest TEXT, box10_market_discount TEXT, box11_bond_premium TEXT, box12_bond_premium_treasury_obligations TEXT, box13_bond_premium_tax_exempt_bond TEXT, box14_tax_exempt_bond_cusip TEXT, box15_state TEXT, box16_state_identification TEXT, box17_state_tax_withheld TEXT)"
+  },
+  {
+    "name": "f1099_misc_records",
+    "row_count": 0,
+    "sql": "CREATE TABLE f1099_misc_records (\n          id INTEGER PRIMARY KEY AUTOINCREMENT,\n          return_id INTEGER NOT NULL REFERENCES returns(id),\n          doc_id INTEGER REFERENCES return_documents(id),\n          payer_name TEXT,\n          rents TEXT,\n          royalties TEXT,\n          other_income TEXT,\n          federal_income_tax_withheld TEXT,\n          tax_year TEXT,\n          source TEXT NOT NULL DEFAULT 'extracted',\n          created_at TEXT NOT NULL,\n          updated_at TEXT,\n          is_deleted INTEGER NOT NULL DEFAULT 0\n        , payer_address TEXT, box1_rents TEXT, box2_royalties TEXT, box3_other_income TEXT, box4_federal_income_tax_withheld TEXT, box5_fishing_boat_proceeds TEXT, box6_medical_health_care_payments TEXT, box7_direct_sales_indicator INTEGER DEFAULT 0, box8_substitute_payments TEXT, box9_crop_insurance_proceeds TEXT, box10_gross_proceeds_attorney TEXT, box11_fish_purchased_resale TEXT, box12_section_409a_deferrals TEXT, box14_gross_proceeds_attorney TEXT, box15_section_409a_income TEXT, box16_state_tax_withheld TEXT, box17_state TEXT, box18_state_income TEXT)"
+  },
+  {
+    "name": "f1099_nec_records",
+    "row_count": 0,
+    "sql": "CREATE TABLE f1099_nec_records (\n          id INTEGER PRIMARY KEY AUTOINCREMENT,\n          return_id INTEGER NOT NULL REFERENCES returns(id),\n          doc_id INTEGER REFERENCES return_documents(id),\n          payer_name TEXT,\n          nonemployee_compensation TEXT,\n          federal_income_tax_withheld TEXT,\n          tax_year TEXT,\n          source TEXT NOT NULL DEFAULT 'extracted',\n          created_at TEXT NOT NULL,\n          updated_at TEXT,\n          is_deleted INTEGER NOT NULL DEFAULT 0\n        , payer_address TEXT, box1_nonemployee_compensation TEXT, box2_direct_sales_indicator INTEGER DEFAULT 0, box4_federal_income_tax_withheld TEXT, box5_state_tax_withheld TEXT, box6_state TEXT, box7_state_income TEXT)"
+  },
+  {
+    "name": "filetrack_status_history",
+    "row_count": 6,
+    "sql": "CREATE TABLE filetrack_status_history (\n          id          INTEGER PRIMARY KEY AUTOINCREMENT,\n          return_id   INTEGER REFERENCES returns(id),\n          log_number  TEXT NOT NULL,\n          old_status  TEXT,\n          new_status  TEXT NOT NULL,\n          source      TEXT NOT NULL DEFAULT 'scanner',\n          scanned_at  TEXT NOT NULL,\n          recorded_at TEXT NOT NULL\n        )"
+  },
+  {
+    "name": "import_batches",
+    "row_count": 5,
+    "sql": "CREATE TABLE import_batches (\n          id INTEGER PRIMARY KEY,\n          filename TEXT NOT NULL,\n          file_hash TEXT NOT NULL UNIQUE,\n          imported_at TEXT NOT NULL,\n          status TEXT NOT NULL,\n          row_count INTEGER DEFAULT 0,\n          success_count INTEGER DEFAULT 0,\n          error_count INTEGER DEFAULT 0,\n          review_count INTEGER DEFAULT 0,\n          created_clients INTEGER DEFAULT 0,\n          updated_clients INTEGER DEFAULT 0,\n          created_returns INTEGER DEFAULT 0,\n          updated_returns INTEGER DEFAULT 0,\n          events_created INTEGER DEFAULT 0,\n          notes_created INTEGER DEFAULT 0\n        )"
+  },
+  {
+    "name": "import_rows",
+    "row_count": 3374,
+    "sql": "CREATE TABLE import_rows (\n          id INTEGER PRIMARY KEY,\n          batch_id INTEGER NOT NULL,\n          row_number INTEGER NOT NULL,\n          raw_json TEXT NOT NULL,\n          action TEXT NOT NULL,\n          error TEXT,\n          FOREIGN KEY (batch_id) REFERENCES import_batches(id)\n        )"
+  },
+  {
+    "name": "ledgerbridge_accounts",
+    "row_count": 1,
+    "sql": "CREATE TABLE ledgerbridge_accounts (\n            id           INTEGER PRIMARY KEY AUTOINCREMENT,\n            client_id    INTEGER NOT NULL,\n            display_name TEXT    NOT NULL,\n            qb_account_name TEXT NOT NULL,\n            institution  TEXT,\n            last4        TEXT,\n            active       INTEGER NOT NULL DEFAULT 1,\n            created_at   TEXT    NOT NULL\n        )"
+  },
+  {
+    "name": "ledgerbridge_audit_log",
+    "row_count": 101,
+    "sql": "CREATE TABLE ledgerbridge_audit_log (\n            id          INTEGER PRIMARY KEY AUTOINCREMENT,\n            batch_id    INTEGER,\n            user_id     TEXT,\n            action      TEXT    NOT NULL,\n            detail_json TEXT,\n            created_at  TEXT    NOT NULL\n        )"
+  },
+  {
+    "name": "ledgerbridge_chart_of_accounts",
+    "row_count": 26,
+    "sql": "CREATE TABLE ledgerbridge_chart_of_accounts (\n            id              INTEGER PRIMARY KEY AUTOINCREMENT,\n            client_id       INTEGER NOT NULL,\n            qb_account_name TEXT    NOT NULL,\n            account_type    TEXT    NOT NULL DEFAULT 'expense',\n            active          INTEGER NOT NULL DEFAULT 1,\n            created_at      TEXT    NOT NULL\n        )"
+  },
+  {
+    "name": "ledgerbridge_clients",
+    "row_count": 1,
+    "sql": "CREATE TABLE ledgerbridge_clients (\n            id           INTEGER PRIMARY KEY,\n            last_name    TEXT    NOT NULL,\n            first_name   TEXT,\n            display_name TEXT,\n            created_at   TEXT    NOT NULL,\n            created_by   TEXT\n        )"
+  },
+  {
+    "name": "ledgerbridge_import_batches",
+    "row_count": 8,
+    "sql": "CREATE TABLE ledgerbridge_import_batches (\n            id                      INTEGER PRIMARY KEY AUTOINCREMENT,\n            client_id               INTEGER NOT NULL,\n            account_id              INTEGER NOT NULL REFERENCES ledgerbridge_accounts(id),\n            period_start            TEXT,\n            period_end              TEXT,\n            source_type             TEXT    NOT NULL DEFAULT 'csv',\n            source_filename         TEXT,\n            status                  TEXT    NOT NULL DEFAULT 'draft',\n            stmt_beginning_balance  REAL,\n            stmt_total_additions    REAL,\n            stmt_total_subtractions REAL,\n            stmt_ending_balance     REAL,\n            created_by              TEXT    NOT NULL,\n            created_at              TEXT    NOT NULL,\n            exported_by             TEXT,\n            exported_at             TEXT,\n            reconcile_ok            INTEGER NOT NULL DEFAULT 0,\n            reconcile_note          TEXT\n        , iif_path TEXT, source_file_path TEXT, stmt_totals_source TEXT, totals_entered_by TEXT, totals_entered_at TEXT)"
+  },
+  {
+    "name": "ledgerbridge_merchant_memory",
+    "row_count": 94,
+    "sql": "CREATE TABLE ledgerbridge_merchant_memory (\n            id                  INTEGER PRIMARY KEY AUTOINCREMENT,\n            client_id           INTEGER NOT NULL,\n            normalized_merchant TEXT    NOT NULL,\n            qb_account_name     TEXT    NOT NULL,\n            hit_count           INTEGER NOT NULL DEFAULT 1,\n            last_used_at        TEXT    NOT NULL\n        )"
+  },
+  {
+    "name": "ledgerbridge_transactions",
+    "row_count": 312,
+    "sql": "CREATE TABLE ledgerbridge_transactions (\n            id                      INTEGER PRIMARY KEY AUTOINCREMENT,\n            batch_id                INTEGER NOT NULL REFERENCES ledgerbridge_import_batches(id),\n            txn_date                TEXT    NOT NULL,\n            raw_description         TEXT    NOT NULL,\n            amount                  REAL    NOT NULL,\n            check_number            TEXT,\n            proposed_account        TEXT,\n            approved_account        TEXT,\n            memo                    TEXT,\n            source                  TEXT    NOT NULL DEFAULT 'manual',\n            confidence              REAL,\n            claude_reasoning        TEXT,\n            review_status           TEXT    NOT NULL DEFAULT 'pending',\n            needs_payee_confirmation INTEGER NOT NULL DEFAULT 0,\n            source_page             INTEGER,\n            splits_json             TEXT\n        , approved_by TEXT, approved_at TEXT, payee_ocr_raw TEXT)"
+  },
+  {
+    "name": "missing_docs",
+    "row_count": 2,
+    "sql": "CREATE TABLE missing_docs (\n          id          INTEGER PRIMARY KEY,\n          return_id   INTEGER NOT NULL,\n          item_text   TEXT    NOT NULL,\n          is_resolved INTEGER DEFAULT 0,\n          created_at  TEXT,\n          resolved_at TEXT,\n          FOREIGN KEY (return_id) REFERENCES returns(id)\n        )"
+  },
+  {
+    "name": "notes",
+    "row_count": 955,
+    "sql": "CREATE TABLE notes (\n          id INTEGER PRIMARY KEY,\n          return_id INTEGER NOT NULL,\n          note_text TEXT,\n          source TEXT,\n          created_at TEXT,\n          FOREIGN KEY (return_id) REFERENCES returns(id)\n        )"
+  },
+  {
+    "name": "notifications",
+    "row_count": 1,
+    "sql": "CREATE TABLE notifications (\n          id            INTEGER PRIMARY KEY AUTOINCREMENT,\n          user_id       INTEGER NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,\n          title         TEXT NOT NULL,\n          body          TEXT,\n          link_url      TEXT,\n          entity_type   TEXT,\n          entity_id     INTEGER,\n          is_read       INTEGER NOT NULL DEFAULT 0,\n          created_at    TEXT NOT NULL\n        )"
+  },
+  {
+    "name": "payments",
+    "row_count": 1418,
+    "sql": "CREATE TABLE payments (\n          id INTEGER PRIMARY KEY,\n          return_id INTEGER NOT NULL,\n          total_fee REAL,\n          receipt_number TEXT,\n          fee_paid REAL,\n          cc_fee REAL,\n          zelle_or_check_ref TEXT,\n          cash_or_qpay_ref TEXT,\n          refund_amount REAL,\n          bank_deposit REAL, balance_due REAL, accounting_fee REAL, w7_fee REAL, form_1099_fee REAL, license_fee REAL, reprocess_fee REAL, discount_amount REAL, special_discount REAL, down_payment REAL, receipt2_number TEXT, payment_method TEXT, cancelled_fee REAL, check_number TEXT,\n          FOREIGN KEY (return_id) REFERENCES returns(id)\n        )"
+  },
+  {
+    "name": "receipt_queue",
+    "row_count": 0,
+    "sql": "CREATE TABLE receipt_queue (\n          id                    INTEGER PRIMARY KEY AUTOINCREMENT,\n          return_document_id    INTEGER REFERENCES return_documents(id),\n          image_path            TEXT NOT NULL,\n          original_filename     TEXT,\n          status                TEXT NOT NULL DEFAULT 'pending',\n          ocr_raw               TEXT,\n          vendor                TEXT,\n          receipt_date          TEXT,\n          total_amount          REAL,\n          payment_method        TEXT,\n          line_items            TEXT,\n          category_candidates   TEXT,\n          suggested_category    TEXT,\n          suggested_account     TEXT,\n          confidence            TEXT,\n          approved_category     TEXT,\n          approved_account      TEXT,\n          reviewed_by           TEXT,\n          reviewed_at           TEXT,\n          review_notes          TEXT,\n          exported_at           TEXT,\n          export_file           TEXT,\n          error_message         TEXT,\n          attempts              INTEGER NOT NULL DEFAULT 0,\n          created_at            TEXT NOT NULL,\n          processed_at          TEXT\n        )"
+  },
+  {
+    "name": "return_documents",
+    "row_count": 1,
+    "sql": "CREATE TABLE return_documents (\n          id                INTEGER PRIMARY KEY AUTOINCREMENT,\n          return_id         INTEGER NOT NULL REFERENCES returns(id),\n          filename          TEXT NOT NULL,\n          original_filename TEXT,\n          doc_type          TEXT,\n          source            TEXT,\n          file_path         TEXT NOT NULL,\n          file_size_bytes   INTEGER,\n          uploaded_by       TEXT,\n          uploaded_at       TEXT,\n          notes             TEXT,\n          is_deleted        INTEGER NOT NULL DEFAULT 0\n        , file_hash TEXT, match_confirmed INTEGER NOT NULL DEFAULT 1, match_score REAL, match_method TEXT, ocr_text_indexed INTEGER NOT NULL DEFAULT 0)"
+  },
+  {
+    "name": "return_documents_fts",
+    "row_count": 0,
+    "sql": "CREATE VIRTUAL TABLE return_documents_fts USING fts5(\n                doc_text,\n                content='',\n                tokenize='porter'\n            )"
+  },
+  {
+    "name": "return_documents_fts_config",
+    "row_count": 1,
+    "sql": "CREATE TABLE 'return_documents_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+  },
+  {
+    "name": "return_documents_fts_data",
+    "row_count": 2,
+    "sql": "CREATE TABLE 'return_documents_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+  },
+  {
+    "name": "return_documents_fts_docsize",
+    "row_count": 0,
+    "sql": "CREATE TABLE 'return_documents_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+  },
+  {
+    "name": "return_documents_fts_idx",
+    "row_count": 0,
+    "sql": "CREATE TABLE 'return_documents_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+  },
+  {
+    "name": "return_forms",
+    "row_count": 1603,
+    "sql": "CREATE TABLE return_forms (\n          id INTEGER PRIMARY KEY,\n          return_id INTEGER NOT NULL,\n          form_1040 INTEGER,\n          sched_a_d INTEGER,\n          sched_c INTEGER,\n          sched_e INTEGER,\n          form_1120 INTEGER,\n          form_1120s INTEGER,\n          form_1065_llc INTEGER,\n          corp_officer INTEGER,\n          business_owner INTEGER,\n          form_990_1041 INTEGER,\n          FOREIGN KEY (return_id) REFERENCES returns(id)\n        )"
+  },
+  {
+    "name": "returns",
+    "row_count": 1613,
+    "sql": "CREATE TABLE returns (\n          id INTEGER PRIMARY KEY,\n          client_id INTEGER NOT NULL,\n          log_number TEXT,\n          tax_year INTEGER,\n          processor TEXT,\n          verified INTEGER,\n          client_status TEXT,\n          intake_date TEXT,\n          transfer_2025_flag INTEGER,\n          transfer_2026_flag INTEGER,\n          email_marker TEXT,\n          date_emailed TEXT,\n          pickup_date TEXT,\n          logout_date TEXT,\n          updated_date TEXT,\n          is_amended INTEGER,\n          has_w7 INTEGER,\n          is_extension INTEGER,\n          transfer_flag INTEGER,\n          efile_date TEXT,\n          ack_date TEXT,\n          drake_status_raw TEXT,\n          created_at TEXT,\n          updated_at TEXT, filing_status TEXT, interview_by TEXT, promise_date TEXT, delivered_by TEXT, date_signatures_emailed TEXT, date_reports_emailed TEXT, overtime_flag INTEGER DEFAULT 0, insurance_type TEXT, digital_assets INTEGER DEFAULT 0, bank_name TEXT, bank_routing TEXT, bank_account TEXT, bank_account_type TEXT, notes_intake TEXT, estimate_irs REAL, estimate_state REAL, final_irs REAL, final_state REAL, signatures_given INTEGER DEFAULT 0, signatures_received INTEGER DEFAULT 0, contact_status TEXT, last_contacted_date TEXT, adjusted_gross_income REAL, cancelled_fee REAL, cancelled_reason TEXT, cancelled_at TEXT, signatures_given_method TEXT, signatures_received_method TEXT, extension_requested INTEGER NOT NULL DEFAULT 0, extension_filed_date TEXT, extension_ack_status TEXT, extension_ack_date TEXT, extension_due_date TEXT, filetrack_status TEXT, filetrack_status_updated_at TEXT, scan_deferred INTEGER NOT NULL DEFAULT 0,\n          FOREIGN KEY (client_id) REFERENCES clients(id)\n        )"
+  },
+  {
+    "name": "review_queue",
+    "row_count": 47,
+    "sql": "CREATE TABLE review_queue (\n          id          INTEGER PRIMARY KEY,\n          batch_id    INTEGER,\n          row_number  INTEGER,\n          status      TEXT    DEFAULT 'pending',\n          csv_last    TEXT,\n          csv_first   TEXT,\n          csv_log     TEXT,\n          csv_year    INTEGER,\n          proposed_client_id INTEGER,\n          match_score INTEGER,\n          match_method TEXT,\n          raw_json    TEXT,\n          resolved_client_id INTEGER,\n          reason      TEXT,\n          created_at  TEXT,\n          resolved_at TEXT,\n          FOREIGN KEY (proposed_client_id)  REFERENCES clients(id),\n          FOREIGN KEY (resolved_client_id)  REFERENCES clients(id)\n        )"
+  },
+  {
+    "name": "spouses",
+    "row_count": 166,
+    "sql": "CREATE TABLE spouses (\n          id                   INTEGER PRIMARY KEY AUTOINCREMENT,\n          client_id            INTEGER NOT NULL REFERENCES clients(id),\n          drake_spouse_id      TEXT,\n          last_name            TEXT,\n          first_name           TEXT NOT NULL,\n          middle_initial       TEXT,\n          date_of_birth        TEXT,\n          derived_last_name    TEXT,\n          source               TEXT DEFAULT 'TY2025 Drake import',\n          match_confidence     REAL,\n          needs_review         INTEGER NOT NULL DEFAULT 0,\n          confirmed_at_intake  INTEGER NOT NULL DEFAULT 0,\n          created_at           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\n        , taxpayer_name TEXT, id_type INTEGER)"
+  },
+  {
+    "name": "sqlite_sequence",
+    "row_count": null,
+    "sql": "CREATE TABLE sqlite_sequence(name,seq)"
+  },
+  {
+    "name": "status_events",
+    "row_count": 7281,
+    "sql": "CREATE TABLE status_events (\n          id INTEGER PRIMARY KEY,\n          return_id INTEGER NOT NULL,\n          event_type TEXT,\n          old_status TEXT,\n          new_status TEXT,\n          event_timestamp TEXT,\n          source_file TEXT,\n          note TEXT,\n          FOREIGN KEY (return_id) REFERENCES returns(id)\n        )"
+  },
+  {
+    "name": "w2_records",
+    "row_count": 0,
+    "sql": "CREATE TABLE w2_records (\n          id INTEGER PRIMARY KEY AUTOINCREMENT,\n          return_id INTEGER NOT NULL REFERENCES returns(id),\n          doc_id INTEGER REFERENCES return_documents(id),\n          employer_name TEXT,\n          wages_tips_other TEXT,\n          federal_income_tax_withheld TEXT,\n          state_wages TEXT,\n          state_income_tax TEXT,\n          tax_year TEXT,\n          source TEXT NOT NULL DEFAULT 'extracted',\n          created_at TEXT NOT NULL,\n          updated_at TEXT,\n          is_deleted INTEGER NOT NULL DEFAULT 0\n        , employer_address TEXT, box1_wages_tips_other TEXT, box2_federal_income_tax_withheld TEXT, box3_social_security_wages TEXT, box4_social_security_tax_withheld TEXT, box5_medicare_wages_tips TEXT, box6_medicare_tax_withheld TEXT, box7_social_security_tips TEXT, box8_allocated_tips TEXT, box10_dependent_care_benefits TEXT, box11_nonqualified_plans TEXT, box12a_code TEXT, box12a_amount TEXT, box12b_code TEXT, box12b_amount TEXT, box12c_code TEXT, box12c_amount TEXT, box12d_code TEXT, box12d_amount TEXT, box13_statutory_employee INTEGER DEFAULT 0, box13_retirement_plan INTEGER DEFAULT 0, box13_third_party_sick_pay INTEGER DEFAULT 0, box14_other TEXT, box15_state TEXT, box16_state_wages TEXT, box17_state_income_tax TEXT, box18_local_wages TEXT, box19_local_income_tax TEXT, box20_locality_name TEXT, box15b_state TEXT, box16b_state_wages TEXT, box17b_state_income_tax TEXT, box18b_local_wages TEXT, box19b_local_income_tax TEXT, box20b_locality_name TEXT)"
+  },
+  {
+    "name": "work_orders",
+    "row_count": 3,
+    "sql": "CREATE TABLE work_orders (\n          id                    INTEGER PRIMARY KEY AUTOINCREMENT,\n          work_order_number     TEXT NOT NULL,\n          client_id             INTEGER REFERENCES clients(id),\n          client_name           TEXT NOT NULL,\n          date_created          TEXT NOT NULL,\n          due_by                TEXT,\n          received_by_user_id   INTEGER REFERENCES auth_users(id),\n          processed_by_user_id  INTEGER REFERENCES auth_users(id),\n          created_by_user_id    INTEGER REFERENCES auth_users(id),\n          status                TEXT NOT NULL DEFAULT 'open',\n          total_fee             NUMERIC NOT NULL DEFAULT 0,\n          created_at            TEXT NOT NULL,\n          updated_at            TEXT NOT NULL\n        , assigned_to_user_id INTEGER REFERENCES auth_users(id), assigned_by_user_id INTEGER REFERENCES auth_users(id), assigned_at TEXT)"
+  }
+]

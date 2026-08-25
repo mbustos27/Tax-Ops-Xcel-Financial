@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Compliance Tracker') }} — Tax Log{% endblock %}
+
+{% block content %}
+<div class="space-y-5 pb-10">
+  <div class="flex items-center justify-between">
+    <h1 class="text-xl font-bold" style="color:var(--text-primary)">{{ _('Compliance Tracker') }}</h1>
+    <div class="flex items-center gap-2">
+      <a href="/compliance/periods" class="text-sm font-semibold px-4 py-2.5 rounded-xl" style="color:var(--color-primary);border:1px solid var(--color-primary)">
+        {{ _('Filing Periods Board') }}
+      </a>
+      {% if is_admin %}
+      <button type="button" id="ct-new-client-btn"
+              class="btn-primary font-semibold rounded-xl px-5 py-2.5 text-sm shadow transition-colors">
+        + {{ _('New Client') }}
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if due_soon %}
+  <div class="rounded-2xl p-4" style="background:#FFF7ED;border:1px solid #FDBA74">
+    <h2 class="text-sm font-bold uppercase tracking-wide mb-2" style="color:#9A3412">
+      {{ _('City licenses due within 30 days') }}
+    </h2>
+    <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      {% for r in due_soon %}
+      <a href="/compliance/clients/{{ r.client_id }}" class="block rounded-xl px-3 py-2 text-sm"
+         style="background:white;border:1px solid #FDBA74">
+        <div class="font-semibold" style="color:var(--text-primary)">{{ r.client_name }}</div>
+        <div style="color:var(--text-secondary)">{{ r.city_name or '—' }} · {{ r.account_number or '—' }}</div>
+        <div class="font-bold {% if r.days_left is not none and r.days_left <= 7 %}text-red-700{% else %}text-amber-700{% endif %}">
+          {% if r.days_left is not none %}
+            {{ _('Due') }} {{ r.period_due_date }} ({{ r.days_left }} {{ _('days') }})
+          {% else %}
+            {{ _('Due') }} {{ r.period_due_date }}
+          {% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <form method="get" action="/compliance" class="rounded-2xl p-4 flex flex-wrap items-end gap-3"
+        style="background:var(--bg-card);border:1px solid var(--border-default)">
+    <div class="flex-1 min-w-[220px]">
+      <label class="intake-label" for="ct-q">{{ _('Client name search') }}</label>
+      <input type="text" name="q" id="ct-q" class="intake-input" value="{{ q }}" placeholder="{{ _('Type client name…') }}">
+    </div>
+    <div class="flex items-center gap-1.5 pb-2.5">
+      <input type="checkbox" name="show_inactive" id="ct-show-inactive" value="1" {% if show_inactive %}checked{% endif %}
+             class="rounded" style="accent-color:var(--color-primary)">
+      <label for="ct-show-inactive" class="text-sm font-medium" style="color:var(--text-secondary)">{{ _('Show inactive') }}</label>
+    </div>
+    <button type="submit" class="text-sm font-semibold px-4 py-2.5 rounded-xl text-white" style="background:var(--color-primary)">
+      {{ _('Filter') }}
+    </button>
+  </form>
+
+  <div class="rounded-2xl overflow-hidden" style="background:var(--bg-card);border:1px solid var(--border-default)">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left" style="color:var(--text-muted);border-bottom:1px solid var(--border-default)">
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Client') }}</th>
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Type') }}</th>
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('City') }}</th>
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Accounts') }}</th>
+          <th class="px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">{{ _('Status') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in clients %}
+        <tr class="border-t hover:bg-slate-50 cursor-pointer" style="border-color:var(--border-subtle,var(--border-default))"
+            onclick="window.location.href='/compliance/clients/{{ c.id }}'">
+          <td class="px-4 py-2.5 font-semibold" style="color:var(--color-primary)">{{ c.name }}</td>
+          <td class="px-4 py-2.5" style="color:var(--text-secondary)">
+            {{ _('Individual') if c.client_type == 'individual' else _('Business') }}
+          </td>
+          <td class="px-4 py-2.5" style="color:var(--text-secondary)">{{ c.city or '—' }}</td>
+          <td class="px-4 py-2.5" style="color:var(--text-secondary)">{{ c.account_count }}</td>
+          <td class="px-4 py-2.5">
+            {% if c.active %}
+            <span class="text-xs font-bold uppercase" style="color:var(--text-muted)">{{ _('Active') }}</span>
+            {% else %}
+            <span class="text-xs font-bold uppercase text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">{{ _('Inactive') }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="px-4 py-10 text-center" style="color:var(--text-muted)">{{ _('No clients found') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if is_admin %}
+<div id="ct-new-client-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,0.4)">
+  <div class="rounded-2xl p-5 w-full max-w-md" style="background:var(--bg-card)">
+    <h2 class="text-lg font-bold mb-3" style="color:var(--text-primary)">{{ _('New Compliance Client') }}</h2>
+    <div class="space-y-3">
+      <div>
+        <label class="intake-label">{{ _('Name') }}</label>
+        <input type="text" id="ct-nc-name" class="intake-input w-full">
+      </div>
+      <div>
+        <label class="intake-label">{{ _('Client Type') }}</label>
+        <select id="ct-nc-type" class="intake-input w-full">
+          <option value="business">{{ _('Business') }}</option>
+          <option value="individual">{{ _('Individual') }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="intake-label">{{ _('City') }}</label>
+        <input type="text" id="ct-nc-city" class="intake-input w-full">
+      </div>
+    </div>
+    <div id="ct-nc-error" class="text-sm text-red-700 mt-2"></div>
+    <div class="flex justify-end gap-2 mt-4">
+      <button type="button" id="ct-nc-cancel" class="text-sm font-medium px-4 py-2" style="color:var(--text-muted)">{{ _('Cancel') }}</button>
+      <button type="button" id="ct-nc-save" class="text-sm font-semibold px-4 py-2 rounded-xl text-white" style="background:var(--color-primary)">{{ _('Create') }}</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  const modal = document.getElementById('ct-new-client-modal');
+  const openBtn = document.getElementById('ct-new-client-btn');
+  const cancelBtn = document.getElementById('ct-nc-cancel');
+  const saveBtn = document.getElementById('ct-nc-save');
+  if (!modal || !openBtn) return;
+
+  openBtn.addEventListener('click', () => modal.classList.remove('hidden'));
+  cancelBtn.addEventListener('click', () => modal.classList.add('hidden'));
+
+  saveBtn.addEventListener('click', async () => {
+    const name = document.getElementById('ct-nc-name').value.trim();
+    const client_type = document.getElementById('ct-nc-type').value;
+    const city = document.getElementById('ct-nc-city').value.trim();
+    const errEl = document.getElementById('ct-nc-error');
+    errEl.textContent = '';
+    if (!name) { errEl.textContent = '{{ _("Name is required") }}'; return; }
+    try {
+      const resp = await _csrfFetch('/api/compliance/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, client_type, city }),
+      });
+      const data = await resp.json();
+      if (data.error) { errEl.textContent = data.error; return; }
+      window.location.href = '/compliance/clients/' + data.id;
+    } catch (e) {
+      errEl.textContent = String(e);
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

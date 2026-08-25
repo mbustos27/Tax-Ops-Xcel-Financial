@@ -1,0 +1,382 @@
+*%
+*% brci02b.gpd
+*%
+
+*ResourceDLL: "brci02ui.dll"
+
+*Macros: BrotherBrciresMacros
+{
+    BRID_RESOLUTION_OPTION1_DISPLAY:				1040
+    BRID_RESOLUTION_OPTION2_DISPLAY:				1041
+    BRID_RESOLUTION_OPTION3_DISPLAY:				1042
+    BRID_RESOLUTION_OPTION4_DISPLAY:				1043
+    BRID_RESOLUTION_OPTION5_DISPLAY:				1045
+    BRID_RESOLUTION_OPTION1B_DISPLAY:				1046
+    BRID_RESOLUTION_OPTION2B_DISPLAY:				1047
+    BRID_QUALITY_FAST_DISPLAY:						1056
+    BRID_QUALITY_FINE_DISPLAY:						1057
+    BRID_QUALITY_INKJETMODE_DISPLAY:				1058
+    BRID_INPUTBIN_FEEDER_DISPLAY:					1090
+    BRID_PAPERSIZE_POSTCARD_DISPLAY:				1265
+    BRID_PAPERSIZE_INDEXCARD_DISPLAY:				1266
+    BRID_PAPERSIZE_JENVYOU0_DISPLAY:				1271
+    BRID_PAPERSIZE_JPHOTO1L_DISPLAY:				1272
+    BRID_PAPERSIZE_JPHOTO2L_DISPLAY:				1273
+    BRID_HALFTONE_CLUSTER_DISPLAY:					1065
+    BRID_HALFTONE_PHOTO_DISPLAY:					1066
+    BRID_HALFTONE_DITHER_DISPLAY:					1067
+    BRID_HALFTONE_DIFFUSION_DISPLAY:				1068
+    BRID_MEDIATYPE_PLAIN_DISPLAY:					1000
+    BRID_MEDIATYPE_INKJET_DISPLAY:					1001
+    BRID_MEDIATYPE_GLOSSY4_DISPLAY:					1006
+    BRID_MEDIATYPE_GLOSSY3_DISPLAY:					1007
+    BRID_MEDIATYPE_OHP_DISPLAY:						1004
+    BRID_MEDIATYPE_OHPMIRROR_DISPLAY:				1005
+    BRID_DRAFTTYPE_MODE_DISPLAY:					1055
+    BRID_BIDIR_MODE_DISPLAY:						1060
+    BRID_THICKNESS_MODE_DISPLAY:					1080
+    BRID_THICKNESS_REGULAR_DISPLAY:					1070
+    BRID_THICKNESS_THIN_DISPLAY:					1071
+    BRID_THICKNESS_THICK_DISPLAY:					1072
+    BRID_THICKNESS_THICKER_DISPLAY:					1073
+    BRID_COLORMODE_COLOR_DISPLAY:					1031
+    BRID_COLORMODE_MONO_DISPLAY:					1032
+    BRID_COLORMODE_GRAYSCALE_DISPLAY:				1033
+    BRID_PAPERFEED_DISPLAY:							1100
+    BRID_AUTOFEED_DISPLAY:							1101
+    BRID_MANUALFEED_DISPLAY:						1102
+    BRID_EDGEPRINT_DISPLAY:							1110
+    BRID_EDGEPRINT_NEAR_DISPLAY:					1111
+    BRID_EDGEPRINT_FIT_DISPLAY:						1112
+    BRID_EDGEPRINT_ENV_NEAR_DISPLAY:				1115
+    BRID_EDGEPRINT_ENV_FIT_DISPLAY:					1116
+    BRID_MIRRORPRINT_MODE_DISPLAY:					1120
+}
+
+
+*switch: MediaType
+{
+	*case: Plain
+	{
+		*DraftQualitySettings: LIST(Resolution.Option1)
+		*BetterQualitySettings: LIST(Resolution.Option2)
+		*BestQualitySettings: LIST(Resolution.Option3)
+		*DefaultQuality: BETTERQUALITY
+	}
+	*case: Inkjet
+	{
+		*DraftQualitySettings: LIST()
+		*BetterQualitySettings: LIST(Resolution.Option3)
+		*BestQualitySettings: LIST(Resolution.Option4)
+		*DefaultQuality: BETTERQUALITY
+	}
+	*case: Glossy
+	{
+		*DraftQualitySettings: LIST()
+		*BetterQualitySettings: LIST(Resolution.Option3)
+		*BestQualitySettings: LIST(Resolution.Option4)
+		*DefaultQuality: BESTQUALITY
+	}
+	*case: Glossy_tri
+	{
+		*DraftQualitySettings: LIST()
+		*BetterQualitySettings: LIST(Resolution.Option3)
+		*BestQualitySettings: LIST(Resolution.Option4)
+		*DefaultQuality: BESTQUALITY
+	}
+	*default:
+	{
+		*DraftQualitySettings: LIST()
+		*BetterQualitySettings: LIST(Resolution.Option3)
+		*BestQualitySettings: LIST(Resolution.Option4)
+		*DefaultQuality: BETTERQUALITY
+	}
+}
+
+
+*Feature: Orientation
+{
+    *rcNameID: =ORIENTATION_DISPLAY
+    *DefaultOption: PORTRAIT
+    *Option: PORTRAIT
+    {
+        *rcNameID: =PORTRAIT_DISPLAY
+    }
+    *Option: LANDSCAPE_CC270
+    {
+        *rcNameID: =LANDSCAPE_DISPLAY
+    }
+}
+
+*Feature: InkjetQuality
+{
+    *rcNameID: =BRID_QUALITY_INKJETMODE_DISPLAY
+    *DefaultOption: Fine
+    *Option: Fast
+    {
+        *rcNameID: =BRID_QUALITY_FAST_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+            *CallbackID: 75
+        }
+    }
+    *Option: Fine
+    {
+        *rcNameID: =BRID_QUALITY_FINE_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.5
+            *CallbackID: 76
+        }
+    }
+}
+*Feature: Resolution
+{
+    *rcNameID: =RESOLUTION_DISPLAY
+    *DefaultOption: Option2
+    *Option: Option1
+    {
+        *rcNameID: =BRID_RESOLUTION_OPTION1B_DISPLAY
+		*OptionID: -1
+        *DPI: PAIR(150, 150)
+        *TextDPI: PAIR(150, 150)
+        *PinsPerLogPass: 32
+        *PinsPerPhysPass: 1
+        *SpotDiameter: 100
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+            *Cmd: ""
+        }
+    }
+    *Option: Option2
+    {
+        *rcNameID: =BRID_RESOLUTION_OPTION2B_DISPLAY
+		*OptionID: -2
+        *DPI: PAIR(300, 300)
+        *TextDPI: PAIR(300, 300)
+        *PinsPerLogPass: 32
+        *PinsPerPhysPass: 1
+        *SpotDiameter: 100
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+            *Cmd: ""
+        }
+    }
+    *Option: Option3
+    {
+        *rcNameID: =BRID_RESOLUTION_OPTION3_DISPLAY
+		*OptionID: -3
+        *DPI: PAIR(600, 600)
+        *TextDPI: PAIR(600, 600)
+        *PinsPerLogPass: 32
+        *PinsPerPhysPass: 1
+        *SpotDiameter: 100
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+            *Cmd: ""
+        }
+    }
+    *Option: Option4
+    {
+        *rcNameID: =BRID_RESOLUTION_OPTION4_DISPLAY
+		*OptionID: -4
+        *DPI: PAIR(600, 600)
+        *TextDPI: PAIR(600, 600)
+        *PinsPerLogPass: 32
+        *PinsPerPhysPass: 1
+        *SpotDiameter: 100
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.3
+            *Cmd: ""
+        }
+    }
+}
+
+*Feature: InputBin
+{
+    *rcNameID: =PAPER_SOURCE_DISPLAY
+    *DefaultOption: AUTO
+    *Option: AUTO
+    {
+        *rcNameID: =BRID_AUTOFEED_DISPLAY
+    }
+}
+
+
+*Feature: HalftonePattern
+{
+    *rcNameID: =HALFTONING_DISPLAY
+    *DefaultOption: AUTO
+    *Option: AUTO
+    {
+        *rcNameID: =AUTO_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+            *CallbackID: 40
+        }
+    }
+    *Option: DITHER
+    {
+        *rcNameID: =BRID_HALFTONE_DITHER_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+            *CallbackID: 41
+        }
+    }
+    *Option: ERRDIFF
+    {
+        *rcNameID: =BRID_HALFTONE_DIFFUSION_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.7
+            *CallbackID: 42
+        }
+    }
+}
+*Feature: BiDir
+{
+    *rcNameID: =BRID_BIDIR_MODE_DISPLAY
+    *DefaultOption: AUTO
+    *Option: AUTO
+    {
+        *rcNameID: =AUTO_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.8
+            *CallbackID: 45
+        }
+    }
+    *Option: UniDir
+    {
+        *rcNameID: =OFF_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.8
+            *CallbackID: 46
+        }
+    }
+    *Option: BiDir
+    {
+        *rcNameID: =ON_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.8
+            *CallbackID: 47
+        }
+    }
+}
+
+*Feature: Thickness
+{
+    *rcNameID: =BRID_THICKNESS_MODE_DISPLAY
+    *DefaultOption: AUTO
+    *Option: AUTO
+    {
+        *rcNameID: =AUTO_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.8
+            *CallbackID: 60
+        }
+    }
+    *Option: Regular
+    {
+        *rcNameID: =BRID_THICKNESS_REGULAR_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.8
+            *CallbackID: 61
+        }
+    }
+    *Option: Thick
+    {
+        *rcNameID: =BRID_THICKNESS_THICK_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.8
+            *CallbackID: 63
+        }
+    }
+}
+
+*Feature: MirrorPrint
+{
+    *rcNameID: =BRID_MIRRORPRINT_MODE_DISPLAY
+    *DefaultOption: Normal
+    *Option: Normal
+    {
+        *rcNameID: =OFF_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.8
+            *CallbackID: 90
+        }
+    }
+    *Option: Mirror
+    {
+        *rcNameID: =ON_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.8
+            *CallbackID: 91
+        }
+    }
+}
+
+*Command: CmdStartJob
+{
+    *Order: JOB_SETUP.2
+    *CallbackID: 102
+}
+*Command: CmdEndJob
+{
+    *Order: JOB_FINISH.1
+    *CallbackID: 103
+}
+*Command: CmdStartPage
+{
+    *Order: PAGE_SETUP.1
+    *CallbackID: 100
+}
+*Command: CmdEndPage
+{
+    *Order: PAGE_FINISH.1
+    *CallbackID: 101
+}
+
+*Feature: ColorMode
+{
+	*rcNameID: =COLOR_PRINTING_MODE_DISPLAY
+	*DefaultOption: Color
+	*Option: Mono
+	{
+		*rcNameID: =BRID_COLORMODE_GRAYSCALE_DISPLAY
+		*DevNumOfPlanes: 0
+		*DevBPP: 0
+		*DrvBPP: 24
+		*Color?: FALSE
+		*IPCallbackID: 2
+	}
+	*Option: Color
+	{
+		*rcNameID: =BRID_COLORMODE_COLOR_DISPLAY
+		*DevNumOfPlanes: 0
+		*DevBPP: 0
+		*DrvBPP: 24
+		*Color?: TRUE
+		*IPCallbackID: 1
+	}
+}
+
+*OutputDataFormat: H_BYTE
+*Command: CmdSendBlockData { *Cmd : "" }
+*Command: CmdCR { *Cmd : "" }
+*Command: CmdLF { *Cmd : "" }
+*Command: CmdFF { *Cmd : "" }

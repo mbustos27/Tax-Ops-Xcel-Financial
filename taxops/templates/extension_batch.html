@@ -245,14 +245,23 @@
 
   const BATCH_ID = {{ batch.id }};
 
-  // Quick filter
+  // Quick filter — same AND-token rules as dashboard (app.js)
   const filterInput = document.getElementById('batch-filter');
   if (filterInput) {
     filterInput.addEventListener('input', () => {
-      const q = filterInput.value.toLowerCase();
-      document.querySelectorAll('#items-tbody tr[data-search]').forEach(row => {
-        row.style.display = row.dataset.search.toLowerCase().includes(q) ? '' : 'none';
-      });
+      const tokens = (typeof parseQuickFilterTokens === 'function')
+        ? parseQuickFilterTokens(filterInput.value)
+        : String(filterInput.value || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const rows = document.querySelectorAll('#items-tbody tr[data-search]');
+      if (typeof applyQuickFilterTokens === 'function') {
+        applyQuickFilterTokens(rows, tokens);
+      } else {
+        rows.forEach(row => {
+          const hay = (row.dataset.search || '').toLowerCase();
+          const match = !tokens.length || tokens.every(t => hay.includes(t));
+          row.classList.toggle('tr-filter-hidden', !match);
+        });
+      }
     });
   }
 

@@ -22,15 +22,30 @@ def print_label(
     *,
     printer_name: str | None = None,
     template_path: str | None = None,
+    client_name: str = "",
+    last_name: str = "",
+    first_name: str = "",
+    display_name: str = "",
     log_in_date=None,
-    **fields,
+    tax_year=None,
 ) -> str:
-    """Render the label for `log_number` and send it to the printer.
-    ``log_in_date`` defaults to today. Extra ``**fields`` are ignored by
-    the current template. Returns the rendered ZPL on success."""
+    """Render the label for `log_number` and send it to the printer (RAW
+    ZPL via filetrack.labels.printer.send_zpl). Optional client name fields
+    print abbreviated on the bottom-right. ``tax_year`` prints as ``TY####``
+    after the log number. ``log_in_date`` defaults to today.
+    Returns the rendered ZPL on success."""
     from filetrack.labels.printer import send_zpl
 
-    zpl = render_label(log_number, template_path=template_path, log_in_date=log_in_date)
+    zpl = render_label(
+        log_number,
+        template_path=template_path,
+        client_name=client_name,
+        last_name=last_name,
+        first_name=first_name,
+        display_name=display_name,
+        log_in_date=log_in_date,
+        tax_year=tax_year,
+    )
     send_zpl(zpl, printer_name=printer_name)
     return zpl
 
@@ -39,9 +54,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Render/print a filetrack file label")
     parser.add_argument("--log", required=True, help="Log number (e.g. 123)")
     parser.add_argument("--printer", default=None, help="Windows printer name (defaults to FILETRACK_PRINTER)")
-    parser.add_argument("--log-in-date", default=None, dest="log_in_date",
-                        help="LOG-IN date; default today")
     parser.add_argument("--template", default=None, help="Path to a ZPL template (defaults to LABEL_CLEAN_EDITABLE.zpl)")
+    parser.add_argument("--client", default="", help="Abbreviated or full client name for bottom-right")
+    parser.add_argument("--last-name", default="", dest="last_name")
+    parser.add_argument("--first-name", default="", dest="first_name")
+    parser.add_argument(
+        "--log-in-date", default=None, dest="log_in_date",
+        help="LOG-IN date on sticker (YYYY-MM-DD or MM/DD/YYYY); default today",
+    )
+    parser.add_argument(
+        "--tax-year", default=None, dest="tax_year", type=int,
+        help="Tax year printed as TY#### after the log number",
+    )
     parser.add_argument(
         "--dry-run", action="store_true",
         help="Print the rendered ZPL to stdout instead of sending it to a printer",
@@ -49,13 +73,30 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.dry_run:
-        print(render_label(args.log, template_path=args.template, log_in_date=args.log_in_date))
+        print(render_label(
+            args.log,
+            template_path=args.template,
+            client_name=args.client,
+            last_name=args.last_name,
+            first_name=args.first_name,
+            log_in_date=args.log_in_date,
+            tax_year=args.tax_year,
+        ))
         return 0
 
     from filetrack.labels.printer import PrinterNotFoundError, PrinterUnavailableError, SpoolerError
 
     try:
-        print_label(args.log, printer_name=args.printer, template_path=args.template, log_in_date=args.log_in_date)
+        print_label(
+            args.log,
+            printer_name=args.printer,
+            template_path=args.template,
+            client_name=args.client,
+            last_name=args.last_name,
+            first_name=args.first_name,
+            log_in_date=args.log_in_date,
+            tax_year=args.tax_year,
+        )
     except (PrinterUnavailableError, PrinterNotFoundError, SpoolerError) as exc:
         print(f"Print failed: {exc}", file=sys.stderr)
         return 1

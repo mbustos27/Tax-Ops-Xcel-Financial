@@ -1,0 +1,943 @@
+{
+  "generated_at": "2026-08-13T20:20:36Z",
+  "meta": {
+    "header": [
+      "Taxpayer Last Name",
+      "Taxpayer First Name",
+      "Invoice Number",
+      "Taxpayer Date of Birth",
+      "Street Address",
+      "County",
+      "Email Address",
+      "Spouse Birthday",
+      "Spouse Cell Phone",
+      "Spouse Date of Birth",
+      "Spouse Date of Death",
+      "Spouse Daytime Phone",
+      "Spouse Email Address",
+      "Spouse First Name",
+      "Spouse Last Name",
+      "EF Ready",
+      "E-Filed",
+      "Fed Ack Code",
+      "Fed Ack Date",
+      "Filing Status",
+      "FS HOH",
+      "FS MFJ",
+      "FS MFS",
+      "FS QW",
+      "FS Single"
+    ],
+    "header_width": 25,
+    "width_counts": {
+      "17": 75,
+      "19": 35,
+      "25": 1008
+    },
+    "n_data": 1118,
+    "canonical_path": "T:\\audit\\investigation\\exports\\TAXPAYERspouseaddressstatus.csv",
+    "drake_source": "F:\\DRAKE25\\DT\\5\\4F24A262\\Documents\\TAXPAYERspouseaddressstatus.csv",
+    "sha256": "024cc87af2275246682ca4e4498ddf708b151ab293051cddb36743829e87b415"
+  },
+  "phase0": {
+    "n_data": 1118,
+    "sha256": "024cc87af2275246682ca4e4498ddf708b151ab293051cddb36743829e87b415",
+    "width_counts": {
+      "17": 75,
+      "19": 35,
+      "25": 1008
+    },
+    "n_ragged": 110,
+    "n_ragged_missing_fs": 110,
+    "street_max_len": 32,
+    "street_with_state_token": 0,
+    "n_distinct_counties": 27,
+    "top_counties": [
+      [
+        "LOS ANGELES",
+        925
+      ],
+      [
+        "SAN BERNARDINO",
+        64
+      ],
+      [
+        "RIVERSIDE",
+        58
+      ],
+      [
+        "ORANGE",
+        27
+      ],
+      [
+        "SAN DIEGO",
+        6
+      ],
+      [
+        "FAYETTE",
+        5
+      ],
+      [
+        "CLARK",
+        5
+      ],
+      [
+        "VENTURA",
+        5
+      ],
+      [
+        "MARICOPA",
+        2
+      ],
+      [
+        "KERN",
+        2
+      ],
+      [
+        "NEWPORT NEWS CITY",
+        2
+      ],
+      [
+        "FULTON",
+        1
+      ]
+    ],
+    "n_with_invoice": 912,
+    "invoice_fill_pct": 81.6,
+    "n_blank_invoice": 206,
+    "n_strict_ok": 885,
+    "n_noncanonical_rows": 27,
+    "n_noncanonical_distinct": 23,
+    "noncanonical_by_class": {
+      "stub": 5,
+      "25_plus_3": 11,
+      "7_digit": 6,
+      "not_25_prefix": 5
+    },
+    "noncanonical_worklist": [
+      {
+        "invoice": "210273",
+        "digits": "210273",
+        "class": "not_25_prefix",
+        "lenient_bare": "210273",
+        "verdict": "prior season or typo \u2014 reject",
+        "hazard": null
+      },
+      {
+        "invoice": "210729",
+        "digits": "210729",
+        "class": "not_25_prefix",
+        "lenient_bare": "210729",
+        "verdict": "prior season or typo \u2014 reject",
+        "hazard": null
+      },
+      {
+        "invoice": "23229",
+        "digits": "23229",
+        "class": "not_25_prefix",
+        "lenient_bare": "23229",
+        "verdict": "prior season or typo \u2014 reject",
+        "hazard": null
+      },
+      {
+        "invoice": "25",
+        "digits": "25",
+        "class": "stub",
+        "lenient_bare": null,
+        "verdict": "never parse",
+        "hazard": null
+      },
+      {
+        "invoice": "250",
+        "digits": "250",
+        "class": "stub",
+        "lenient_bare": null,
+        "verdict": "never parse",
+        "hazard": null
+      },
+      {
+        "invoice": "2500786",
+        "digits": "2500786",
+        "class": "7_digit",
+        "lenient_bare": "786",
+        "verdict": "extra digit; position ambiguous \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "2500892",
+        "digits": "2500892",
+        "class": "7_digit",
+        "lenient_bare": "892",
+        "verdict": "extra digit; position ambiguous \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "2501016",
+        "digits": "2501016",
+        "class": "7_digit",
+        "lenient_bare": "1016",
+        "verdict": "extra digit; position ambiguous \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "2501018",
+        "digits": "2501018",
+        "class": "7_digit",
+        "lenient_bare": "1018",
+        "verdict": "extra digit; position ambiguous \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "2501177",
+        "digits": "2501177",
+        "class": "7_digit",
+        "lenient_bare": "1177",
+        "verdict": "extra digit; position ambiguous \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "25037",
+        "digits": "25037",
+        "class": "25_plus_3",
+        "lenient_bare": "37",
+        "verdict": "plausible missing zero-pad \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "25055",
+        "digits": "25055",
+        "class": "25_plus_3",
+        "lenient_bare": "55",
+        "verdict": "plausible missing zero-pad \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "25063",
+        "digits": "25063",
+        "class": "25_plus_3",
+        "lenient_bare": "63",
+        "verdict": "plausible missing zero-pad \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "2507598",
+        "digits": "2507598",
+        "class": "7_digit",
+        "lenient_bare": "7598",
+        "verdict": "extra digit; position ambiguous \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "251",
+        "digits": "251",
+        "class": "stub",
+        "lenient_bare": "1",
+        "verdict": "never parse",
+        "hazard": null
+      },
+      {
+        "invoice": "25141",
+        "digits": "25141",
+        "class": "25_plus_3",
+        "lenient_bare": "141",
+        "verdict": "NEVER parse \u2014 manufactures I7 collision on PEREZ/141",
+        "hazard": "COLLIDES_CLEAN_BARE_141_PEREZ"
+      },
+      {
+        "invoice": "25392",
+        "digits": "25392",
+        "class": "25_plus_3",
+        "lenient_bare": "392",
+        "verdict": "plausible missing zero-pad \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "25488",
+        "digits": "25488",
+        "class": "25_plus_3",
+        "lenient_bare": "488",
+        "verdict": "plausible missing zero-pad \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "25537",
+        "digits": "25537",
+        "class": "25_plus_3",
+        "lenient_bare": "537",
+        "verdict": "plausible missing zero-pad \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "25549",
+        "digits": "25549",
+        "class": "25_plus_3",
+        "lenient_bare": "549",
+        "verdict": "plausible missing zero-pad \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "25678",
+        "digits": "25678",
+        "class": "25_plus_3",
+        "lenient_bare": "678",
+        "verdict": "plausible missing zero-pad \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "25735",
+        "digits": "25735",
+        "class": "25_plus_3",
+        "lenient_bare": "735",
+        "verdict": "plausible missing zero-pad \u2014 confirm",
+        "hazard": null
+      },
+      {
+        "invoice": "50688",
+        "digits": "50688",
+        "class": "not_25_prefix",
+        "lenient_bare": "50688",
+        "verdict": "prior season or typo \u2014 reject",
+        "hazard": null
+      }
+    ],
+    "hazards": [
+      {
+        "invoice": "25141",
+        "name": "PEREZ, ANDRES",
+        "lenient_bare": "141",
+        "hazard": "COLLIDES_CLEAN_BARE_141_PEREZ"
+      }
+    ],
+    "has_city_col": false,
+    "has_state_col": false,
+    "has_zip_col": false,
+    "header": [
+      "Taxpayer Last Name",
+      "Taxpayer First Name",
+      "Invoice Number",
+      "Taxpayer Date of Birth",
+      "Street Address",
+      "County",
+      "Email Address",
+      "Spouse Birthday",
+      "Spouse Cell Phone",
+      "Spouse Date of Birth",
+      "Spouse Date of Death",
+      "Spouse Daytime Phone",
+      "Spouse Email Address",
+      "Spouse First Name",
+      "Spouse Last Name",
+      "EF Ready",
+      "E-Filed",
+      "Fed Ack Code",
+      "Fed Ack Date",
+      "Filing Status",
+      "FS HOH",
+      "FS MFJ",
+      "FS MFS",
+      "FS QW",
+      "FS Single"
+    ]
+  },
+  "phase1": {
+    "n_clients_live": 1493,
+    "n_export_strict": 885,
+    "n_distinct_strict_bares": 824,
+    "n_collision_bares": 57,
+    "collision_bares": [
+      "141",
+      "167",
+      "190",
+      "201",
+      "203",
+      "206",
+      "207",
+      "247",
+      "304",
+      "325",
+      "329",
+      "332",
+      "335",
+      "339",
+      "347",
+      "353",
+      "385",
+      "426",
+      "455",
+      "458",
+      "483",
+      "580",
+      "589",
+      "616",
+      "634",
+      "669",
+      "677",
+      "681",
+      "698",
+      "722",
+      "766",
+      "773",
+      "787",
+      "793",
+      "827",
+      "835",
+      "852",
+      "862",
+      "866",
+      "878",
+      "888",
+      "903",
+      "910",
+      "962",
+      "985",
+      "993",
+      "1027",
+      "1038",
+      "1075",
+      "1095",
+      "1098",
+      "1103",
+      "1107",
+      "1157",
+      "1165",
+      "1226",
+      "1685"
+    ],
+    "office_packet_overlap": [
+      "141",
+      "203",
+      "206",
+      "207",
+      "247",
+      "335",
+      "339",
+      "353",
+      "426",
+      "589",
+      "634",
+      "787",
+      "862",
+      "888",
+      "910",
+      "1038",
+      "1075",
+      "1095",
+      "1103"
+    ],
+    "n_unique_bares": 767,
+    "skipped": {
+      "blank_invoice": 206,
+      "no_taxops_return": 92,
+      "collision_bare": 118,
+      "noncanonical_invoice": 27
+    },
+    "n_joinable": 675,
+    "joinable_pct_of_clients": 45.2,
+    "n_double_write_risk": 0,
+    "double_write_risk": [],
+    "coalesce_opportunities": {
+      "taxpayer_email": 538,
+      "address": 86,
+      "taxpayer_dob": 89,
+      "spouse_last_name": 40,
+      "spouse_first_name": 48,
+      "spouse_dob": 208,
+      "spouse_cell": 86,
+      "spouse_email": 9
+    },
+    "email_headline": {
+      "coalesce_gap": 538,
+      "note": "55 filled today -> ~55+gap after COALESCE on joinable set"
+    },
+    "no_taxops_crosscheck": {
+      "n_no_taxops": 92,
+      "n_c5_error_review_absent": 102,
+      "n_l0_drake_only_open": 35,
+      "overlap_c5": 41,
+      "overlap_l0_drake_only": 34,
+      "only_in_profile_export": 19,
+      "overlap_c5_sample": [
+        "148",
+        "165",
+        "233",
+        "246",
+        "248",
+        "276",
+        "277",
+        "281",
+        "349",
+        "363",
+        "375",
+        "510",
+        "533",
+        "552",
+        "592",
+        "600",
+        "626",
+        "661",
+        "667",
+        "683",
+        "692",
+        "714",
+        "747",
+        "757",
+        "772"
+      ],
+      "only_profile_sample": [
+        "114",
+        "162",
+        "235",
+        "241",
+        "264",
+        "489",
+        "607",
+        "776",
+        "845",
+        "890",
+        "981",
+        "1108",
+        "1111",
+        "1131",
+        "1188",
+        "1195",
+        "1213",
+        "1214",
+        "1298"
+      ],
+      "no_taxops_sample": [
+        {
+          "bare": "1188",
+          "invoice": "251188",
+          "name": "D P DENTAL & BILLER MANAGEMENT INC, "
+        },
+        {
+          "bare": "510",
+          "invoice": "250510",
+          "name": "JORGE DE LA OSA DENTAL CORPORATION, "
+        },
+        {
+          "bare": "148",
+          "invoice": "250148",
+          "name": "BURGOIN, LOUIE R"
+        },
+        {
+          "bare": "667",
+          "invoice": "250667",
+          "name": "SALAZAR, ROSA"
+        },
+        {
+          "bare": "1234",
+          "invoice": "251234",
+          "name": "SAAVEDRA, FERNANDO"
+        },
+        {
+          "bare": "552",
+          "invoice": "250552",
+          "name": "RODRIGUEZ, MARIA"
+        },
+        {
+          "bare": "363",
+          "invoice": "250363",
+          "name": "AZAMAR PEREZ, MISAEL"
+        },
+        {
+          "bare": "1058",
+          "invoice": "251058",
+          "name": "OLEA III, ANTONIO"
+        },
+        {
+          "bare": "1189",
+          "invoice": "251189",
+          "name": "ALL IN ONE CONCRETE LLC, "
+        },
+        {
+          "bare": "431",
+          "invoice": "250431",
+          "name": "HERNANDEZ, NIA"
+        },
+        {
+          "bare": "898",
+          "invoice": "250898",
+          "name": "CHEANG, SARAH"
+        },
+        {
+          "bare": "1213",
+          "invoice": "251213",
+          "name": "DELGADO JR, LAZARO"
+        },
+        {
+          "bare": "981",
+          "invoice": "250981",
+          "name": "NOPALTITLA, MIGUEL"
+        },
+        {
+          "bare": "248",
+          "invoice": "250248",
+          "name": "BRAVO, JESUS"
+        },
+        {
+          "bare": "277",
+          "invoice": "250277",
+          "name": "CRUZ, GEORGE"
+        },
+        {
+          "bare": "257",
+          "invoice": "250257",
+          "name": "PADILLA, CRISTIAN"
+        },
+        {
+          "bare": "1083",
+          "invoice": "251083",
+          "name": "ESPINOZA, DOUGLAS"
+        },
+        {
+          "bare": "692",
+          "invoice": "250692",
+          "name": "RIOS, OSCAR"
+        },
+        {
+          "bare": "1052",
+          "invoice": "251052",
+          "name": "CORNEJO, FERNANDO"
+        },
+        {
+          "bare": "264",
+          "invoice": "250264",
+          "name": "LECHUGA, REBECCA"
+        }
+      ]
+    },
+    "write_rule_2": "Skip any row whose invoice does not match ^25\\d{4}$ exactly \u2014 no normalization, no repair. Non-canonical -> office worklist."
+  },
+  "phase4": {
+    "n_unique_bare_with_fs_linked": 648,
+    "fs_counts": {
+      "4": 178,
+      "3": 4,
+      "1": 323,
+      "2": 230,
+      "5": 1
+    },
+    "n_single_with_spouse": 15,
+    "n_single_with_spouse_wave4_fold": 3,
+    "n_mfj_without_spouse": 36,
+    "scope": {
+      "measured_on_joinable": 675,
+      "n_clients_live": 1493,
+      "joinable_pct_of_clients": 45.2,
+      "note": "Counts are on the joinable 675 (45.2% of 1493 clients). If the rate holds firm-wide, expect roughly ~33 Single+spouse and ~80 MFJ+no-spouse.",
+      "extrapolated_single_with_spouse": 33,
+      "extrapolated_mfj_without_spouse": 80
+    },
+    "single_with_spouse": [
+      {
+        "bare_log": "1256",
+        "client_id": 1079,
+        "export_name": "HERRERA, BERTHA",
+        "wave4_fold": false
+      },
+      {
+        "bare_log": "503",
+        "client_id": 940,
+        "export_name": "SANDOVAL, ADRIANA",
+        "wave4_fold": false
+      },
+      {
+        "bare_log": "168",
+        "client_id": 498,
+        "export_name": "LOPEZ, JUAN",
+        "wave4_fold": true
+      },
+      {
+        "bare_log": "1258",
+        "client_id": 1326,
+        "export_name": "CHAVARRIA, ALFREDO",
+        "wave4_fold": true
+      },
+      {
+        "bare_log": "1080",
+        "client_id": 527,
+        "export_name": "LAZO, ANNABEL",
+        "wave4_fold": false
+      },
+      {
+        "bare_log": "364",
+        "client_id": 143,
+        "export_name": "CARDONA, HECTOR",
+        "wave4_fold": false
+      },
+      {
+        "bare_log": "394",
+        "client_id": 352,
+        "export_name": "VEGA, DIANA",
+        "wave4_fold": false
+      },
+      {
+        "bare_log": "1087",
+        "client_id": 994,
+        "export_name": "LEMUS, EVELYN",
+        "wave4_fold": false
+      },
+      {
+        "bare_log": "855",
+        "client_id": 644,
+        "export_name": "MENDEZ, SERGIO",
+        "wave4_fold": false
+      },
+      {
+        "bare_log": "771",
+        "client_id": 672,
+        "export_name": "MONTEJO GONZALEZ, MIGUEL",
+        "wave4_fold": false
+      },
+      {
+        "bare_log": "1143",
+        "client_id": 523,
+        "export_name": "LANDEROS, AURELIO",
+        "wave4_fold": true
+      },
+      {
+        "bare_log": "1059",
+        "client_id": 747,
+        "export_name": "OLEA, ALEJANDRA",
+        "wave4_fold": false
+      },
+      {
+        "bare_log": "674",
+        "client_id": 222,
+        "export_name": "DAKAK, JASMINE",
+        "wave4_fold": false
+      },
+      {
+        "bare_log": "150",
+        "client_id": 119,
+        "export_name": "HERAS, SANTANA",
+        "wave4_fold": false
+      },
+      {
+        "bare_log": "591",
+        "client_id": 731,
+        "export_name": "NUNO, JUAN",
+        "wave4_fold": false
+      }
+    ],
+    "mfj_without_spouse": [
+      {
+        "bare_log": "427",
+        "client_id": 1534,
+        "export_name": "JIMENEZ ESCOTO, RAUL",
+        "drake_spouse": "MORENO BERNAL, VIRGINIA"
+      },
+      {
+        "bare_log": "1180",
+        "client_id": 1081,
+        "export_name": "TAREEN, MOHAMMED",
+        "drake_spouse": "CHOUDHRY, FARHAT"
+      },
+      {
+        "bare_log": "702",
+        "client_id": 1542,
+        "export_name": "HUERTA, JACOB",
+        "drake_spouse": "ALANIS, STEPHANIE"
+      },
+      {
+        "bare_log": "181",
+        "client_id": 7,
+        "export_name": "VELASQUEZ, CARLOS G",
+        "drake_spouse": "VELASQUEZ, MARIA E"
+      },
+      {
+        "bare_log": "1043",
+        "client_id": 957,
+        "export_name": "RAMIREZ, ROBERT",
+        "drake_spouse": "BALBOA, MARIA"
+      },
+      {
+        "bare_log": "1253",
+        "client_id": 2128,
+        "export_name": "LOPEZ, AURELIO",
+        "drake_spouse": "LUCERO"
+      },
+      {
+        "bare_log": "175",
+        "client_id": 1627,
+        "export_name": "MUNGUIA, FEDERICO",
+        "drake_spouse": "MUNOZ, MARIBEL"
+      },
+      {
+        "bare_log": "745",
+        "client_id": 690,
+        "export_name": "YANEZ, ANGEL",
+        "drake_spouse": "MENDOZA, MARGARITA"
+      },
+      {
+        "bare_log": "188",
+        "client_id": 1448,
+        "export_name": "GOMEZ, CAROLINA",
+        "drake_spouse": "GOMEZ, JUAN"
+      },
+      {
+        "bare_log": "700",
+        "client_id": 1506,
+        "export_name": "TASHAYOD, ALEX",
+        "drake_spouse": "ALEDAVOOD, SHIDEH"
+      },
+      {
+        "bare_log": "1092",
+        "client_id": 999,
+        "export_name": "REYES SOLIS, GASPAR",
+        "drake_spouse": "AGUILAR, N"
+      },
+      {
+        "bare_log": "240",
+        "client_id": 1515,
+        "export_name": "AVALOS PEREZ, JOSE",
+        "drake_spouse": "GONZALEZ, MONICA"
+      },
+      {
+        "bare_log": "230",
+        "client_id": 1699,
+        "export_name": "MONARREZ, LETICIA",
+        "drake_spouse": "ROJAS, JOSE"
+      },
+      {
+        "bare_log": "380",
+        "client_id": 315,
+        "export_name": "FRANCO, RENE",
+        "drake_spouse": "MURAKAMI, MARIKO"
+      },
+      {
+        "bare_log": "479",
+        "client_id": 432,
+        "export_name": "ARROYO HERNANDEZ, HUMBERTO",
+        "drake_spouse": "HERNANDEZ, MARIA"
+      },
+      {
+        "bare_log": "397",
+        "client_id": 1652,
+        "export_name": "NAVA, GUSTAVO",
+        "drake_spouse": "SECUNDINO, FELICITAS"
+      },
+      {
+        "bare_log": "263",
+        "client_id": 533,
+        "export_name": "ALVARADO, ERNESTO",
+        "drake_spouse": "REBECCA"
+      },
+      {
+        "bare_log": "192",
+        "client_id": 161,
+        "export_name": "REYES, ESMERALDA",
+        "drake_spouse": "NIEVES, MARCO"
+      },
+      {
+        "bare_log": "428",
+        "client_id": 1799,
+        "export_name": "MARQUEZ E, YOSHI",
+        "drake_spouse": "AMBRIZ MARQUEZ, ASHLEY"
+      },
+      {
+        "bare_log": "709",
+        "client_id": 1215,
+        "export_name": "ALVARADO, OSCAR",
+        "drake_spouse": "ALVARADO, DENISE"
+      },
+      {
+        "bare_log": "323",
+        "client_id": 1232,
+        "export_name": "ACOSTA, VERONICA",
+        "drake_spouse": "AGUILAR, RUBEN"
+      },
+      {
+        "bare_log": "205",
+        "client_id": 2146,
+        "export_name": "NAVARRO, LUIS A",
+        "drake_spouse": "RANGEL, GUADALUPE"
+      },
+      {
+        "bare_log": "777",
+        "client_id": 1256,
+        "export_name": "CALZADILLA FLORES, ENRIQUE",
+        "drake_spouse": "CALZADILLA, STEPHANIE"
+      },
+      {
+        "bare_log": "937",
+        "client_id": 859,
+        "export_name": "MALCOM, DAVID",
+        "drake_spouse": "MARIANA"
+      },
+      {
+        "bare_log": "159",
+        "client_id": 101,
+        "export_name": "DEAMER, DAVID",
+        "drake_spouse": "WORTHY, RISE"
+      },
+      {
+        "bare_log": "530",
+        "client_id": 1801,
+        "export_name": "PADILLA, ABEL",
+        "drake_spouse": "GARCIA BERNARDINO, CLAUDIA"
+      },
+      {
+        "bare_log": "436",
+        "client_id": 1371,
+        "export_name": "SANDOVAL JR, EFRAIN",
+        "drake_spouse": "BARANETSKA, NATALIIA"
+      },
+      {
+        "bare_log": "166",
+        "client_id": 134,
+        "export_name": "JIMENEZ, GUSTAVO",
+        "drake_spouse": "JIMENEZ, ALICIA"
+      },
+      {
+        "bare_log": "794",
+        "client_id": 732,
+        "export_name": "ANAYA, JOSE",
+        "drake_spouse": "CLAUDIA"
+      },
+      {
+        "bare_log": "911",
+        "client_id": 539,
+        "export_name": "NUNO, JUAN",
+        "drake_spouse": "NUNO, MARIA"
+      },
+      {
+        "bare_log": "623",
+        "client_id": 1234,
+        "export_name": "FALATOONZADEH, HOSSEIN",
+        "drake_spouse": "VAFAEENIA, SARA"
+      },
+      {
+        "bare_log": "151",
+        "client_id": 518,
+        "export_name": "TAREEN, ZULQARNIAN",
+        "drake_spouse": "TAREEN, FOUZIA"
+      },
+      {
+        "bare_log": "622",
+        "client_id": 1301,
+        "export_name": "ZUNIGA, NETZAHUALCOYOTL",
+        "drake_spouse": "GARCIA GODINEZ, MARLLEN"
+      },
+      {
+        "bare_log": "1298",
+        "client_id": 2181,
+        "export_name": "VILLANUEVA VAZQUEZ, JUAN",
+        "drake_spouse": "ERIVES, LILI"
+      },
+      {
+        "bare_log": "964",
+        "client_id": 1323,
+        "export_name": "LOPEZ, AGAPITO",
+        "drake_spouse": "ESTELA"
+      },
+      {
+        "bare_log": "236",
+        "client_id": 1797,
+        "export_name": "MURGUIA MENDEZ, ANA",
+        "drake_spouse": "JIMENEZ ZAMORA, OCTAVIANO"
+      }
+    ]
+  }
+}

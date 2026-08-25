@@ -1,0 +1,3356 @@
+{% extends "base.html" %}
+{% block title %}{% if ret.log_number %}#{{ ret.log_number }} {% endif %}{{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %} — Tax Log{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-5 pb-8">
+
+  {# ── Return header (closed container — was missing </div> so body bled into flex row) ── #}
+  <section class="rounded-xl shadow-sm overflow-hidden" style="background:var(--bg-card);border:1px solid var(--border-default)" aria-labelledby="return-detail-title">
+    <div class="p-4 lg:p-5">
+      <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div class="flex gap-3 min-w-0 flex-1">
+          <a href="javascript:history.back()"
+             class="shrink-0 transition-colors p-1 rounded-lg h-9 w-9 flex items-center justify-center" style="color:var(--text-muted)"
+             title="{{ _('Back') }}">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+          </a>
+          <div class="min-w-0 space-y-3">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span class="font-mono font-black text-2xl sm:text-3xl text-slate-800 tracking-tight tabular-nums">
+                {{ ret.log_number or '—' }}
+              </span>
+              <span class="text-slate-300 hidden sm:inline" aria-hidden="true">·</span>
+              <h1 id="return-detail-title" class="text-lg sm:text-xl font-semibold text-slate-800 truncate max-w-full">
+                {{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %}
+              </h1>
+              <span class="text-xs px-2.5 py-1 rounded-full font-mono font-semibold shrink-0" style="background:var(--bg-page);color:var(--text-secondary)">
+                TY{{ ret.tax_year }}
+              </span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              {% if not view_only %}
+              <div id="return-status-control" class="status-dropdown relative inline-block">
+                <button type="button" onclick="toggleStatusMenu(this)"
+                        class="status-badge flex items-center gap-1.5 {{ ret.badge_class }} cursor-pointer hover:opacity-90 transition-opacity">
+                  {{ ret.client_status or 'NO STATUS' }}
+                  <svg class="w-3 h-3 opacity-50 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </button>
+                <div class="status-menu hidden absolute left-0 top-full mt-1 rounded-xl shadow-xl py-1 z-50 min-w-[160px]" style="background:var(--dropdown-bg);border:1px solid var(--dropdown-border)">
+                  {% for s in status_flow %}
+                  <button type="button" onclick="setStatus({{ ret.id }}, '{{ s }}', this)"
+                          class="w-full text-left px-4 py-2.5 text-sm transition-colors" onmouseover="this.style.background='var(--bg-page)'" onmouseout="this.style.background=''"
+                                 {% if s == ret.client_status %}font-bold text-slate-900 bg-slate-50{% else %}text-slate-700{% endif %}">
+                    {{ s }}
+                  </button>
+                  {% endfor %}
+                </div>
+              </div>
+              {% elif get_effective_role() == 'receptionist' %}
+              {# Same control as preparer — filtered to desk-safe targets #}
+              {% set _recv_opts = receptionist_allowed_statuses(ret.client_status) %}
+              <div id="return-status-control" class="status-dropdown relative inline-block">
+                <button type="button" onclick="toggleStatusMenu(this)"
+                        class="status-badge flex items-center gap-1.5 {{ ret.badge_class }} cursor-pointer hover:opacity-90 transition-opacity">
+                  {{ ret.client_status or 'NO STATUS' }}
+                  <svg class="w-3 h-3 opacity-50 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </button>
+                <div class="status-menu hidden absolute left-0 top-full mt-1 rounded-xl shadow-xl py-1 z-50 min-w-[160px]" style="background:var(--dropdown-bg);border:1px solid var(--dropdown-border)">
+                  {% for s in _recv_opts %}
+                  <button type="button" onclick="setStatus({{ ret.id }}, '{{ s }}', this)"
+                          class="w-full text-left px-4 py-2.5 text-sm transition-colors" onmouseover="this.style.background='var(--bg-page)'" onmouseout="this.style.background=''"
+                                 {% if s == ret.client_status %}font-bold text-slate-900 bg-slate-50{% else %}text-slate-700{% endif %}">
+                    {{ s }}
+                  </button>
+                  {% endfor %}
+                </div>
+              </div>
+              {% else %}
+              <span class="status-badge {{ ret.badge_class }} px-3 py-1">{{ ret.client_status or 'NO STATUS' }}</span>
+              {% endif %}
+              {% if ret.display_name %}
+              <span class="text-sm text-slate-500 truncate max-w-full sm:max-w-md">{{ ret.display_name }}</span>
+              {% endif %}
+              {% if ret.client_id %}
+              <a href="{{ url_for('client_profile', client_id=ret.client_id) }}"
+                 id="client-profile-link"
+                 class="text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
+                {{ _('Client profile') }} →
+              </a>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <nav id="return-action-nav" class="flex flex-row flex-wrap lg:flex-col gap-2 lg:items-stretch lg:min-w-[10.5rem] shrink-0 border-t border-[var(--border-subtle)] lg:border-t-0 pt-4 lg:pt-0 lg:pl-6 lg:border-l" aria-label="Return actions">
+          {% if ret.client_status == 'PICKUP' %}
+          <a href="/pickup/{{ ret.id }}"
+             class="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg px-3 py-2 transition-all">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+            </svg>
+            {{ _('Pickup workflow') }}
+          </a>
+          {% endif %}
+          <label class="inline-flex items-center gap-1.5 text-xs text-slate-600">
+            <span class="sr-only">{{ _('Log-in date on sticker') }}</span>
+            <input type="date" id="print-sticker-date"
+                   value="{{ ret.intake_date or today }}"
+                   class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
+                   title="{{ _('Log-in date printed on the sticker (editable)') }}">
+          </label>
+          <button type="button" onclick="printSticker()"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 transition-all">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+            </svg>
+            {{ _('Print sticker') }}
+          </button>
+          {# LIFE-3: Intake sheet PDF #}
+          <button type="button" onclick="window.open('/api/return/{{ ret.id }}/intake-sheet','_blank')"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 transition-all">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5l2 2v14a2 2 0 01-2 2h-1m4-14v3a2 2 0 002 2h3"/>
+            </svg>
+            {{ _('Print intake sheet') }}
+          </button>
+          {# LIFE-1: Cancel return — preparer+ only #}
+          {% if not view_only %}
+          {% if ret.client_status != 'CANCELLED' %}
+          <button type="button" id="cancel-return-btn" onclick="showCancelForm({{ ret.id }})"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg px-3 py-2 transition-all">
+            {{ _('Cancel return') }}
+          </button>
+          {% else %}
+          <button type="button" onclick="uncancelReturn({{ ret.id }})"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg px-3 py-2 transition-all">
+            {{ _('Reinstate return') }}
+          </button>
+          {% endif %}
+          {# Inline cancel reason form #}
+          <div id="cancel-reason-form" class="hidden w-full mt-1">
+            <input id="cancel-reason-input" type="text" placeholder="{{ _('Reason for cancellation…') }}"
+                   class="w-full text-xs border border-red-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-300">
+            <div class="flex gap-2 mt-1">
+              <button type="button" onclick="confirmCancel({{ ret.id }})"
+                      class="text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg px-3 py-1.5 font-semibold transition-colors">
+                {{ _('Confirm cancel') }}
+              </button>
+              <button type="button" onclick="hideCancelForm()"
+                      class="text-xs text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg px-3 py-1.5 transition-colors">
+                {{ _('Dismiss') }}
+              </button>
+            </div>
+          </div>
+          {% endif %}
+          {# DEL-1: hard-delete return — admin-only, irreversible (unlike cancel) #}
+          {% if get_effective_role() == 'admin' %}
+          <button type="button" onclick='deleteReturn({{ ret.id }}, {{ ret.log_number | tojson }})'
+                  class="inline-flex items-center justify-center gap-1.5 text-xs text-white bg-red-700 hover:bg-red-800 border border-red-800 rounded-lg px-3 py-2 transition-all">
+            {{ _('Delete return') }}
+          </button>
+          {% endif %}
+        </nav>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Quick flags ────────────────────────────────────────────────────── -->
+  <div class="rounded-xl px-4 py-4 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+    <div class="flex flex-col gap-3 min-w-0 flex-1">
+      <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">{{ _('Quick flags') }}</span>
+      <div class="flex flex-wrap items-center gap-2">
+    {% macro qflag(label, field, val, color='blue') %}
+    {% if not view_only %}
+    <button type="button" onclick="quickToggle({{ ret.id }}, '{{ field }}', this)"
+            data-field="{{ field }}"
+            data-value="{{ '1' if val else '0' }}"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all select-none
+                   {% if val %}
+                     {% if color == 'green' %}bg-green-50 text-green-700 border-green-300{% elif color == 'amber' %}bg-amber-50 text-amber-700 border-amber-300{% elif color == 'red' %}bg-red-50 text-red-700 border-red-300{% else %}bg-blue-50 text-blue-700 border-blue-300{% endif %}
+                   {% else %}
+                     bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600
+                   {% endif %}">
+      <span class="text-base leading-none">{% if val %}✓{% else %}○{% endif %}</span>
+      {{ label }}
+    </button>
+    {% else %}
+    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium select-none
+                 {% if val %}
+                   {% if color == 'green' %}bg-green-50 text-green-700 border-green-300{% elif color == 'amber' %}bg-amber-50 text-amber-700 border-amber-300{% elif color == 'red' %}bg-red-50 text-red-700 border-red-300{% else %}bg-blue-50 text-blue-700 border-blue-300{% endif %}
+                 {% else %}
+                   bg-slate-50 text-slate-400 border-slate-200
+                 {% endif %}">
+      <span class="text-base leading-none">{% if val %}✓{% else %}○{% endif %}</span>
+      {{ label }}
+    </span>
+    {% endif %}
+    {% endmacro %}
+
+    {{ qflag(_('Verified'),      'verified',           ret.verified,           'green') }}
+    {{ qflag(_('Transfer'),      'transfer_flag',      ret.transfer_flag,      'amber') }}
+    {{ qflag(_('Amended'),       'is_amended',         ret.is_amended,         'amber') }}
+    {{ qflag(_('Extension'),     'is_extension',       ret.is_extension,       'amber') }}
+    {{ qflag('W-7',           'has_w7',             ret.has_w7,             'blue') }}
+    {{ qflag(_('TY25 Transfer'), 'transfer_2025_flag', ret.transfer_2025_flag, 'blue') }}
+    {{ qflag(_('TY26 Transfer'), 'transfer_2026_flag', ret.transfer_2026_flag, 'blue') }}
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm border-t border-[var(--border-subtle)] pt-3 xl:border-t-0 xl:border-l xl:pl-6 xl:pt-0 shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500 text-xs font-semibold uppercase tracking-wide">{{ _('E-filed') }}</span>
+        {% if not view_only %}
+        <span class="editable font-mono text-slate-800 font-semibold"
+              data-return-id="{{ ret.id }}" data-field="efile_date"
+              data-value="{{ ret.efile_date or '' }}" data-placeholder="YYYY-MM-DD">
+          {{ ret.efile_date or '—' }}
+        </span>
+        {% else %}
+        <span class="font-mono text-slate-800 font-semibold">{{ ret.efile_date or '—' }}</span>
+        {% endif %}
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-slate-500 text-xs font-semibold uppercase tracking-wide">ACK</span>
+        {% if not view_only %}
+        <span class="editable font-mono text-slate-800 font-semibold"
+              data-return-id="{{ ret.id }}" data-field="ack_date"
+              data-value="{{ ret.ack_date or '' }}" data-placeholder="YYYY-MM-DD">
+          {{ ret.ack_date or '—' }}
+        </span>
+        {% else %}
+        <span class="font-mono text-slate-800 font-semibold">{{ ret.ack_date or '—' }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Extension section ────────────────────────────────────────────────── -->
+  <div class="rounded-xl border px-4 py-3 sm:px-5 sm:py-4 flex flex-wrap items-start gap-4"
+       style="border-color:var(--border-default);background:{% if ret.extension_requested %}var(--color-primary-light){% else %}var(--bg-card){% endif %}">
+    <div class="flex items-center gap-3 min-w-0 flex-wrap flex-1">
+      <span class="text-xs font-bold uppercase tracking-wider" style="color:var(--color-primary-text)">Extension</span>
+
+      {# Request toggle #}
+      {% if not view_only %}
+      <button type="button"
+              onclick="_toggleExt({{ ret.id }}, {{ 'true' if ret.extension_requested else 'false' }})"
+              id="ext-req-btn"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold transition-colors
+                     {% if ret.extension_requested %}text-white border-transparent{% else %}border-slate-300 text-slate-500 hover:border-[var(--color-primary-border)]{% endif %}"
+              style="{% if ret.extension_requested %}background:var(--color-primary){% endif %}">
+        {% if ret.extension_requested %}&#10003; Requested{% else %}+ Request Extension{% endif %}
+      </button>
+      {% elif ret.extension_requested %}
+      <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold text-white" style="background:var(--color-primary)">
+        &#10003; Requested
+      </span>
+      {% endif %}
+
+      {% if ret.extension_requested %}
+      {# Filed date #}
+      <div class="flex items-center gap-1.5">
+        <span class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">Filed</span>
+        {% if not view_only %}
+        <span class="editable font-mono text-sm font-semibold" style="color:var(--text-primary)"
+              data-return-id="{{ ret.id }}" data-field="extension_filed_date"
+              data-value="{{ ret.extension_filed_date or '' }}" data-placeholder="YYYY-MM-DD">
+          {{ ret.extension_filed_date or '—' }}
+        </span>
+        {% else %}
+        <span class="font-mono text-sm font-semibold" style="color:var(--text-primary)">{{ ret.extension_filed_date or '—' }}</span>
+        {% endif %}
+      </div>
+
+      {# ACK status badge #}
+      {% if ret.extension_ack_status == 'accepted' %}
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 border border-green-200">
+        &#10003; Accepted
+      </span>
+      {% elif ret.extension_ack_status == 'rejected' %}
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
+        &#10007; Rejected
+      </span>
+      {% elif ret.extension_filed_date %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+        Pending ACK
+      </span>
+      {% endif %}
+
+      {# ACK date #}
+      {% if ret.extension_ack_date %}
+      <div class="flex items-center gap-1.5">
+        <span class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">ACK</span>
+        <span class="font-mono text-xs" style="color:var(--text-secondary)">{{ ret.extension_ack_date }}</span>
+      </div>
+      {% endif %}
+
+      {# Extended due date #}
+      <div class="flex items-center gap-1.5">
+        <span class="text-xs font-semibold uppercase tracking-wide" style="color:var(--text-muted)">Due</span>
+        {% if not view_only %}
+        <span class="editable font-mono text-sm font-semibold" style="color:var(--text-primary)"
+              data-return-id="{{ ret.id }}" data-field="extension_due_date"
+              data-value="{{ ret.extension_due_date or '' }}" data-placeholder="YYYY-MM-DD">
+          {{ ret.extension_due_date or '—' }}
+        </span>
+        {% else %}
+        <span class="font-mono text-sm font-semibold" style="color:var(--text-primary)">{{ ret.extension_due_date or '—' }}</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% if ret.extension_requested and get_effective_role() in ('admin', 'preparer') %}
+    <a href="/extension-queue?year={{ current_year }}"
+       class="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors"
+       style="border-color:var(--color-primary-border);color:var(--color-primary-text);background:var(--bg-card)">
+      Extension Queue &rarr;
+    </a>
+    {% endif %}
+  </div>
+  <script>
+  function _toggleExt(returnId, currentlyRequested) {
+    const btn     = document.getElementById('ext-req-btn');
+    const section = btn.closest('[id="ext-section"]') || btn.closest('div.rounded-xl');
+    const newVal  = currentlyRequested ? 0 : 1;
+
+    // Immediate loading state
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    _csrfFetch('/api/return/' + returnId + '/field', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({field: 'extension_requested', value: newVal})
+    }).then(r => r.json()).then(d => {
+      if (d.success || d.value !== undefined) {
+        // Optimistic in-place update — no full reload
+        if (newVal === 1) {
+          btn.textContent = '✓ Requested';
+          btn.style.background = 'var(--color-primary)';
+          btn.style.color = '#fff';
+          btn.style.borderColor = 'transparent';
+          if (section) section.style.background = 'var(--color-primary-light)';
+        } else {
+          btn.textContent = '+ Request Extension';
+          btn.style.background = '';
+          btn.style.color = '';
+          btn.style.borderColor = '';
+          if (section) section.style.background = 'var(--bg-card)';
+        }
+        btn.disabled = false;
+
+        // Brief "Saved" toast
+        let toast = document.getElementById('_ext-toast');
+        if (!toast) {
+          toast = document.createElement('div');
+          toast.id = '_ext-toast';
+          toast.style.cssText = [
+            'position:fixed','bottom:1.5rem','right:1.5rem','z-index:9999',
+            'background:#166534','color:#fff','font-size:0.8rem','font-weight:600',
+            'padding:0.5rem 1rem','border-radius:0.75rem','box-shadow:0 4px 12px rgba(0,0,0,.2)',
+            'transition:opacity .3s','pointer-events:none'
+          ].join(';');
+          document.body.appendChild(toast);
+        }
+        toast.textContent = newVal === 1 ? '✓ Extension requested' : '✓ Extension removed';
+        toast.style.opacity = '1';
+        setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+
+        // Reload after short delay so the date/status fields reflect the new state
+        setTimeout(() => location.reload(), 600);
+      } else {
+        btn.disabled = false;
+        btn.textContent = currentlyRequested ? '✓ Requested' : '+ Request Extension';
+        alert(d.error || 'Could not update extension flag.');
+      }
+    }).catch(() => {
+      btn.disabled = false;
+      btn.textContent = currentlyRequested ? '✓ Requested' : '+ Request Extension';
+      alert('Network error — please try again.');
+    });
+  }
+  window._toggleExt = _toggleExt;
+  </script>
+
+  <!-- ── Status workflow ─────────────────────────────────────────────────── -->
+  <section class="rounded-xl px-4 py-3 sm:px-5 sm:py-4" aria-label="Workflow">
+    <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{{ _('Workflow') }}</p>
+    <div class="flex items-center gap-1.5 overflow-x-auto">
+      {% set current_idx = status_flow.index(ret.client_status) if ret.client_status in status_flow else -1 %}
+      {% for s in status_flow %}
+      {% set idx = loop.index0 %}
+      {% set is_current = idx == current_idx %}
+      {% set is_done    = idx < current_idx %}
+      {% if not view_only %}
+      <button type="button" onclick="setStatusDetail({{ ret.id }}, '{{ s }}')"
+              class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all
+                     {% if is_current %}
+                       {{ status_badge.get(s,'') }} border shadow-sm
+                     {% elif is_done %}
+                       text-slate-400 border border-transparent
+                     {% else %}
+                       text-slate-500 hover:bg-slate-50 border border-transparent hover:border-slate-200
+                     {% endif %}">
+        {% if is_done %}
+        <svg class="w-3.5 h-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+        </svg>
+        {% elif is_current %}
+        <span class="w-2 h-2 rounded-full bg-current opacity-70 animate-pulse shrink-0"></span>
+        {% else %}
+        <span class="w-2 h-2 rounded-full bg-slate-300 shrink-0"></span>
+        {% endif %}
+        {{ s }}
+      </button>
+      {% else %}
+      <span class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium whitespace-nowrap
+                   {% if is_current %}
+                     {{ status_badge.get(s,'') }} border shadow-sm
+                   {% elif is_done %}
+                     text-slate-400 border border-transparent
+                   {% else %}
+                     text-slate-500 border border-transparent
+                   {% endif %}">
+        {% if is_done %}
+        <svg class="w-3.5 h-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+        </svg>
+        {% elif is_current %}
+        <span class="w-2 h-2 rounded-full bg-current opacity-70 animate-pulse shrink-0"></span>
+        {% else %}
+        <span class="w-2 h-2 rounded-full bg-slate-300 shrink-0"></span>
+        {% endif %}
+        {{ s }}
+      </span>
+      {% endif %}
+      {% if not loop.last %}
+      <svg class="w-4 h-4 text-slate-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+      </svg>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if ret.client_status == 'REJECTED' %}
+  {% set cc_cur = ret.contact_status or 'not_contacted' %}
+  <!-- ── Client contact (rejected returns) ─────────────────────────────── -->
+  <div id="client-contact-card" class="rounded-xl border overflow-hidden
+       {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}border-red-300 bg-red-50/40{% else %}border-slate-200 bg-white{% endif %}">
+    <div class="section-header flex flex-wrap items-center justify-between gap-2
+         {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}bg-red-50 border-b border-red-200{% endif %}">
+      <span class="flex items-center gap-2">
+        {{ _('Client contact') }}
+        {% if cc_cur in ['not_contacted', 'follow_up_needed'] %}
+        <span class="text-xs font-bold uppercase tracking-wide text-red-700 bg-red-100 border border-red-200 px-2 py-0.5 rounded-full">{{ _('Needs client contact') }}</span>
+        {% endif %}
+      </span>
+      <a href="#notes-card" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold">{{ _('Notes') }} &rarr;</a>
+    </div>
+    <div class="p-4 flex flex-wrap items-end gap-4">
+      {# Group A — receptionist and above can edit contact status and date #}
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-slate-500 font-medium">{{ _('Contact status') }}</span>
+        <select id="contact-status-sel" onchange="saveContactStatus({{ ret.id }})"
+                class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 min-w-[13rem] focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          {% for k, lab in contact_labels.items() %}
+          <option value="{{ k }}" {% if cc_cur == k %}selected{% endif %}>{{ lab }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-slate-500 font-medium">{{ _('Last contacted') }}</span>
+        <input type="date" id="contact-date-input" value="{{ ret.last_contacted_date[:10] if ret.last_contacted_date else '' }}"
+               onchange="saveContactDate({{ ret.id }})"
+               class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-400">
+      </label>
+      <p class="text-xs text-slate-500 max-w-md">Use <strong>Notes</strong> below for call details. Marking <em>Contacted</em> or <em>Follow-up needed</em> stamps today&apos;s date unless you pick another.</p>
+    </div>
+  </div>
+
+  <!-- ── AI draft email (rejected returns only) ────────────────────────── -->
+  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="section-header">{{ _('Draft follow-up email') }}</div>
+    <div class="p-4 flex flex-col gap-3">
+      <div class="flex items-center gap-3">
+        <button id="draft-email-btn"
+                onclick="draftEmail({{ ret.id }})"
+                class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          </svg>
+          Draft follow-up email
+        </button>
+        <span id="draft-email-error" class="hidden text-xs text-red-600 font-medium"></span>
+      </div>
+      <div id="draft-email-warning"
+           class="hidden flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 font-medium">
+        <svg class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
+        This draft is for review only — nothing is sent automatically.
+        Edit it below, then copy and send it yourself through your email client.
+      </div>
+      <textarea id="draft-email-textarea"
+                rows="10"
+                class="hidden w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y"
+                placeholder="Draft will appear here…"></textarea>
+      <button id="draft-email-copy-btn"
+              onclick="copyDraft()"
+              class="hidden shrink-0 self-start flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+        Copy to clipboard
+      </button>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Two-column layout (stacks on small screens for readability) ─────── -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5">
+
+    <!-- Left (≈2/3): Fields -->
+    <div class="lg:col-span-2 space-y-4 min-w-0">
+
+      <!-- Return info -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header">{{ _('Return Info') }}</div>
+        <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+
+          {% macro ef(label, field, val, typ='text', ph='', can_edit=none) %}
+          {% set _show_edit = can_edit if can_edit is not none else (not view_only) %}
+          <div>
+            <div class="field-label">{{ label }}</div>
+            {% if _show_edit %}
+            <span class="editable block font-medium text-slate-800"
+                  data-return-id="{{ ret.id }}" data-field="{{ field }}"
+                  data-value="{{ val or '' }}" data-type="{{ typ }}" data-placeholder="{{ ph }}">
+              {% if typ == 'bool' %}
+                {% if val %}<span class="text-green-600 font-semibold">✓ Yes</span>{% else %}<span class="text-slate-300">No</span>{% endif %}
+              {% else %}
+                {% if field == 'processor' %}{{ preparer_list_label(val) }}{% else %}{{ val or '—' }}{% endif %}
+              {% endif %}
+            </span>
+            {% else %}
+            <span class="block font-medium text-slate-800">
+              {% if typ == 'bool' %}
+                {% if val %}<span class="text-green-600 font-semibold">✓ Yes</span>{% else %}<span class="text-slate-300">No</span>{% endif %}
+              {% else %}
+                {% if field == 'processor' %}{{ preparer_list_label(val) }}{% else %}{{ val or '—' }}{% endif %}
+              {% endif %}
+            </span>
+            {% endif %}
+          </div>
+          {% endmacro %}
+
+          {{ ef('Preparer',      'processor',     ret.processor) }}
+          {{ ef('Tax Year',      'tax_year',      ret.tax_year,    ph='YYYY') }}
+          {{ ef('Email Marker',  'email_marker',  ret.email_marker,  can_edit=(get_effective_role()=='admin')) }}
+          {{ ef('Intake Date',   'intake_date',   ret.intake_date,   ph='YYYY-MM-DD') }}
+          {{ ef('Date Emailed',  'date_emailed',  ret.date_emailed,  ph='YYYY-MM-DD', can_edit=(get_effective_role()=='admin')) }}
+          {{ ef('Pickup Date',   'pickup_date',   ret.pickup_date,   ph='YYYY-MM-DD') }}
+          {{ ef('Logout Date',   'logout_date',   ret.logout_date,   ph='YYYY-MM-DD') }}
+          {{ ef('Updated Date',  'updated_date',  ret.updated_date,  ph='YYYY-MM-DD') }}
+          <div>
+            <div class="field-label">Cycle Days</div>
+            <span class="block font-medium text-slate-800">{{ ret.cycle_days if ret.cycle_days is not none else '—' }}</span>
+          </div>
+          {{ ef('Promise Date',   'promise_date',  ret.promise_date,  ph='YYYY-MM-DD') }}
+          {{ ef('Delivered By',  'delivered_by',  ret.delivered_by,  ph='Initials') }}
+          {{ ef('Sigs Emailed',  'date_signatures_emailed', ret.date_signatures_emailed, ph='YYYY-MM-DD') }}
+          {{ ef('Rpts Emailed',  'date_reports_emailed',    ret.date_reports_emailed,    ph='YYYY-MM-DD') }}
+          {{ ef('Verified',      'verified',      ret.verified,      'bool') }}
+          {{ ef('2025 Transfer', 'transfer_2025_flag', ret.transfer_2025_flag, 'bool') }}
+          {{ ef('2026 Transfer', 'transfer_2026_flag', ret.transfer_2026_flag, 'bool') }}
+          {{ ef('Transfer Flag', 'transfer_flag', ret.transfer_flag, 'bool') }}
+        </div>
+        {% if ret.risk_flags %}
+        <div class="px-4 pb-4">
+          <div class="field-label mb-1">Operational Flags</div>
+          <div class="flex flex-wrap gap-1.5">
+            {% for flag in ret.risk_flags %}
+            <span class="text-[11px] font-bold px-2.5 py-1 rounded-full border
+                         {% if flag == 'LATE INTAKE' %}
+                         bg-amber-50 text-amber-700 border-amber-200
+                         {% elif flag == 'CLIENT CONTACT' %}
+                         bg-orange-50 text-orange-800 border-orange-200
+                         {% else %}
+                         bg-rose-50 text-rose-700 border-rose-200
+                         {% endif %}">
+              {{ flag }}
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- DEP-1/DEP-3: Dependents -->
+      {% if dependents %}
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header">{{ _('Dependents') }}</div>
+        <div class="divide-y divide-slate-100">
+          {% for dep in dependents %}
+          <div id="dep-row-{{ dep.id }}" class="flex items-center gap-3 px-4 py-2.5 text-sm">
+            <span class="flex-1 font-medium text-slate-800">
+              {{ dep.full_name or '—' }}
+              {% if dep.on_medicare %}
+              <span class="ml-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full border
+                           bg-sky-50 text-sky-700 border-sky-200">Medicare</span>
+              {% endif %}
+            </span>
+            <span class="text-slate-500 text-xs">{{ dep.relationship or '' }}</span>
+            <span class="text-slate-400 text-xs font-mono">{{ dep.date_of_birth or '' }}</span>
+            {% if not view_only %}
+            <button type="button"
+                    onclick="removeDependent({{ ret.id }}, {{ dep.id }}, '{{ dep.full_name | replace("'","") }}')"
+                    class="text-slate-300 hover:text-red-400 transition-colors text-xs ml-2" title="{{ _('Remove') }}">
+              &#10005;
+            </button>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Missing Documents -->
+      {% set open_docs   = missing_docs | selectattr('is_resolved', 'equalto', 0) | list %}
+      {% set closed_docs = missing_docs | selectattr('is_resolved', 'equalto', 1) | list %}
+      <div id="missing-docs-card"
+           class="bg-white rounded-xl border overflow-hidden
+                  {% if open_docs %}border-orange-300{% else %}border-slate-200{% endif %}">
+        <div class="section-header flex items-center justify-between
+                    {% if open_docs %}bg-orange-50 border-b border-orange-200{% endif %}">
+          <span class="flex items-center gap-2">
+            {{ _('Missing Documents') }}
+            {% if open_docs %}
+            <span class="text-xs font-bold bg-orange-500 text-white px-2 py-0.5 rounded-full">
+              {{ open_docs | length }} {{ _('open') }}
+            </span>
+            {% elif missing_docs %}
+            <span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
+              All resolved &#10003;
+            </span>
+            {% endif %}
+          </span>
+          {% if ret.client_status == 'HOLD' and not open_docs and missing_docs %}
+          <span class="text-xs text-slate-400 font-normal">All docs in — clear HOLD when ready</span>
+          {% endif %}
+        </div>
+
+        <!-- Add new item -->
+        {% if not view_only %}
+        <div class="p-3 border-b border-[var(--border-subtle)] flex gap-2">
+          <input id="missing-doc-input" type="text" placeholder="e.g. W-2, Prior year return, SSN card…"
+                 class="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                 onkeydown="if(event.key==='Enter') addMissingDoc({{ ret.id }})">
+          <button onclick="addMissingDoc({{ ret.id }})"
+                  class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white transition-colors">
+            + Add
+          </button>
+        </div>
+        {% endif %}
+
+        <!-- Items list -->
+        <div id="missing-docs-list" class="divide-y divide-slate-100 max-h-52 overflow-y-auto">
+          {% for doc in missing_docs %}
+          <div id="mdoc-{{ doc.id }}"
+               class="flex items-center gap-3 px-4 py-2.5 {% if doc.is_resolved %}opacity-50{% endif %}">
+            {% if not view_only %}
+            <button onclick="toggleMissingDoc({{ ret.id }}, {{ doc.id }}, this)"
+                    title="{% if doc.is_resolved %}Mark open{% else %}Mark resolved{% endif %}"
+                    class="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 transition-colors
+                           {% if doc.is_resolved %}bg-green-100 border-green-400 text-green-600{% else %}border-slate-300 hover:border-orange-400{% endif %}">
+              {% if doc.is_resolved %}<span class="text-xs font-bold">&#10003;</span>{% endif %}
+            </button>
+            {% else %}
+            <span class="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0
+                         {% if doc.is_resolved %}bg-green-100 border-green-400 text-green-600{% else %}border-slate-200{% endif %}">
+              {% if doc.is_resolved %}<span class="text-xs font-bold">&#10003;</span>{% endif %}
+            </span>
+            {% endif %}
+            <span class="flex-1 text-sm {% if doc.is_resolved %}line-through text-slate-400{% else %}text-slate-800{% endif %}">
+              {{ doc.item_text }}
+            </span>
+            {% if not view_only %}
+            <button onclick="deleteMissingDoc({{ ret.id }}, {{ doc.id }})"
+                    class="text-slate-300 hover:text-red-400 transition-colors text-xs" title="Remove">
+              &#10005;
+            </button>
+            {% endif %}
+          </div>
+          {% else %}
+          <div id="missing-docs-empty" class="px-4 py-5 text-center text-sm text-slate-400">
+            No missing documents tracked
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Forms -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header">{{ _('Return Forms') }}</div>
+        <div class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+          {% set form_list = [
+            ('form_1040',    'Form 1040'),
+            ('sched_a_d',    'Sch A & D'),
+            ('sched_c',      'Schedule C'),
+            ('sched_e',      'Schedule E'),
+            ('form_1120',    'Form 1120'),
+            ('form_1120s',   'Form 1120S'),
+            ('form_1065_llc','1065 / LLC'),
+            ('corp_officer', 'Corp Officer'),
+            ('business_owner','Bus Owner'),
+            ('form_990_1041','990 / 1041'),
+            ('is_amended',   '1040X (Amended)'),
+            ('has_w7',       'Form W-7'),
+            ('is_extension', 'Extension'),
+            ('transfer_flag','Transfer'),
+          ] %}
+          {% for field, label in form_list %}
+          {% set val = ret.get(field) %}
+          {% if not view_only %}
+          <label class="flex items-center gap-2 cursor-pointer p-2.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all select-none">
+            <input type="checkbox"
+                   {% if val %}checked{% endif %}
+                   onchange="saveField({{ ret.id }}, '{{ field }}', this.checked ? 1 : 0)"
+                   class="rounded border-slate-300 text-blue-600 focus:ring-blue-400 focus:ring-offset-0">
+            <span class="text-sm text-slate-700">{{ label }}</span>
+          </label>
+          {% else %}
+          <span class="flex items-center gap-2 p-2.5 rounded-lg border border-transparent select-none">
+            <span class="w-4 h-4 rounded border flex items-center justify-center shrink-0
+                         {% if val %}border-blue-400 bg-blue-600 text-white{% else %}border-slate-300 bg-white{% endif %}">
+              {% if val %}<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>{% endif %}
+            </span>
+            <span class="text-sm {% if val %}text-slate-800 font-medium{% else %}text-slate-400{% endif %}">{{ label }}</span>
+          </span>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Payment -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header flex items-center justify-between">
+          <span>{{ _('Payment') }}</span>
+          {% if ret.total_fee %}
+            {% if ret.paid_in_full %}
+            <span class="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">{{ _('PAID IN FULL') }}</span>
+            {% else %}
+            <span class="text-xs font-bold text-red-500 bg-red-50 px-2.5 py-1 rounded-full">
+              {{ _('BALANCE DUE') }} ${{ "{:,.2f}".format(ret.balance) }}
+            </span>
+            {% endif %}
+          {% endif %}
+        </div>
+        <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+
+          {% macro pf(label, field, val, currency=False, can_edit=none) %}
+          {% set _show_edit = can_edit if can_edit is not none else (not view_only) %}
+          <div>
+            <div class="field-label">{{ label }}</div>
+            {% if _show_edit %}
+            <span class="editable block font-medium text-slate-800"
+                  data-return-id="{{ ret.id }}" data-field="{{ field }}"
+                  data-value="{{ val or '' }}" data-placeholder="{{ label }}">
+              {% if currency and val %}${{ "{:,.2f}".format(val) }}{% else %}{{ val or '—' }}{% endif %}
+            </span>
+            {% else %}
+            <span class="block font-medium text-slate-800">
+              {% if currency and val %}${{ "{:,.2f}".format(val) }}{% else %}{{ val or '—' }}{% endif %}
+            </span>
+            {% endif %}
+          </div>
+          {% endmacro %}
+
+          {{ pf(_('Total Fee'),    'total_fee',          ret.total_fee,          True) }}
+          {{ pf(_('Fee Paid'),     'fee_paid',           ret.fee_paid,           True) }}
+          {{ pf(_('CC Fee'),       'cc_fee',             ret.cc_fee,             True) }}
+          {{ pf(_('Receipt #'),    'receipt_number',     ret.receipt_number,     can_edit=(get_effective_role()=='admin')) }}
+          {{ pf('Zelle / CK #', 'zelle_or_check_ref', ret.zelle_or_check_ref) }}
+          {{ pf('Cash / QPay',  'cash_or_qpay_ref',  ret.cash_or_qpay_ref) }}
+        </div>
+      </div>
+
+      <!-- Documents -->
+      <div id="documents" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
+        <div class="section-header">{{ _('Documents') }}</div>
+        <div class="p-4 space-y-4">
+          <div class="flex flex-wrap items-end gap-3">
+            <label class="flex flex-col gap-1 text-sm shrink-0">
+              <span class="text-slate-500 font-medium">{{ _('File(s)') }}</span>
+              <input type="file" id="doc-file-input" accept="image/*,.pdf" multiple
+                     class="text-sm text-slate-700 max-w-[14rem] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200">
+            </label>
+            <label class="flex flex-col gap-1 text-sm">
+              <span class="text-slate-500 font-medium">{{ _('Type') }}</span>
+              <select id="doc-type-select"
+                      class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 min-w-[11rem] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                <option value="W-2" selected>W-2</option>
+                <option value="1099">1099</option>
+                <option value="prior_return">Prior Return</option>
+                <option value="government_id">Government ID</option>
+                <option value="misc">Misc</option>
+                <option value="unknown">{{ _('Mixed / sort later') }}</option>
+              </select>
+            </label>
+            <button type="button" id="doc-upload-btn"
+                    class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
+              {{ _('Upload') }}
+            </button>
+            {% if can_scan_intake_docs and not view_only %}
+            <button type="button" id="doc-scan-btn"
+                    onclick="openScanModal()"
+                    class="shrink-0 flex items-center gap-1.5 text-xs text-white bg-[#6B2233] hover:bg-[#8B2E44] rounded-lg px-3 py-2 transition-all">
+              {{ _('Scan from Epson') }}
+            </button>
+            {% endif %}
+          </div>
+          <div class="flex flex-wrap items-end gap-3">
+            <label class="flex flex-col gap-1 text-sm flex-1 min-w-[12rem]">
+              <span class="text-slate-500 font-medium">{{ _('Search documents') }}</span>
+              <input type="search" id="doc-search-input" placeholder="{{ _('Client text, type, filename…') }}"
+                     class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            </label>
+            <button type="button" id="doc-search-btn" onclick="searchDocuments()"
+                    class="shrink-0 text-xs border border-slate-200 rounded-lg px-3 py-2 text-slate-600 hover:text-slate-900">
+              {{ _('Search') }}
+            </button>
+            <button type="button" id="doc-search-clear" onclick="clearDocSearch()"
+                    class="shrink-0 text-xs text-slate-400 hover:text-slate-700 px-2 py-2">
+              {{ _('Clear') }}
+            </button>
+          </div>
+          <p id="doc-upload-status" class="hidden text-xs font-medium"></p>
+          <div id="doc-email-indicator" class="hidden items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <span id="doc-email-count" class="flex-1 text-xs font-semibold text-amber-700"></span>
+            <button type="button" id="doc-filter-btn" onclick="toggleDocFilter()"
+                    class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-2 py-1 transition-all">
+              Show untagged only
+            </button>
+          </div>
+          <div id="doc-list"></div>
+        </div>
+      </div>
+
+      {% if can_scan_intake_docs %}
+      <div id="scan-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-5 space-y-4 border border-slate-200">
+          <h3 class="text-lg font-semibold text-[#6B2233]">{{ _('Scan client documents now?') }}</h3>
+          <p class="text-sm text-slate-600">{{ _('Load pages in the Epson feeder. We will scan, upload, and auto-sort what we can.') }}</p>
+          <div id="scan-agent-health" class="text-xs rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
+            {{ _('Checking scanner…') }}
+          </div>
+          <label class="flex flex-col gap-1 text-sm">
+            <span class="text-slate-500 font-medium">{{ _('Document type') }}</span>
+            <select id="scan-doc-type" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option value="unknown" selected>{{ _('Mixed / sort later (recommended)') }}</option>
+              <option value="W-2">W-2</option>
+              <option value="1099">1099</option>
+              <option value="prior_return">{{ _('Prior Return') }}</option>
+              <option value="government_id">{{ _('Government ID') }}</option>
+              <option value="misc">Misc</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" id="scan-handwriting" class="rounded border-slate-300">
+            {{ _('Handwriting / no text enhancement') }}
+          </label>
+          <p id="scan-modal-status" class="hidden text-xs font-medium"></p>
+          <div class="flex flex-wrap gap-2 justify-end pt-2">
+            <button type="button" onclick="skipScanModal()" class="text-xs px-3 py-2 rounded-lg border border-slate-200 text-slate-600">{{ _('Skip') }}</button>
+            <button type="button" id="scan-modal-go" onclick="runScanAndUpload()" class="text-xs px-3 py-2 rounded-lg bg-[#6B2233] text-white">{{ _('Scan & upload') }}</button>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <div id="form-data-root" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
+        <div class="section-header">{{ _('Document Data') }}</div>
+        <div id="form-data-empty" class="px-4 py-5 text-center text-sm text-slate-400">
+          {{ _('No document data yet. Run') }} <strong>{{ _('Extract fields') }}</strong> {{ _('on a tagged document to populate this section.') }}
+        </div>
+        <div id="form-data-groups" class="p-4 space-y-6 hidden"></div>
+      </div>
+
+    </div><!-- /left col -->
+
+    <!-- Right (≈1/3): Notes + History + Client -->
+    <div class="space-y-4 min-w-0 lg:max-h-none">
+
+      <!-- Notes -->
+      <div id="notes-card" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
+        <div class="section-header">{{ _('Notes') }}</div>
+        {# Group A — receptionist and above can add notes #}
+        <div class="p-3 border-b border-[var(--border-subtle)]">
+          <textarea id="note-input" rows="2" placeholder="{{ _('Add a note\u2026 (Ctrl+Enter to save)') }}"
+                    class="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                    onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();submitNote({{ ret.id }})}"></textarea>
+          <button onclick="submitNote({{ ret.id }})"
+                  class="mt-2 w-full text-xs bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg py-1.5 font-semibold transition-colors">
+            {{ _('Save Note') }}
+          </button>
+        </div>
+        <div id="notes-list" class="divide-y divide-slate-100 max-h-56 overflow-y-auto" aria-live="polite" aria-label="{{ _('Notes') }}">
+          {% for note in notes %}
+          <div class="px-4 py-3">
+            <p class="text-sm text-slate-800 leading-snug">{{ note.note_text }}</p>
+            <p class="text-xs text-slate-400 mt-1">{{ note.source }} · {{ (note.created_at or '')[:10] }}</p>
+          </div>
+          {% else %}
+          <div class="px-4 py-6 text-center text-sm text-slate-400">No notes yet</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Status history -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header">{{ _('History') }}</div>
+        <div class="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+          {% for event in events %}
+          <div class="px-4 py-3">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs font-semibold text-slate-700">{{ event.event_type }}</span>
+              {% if event.old_status and event.new_status %}
+              <span class="text-xs text-slate-400">
+                {{ event.old_status }} → {{ event.new_status }}
+              </span>
+              {% endif %}
+            </div>
+            <p class="text-xs text-slate-400 mt-0.5">
+              {{ event.source_file }} · {{ (event.event_timestamp or '')[:16] }}
+            </p>
+          </div>
+          {% else %}
+          <div class="px-4 py-6 text-center text-sm text-slate-400">{{ _('No history yet') }}</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Client info -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="section-header">{{ _('Client') }}</div>
+        <div class="p-4 space-y-3 text-sm">
+          <div>
+            <div class="field-label">Last name</div>
+            <span class="editable block font-medium text-slate-800"
+                  data-return-id="{{ ret.id }}" data-field="last_name"
+                  data-value="{{ ret.last_name or '' }}" data-placeholder="Last name">
+              {{ ret.last_name or '—' }}
+            </span>
+          </div>
+          <div>
+            <div class="field-label">First name</div>
+            <span class="editable block font-medium text-slate-800"
+                  data-return-id="{{ ret.id }}" data-field="first_name"
+                  data-value="{{ ret.first_name or '' }}" data-placeholder="First name">
+              {{ ret.first_name or '—' }}
+            </span>
+          </div>
+          <div>
+            <div class="field-label">Display Name</div>
+            <span class="editable block font-medium text-slate-800"
+                  data-return-id="{{ ret.id }}" data-field="display_name"
+                  data-value="{{ ret.display_name or '' }}" data-placeholder="Display name">
+              {{ ret.display_name or '—' }}
+            </span>
+          </div>
+          <div>
+            <div class="field-label">Referred By</div>
+            <span class="editable block font-medium text-slate-800"
+                  data-return-id="{{ ret.id }}" data-field="referred_by"
+                  data-value="{{ ret.referred_by or '' }}" data-placeholder="Who referred?">
+              {{ ret.referred_by or '—' }}
+            </span>
+          </div>
+          <div>
+            <div class="field-label">Referral</div>
+            <span class="editable cursor-pointer"
+                  data-return-id="{{ ret.id }}" data-field="referral_flag"
+                  data-type="bool" data-value="{{ '1' if ret.referral_flag else '0' }}">
+              {% if ret.referral_flag %}
+              <span class="text-green-600 font-semibold">✓ Yes</span>
+              {% else %}
+              <span class="text-slate-300">No</span>
+              {% endif %}
+            </span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /right col -->
+  </div><!-- /grid -->
+
+</div><!-- /wrapper -->
+
+<!-- Print sticker uses /api/return/{{ ret.id }}/print-label (same ZPL as intake). -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+
+  // setStatus from app.js reloads on detail page since the whole header / workflow bar changes
+  const _origSetStatus = window.setStatus;
+  window.setStatus = async function(returnId, status, btn) {
+    const resp = await _csrfFetch(`/api/return/${returnId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    const data = await resp.json();
+    if (!data.success) return;
+    if (status === 'FINALIZE') {
+      _promptPrintIntakeSheet(returnId, () => window.location.reload());
+    } else {
+      window.location.reload();
+    }
+  };
+
+  function _promptPrintIntakeSheet(returnId, onDone) {
+    // Backdrop
+    const bd = document.createElement('div');
+    Object.assign(bd.style, {
+      position:'fixed', inset:'0', zIndex:'9900',
+      background:'rgba(0,0,0,0.45)', display:'flex',
+      alignItems:'center', justifyContent:'center',
+    });
+
+    bd.innerHTML =
+      `<div style="background:#fff;border-radius:1rem;padding:2rem;max-width:380px;width:90vw;
+                   box-shadow:0 20px 60px rgba(0,0,0,0.25);animation:tourFadeIn 200ms ease both;">
+         <div style="font-size:1.25rem;margin-bottom:.375rem;">🖨️</div>
+         <h2 style="font-size:1rem;font-weight:700;margin:0 0 .375rem;color:#1e293b;">Print intake sheet?</h2>
+         <p style="font-size:.8125rem;color:#64748b;margin:0 0 1.25rem;line-height:1.6;">
+           Status set to <strong>FINALIZE</strong>. Open the intake sheet now to print or save as PDF?
+         </p>
+         <div style="display:flex;justify-content:flex-end;gap:.625rem;align-items:center;">
+           <button data-action="skip"
+                   style="font-size:.8125rem;color:#64748b;background:none;border:none;cursor:pointer;padding:4px 8px;">
+             Skip
+           </button>
+           <button data-action="print"
+                   style="font-size:.875rem;font-weight:600;background:#1d4ed8;color:#fff;
+                          border:none;border-radius:.5rem;padding:.5rem 1.25rem;cursor:pointer;">
+             Print Intake Sheet
+           </button>
+         </div>
+       </div>`;
+
+    document.body.appendChild(bd);
+
+    bd.querySelector('[data-action="print"]').addEventListener('click', () => {
+      window.open(`/api/return/${returnId}/intake-sheet`, '_blank');
+      bd.remove();
+      onDone();
+    });
+    bd.querySelector('[data-action="skip"]').addEventListener('click', () => {
+      bd.remove();
+      onDone();
+    });
+    // Click outside to skip
+    bd.addEventListener('click', e => { if (e.target === bd) { bd.remove(); onDone(); } });
+  }
+
+  // Legacy alias used by old workflow bar buttons (now removed, kept for safety)
+  async function setStatusDetail(returnId, status) {
+    window.setStatus(returnId, status, null);
+  }
+
+  async function saveContactStatus(returnId) {
+    const sel = document.getElementById('contact-status-sel');
+    const dIn = document.getElementById('contact-date-input');
+    if (!sel) return;
+    const body = { contact_status: sel.value };
+    if (sel.value === 'not_contacted') body.last_contacted_date = null;
+    const resp = await _csrfFetch(`/api/return/${returnId}/contact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    if (!data.success) return;
+    if (data.last_contacted_date && dIn) dIn.value = data.last_contacted_date.slice(0, 10);
+    if ((data.contact_status === 'not_contacted') && dIn) dIn.value = '';
+    window.location.reload();
+  }
+
+  async function saveContactDate(returnId) {
+    const sel = document.getElementById('contact-status-sel');
+    const dIn = document.getElementById('contact-date-input');
+    if (!dIn || !sel) return;
+    const resp = await _csrfFetch(`/api/return/${returnId}/contact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contact_status: sel.value,
+        last_contacted_date: dIn.value || null,
+      }),
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    if (!data.success) return;
+    window.location.reload();
+  }
+
+  async function saveField(returnId, field, value) {
+    await _csrfFetch(`/api/return/${returnId}/field`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ field, value }),
+    });
+  }
+
+  // ── LIFE-1: Cancel / uncancel return ─────────────────────────────────────
+  function showCancelForm(returnId) {
+    const form = document.getElementById('cancel-reason-form');
+    const btn  = document.getElementById('cancel-return-btn');
+    if (!form) return;
+    form.classList.remove('hidden');
+    if (btn) btn.classList.add('hidden');
+    document.getElementById('cancel-reason-input')?.focus();
+  }
+
+  function hideCancelForm() {
+    const form = document.getElementById('cancel-reason-form');
+    const btn  = document.getElementById('cancel-return-btn');
+    if (form) form.classList.add('hidden');
+    if (btn) btn.classList.remove('hidden');
+  }
+
+  async function confirmCancel(returnId) {
+    const reason = (document.getElementById('cancel-reason-input')?.value || '').trim();
+    if (!reason) { alert('Please enter a reason for cancellation.'); return; }
+    try {
+      const resp = await _csrfFetch(`/api/return/${returnId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data.error) {
+        alert(data.error || ('Cancel failed (HTTP ' + resp.status + ')'));
+        return;
+      }
+      window.location.reload();
+    } catch (e) {
+      alert(e.message || 'Cancel failed');
+    }
+  }
+
+  async function uncancelReturn(returnId) {
+    if (!confirm('Reinstate this return?')) return;
+    try {
+      const resp = await _csrfFetch(`/api/return/${returnId}/uncancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data.error) {
+        alert(data.error || ('Uncancel failed (HTTP ' + resp.status + ')'));
+        return;
+      }
+      window.location.reload();
+    } catch (e) {
+      alert(e.message || 'Uncancel failed');
+    }
+  }
+
+  // ── DEL-1: Hard-delete return (admin-only, irreversible) ─────────────────
+  async function deleteReturn(returnId, logNumber) {
+    const hasLog = logNumber != null && String(logNumber).trim() !== '';
+    const token = hasLog ? String(logNumber).trim() : String(returnId);
+    const typed = prompt(
+      `This PERMANENTLY deletes return #${hasLog ? logNumber : returnId} and all its notes, `
+      + `payments, documents, and history. This cannot be undone.\n\n`
+      + (hasLog
+          ? `Type the log number (${token}) to confirm:`
+          : `This return has no log number. Type the return id (${token}) to confirm:`)
+    );
+    if (typed === null) return;
+    if (typed.trim() !== token) {
+      alert('Confirmation did not match — nothing was deleted.');
+      return;
+    }
+    const body = hasLog
+      ? { confirm_log_number: typed.trim() }
+      : { confirm_return_id: typed.trim() };
+    const resp = await _csrfFetch(`/api/return/${returnId}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    alert('Return deleted.');
+    window.location.href = '/dashboard';
+  }
+
+  // ── DEP-1: Remove dependent from return ──────────────────────────────────
+  async function removeDependent(returnId, depId, name) {
+    const label = name || 'this dependent';
+    const row   = document.getElementById(`dep-row-${depId}`);
+    if (!row) return;
+    if (!row.dataset.confirming) {
+      row.dataset.confirming = '1';
+      const xBtn = row.querySelector('button[onclick*="removeDependent"]');
+      if (xBtn) {
+        xBtn.textContent = `Remove ${label}?`;
+        xBtn.className = 'text-red-500 text-xs font-semibold hover:text-red-700 ml-2';
+      }
+      return;
+    }
+    const resp = await _csrfFetch(`/api/return/${returnId}/dependents/${depId}`, {
+      method: 'DELETE',
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    row.remove();
+  }
+
+  // ── Missing documents tracker ─────────────────────────────────────────────
+  async function addMissingDoc(returnId) {
+    const input = document.getElementById('missing-doc-input');
+    const text  = (input.value || '').trim();
+    if (!text) return;
+    input.disabled = true;
+    try {
+      const resp = await _csrfFetch(`/api/return/${returnId}/missing-doc`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text }),
+      });
+      const data = await resp.json();
+      if (!data.success) { input.disabled = false; return; }
+      input.value    = '';
+      input.disabled = false;
+      // Remove empty placeholder
+      document.getElementById('missing-docs-empty')?.remove();
+      // Append new row
+      const list = document.getElementById('missing-docs-list');
+      const div  = document.createElement('div');
+      div.id = `mdoc-${data.id}`;
+      div.className = 'flex items-center gap-3 px-4 py-2.5';
+      div.innerHTML = `
+        <button onclick="toggleMissingDoc(${returnId}, ${data.id}, this)" title="Mark resolved"
+                class="w-5 h-5 rounded border border-slate-300 hover:border-orange-400 flex items-center justify-center flex-shrink-0 transition-colors">
+        </button>
+        <span class="flex-1 text-sm text-slate-800">${data.text}</span>
+        <button onclick="deleteMissingDoc(${returnId}, ${data.id})"
+                class="text-slate-300 hover:text-red-400 transition-colors text-xs" title="Remove">&#10005;</button>`;
+      list.appendChild(div);
+      refreshDocsBadge(returnId);
+    } catch(e) { input.disabled = false; }
+  }
+
+  async function toggleMissingDoc(returnId, docId, btn) {
+    const resp = await _csrfFetch(`/api/return/${returnId}/missing-doc/${docId}/toggle`, { method: 'POST' });
+    const data = await resp.json();
+    if (!data.success) return;
+    const row  = document.getElementById(`mdoc-${docId}`);
+    const span = row.querySelector('span.flex-1');
+    if (data.is_resolved) {
+      btn.classList.replace('border-slate-300','border-green-400');
+      btn.classList.add('bg-green-100','text-green-600');
+      btn.innerHTML = '<span class="text-xs font-bold">&#10003;</span>';
+      btn.title = 'Mark open';
+      span.classList.add('line-through','text-slate-400');
+      span.classList.remove('text-slate-800');
+      row.classList.add('opacity-50');
+    } else {
+      btn.classList.replace('border-green-400','border-slate-300');
+      btn.classList.remove('bg-green-100','text-green-600');
+      btn.innerHTML = '';
+      btn.title = 'Mark resolved';
+      span.classList.remove('line-through','text-slate-400');
+      span.classList.add('text-slate-800');
+      row.classList.remove('opacity-50');
+    }
+    refreshDocsBadge(returnId);
+  }
+
+  async function deleteMissingDoc(returnId, docId) {
+    await _csrfFetch(`/api/return/${returnId}/missing-doc/${docId}`, { method: 'DELETE' });
+    document.getElementById(`mdoc-${docId}`)?.remove();
+    if (!document.querySelector('#missing-docs-list [id^="mdoc-"]')) {
+      const list = document.getElementById('missing-docs-list');
+      list.innerHTML = '<div id="missing-docs-empty" class="px-4 py-5 text-center text-sm text-slate-400">No missing documents tracked</div>';
+    }
+    refreshDocsBadge(returnId);
+  }
+
+  function refreshDocsBadge(returnId) {
+    const rows   = document.querySelectorAll('#missing-docs-list [id^="mdoc-"]');
+    const open   = [...rows].filter(r => !r.classList.contains('opacity-50')).length;
+    const card   = document.getElementById('missing-docs-card');
+    const header = card?.querySelector('.section-header');
+    // Update border color
+    if (card) {
+      card.classList.toggle('border-orange-300', open > 0);
+      card.classList.toggle('border-slate-200',  open === 0);
+    }
+    if (header) {
+      header.classList.toggle('bg-orange-50',         open > 0);
+      header.classList.toggle('border-b',             open > 0);
+      header.classList.toggle('border-orange-200',    open > 0);
+    }
+  }
+
+  async function quickToggle(returnId, field, btn) {
+    const current = btn.dataset.value === '1';
+    const newVal  = current ? 0 : 1;
+    try {
+      const resp = await _csrfFetch(`/api/return/${returnId}/field`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ field, value: newVal }),
+      });
+      const data = await resp.json();
+      if (!data.success) return;
+
+      btn.dataset.value = String(newVal);
+      const icon = btn.querySelector('span');
+      if (icon) icon.textContent = newVal ? '✓' : '○';
+
+      // Swap active / inactive styling
+      const onClasses  = btn.dataset.onClass  || 'bg-blue-50 text-blue-700 border-blue-300';
+      const offClasses = 'bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-600';
+
+      if (newVal) {
+        offClasses.split(' ').forEach(c => btn.classList.remove(c));
+        // determine color from current button class
+        let on = onClasses;
+        if (btn.classList.contains('text-green-700') || btn.dataset.color === 'green') on = 'bg-green-50 text-green-700 border-green-300';
+        else if (btn.classList.contains('text-amber-700') || btn.dataset.color === 'amber') on = 'bg-amber-50 text-amber-700 border-amber-300';
+        on.split(' ').forEach(c => btn.classList.add(c));
+      } else {
+        ['bg-blue-50','text-blue-700','border-blue-300',
+         'bg-green-50','text-green-700','border-green-300',
+         'bg-amber-50','text-amber-700','border-amber-300',
+         'bg-red-50','text-red-700','border-red-300'].forEach(c => btn.classList.remove(c));
+        offClasses.split(' ').forEach(c => btn.classList.add(c));
+      }
+
+      // Flash feedback
+      if (window.flash) window.flash(btn);
+    } catch (e) { console.error(e); }
+  }
+
+  async function printSticker() {
+    // Same physical LOG sticker as intake create (ZPL via print relay) — not HTML.
+    const btn = document.querySelector('button[onclick="printSticker()"]');
+    const dateEl = document.getElementById('print-sticker-date');
+    const prev = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '{{ _("Printing…") }}'; }
+    try {
+      const body = {};
+      if (dateEl && dateEl.value) body.log_in_date = dateEl.value;
+      const resp = await _csrfFetch('/api/return/{{ ret.id }}/print-label', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.success) {
+        alert(data.error || ('{{ _("Print failed") }} (' + resp.status + ')'));
+        return;
+      }
+      if (window.flash && btn) window.flash(btn);
+    } catch (e) {
+      console.error(e);
+      alert('{{ _("Print failed") }}');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = prev || '{{ _("Print sticker") }}'; }
+    }
+  }
+
+  async function draftEmail(returnId) {
+    const btn      = document.getElementById('draft-email-btn');
+    const textarea = document.getElementById('draft-email-textarea');
+    const errSpan  = document.getElementById('draft-email-error');
+    const warning  = document.getElementById('draft-email-warning');
+    const copyBtn  = document.getElementById('draft-email-copy-btn');
+
+    btn.disabled    = true;
+    btn.textContent = 'Drafting…';
+    errSpan.classList.add('hidden');
+    errSpan.textContent = '';
+
+    try {
+      const resp = await _csrfFetch(`/ai/return/${returnId}/draft-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await resp.json();
+
+      if (data.draft) {
+        textarea.value = data.draft;
+        textarea.classList.remove('hidden');
+        warning.classList.remove('hidden');
+        copyBtn.classList.remove('hidden');
+      } else {
+        errSpan.textContent = data.error || 'Failed to generate draft.';
+        errSpan.classList.remove('hidden');
+      }
+    } catch (e) {
+      errSpan.textContent = 'Could not reach server. Is Ollama running?';
+      errSpan.classList.remove('hidden');
+    } finally {
+      btn.disabled  = false;
+      btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg> Regenerate draft';
+    }
+  }
+
+  async function copyDraft() {
+    const textarea = document.getElementById('draft-email-textarea');
+    const copyBtn  = document.getElementById('draft-email-copy-btn');
+    if (!textarea || !textarea.value) return;
+    try {
+      await navigator.clipboard.writeText(textarea.value);
+      const orig = copyBtn.innerHTML;
+      copyBtn.textContent = '✓ Copied';
+      copyBtn.classList.add('text-green-700', 'border-green-300');
+      setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.classList.remove('text-green-700','border-green-300'); }, 2000);
+    } catch (e) {
+      textarea.select();
+      document.execCommand('copy');
+    }
+  }
+
+  // ── Return documents (upload / list / view / soft-delete) ───────────────────
+  const RETURN_ID = {{ ret.id }};
+  const DRAKE_SYNC_ENABLED = {% if drake_enabled %}true{% else %}false{% endif %};
+  const CAN_SCAN = {% if can_scan_intake_docs %}true{% else %}false{% endif %};
+  const CAN_DELETE_DOCS = {% if get_effective_role() in ('preparer', 'admin') %}true{% else %}false{% endif %};
+  const PROMPT_SCAN = {% if prompt_scan %}true{% else %}false{% endif %};
+  const SCAN_AGENT_URL = {{ (scan_agent_url or '')|tojson }};
+  const SCAN_AGENT_TOKEN = {{ (scan_agent_token or '')|tojson }};
+  const LOG_NUMBER = {{ (ret.log_number or '')|tojson }};
+
+  const FORM_FIELD_ORDER = {
+    "w2_records": [
+      "employer_name",
+      "employer_address",
+      "box1_wages_tips_other",
+      "box2_federal_income_tax_withheld",
+      "box3_social_security_wages",
+      "box4_social_security_tax_withheld",
+      "box5_medicare_wages_tips",
+      "box6_medicare_tax_withheld",
+      "box7_social_security_tips",
+      "box8_allocated_tips",
+      "box10_dependent_care_benefits",
+      "box11_nonqualified_plans",
+      "box12a_code",
+      "box12a_amount",
+      "box12b_code",
+      "box12b_amount",
+      "box12c_code",
+      "box12c_amount",
+      "box12d_code",
+      "box12d_amount",
+      "box13_statutory_employee",
+      "box13_retirement_plan",
+      "box13_third_party_sick_pay",
+      "box14_other",
+      "box15_state",
+      "box16_state_wages",
+      "box17_state_income_tax",
+      "box18_local_wages",
+      "box19_local_income_tax",
+      "box20_locality_name",
+      "box15b_state",
+      "box16b_state_wages",
+      "box17b_state_income_tax",
+      "box18b_local_wages",
+      "box19b_local_income_tax",
+      "box20b_locality_name",
+      "tax_year"
+    ],
+    "f1099_nec_records": [
+      "payer_name",
+      "payer_address",
+      "box1_nonemployee_compensation",
+      "box2_direct_sales_indicator",
+      "box4_federal_income_tax_withheld",
+      "box5_state_tax_withheld",
+      "box6_state",
+      "box7_state_income",
+      "tax_year"
+    ],
+    "f1099_misc_records": [
+      "payer_name",
+      "payer_address",
+      "box1_rents",
+      "box2_royalties",
+      "box3_other_income",
+      "box4_federal_income_tax_withheld",
+      "box5_fishing_boat_proceeds",
+      "box6_medical_health_care_payments",
+      "box7_direct_sales_indicator",
+      "box8_substitute_payments",
+      "box9_crop_insurance_proceeds",
+      "box10_gross_proceeds_attorney",
+      "box11_fish_purchased_resale",
+      "box12_section_409a_deferrals",
+      "box14_gross_proceeds_attorney",
+      "box15_section_409a_income",
+      "box16_state_tax_withheld",
+      "box17_state",
+      "box18_state_income",
+      "tax_year"
+    ],
+    "f1099_int_records": [
+      "payer_name",
+      "payer_address",
+      "box1_interest_income",
+      "box2_early_withdrawal_penalty",
+      "box3_us_savings_bond_treasury_interest",
+      "box4_federal_income_tax_withheld",
+      "box5_investment_expenses",
+      "box6_foreign_tax_paid",
+      "box7_foreign_country",
+      "box8_tax_exempt_interest",
+      "box9_specified_private_activity_bond_interest",
+      "box10_market_discount",
+      "box11_bond_premium",
+      "box12_bond_premium_treasury_obligations",
+      "box13_bond_premium_tax_exempt_bond",
+      "box14_tax_exempt_bond_cusip",
+      "box15_state",
+      "box16_state_identification",
+      "box17_state_tax_withheld",
+      "tax_year"
+    ],
+    "f1099_div_records": [
+      "payer_name",
+      "payer_address",
+      "box1a_total_ordinary_dividends",
+      "box1b_qualified_dividends",
+      "box2a_total_capital_gain",
+      "box2b_unrecap_sec1250_gain",
+      "box2c_section_1202_gain",
+      "box2d_collectibles_gain",
+      "box2e_section_897_ordinary_dividends",
+      "box2f_section_897_capital_gain",
+      "box3_nondividend_distributions",
+      "box4_federal_income_tax_withheld",
+      "box5_section_199a_dividends",
+      "box6_investment_expenses",
+      "box7_foreign_tax_paid",
+      "box8_foreign_country",
+      "box9_cash_liquidation_distributions",
+      "box10_noncash_liquidation_distributions",
+      "box11_fatca_filing_requirement",
+      "box12_exempt_interest_dividends",
+      "box13_specified_private_activity_bond",
+      "box14_state",
+      "box15_state_identification",
+      "box16_state_tax_withheld",
+      "tax_year"
+    ]
+  };
+
+  const FORM_GROUP_DEFS = [
+    { key: 'w2', sqlTable: 'w2_records', title: 'W-2' },
+    { key: 'f1099_nec', sqlTable: 'f1099_nec_records', title: '1099-NEC' },
+    { key: 'f1099_misc', sqlTable: 'f1099_misc_records', title: '1099-MISC' },
+    { key: 'f1099_int', sqlTable: 'f1099_int_records', title: '1099-INT' },
+    { key: 'f1099_div', sqlTable: 'f1099_div_records', title: '1099-DIV' },
+  ];
+
+  const FD_SQL_LABEL_GROUP = {
+    w2_records: 'w2',
+    f1099_nec_records: 'f1099_nec',
+    f1099_misc_records: 'f1099_misc',
+    f1099_int_records: 'f1099_int',
+    f1099_div_records: 'f1099_div',
+  };
+
+  const FORM_LABELS = {
+    w2: {
+      employer_name: 'Employer name',
+      employer_address: 'Employer address',
+      box1_wages_tips_other: 'Box 1 — Wages, tips, other compensation',
+      box2_federal_income_tax_withheld: 'Box 2 — Federal income tax withheld',
+      box3_social_security_wages: 'Box 3 — Social Security wages',
+      box4_social_security_tax_withheld: 'Box 4 — Social Security tax withheld',
+      box5_medicare_wages_tips: 'Box 5 — Medicare wages and tips',
+      box6_medicare_tax_withheld: 'Box 6 — Medicare tax withheld',
+      box7_social_security_tips: 'Box 7 — Social security tips',
+      box8_allocated_tips: 'Box 8 — Allocated tips',
+      box10_dependent_care_benefits: 'Box 10 — Dependent care benefits',
+      box11_nonqualified_plans: 'Box 11 — Nonqualified plans',
+      box12a_code: 'Box 12a — Code',
+      box12a_amount: 'Box 12a — Amount',
+      box12b_code: 'Box 12b — Code',
+      box12b_amount: 'Box 12b — Amount',
+      box12c_code: 'Box 12c — Code',
+      box12c_amount: 'Box 12c — Amount',
+      box12d_code: 'Box 12d — Code',
+      box12d_amount: 'Box 12d — Amount',
+      box13_statutory_employee: 'Box 13 — Statutory employee',
+      box13_retirement_plan: 'Box 13 — Retirement plan',
+      box13_third_party_sick_pay: 'Box 13 — Third-party sick pay',
+      box14_other: 'Box 14 — Other',
+      box15_state: 'Box 15 — State (Employer\'s state ID no.)',
+      box16_state_wages: 'Box 16 — State wages, tips, etc.',
+      box17_state_income_tax: 'Box 17 — State income tax',
+      box18_local_wages: 'Box 18 — Local wages, tips, etc.',
+      box19_local_income_tax: 'Box 19 — Local income tax',
+      box20_locality_name: 'Box 20 — Locality name',
+      box15b_state: 'Box 15 (second state) — State ID',
+      box16b_state_wages: 'Box 16 (second state) — State wages',
+      box17b_state_income_tax: 'Box 17 (second state) — State income tax',
+      box18b_local_wages: 'Box 18 (second locality) — Local wages',
+      box19b_local_income_tax: 'Box 19 (second locality) — Local income tax',
+      box20b_locality_name: 'Box 20 (second locality) — Locality name',
+      tax_year: 'Tax year',
+      source: 'Source',
+    },
+    f1099_nec: {
+      payer_name: 'Payer\'s name',
+      payer_address: 'Payer\'s address',
+      box1_nonemployee_compensation: 'Box 1 — Nonemployee compensation',
+      box2_direct_sales_indicator: 'Box 2 — Direct sales ($5,000+) indicator',
+      box4_federal_income_tax_withheld: 'Box 4 — Federal income tax withheld',
+      box5_state_tax_withheld: 'Box 5 — State/Payer\'s state no. tax withheld',
+      box6_state: 'Box 6 — State income',
+      box7_state_income: 'Box 7 — State income tax',
+      tax_year: 'Tax year',
+    },
+    f1099_misc: {
+      payer_name: 'Payer\'s name',
+      payer_address: 'Payer\'s address',
+      box1_rents: 'Box 1 — Rents',
+      box2_royalties: 'Box 2 — Royalties',
+      box3_other_income: 'Box 3 — Other income',
+      box4_federal_income_tax_withheld: 'Box 4 — Federal income tax withheld',
+      box5_fishing_boat_proceeds: 'Box 5 — Fishing boat proceeds',
+      box6_medical_health_care_payments: 'Box 6 — Medical and health care payments',
+      box7_direct_sales_indicator: 'Box 7 — Direct sales indicator',
+      box8_substitute_payments: 'Box 8 — Substitute payments',
+      box9_crop_insurance_proceeds: 'Box 9 — Crop insurance proceeds',
+      box10_gross_proceeds_attorney: 'Box 10 — Gross proceeds paid to attorney',
+      box11_fish_purchased_resale: 'Box 11 — Fish purchased for resale',
+      box12_section_409a_deferrals: 'Box 12 — Section 409A deferrals',
+      box14_gross_proceeds_attorney: 'Box 14 — Gross proceeds to attorney',
+      box15_section_409a_income: 'Box 15 — Section 409A income',
+      box16_state_tax_withheld: 'Box 16 — State tax withheld',
+      box17_state: 'Box 17 — State/Payer\'s state no.',
+      box18_state_income: 'Box 18 — State income',
+      tax_year: 'Tax year',
+    },
+    f1099_int: {
+      payer_name: 'Payer\'s name',
+      payer_address: 'Payer\'s address',
+      box1_interest_income: 'Box 1 — Interest income',
+      box2_early_withdrawal_penalty: 'Box 2 — Early withdrawal penalty',
+      box3_us_savings_bond_treasury_interest: 'Box 3 — Interest on U.S. Savings Bonds/Treasury',
+      box4_federal_income_tax_withheld: 'Box 4 — Federal income tax withheld',
+      box5_investment_expenses: 'Box 5 — Investment expenses',
+      box6_foreign_tax_paid: 'Box 6 — Foreign tax paid',
+      box7_foreign_country: 'Box 7 — Foreign country/US possession',
+      box8_tax_exempt_interest: 'Box 8 — Tax-exempt interest',
+      box9_specified_private_activity_bond_interest: 'Box 9 — Specified private activity bond interest',
+      box10_market_discount: 'Box 10 — Market discount',
+      box11_bond_premium: 'Box 11 — Bond premium',
+      box12_bond_premium_treasury_obligations: 'Box 12 — Bond premium on Treasury obligations',
+      box13_bond_premium_tax_exempt_bond: 'Box 13 — Bond premium on tax-exempt bond',
+      box14_tax_exempt_bond_cusip: 'Box 14 — Tax-exempt bond CUSIP no.',
+      box15_state: 'Box 15 — State',
+      box16_state_identification: 'Box 16 — State identification no.',
+      box17_state_tax_withheld: 'Box 17 — State tax withheld',
+      tax_year: 'Tax year',
+    },
+    f1099_div: {
+      payer_name: 'Payer\'s name',
+      payer_address: 'Payer\'s address',
+      box1a_total_ordinary_dividends: 'Box 1a — Total ordinary dividends',
+      box1b_qualified_dividends: 'Box 1b — Qualified dividends',
+      box2a_total_capital_gain: 'Box 2a — Total capital gain distributions',
+      box2b_unrecap_sec1250_gain: 'Box 2b — Unrecaptured Section 1250 gain',
+      box2c_section_1202_gain: 'Box 2c — Section 1202 gain',
+      box2d_collectibles_gain: 'Box 2d — Collectibles (28%) gain',
+      box2e_section_897_ordinary_dividends: 'Box 2e — Section 897 ordinary dividends',
+      box2f_section_897_capital_gain: 'Box 2f — Section 897 capital gain',
+      box3_nondividend_distributions: 'Box 3 — Nondividend distributions',
+      box4_federal_income_tax_withheld: 'Box 4 — Federal income tax withheld',
+      box5_section_199a_dividends: 'Box 5 — Section 199A dividends',
+      box6_investment_expenses: 'Box 6 — Investment expenses',
+      box7_foreign_tax_paid: 'Box 7 — Foreign tax paid',
+      box8_foreign_country: 'Box 8 — Foreign country/US possession',
+      box9_cash_liquidation_distributions: 'Box 9 — Cash liquidation distributions',
+      box10_noncash_liquidation_distributions: 'Box 10 — Noncash liquidation distributions',
+      box11_fatca_filing_requirement: 'Box 11 — FATCA filing requirement',
+      box12_exempt_interest_dividends: 'Box 12 — Exempt-interest dividends',
+      box13_specified_private_activity_bond: 'Box 13 — Specified private activity bond interest dividends',
+      box14_state: 'Box 14 — State',
+      box15_state_identification: 'Box 15 — State identification no.',
+      box16_state_tax_withheld: 'Box 16 — State distribution',
+      tax_year: 'Tax year',
+    },
+  };
+
+  /** Subsections within each extracted form card (Fed / FICA / State / Local patterns). */
+  const FD_SECTION_DEFS = {
+    w2_records: [
+      {
+        title: 'Employer & tax year',
+        keys: ['employer_name', 'employer_address', 'tax_year'],
+      },
+      {
+        title: 'Federal — wages & withholding',
+        keys: ['box1_wages_tips_other', 'box2_federal_income_tax_withheld'],
+      },
+      {
+        title: 'FICA — Social Security & Medicare',
+        keys: [
+          'box3_social_security_wages',
+          'box4_social_security_tax_withheld',
+          'box5_medicare_wages_tips',
+          'box6_medicare_tax_withheld',
+          'box7_social_security_tips',
+          'box8_allocated_tips',
+        ],
+      },
+      {
+        title: 'Other compensation & codes',
+        keys: [
+          'box10_dependent_care_benefits',
+          'box11_nonqualified_plans',
+          'box12a_code',
+          'box12a_amount',
+          'box12b_code',
+          'box12b_amount',
+          'box12c_code',
+          'box12c_amount',
+          'box12d_code',
+          'box12d_amount',
+          'box13_statutory_employee',
+          'box13_retirement_plan',
+          'box13_third_party_sick_pay',
+          'box14_other',
+        ],
+      },
+      {
+        title: 'State',
+        keys: ['box15_state', 'box16_state_wages', 'box17_state_income_tax'],
+      },
+      {
+        title: 'Local',
+        keys: ['box18_local_wages', 'box19_local_income_tax', 'box20_locality_name'],
+      },
+      {
+        title: 'Second state/locality',
+        keys: [
+          'box15b_state',
+          'box16b_state_wages',
+          'box17b_state_income_tax',
+          'box18b_local_wages',
+          'box19b_local_income_tax',
+          'box20b_locality_name',
+        ],
+      },
+    ],
+    f1099_nec_records: [
+      { title: 'Payer', keys: ['payer_name', 'payer_address', 'tax_year'] },
+      { title: 'Federal', keys: ['box1_nonemployee_compensation', 'box2_direct_sales_indicator', 'box4_federal_income_tax_withheld'] },
+      { title: 'State', keys: ['box5_state_tax_withheld', 'box6_state', 'box7_state_income'] },
+    ],
+    f1099_misc_records: [
+      { title: 'Payer', keys: ['payer_name', 'payer_address', 'tax_year'] },
+      {
+        title: 'Federal — gross income',
+        keys: [
+          'box1_rents',
+          'box2_royalties',
+          'box3_other_income',
+          'box4_federal_income_tax_withheld',
+          'box5_fishing_boat_proceeds',
+          'box6_medical_health_care_payments',
+          'box7_direct_sales_indicator',
+          'box8_substitute_payments',
+          'box9_crop_insurance_proceeds',
+          'box10_gross_proceeds_attorney',
+          'box11_fish_purchased_resale',
+          'box12_section_409a_deferrals',
+          'box14_gross_proceeds_attorney',
+          'box15_section_409a_income',
+        ],
+      },
+      { title: 'State', keys: ['box16_state_tax_withheld', 'box17_state', 'box18_state_income'] },
+    ],
+    f1099_int_records: [
+      { title: 'Payer', keys: ['payer_name', 'payer_address', 'tax_year'] },
+      {
+        title: 'Federal — interest & withholding',
+        keys: [
+          'box1_interest_income',
+          'box2_early_withdrawal_penalty',
+          'box3_us_savings_bond_treasury_interest',
+          'box4_federal_income_tax_withheld',
+        ],
+      },
+      {
+        title: 'Federal — other amounts',
+        keys: [
+          'box5_investment_expenses',
+          'box6_foreign_tax_paid',
+          'box7_foreign_country',
+          'box8_tax_exempt_interest',
+          'box9_specified_private_activity_bond_interest',
+          'box10_market_discount',
+          'box11_bond_premium',
+        ],
+      },
+      {
+        title: 'Bond identification',
+        keys: [
+          'box12_bond_premium_treasury_obligations',
+          'box13_bond_premium_tax_exempt_bond',
+          'box14_tax_exempt_bond_cusip',
+        ],
+      },
+      {
+        title: 'State',
+        keys: ['box15_state', 'box16_state_identification', 'box17_state_tax_withheld'],
+      },
+    ],
+    f1099_div_records: [
+      { title: 'Payer', keys: ['payer_name', 'payer_address', 'tax_year'] },
+      {
+        title: 'Federal — dividends & distributions',
+        keys: [
+          'box1a_total_ordinary_dividends',
+          'box1b_qualified_dividends',
+          'box2a_total_capital_gain',
+          'box2b_unrecap_sec1250_gain',
+          'box2c_section_1202_gain',
+          'box2d_collectibles_gain',
+          'box2e_section_897_ordinary_dividends',
+          'box2f_section_897_capital_gain',
+          'box3_nondividend_distributions',
+          'box4_federal_income_tax_withheld',
+        ],
+      },
+      {
+        title: 'Federal — other',
+        keys: [
+          'box5_section_199a_dividends',
+          'box6_investment_expenses',
+          'box7_foreign_tax_paid',
+          'box8_foreign_country',
+          'box9_cash_liquidation_distributions',
+          'box10_noncash_liquidation_distributions',
+          'box11_fatca_filing_requirement',
+          'box12_exempt_interest_dividends',
+          'box13_specified_private_activity_bond',
+        ],
+      },
+      { title: 'State', keys: ['box14_state', 'box15_state_identification', 'box16_state_tax_withheld'] },
+    ],
+  };
+
+
+  function _formSavedToLabel(savedTo) {
+    const m = {
+      w2_records: 'W-2 records',
+      f1099_nec_records: '1099-NEC records',
+      f1099_misc_records: '1099-MISC records',
+      f1099_int_records: '1099-INT records',
+      f1099_div_records: '1099-DIV records',
+    };
+    return m[savedTo] || savedTo;
+  }
+
+  function fdSourceBadgeEl(sourceRaw) {
+    const s = sourceRaw === 'manual' ? 'manual' : 'extracted';
+    const span = document.createElement('span');
+    span.className =
+      'inline-block text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ' +
+      (s === 'manual'
+        ? 'bg-slate-100 text-slate-600 border-slate-200'
+        : 'bg-blue-50 text-blue-700 border-blue-200');
+    span.textContent = s;
+    return span;
+  }
+
+  const FD_SKIP_KEYS = new Set([
+    'id',
+    'return_id',
+    'doc_id',
+    'source',
+    'created_at',
+    'updated_at',
+    'is_deleted',
+  ]);
+
+  const FD_INTEGER_FIELDS = new Set([
+    'box13_statutory_employee',
+    'box13_retirement_plan',
+    'box13_third_party_sick_pay',
+    'box2_direct_sales_indicator',
+    'box7_direct_sales_indicator',
+    'box11_fatca_filing_requirement',
+  ]);
+
+  const FD_LABEL_OVERRIDES = {};
+
+  function fdTitleTail(restUnderscores) {
+    if (!restUnderscores) return '';
+    const small = new Set(['of', 'and', 'or', 'the', 'a', 'to', 'in', 'no', 'for']);
+    const s = restUnderscores.replace(/_/g, ' ');
+    return s
+      .split(' ')
+      .filter(Boolean)
+      .map(function titleMap(w, i) {
+        var lw = w.toLowerCase();
+        if (lw === 'ss') return 'SS';
+        if (lw === 'sec1250') return 'Section 1250';
+        if (lw === '1202') return 'Section 1202';
+        if (lw === '897') return 'Section 897';
+        if (lw === '199a') return 'Section 199A';
+        if (lw === '409a') return 'Section 409A';
+        if (lw === 'ssn') return 'SSN';
+        if (lw === 'irs') return 'Federal';
+        if (i > 0 && small.has(lw)) return lw;
+        return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+      })
+      .join(' ');
+  }
+
+  function fdFieldLabel(field, sqlTable) {
+    if (!field) return '';
+    var grp = sqlTable ? FD_SQL_LABEL_GROUP[sqlTable] : null;
+    if (grp && FORM_LABELS[grp] && FORM_LABELS[grp][field]) {
+      return FORM_LABELS[grp][field];
+    }
+    var ovr = FD_LABEL_OVERRIDES[field];
+    if (ovr) return ovr;
+    if (field === 'tax_year') return 'Tax year';
+    var parts = field.split('_');
+    if (!parts.length) return '';
+    if (parts[0].startsWith('box')) {
+      var bx = parts[0].slice(3);
+      var tail = parts.slice(1).join('_');
+      return 'Box ' + bx + ' — ' + fdTitleTail(tail);
+    }
+    return fdTitleTail(field);
+  }
+
+  function fdRowHasValue(raw, fieldKey) {
+    if (raw === null || raw === undefined) return false;
+    if (typeof raw === 'boolean') return raw;
+    if (typeof raw === 'number') {
+      if (Number.isNaN(raw)) return false;
+      if (raw === 0 && fieldKey && !FD_INTEGER_FIELDS.has(fieldKey)) return false;
+      return true;
+    }
+    var s = String(raw).trim();
+    if (s === '') return false;
+    var sl = s.toLowerCase();
+    if (s === '0' || sl === 'false') return false;
+    return true;
+  }
+
+  function fdNormalizeStored(field, raw) {
+    if (FD_INTEGER_FIELDS.has(field)) {
+      var n = typeof raw === 'number' ? raw : parseInt(String(raw).trim(), 10);
+      return n === 1 ? '1' : '0';
+    }
+    return raw != null ? String(raw).trim() : '';
+  }
+
+  function nonzeroOrderedKeys(sqlTable, row) {
+    var order = FORM_FIELD_ORDER[sqlTable] || [];
+    var seen = new Set();
+    var out = [];
+    var i;
+    for (i = 0; i < order.length; i++) {
+      var k = order[i];
+      if (FD_SKIP_KEYS.has(k) || seen.has(k)) continue;
+      if (!Object.prototype.hasOwnProperty.call(row, k)) continue;
+      if (!fdRowHasValue(row[k], k)) continue;
+      out.push(k);
+      seen.add(k);
+    }
+    var extra = Object.keys(row).filter(function (k) {
+      return !FD_SKIP_KEYS.has(k) && !seen.has(k);
+    });
+    extra.sort();
+    for (i = 0; i < extra.length; i++) {
+      var ek = extra[i];
+      if (!fdRowHasValue(row[ek], ek)) continue;
+      out.push(ek);
+    }
+    return out;
+  }
+
+  /** Split ordered keys into Fed / FICA / State / Local-style subsections for display. */
+  function fdPartitionKeys(sqlTable, orderedKeys) {
+    var defs = FD_SECTION_DEFS[sqlTable];
+    if (!defs || !defs.length) {
+      return [{ title: '', keys: orderedKeys }];
+    }
+    var used = {};
+    var out = [];
+    var ki, k, si, sj, chunk;
+    for (si = 0; si < defs.length; si++) {
+      chunk = [];
+      for (ki = 0; ki < orderedKeys.length; ki++) {
+        k = orderedKeys[ki];
+        if (used[k]) continue;
+        for (sj = 0; sj < defs[si].keys.length; sj++) {
+          if (defs[si].keys[sj] === k) {
+            chunk.push(k);
+            used[k] = true;
+            break;
+          }
+        }
+      }
+      if (chunk.length) {
+        out.push({ title: defs[si].title, keys: chunk });
+      }
+    }
+    var rest = [];
+    for (ki = 0; ki < orderedKeys.length; ki++) {
+      k = orderedKeys[ki];
+      if (!used[k]) rest.push(k);
+    }
+    if (rest.length) {
+      out.push({ title: 'Additional fields', keys: rest });
+    }
+    return out;
+  }
+
+  function fdCellDisplay(field, raw) {
+    if (!fdRowHasValue(raw, field)) return '—';
+    if (FD_INTEGER_FIELDS.has(field)) {
+      var n = typeof raw === 'number' ? raw : parseInt(String(raw).trim(), 10);
+      if (n === 1) return 'Yes';
+      if (n === 0) return 'No';
+      return '—';
+    }
+    var t = raw != null ? String(raw).trim() : '';
+    return t === '' ? '—' : t;
+  }
+
+  function bindFdEditableCell(td, sqlTable, recordId, field) {
+    td.classList.add('cursor-text', 'hover:bg-slate-50');
+    td.dataset.fdTable = sqlTable;
+    td.dataset.fdId = String(recordId);
+    td.dataset.fdField = field;
+    td.addEventListener('click', function fdCellClick() {
+      if (td.querySelector('input') || td.querySelector('select')) return;
+      var cur = td.dataset.fdOrig != null ? td.dataset.fdOrig : '';
+      var isInt = FD_INTEGER_FIELDS.has(field);
+      td.textContent = '';
+
+      if (isInt) {
+        var sel = document.createElement('select');
+        sel.className =
+          'w-full min-w-[6rem] text-sm border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400';
+        ;[
+          { v: '0', t: 'No' },
+          { v: '1', t: 'Yes' },
+        ].forEach(function (opt) {
+          var o = document.createElement('option');
+          o.value = opt.v;
+          o.textContent = opt.t;
+          sel.appendChild(o);
+        });
+        sel.value = cur === '1' ? '1' : '0';
+        td.appendChild(sel);
+        sel.focus();
+
+        function finishSel() {
+          var newVal = sel.value === '1' ? '1' : '0';
+          td.textContent = fdCellDisplay(field, parseInt(newVal, 10));
+          td.dataset.fdOrig = newVal;
+          if (cur === newVal) return;
+          _csrfFetch(
+            '/return/' +
+              RETURN_ID +
+              '/form-data/' +
+              sqlTable +
+              '/' +
+              recordId +
+              '/update',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ field: field, value: parseInt(newVal, 10) }),
+            }
+          )
+            .then(function (r) {
+              return r.json().then(function (d) {
+                return { r: r, d: d };
+              });
+            })
+            .then(function (o) {
+              if (o.r.ok && o.d.success) loadFormData();
+            })
+            .catch(function () {});
+        }
+
+        sel.addEventListener('blur', finishSel);
+        sel.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            sel.blur();
+          }
+          if (ev.key === 'Escape') {
+            sel.value = cur === '1' ? '1' : '0';
+            sel.blur();
+          }
+        });
+        return;
+      }
+
+      var inp = document.createElement('input');
+      inp.type = 'text';
+      inp.value = cur;
+      inp.className =
+        'w-full min-w-[6rem] text-sm border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400';
+      td.appendChild(inp);
+      inp.focus();
+      inp.select();
+
+      function finish() {
+        var newVal = (inp.value || '').trim();
+        td.textContent = fdCellDisplay(field, newVal);
+        td.dataset.fdOrig = newVal;
+        if ((cur || '') === newVal) return;
+        _csrfFetch(
+          '/return/' +
+            RETURN_ID +
+            '/form-data/' +
+            sqlTable +
+            '/' +
+            recordId +
+            '/update',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ field: field, value: newVal }),
+          }
+        )
+          .then(function (r) {
+            return r.json().then(function (d) {
+              return { r: r, d: d };
+            });
+          })
+          .then(function (o) {
+            if (o.r.ok && o.d.success) loadFormData();
+          })
+          .catch(function () {});
+      }
+
+      inp.addEventListener('blur', finish);
+      inp.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          inp.blur();
+        }
+        if (ev.key === 'Escape') {
+          inp.value = cur;
+          inp.blur();
+        }
+      });
+    });
+  }
+
+  function deleteFormRecord(sqlTable, recordId) {
+    if (!confirm('Remove this row from document data?')) return;
+    _csrfFetch('/return/' + RETURN_ID + '/form-data/' + sqlTable + '/' + recordId, {
+      method: 'DELETE',
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) loadFormData();
+      })
+      .catch(() => {});
+  }
+
+  function renderFormDataSection(data) {
+    const wrap = document.getElementById('form-data-groups');
+    const empty = document.getElementById('form-data-empty');
+    if (!wrap || !empty) return;
+    wrap.innerHTML = '';
+    let total = 0;
+    FORM_GROUP_DEFS.forEach((def) => {
+      const rows = data[def.key] || [];
+      total += rows.length;
+      if (!rows.length) return;
+
+      const block = document.createElement('div');
+      block.className = 'space-y-4';
+
+      const h = document.createElement('h4');
+      h.className = 'text-xs font-bold uppercase tracking-wide text-slate-500';
+      h.textContent = def.title;
+      block.appendChild(h);
+
+      rows.forEach((row) => {
+        const keys = nonzeroOrderedKeys(def.sqlTable, row);
+        if (!keys.length) return;
+
+        const outer = document.createElement('div');
+        outer.className = 'rounded-lg border border-slate-200 overflow-hidden bg-white';
+
+        const tableShell = document.createElement('div');
+        tableShell.className = 'overflow-x-auto';
+        const tbl = document.createElement('table');
+        tbl.className = 'min-w-full text-sm';
+        const tbody = document.createElement('tbody');
+        tbody.className = 'divide-y divide-slate-100';
+
+        const sections = fdPartitionKeys(def.sqlTable, keys);
+
+        sections.forEach((sec, secIdx) => {
+          if (sec.title) {
+            const htr = document.createElement('tr');
+            const htd = document.createElement('td');
+            htd.colSpan = 2;
+            let hCls =
+              'px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-slate-100';
+            if (secIdx > 0) {
+              hCls += ' border-t border-slate-200';
+            }
+            htd.className = hCls;
+            htd.textContent = sec.title;
+            htr.appendChild(htd);
+            tbody.appendChild(htr);
+          }
+
+          sec.keys.forEach((fieldKey) => {
+            const raw = row[fieldKey];
+            const tr = document.createElement('tr');
+            tr.className = 'align-top';
+
+            const tdLab = document.createElement('td');
+            tdLab.className =
+              'px-3 py-2 whitespace-nowrap text-[11px] font-semibold text-slate-500 bg-slate-50 w-[40%] max-w-xs';
+            tdLab.textContent = fdFieldLabel(fieldKey, def.sqlTable);
+            tr.appendChild(tdLab);
+
+            const tdVal = document.createElement('td');
+            tdVal.className = 'px-3 py-2 text-slate-800 font-medium';
+            tdVal.dataset.fdOrig = fdNormalizeStored(fieldKey, raw);
+            tdVal.textContent = fdCellDisplay(fieldKey, raw);
+            bindFdEditableCell(tdVal, def.sqlTable, row.id, fieldKey);
+            tr.appendChild(tdVal);
+
+            tbody.appendChild(tr);
+          });
+        });
+
+        const footTr = document.createElement('tr');
+        footTr.className = 'bg-slate-50 border-t border-slate-200';
+        const tdFoot = document.createElement('td');
+        tdFoot.colSpan = 2;
+        tdFoot.className = 'px-3 py-2';
+        const footInner = document.createElement('div');
+        footInner.className = 'flex items-center justify-between gap-4';
+        const left = document.createElement('div');
+        left.className = 'flex items-center gap-2';
+        left.appendChild(fdSourceBadgeEl(row.source || 'extracted'));
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'text-xs font-semibold text-red-600 hover:text-red-800';
+        del.textContent = 'Delete';
+        del.onclick = () => deleteFormRecord(def.sqlTable, row.id);
+        footInner.appendChild(left);
+        footInner.appendChild(del);
+        tdFoot.appendChild(footInner);
+        footTr.appendChild(tdFoot);
+        tbody.appendChild(footTr);
+
+        tbl.appendChild(tbody);
+        tableShell.appendChild(tbl);
+        outer.appendChild(tableShell);
+        block.appendChild(outer);
+      });
+
+      wrap.appendChild(block);
+    });
+
+    if (total === 0) {
+      empty.classList.remove('hidden');
+      wrap.classList.add('hidden');
+    } else {
+      empty.classList.add('hidden');
+      wrap.classList.remove('hidden');
+    }
+  }
+
+  function loadFormData() {
+    _csrfFetch('/return/' + RETURN_ID + '/form-data')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.error) return;
+        renderFormDataSection(data);
+      })
+      .catch(() => {});
+  }
+
+  function _escapeHtml(s) {
+    if (s == null || s === '') return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function _docSourceLabel(src) {
+    if (src === 'walk_in') return 'Walk-in';
+    if (src === 'email' || src === 'email_inbox') return 'Email';
+    if (src === 'scan_agent') return 'Scan';
+    return src ? _escapeHtml(String(src)) : '—';
+  }
+
+  function buildDocTypeDropdown(docId, currentType) {
+    const allowed = ['unknown', 'W-2', '1099', 'prior_return', 'government_id', 'misc'];
+    const ct = allowed.includes(currentType) ? currentType : 'unknown';
+    const options = [
+      { value: 'unknown', label: 'Unknown' },
+      { value: 'W-2', label: 'W-2' },
+      { value: '1099', label: '1099' },
+      { value: 'prior_return', label: 'Prior Return' },
+      { value: 'government_id', label: 'Government ID' },
+      { value: 'misc', label: 'Misc' },
+    ];
+    const selClass =
+      'doc-type-select border border-slate-200 rounded-lg px-3 py-2 text-slate-800 min-w-[11rem] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400';
+    let select =
+      '<select data-doc-id="' +
+      docId +
+      '" data-previous-value="' +
+      ct +
+      '" class="' +
+      selClass +
+      '" onchange="updateDocType(this)">';
+    options.forEach((opt) => {
+      const selected = opt.value === ct ? ' selected' : '';
+      select += '<option value="' + opt.value + '"' + selected + '>' + opt.label + '</option>';
+    });
+    select += '</select>';
+    return select;
+  }
+
+  function extractFields(docId, btn) {
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    document.getElementById('extract-error-' + docId)?.remove();
+    const existingPanel = document.getElementById('extract-panel-' + docId);
+    if (existingPanel) existingPanel.remove();
+
+    const abortMs = 125000;
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), abortMs);
+
+    // ── Live progress feedback ────────────────────────────────────────────────
+    const STAGES = [
+      [0,   '🔍 Reading document…'],
+      [5,   '📄 Sending to vision model…'],
+      [15,  '⚙️  Model processing…'],
+      [35,  '⚙️  Still processing… (large PDF)'],
+      [65,  '⏳ Almost there…'],
+      [95,  '⏳ Finalizing…'],
+    ];
+    const startTs = Date.now();
+    let stageIdx = 0;
+    let progressEl = document.getElementById('extract-progress-' + docId);
+    if (!progressEl) {
+      progressEl = document.createElement('span');
+      progressEl.id = 'extract-progress-' + docId;
+      progressEl.className = 'text-xs text-indigo-500 font-medium ml-2';
+      btn.parentNode.insertBefore(progressEl, btn.nextSibling);
+    }
+
+    function updateProgress() {
+      const elapsed = Math.floor((Date.now() - startTs) / 1000);
+      // Advance stage if we've passed its threshold
+      while (stageIdx < STAGES.length - 1 && elapsed >= STAGES[stageIdx + 1][0]) stageIdx++;
+      const label = STAGES[stageIdx][1];
+      btn.textContent = `Extracting… ${elapsed}s`;
+      progressEl.textContent = label;
+    }
+
+    updateProgress();
+    const progressTimer = setInterval(updateProgress, 1000);
+
+    function insertErr(msg) {
+      const err = document.createElement('span');
+      err.className = 'text-xs text-red-600 font-medium ml-2 whitespace-nowrap';
+      err.textContent = msg;
+      err.id = 'extract-error-' + docId;
+      btn.parentNode.insertBefore(err, btn.nextSibling);
+      setTimeout(() => err.remove(), 12000);
+    }
+
+    _csrfFetch('/ai/documents/' + docId + '/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+    })
+      .then((r) =>
+        r.json().then(
+          (data) => ({ r, data }),
+          () => ({ r, data: {} })
+        )
+      )
+      .then(({ r, data }) => {
+        if (!r.ok || data.error) {
+          insertErr(data.error || 'Extraction failed');
+          return;
+        }
+        if (data.fields) {
+          const panel = document.createElement('div');
+          panel.id = 'extract-panel-' + docId;
+          panel.className =
+            'mt-2 mb-2 mx-3 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2';
+          const f = data.fields;
+          panel.dataset.extractRefEmployer =
+            f.employer_name != null ? String(f.employer_name).trim() : '';
+          panel.dataset.extractRefWages =
+            f.total_wages != null ? String(f.total_wages).trim() : '';
+          panel.dataset.extractRefTaxYear =
+            f.tax_year != null ? String(f.tax_year).trim() : '';
+          panel.appendChild(buildExtractPanel(docId, data.fields, data.saved_to));
+          const row = btn.closest('[data-doc-row]');
+          if (row) row.insertAdjacentElement('afterend', panel);
+        }
+      })
+      .catch((err) => {
+        const elapsed = Math.floor((Date.now() - startTs) / 1000);
+        if (err && err.name === 'AbortError') {
+          insertErr(`Timed out after ${elapsed}s — Ollama may be busy or the PDF is too large. Try again.`);
+        } else {
+          insertErr('Extraction failed — check Ollama is running');
+        }
+      })
+      .finally(() => {
+        clearTimeout(abortTimer);
+        clearInterval(progressTimer);
+        progressEl.remove();
+        btn.disabled = false;
+        btn.textContent = originalText;
+        btn.title = '';
+      });
+  }
+
+  function _extractAppendRefLine(container, label, value) {
+    const v = (value || '').trim();
+    if (!v) return;
+    const row = document.createElement('div');
+    const k = document.createElement('span');
+    k.className = 'font-medium text-slate-500';
+    k.textContent = label + ': ';
+    row.appendChild(k);
+    row.appendChild(document.createTextNode(v));
+    container.appendChild(row);
+  }
+
+  /** Always show label (use em dash when empty) — for post-apply summary. */
+  function _extractAppendRefLineAlways(container, label, value) {
+    const v = (value || '').trim() || '—';
+    const row = document.createElement('div');
+    const k = document.createElement('span');
+    k.className = 'font-medium text-slate-500';
+    k.textContent = label + ': ';
+    row.appendChild(k);
+    row.appendChild(document.createTextNode(v));
+    container.appendChild(row);
+  }
+
+  function buildExtractPanel(docId, fields, savedTo) {
+    const wrap = document.createElement('div');
+    wrap.className = 'space-y-2';
+
+    if (savedTo) {
+      const savedLine = document.createElement('div');
+      savedLine.className =
+        'rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800 font-semibold';
+      const label = _formSavedToLabel(savedTo);
+      savedLine.textContent =
+        '✓ Data saved to ' + label + ' — view in Document Data section below';
+      wrap.appendChild(savedLine);
+    }
+
+    const banner = document.createElement('div');
+    banner.className =
+      'flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 font-medium';
+    banner.textContent =
+      'Review before applying — nothing saves automatically until you click each updated cell and finish editing (blur or Enter). Employer and wages are reference only.';
+    wrap.appendChild(banner);
+
+    const emp = fields.employer_name != null ? String(fields.employer_name).trim() : '';
+    const wag = fields.total_wages != null ? String(fields.total_wages).trim() : '';
+    const yrRef = fields.tax_year != null ? String(fields.tax_year).trim() : '';
+    if (emp || wag || yrRef) {
+      const refOuter = document.createElement('div');
+      refOuter.className =
+        'rounded-lg border border-slate-200 bg-white px-3 py-2 space-y-1 text-xs text-slate-600';
+      const refTitle = document.createElement('div');
+      refTitle.className = 'font-semibold text-slate-700';
+      refTitle.textContent = '✓ Extracted from document — for reference:';
+      refOuter.appendChild(refTitle);
+      _extractAppendRefLine(refOuter, 'Employer', emp);
+      _extractAppendRefLine(refOuter, 'Total wages', wag);
+      _extractAppendRefLine(refOuter, 'Tax year', yrRef);
+      wrap.appendChild(refOuter);
+    }
+
+    const editableHint = document.createElement('div');
+    editableHint.className = 'text-[11px] text-slate-500 font-medium';
+    editableHint.textContent =
+      'Apply to return (editable) — Total fee / payment fields are never changed.';
+    wrap.appendChild(editableHint);
+
+    const container = document.createElement('div');
+    container.className = 'space-y-2';
+
+    const fieldDefs = [
+      { key: 'last_name', label: 'Last name' },
+      { key: 'first_name', label: 'First name' },
+      { key: 'tax_year', label: 'Tax year' },
+    ];
+
+    fieldDefs.forEach((def) => {
+      const raw = fields[def.key];
+      const val = raw != null ? String(raw).trim() : '';
+      if (!val) return;
+      const row = document.createElement('div');
+      row.className = 'flex flex-col gap-1';
+      const lab = document.createElement('span');
+      lab.className = 'text-xs text-slate-500 font-medium';
+      lab.textContent = def.label + ' → return form';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = val;
+      input.id = 'extracted-' + def.key + '-' + docId;
+      input.className =
+        'w-full text-sm border border-slate-200 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400';
+      row.appendChild(lab);
+      row.appendChild(input);
+      container.appendChild(row);
+    });
+    wrap.appendChild(container);
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'flex flex-wrap gap-2 pt-1';
+
+    const applyBtn = document.createElement('button');
+    applyBtn.type = 'button';
+    applyBtn.textContent = 'Apply to return';
+    applyBtn.className =
+      'shrink-0 flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-3 py-2 transition-all';
+    applyBtn.onclick = () => applyExtracted(docId);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Dismiss';
+    cancelBtn.className =
+      'shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all';
+    cancelBtn.onclick = () => document.getElementById('extract-panel-' + docId)?.remove();
+
+    btnRow.appendChild(applyBtn);
+    btnRow.appendChild(cancelBtn);
+    wrap.appendChild(btnRow);
+
+    return wrap;
+  }
+
+  function applyExtracted(docId) {
+    /*
+     * Return detail uses spans with class "editable", not numeric ids. Targets:
+     *   data-field="last_name", "first_name" (Client card)
+     *   data-field="tax_year" (Return Info — macro ef produces no id attribute)
+     *
+     * Explicitly NEVER map: employer_name, total_wages, total_fee,
+     * fee_paid, cc_fee, receipt_number, zelle_or_check_ref, cash_or_qpay_ref
+     */
+    const editableTarget = (dataField) =>
+      document.querySelector(
+        '.editable[data-return-id="' + RETURN_ID + '"][data-field="' + dataField + '"]'
+      );
+
+    const fieldMap = {
+      last_name: 'last_name',
+      first_name: 'first_name',
+      tax_year: 'tax_year',
+    };
+
+    const labelByKey = {
+      last_name: 'Last name',
+      first_name: 'First name',
+      tax_year: 'Tax year',
+    };
+
+    const appliedLabels = [];
+    Object.entries(fieldMap).forEach(([extractKey, dataField]) => {
+      const extractedInput = document.getElementById('extracted-' + extractKey + '-' + docId);
+      const target = editableTarget(dataField);
+      if (!extractedInput || !target || !extractedInput.value.trim()) return;
+      const v = extractedInput.value.trim();
+      target.textContent = v;
+      target.dataset.value = v;
+      appliedLabels.push(labelByKey[extractKey]);
+    });
+
+    const panel = document.getElementById('extract-panel-' + docId);
+    if (!panel) return;
+
+    const refEmp = panel.dataset.extractRefEmployer || '';
+    const refWag = panel.dataset.extractRefWages || '';
+    const refYr = panel.dataset.extractRefTaxYear || '';
+
+    panel.innerHTML = '';
+
+    const refBlock = document.createElement('div');
+    refBlock.className =
+      'rounded-lg border border-slate-200 bg-white px-3 py-2 space-y-1 text-xs text-slate-600';
+    const refTitle = document.createElement('div');
+    refTitle.className = 'font-semibold text-slate-700';
+    refTitle.textContent = '✓ Extracted from document — for reference:';
+    refBlock.appendChild(refTitle);
+    _extractAppendRefLineAlways(refBlock, 'Employer', refEmp);
+    _extractAppendRefLineAlways(refBlock, 'Total wages', refWag);
+    _extractAppendRefLineAlways(refBlock, 'Tax year', refYr);
+    panel.appendChild(refBlock);
+
+    if (appliedLabels.length > 0) {
+      const ok = document.createElement('div');
+      ok.className = 'text-xs text-green-600 font-medium';
+      ok.textContent =
+        'Fields applied to return: ' +
+        appliedLabels.join(', ') +
+        '. Click each updated cell and blur (or Enter) to save. Total fee and all payment fields were not changed.';
+      panel.appendChild(ok);
+    } else {
+      const info = document.createElement('div');
+      info.className = 'text-xs text-slate-600 font-medium';
+      info.textContent =
+        'No return fields applied (no editable name/year values above). Employer / wages remain reference only.';
+      panel.appendChild(info);
+    }
+
+    setTimeout(() => panel.remove(), 5000);
+  }
+
+  function updateDocType(selectEl) {
+    const docId = selectEl.dataset.docId;
+    const newType = selectEl.value;
+    const previous = selectEl.dataset.previousValue || 'unknown';
+
+    _csrfFetch('/return/' + RETURN_ID + '/documents/' + docId + '/tag', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_type: newType }),
+    })
+      .then((r) => r.json().then((data) => ({ r, data })))
+      .then(({ r, data }) => {
+        if (r.ok && data.success) {
+          const did = Number(docId);
+          const doc = _lastDocs.find((x) => x.id === did);
+          if (doc) doc.doc_type = data.doc_type;
+          selectEl.dataset.previousValue = data.doc_type;
+          _updateDocIndicator(_lastDocs);
+          const visible = _docFilterActive
+            ? _lastDocs.filter((d) => _docNeedsAttention(d))
+            : _lastDocs;
+          _renderDocList(visible);
+          const refreshed = document.querySelector('select.doc-type-select[data-doc-id="' + did + '"]');
+          if (refreshed) {
+            refreshed.style.borderColor = '#22c55e';
+            setTimeout(() => {
+              refreshed.style.borderColor = '';
+            }, 1500);
+          }
+        } else {
+          selectEl.value = previous;
+        }
+      })
+      .catch(() => {
+        selectEl.value = previous;
+      });
+  }
+
+  let _lastDocs = [];
+  let _docFilterActive = false;
+
+  function _docNeedsAttention(d) {
+    return (
+      (d.source === 'email' && (d.doc_type === 'unknown' || !d.doc_type)) ||
+      d.extraction_status === 'needs_review' ||
+      (d.extraction_status === 'skipped' && (d.doc_type === 'unknown' || !d.doc_type))
+    );
+  }
+
+  function _renderDocList(docs) {
+    const listEl = document.getElementById('doc-list');
+    if (!listEl) return;
+    if (!docs || docs.length === 0) {
+      const msg = _docFilterActive ? 'No matching documents (untagged or extraction review).' : 'No documents uploaded yet.';
+      listEl.innerHTML = `<p class="text-sm text-slate-400">${msg}</p>`;
+      return;
+    }
+    const rows = docs.map(doc => {
+      const kb = Math.round((doc.file_size_bytes || 0) / 1024);
+      const when = (doc.uploaded_at || '').slice(0, 16) || '—';
+      const who = doc.uploaded_by ? _escapeHtml(doc.uploaded_by) : '—';
+      const fn = _escapeHtml(doc.filename || '');
+      const viewHref = `/return/${RETURN_ID}/documents/${doc.id}/view`;
+      const curDt =
+        doc.doc_type == null || doc.doc_type === '' ? 'unknown' : String(doc.doc_type);
+      const needsEx = doc.extraction_status === 'needs_review';
+      const reviewUi = needsEx
+        ? `<button type="button" onclick="toggleExtractionReview(${doc.id})"
+             class="shrink-0 text-xs font-semibold text-amber-900 bg-amber-100 border border-amber-300 rounded-lg px-2 py-1">
+             Review extraction</button>
+          <span class="text-[10px] font-bold uppercase tracking-wide text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Needs review</span>`
+        : '';
+      // Phase 2.3: image attachments skipped by the extractor (vision disabled)
+      // stay flagged until staff assign a real doc_type.
+      const needsManualTag = doc.extraction_status === 'skipped' && (curDt === 'unknown' || !doc.doc_type);
+      const manualTagUi = needsManualTag
+        ? `<span class="text-[10px] font-bold uppercase tracking-wide text-slate-600 bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-full">${_escapeHtml(t('needs_manual_tag'))}</span>`
+        : '';
+      return `<div data-doc-row data-doc-id="${doc.id}" class="flex flex-col gap-1 px-3 py-2.5 border-b border-[var(--border-subtle)] last:border-b-0 text-sm">
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex-1 min-w-0 flex flex-wrap items-center gap-2">
+            <span class="font-medium text-slate-800 truncate">${fn}</span>
+            ${reviewUi}
+            ${manualTagUi}
+          </div>
+          <span class="shrink-0">${buildDocTypeDropdown(doc.id, curDt)}</span>
+          <span class="text-slate-500 text-xs whitespace-nowrap">${_docSourceLabel(doc.source)}</span>
+          <span class="text-slate-500 text-xs whitespace-nowrap">${who}</span>
+          <span class="text-slate-400 text-xs font-mono whitespace-nowrap">${when}</span>
+          <span class="text-slate-500 text-xs whitespace-nowrap">${kb} KB</span>
+          <a href="${viewHref}" target="_blank" rel="noopener"
+             class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs whitespace-nowrap">View</a>
+          ${DRAKE_SYNC_ENABLED
+            ? `<button type="button" onclick="syncDocToDrake(${doc.id}, this)"
+               class="text-emerald-700 hover:text-emerald-900 font-semibold text-xs whitespace-nowrap border border-emerald-200 rounded-lg px-2 py-1">
+               Sync to Drake</button>`
+            : ''}
+          <button type="button" onclick="extractFields(${doc.id}, this)"
+                  class="text-indigo-600 hover:text-indigo-800 font-semibold text-xs whitespace-nowrap">Extract fields</button>
+          ${CAN_DELETE_DOCS
+            ? `<button type="button" onclick="deleteDocument(${doc.id})"
+                  class="text-slate-300 hover:text-red-400 transition-colors text-xs whitespace-nowrap" title="Remove from list">Delete</button>`
+            : ''}
+        </div>
+        <div id="ext-review-panel-${doc.id}" class="hidden w-full max-w-2xl"></div>
+      </div>`;
+    }).join('');
+    listEl.innerHTML = `<div class="rounded-lg border border-slate-200 divide-y divide-slate-100 overflow-hidden">${rows}</div>`;
+  }
+
+  function _updateDocIndicator(docs) {
+    const untagged = docs.filter(d => d.source === 'email' && d.doc_type === 'unknown');
+    const extRev = docs.filter(d => d.extraction_status === 'needs_review');
+    const manualTag = docs.filter(d => d.extraction_status === 'skipped' && (d.doc_type === 'unknown' || !d.doc_type));
+    const indicator = document.getElementById('doc-email-indicator');
+    const countEl   = document.getElementById('doc-email-count');
+    const filterBtn = document.getElementById('doc-filter-btn');
+    if (!indicator || !countEl) return;
+    if (untagged.length > 0 || extRev.length > 0 || manualTag.length > 0) {
+      const parts = [];
+      if (untagged.length > 0) {
+        const n = untagged.length;
+        const noun = n === 1 ? 'document' : 'documents';
+        const verb = n === 1 ? 'needs' : 'need';
+        parts.push(
+          '<a href="#documents" class="text-amber-900 underline font-semibold">' +
+            `${n} email ${noun} ${verb} tagging` +
+            '</a>'
+        );
+      }
+      if (extRev.length > 0) {
+        const e = extRev.length;
+        parts.push(
+          `${e} extraction${e === 1 ? '' : 's'} need${e === 1 ? 's' : ''} review`
+        );
+      }
+      if (manualTag.length > 0) {
+        const m = manualTag.length;
+        parts.push(
+          `${m} image${m === 1 ? '' : 's'} need${m === 1 ? 's' : ''} manual tagging`
+        );
+      }
+      countEl.innerHTML = parts.join(' · ') + ' — see list below';
+      indicator.classList.remove('hidden');
+      indicator.classList.add('flex');
+    } else {
+      indicator.classList.add('hidden');
+      indicator.classList.remove('flex');
+      _docFilterActive = false;
+    }
+    if (filterBtn) filterBtn.textContent = _docFilterActive ? 'Show all' : 'Show untagged only';
+  }
+
+  function toggleDocFilter() {
+    _docFilterActive = !_docFilterActive;
+    const filterBtn = document.getElementById('doc-filter-btn');
+    if (filterBtn) filterBtn.textContent = _docFilterActive ? 'Show all' : 'Show untagged only';
+    const visible = _docFilterActive
+      ? _lastDocs.filter(d => _docNeedsAttention(d))
+      : _lastDocs;
+    _renderDocList(visible);
+  }
+
+  function loadDocuments(query) {
+    const listEl = document.getElementById('doc-list');
+    if (!listEl) return;
+    let url = `/return/${RETURN_ID}/documents`;
+    if (query) url += `?q=${encodeURIComponent(query)}`;
+    _csrfFetch(url)
+      .then(r => r.json())
+      .then(data => {
+        _lastDocs = data.documents || [];
+        _updateDocIndicator(_lastDocs);
+        const visible = _docFilterActive
+          ? _lastDocs.filter(d => _docNeedsAttention(d))
+          : _lastDocs;
+        _renderDocList(visible);
+      })
+      .catch(() => {
+        listEl.innerHTML = '<p class="text-sm text-slate-400">Could not load documents.</p>';
+      });
+  }
+
+  function searchDocuments() {
+    const q = (document.getElementById('doc-search-input') || {}).value || '';
+    loadDocuments(q.trim());
+  }
+
+  function clearDocSearch() {
+    const inp = document.getElementById('doc-search-input');
+    if (inp) inp.value = '';
+    loadDocuments();
+  }
+
+  let _scanAutoTimer = null;
+  let _scanAutoCancelled = false;
+
+  function openScanModal(opts) {
+    const autoStart = !!(opts && opts.autoStart);
+    _scanAutoCancelled = false;
+    if (_scanAutoTimer) { clearInterval(_scanAutoTimer); _scanAutoTimer = null; }
+    const m = document.getElementById('scan-modal');
+    if (m) m.classList.remove('hidden');
+    const statusEl = document.getElementById('scan-modal-status');
+    if (statusEl) {
+      statusEl.classList.add('hidden');
+      statusEl.textContent = '';
+    }
+    refreshScanAgentHealth().then((ok) => {
+      if (autoStart && ok && !_scanAutoCancelled) {
+        startScanCountdown();
+      }
+    });
+  }
+
+  function closeScanModal() {
+    _scanAutoCancelled = true;
+    if (_scanAutoTimer) { clearInterval(_scanAutoTimer); _scanAutoTimer = null; }
+    const m = document.getElementById('scan-modal');
+    if (m) m.classList.add('hidden');
+  }
+
+  function skipScanModal() {
+    closeScanModal();
+    _csrfFetch(`/api/return/${RETURN_ID}/scan-deferred`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deferred: true }),
+    }).catch(() => {});
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete('scan');
+      window.history.replaceState({}, '', u.pathname + u.search);
+    } catch (e) {}
+  }
+
+  async function refreshScanAgentHealth() {
+    const box = document.getElementById('scan-agent-health');
+    const goBtn = document.getElementById('scan-modal-go');
+    if (box) {
+      box.textContent = 'Checking scanner…';
+      box.className = 'text-xs rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600';
+    }
+    try {
+      const resp = await fetch('/api/scan-agent/status', { credentials: 'same-origin' });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const msg = data.error || data.tips || (`HTTP ${resp.status}`);
+        if (box) {
+          box.innerHTML = '<strong class="text-red-700">Could not reach Scan Agent status.</strong> ' +
+            _escapeHtml(Array.isArray(msg) ? msg.join(' ') : String(msg));
+          box.className = 'text-xs rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-700';
+        }
+        if (goBtn) goBtn.disabled = false;
+        return false;
+      }
+      const tips = (data.tips || []).filter(Boolean);
+      const tipBlob = tips.join(' ').toLowerCase();
+      const scannerReady = !!(data.ok || data.scanner_found || data.scanner_ok);
+      const agentUp = !!(data.reachable || data.agent_ok || data.status === 'ok' || data.code_rev);
+      if (scannerReady) {
+        const names = data.scanner_names ||
+          ((data.scanners || []).map(s => s.name).filter(Boolean).join(' | ')) ||
+          'scanner ready';
+        if (box) {
+          box.innerHTML = '<strong class="text-green-700">Scanner ready:</strong> ' +
+            _escapeHtml(names) +
+            (tips.length ? '<br><span class="text-amber-700">' + tips.map(_escapeHtml).join('<br>') + '</span>' : '');
+          box.className = 'text-xs rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-slate-700';
+        }
+        if (goBtn) goBtn.disabled = false;
+        return true;
+      }
+      // Stale TaxOps proxy called /health without ?wia=1 — scanner is often fine on reception.
+      if (tipBlob.indexOf('not probed') >= 0 || data.wia_probed === false) {
+        if (box) {
+          box.innerHTML = '<strong class="text-amber-800">Agent is up; TaxOps did not probe WIA.</strong> ' +
+            'Restart <span class="font-mono">TaxOpsService</span> on the server so status uses <span class="font-mono">/health?wia=1</span>. ' +
+            'On reception, diagnostic WIA probe should show EPSON ready.' +
+            (data.agent_url ? '<br><span class="text-slate-500">Agent: ' + _escapeHtml(data.agent_url) + '</span>' : '');
+          box.className = 'text-xs rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-slate-700';
+        }
+        if (goBtn) goBtn.disabled = false;
+        return false;
+      }
+      if (agentUp) {
+        const msg = tips.length
+          ? tips.join(' ')
+          : (data.scanner_error || 'Agent is up but WIA sees no scanner yet.');
+        if (box) {
+          box.innerHTML = '<strong class="text-amber-800">Scan Agent is up — scanner not ready.</strong> ' +
+            _escapeHtml(msg) +
+            (data.code_rev ? '<br><span class="text-slate-500">build: ' + _escapeHtml(data.code_rev) + '</span>' : '') +
+            (data.agent_url ? '<br><span class="text-slate-500">Agent: ' + _escapeHtml(data.agent_url) + '</span>' : '');
+          box.className = 'text-xs rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-slate-700';
+        }
+        if (goBtn) goBtn.disabled = false;
+        return false;
+      }
+      const msg = tips.length
+        ? tips.join(' ')
+        : (data.scanner_error || 'Scan Agent not reachable.');
+      if (box) {
+        box.innerHTML = '<strong class="text-red-700">Scanner not ready.</strong> ' +
+          _escapeHtml(msg) +
+          (data.agent_url ? '<br><span class="text-slate-500">Agent: ' + _escapeHtml(data.agent_url) + '</span>' : '');
+        box.className = 'text-xs rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-slate-700';
+      }
+      if (goBtn) goBtn.disabled = false;
+      return false;
+    } catch (err) {
+      if (box) {
+        box.textContent = 'Could not check scanner status: ' + (err.message || err);
+        box.className = 'text-xs rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-700';
+      }
+      return false;
+    }
+  }
+
+  function _escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function startScanCountdown() {
+    const statusEl = document.getElementById('scan-modal-status');
+    // Give staff time to seat pages in the Epson ADF before Transfer.
+    let n = 10;
+    if (statusEl) {
+      statusEl.classList.remove('hidden');
+      statusEl.className = 'text-xs font-medium text-slate-600';
+      statusEl.textContent = `Load pages in the Epson feeder now. Starting in ${n}s… (Skip to cancel)`;
+    }
+    _scanAutoTimer = setInterval(() => {
+      n -= 1;
+      if (_scanAutoCancelled) {
+        clearInterval(_scanAutoTimer);
+        _scanAutoTimer = null;
+        return;
+      }
+      if (n <= 0) {
+        clearInterval(_scanAutoTimer);
+        _scanAutoTimer = null;
+        runScanAndUpload();
+        return;
+      }
+      if (statusEl) {
+        statusEl.textContent = `Load pages in the Epson feeder now. Starting in ${n}s… (Skip to cancel)`;
+      }
+    }, 1000);
+  }
+
+  async function runScanAndUpload() {
+    if (_scanAutoTimer) { clearInterval(_scanAutoTimer); _scanAutoTimer = null; }
+    const statusEl = document.getElementById('scan-modal-status');
+    const goBtn = document.getElementById('scan-modal-go');
+    const docType = (document.getElementById('scan-doc-type') || {}).value || 'unknown';
+    const handwriting = !!(document.getElementById('scan-handwriting') || {}).checked;
+    if (statusEl) {
+      statusEl.classList.remove('hidden');
+      statusEl.textContent = 'Scanning from Epson… keep pages in the feeder.';
+      statusEl.className = 'text-xs font-medium text-slate-600';
+    }
+    if (goBtn) goBtn.disabled = true;
+    try {
+      const up = await _csrfFetch(`/api/return/${RETURN_ID}/scan-intake`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handwriting, doc_type: docType }),
+      });
+      const data = await up.json().catch(() => ({}));
+      if (!up.ok) {
+        const tips = (data.tips || []).filter(t => t && t !== data.error);
+        throw new Error((data.error || 'Scan failed') + (tips.length ? ' — ' + tips.join(' ') : ''));
+      }
+      const pageCount = data.page_count != null ? data.page_count : '?';
+      const logNum = data.log_number || LOG_NUMBER || '';
+      if (statusEl) {
+        statusEl.textContent = `Uploaded ${pageCount} page(s)` +
+          (logNum ? ` — LOG:${logNum}` : '') +
+          (data.label_printed ? ' (label printed)' : '') +
+          (docType === 'unknown' || data.auto_sort ? ' — sorting in background' : '');
+        statusEl.className = 'text-xs font-medium text-green-700';
+      }
+      loadDocuments();
+      loadFormData();
+      setTimeout(closeScanModal, 1500);
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete('scan');
+        window.history.replaceState({}, '', u.pathname + u.search);
+      } catch (e) {}
+    } catch (err) {
+      if (statusEl) {
+        statusEl.textContent = err.message || String(err);
+        statusEl.className = 'text-xs font-medium text-red-600';
+      }
+      refreshScanAgentHealth();
+    } finally {
+      if (goBtn) goBtn.disabled = false;
+    }
+  }
+
+  function deleteDocument(docId) {
+    if (!confirm('Remove this document from the return? The file will be kept on disk.')) return;
+    _csrfFetch(`/return/${RETURN_ID}/documents/${docId}/delete`, { method: 'POST' })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (ok && data.success) loadDocuments();
+        else if (!ok) alert(data.error || 'Delete not allowed');
+      });
+  }
+  function syncDocToDrake(docId, btn) {
+    if (!DRAKE_SYNC_ENABLED) return;
+    const orig = btn.textContent;
+    btn.disabled = true;
+    _csrfFetch(`/return/${RETURN_ID}/documents/${docId}/sync-drake`, { method: 'POST' })
+      .then(r => r.json().then(d => ({ r, d })))
+      .then(({ r, d }) => {
+        if (r.ok && d.success) {
+          btn.textContent = '✓ Synced';
+          setTimeout(() => {
+            btn.textContent = orig;
+            btn.disabled = false;
+          }, 2000);
+        } else {
+          btn.disabled = false;
+        }
+      })
+      .catch(() => {
+        btn.disabled = false;
+      });
+  }
+
+  function toggleExtractionReview(docId) {
+    const panel = document.getElementById('ext-review-panel-' + docId);
+    if (!panel) return;
+    if (!panel.classList.contains('hidden')) {
+      panel.classList.add('hidden');
+      return;
+    }
+    const doc = _lastDocs.find((d) => d.id === docId);
+    const fields = (doc && doc.extracted_fields) || {};
+    const rows = Object.keys(fields)
+      .map(
+        (k) =>
+          `<div class="flex flex-wrap gap-2 text-xs border-b border-amber-100 pb-1 last:border-0">
+             <span class="font-semibold text-slate-600 shrink-0">${_escapeHtml(k)}</span>
+             <span class="text-token-primary break-all">${_escapeHtml(String(fields[k] ?? ''))}</span>
+           </div>`
+      )
+      .join('');
+    panel.innerHTML = `
+      <div class="rounded-lg border border-amber-300 bg-amber-50/90 p-3 space-y-2">
+        <p class="text-xs font-bold text-amber-900 uppercase tracking-wide">Review extraction</p>
+        <div class="max-h-48 overflow-y-auto space-y-1">${rows || '<p class="text-xs " style="color:var(--text-muted)">No fields stored.</p>'}</div>
+        <div class="flex flex-wrap gap-2 pt-1">
+          <button type="button" onclick="confirmExtraction(${docId})"
+            class="text-xs font-semibold text-white bg-amber-700 hover:bg-amber-800 rounded-lg px-3 py-1.5">
+            Confirm &amp; save to return
+          </button>
+          <button type="button" onclick="toggleExtractionReview(${docId})"
+            class="text-xs text-slate-600 border border-slate-200 rounded-lg px-2 py-1">
+            Close
+          </button>
+        </div>
+      </div>`;
+    panel.classList.remove('hidden');
+  }
+
+  function confirmExtraction(docId) {
+    _csrfFetch('/return/' + RETURN_ID + '/documents/' + docId + '/confirm-extraction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+      .then((r) => r.json().then((data) => ({ r, data })))
+      .then(({ r, data }) => {
+        if (r.ok && data.success) {
+          const p = document.getElementById('ext-review-panel-' + docId);
+          if (p) {
+            p.classList.add('hidden');
+            p.innerHTML = '';
+          }
+          loadDocuments();
+          loadFormData();
+          return;
+        }
+        alert(data.error || 'Could not confirm extraction');
+      })
+      .catch(() => {
+        alert('Could not confirm extraction');
+      });
+  }
+
+  (function initDocUpload() {
+    const btn = document.getElementById('doc-upload-btn');
+    const input = document.getElementById('doc-file-input');
+    const statusEl = document.getElementById('doc-upload-status');
+    if (!btn || !input || !statusEl) return;
+
+    function showStatus(msg, isError) {
+      statusEl.textContent = msg || '';
+      statusEl.classList.remove('hidden', 'text-red-600', 'text-green-600');
+      if (!msg) {
+        statusEl.classList.add('hidden');
+        return;
+      }
+      statusEl.classList.add(isError ? 'text-red-600' : 'text-green-600');
+    }
+
+    btn.addEventListener('click', function() {
+      const files = input.files;
+      if (!files || files.length === 0) {
+        showStatus('Please select a file first.', true);
+        return;
+      }
+      const docType = document.getElementById('doc-type-select').value;
+      btn.disabled = true;
+
+      // DOC-HARD-7: use bulk-upload for multiple files, single-upload for one file.
+      if (files.length === 1) {
+        const formData = new FormData();
+        formData.append('document', files[0]);
+        formData.append('doc_type', docType);
+        showStatus('Uploading…', false);
+        statusEl.classList.remove('text-green-600');
+        statusEl.classList.add('text-slate-600');
+        _csrfFetch(`/return/${RETURN_ID}/documents/upload`, { method: 'POST', body: formData })
+          .then(r => r.json())
+          .then(data => {
+            if (data.success) {
+              const warn = data.duplicate_warning ? (' ⚠ ' + data.duplicate_warning) : '';
+              showStatus('Uploaded.' + warn, !!data.duplicate_warning);
+              if (!data.duplicate_warning) {
+                statusEl.classList.remove('text-slate-600');
+                statusEl.classList.add('text-green-600');
+              }
+              input.value = '';
+              window._pendingClassifyFlashDocId = data.doc_id;
+              loadDocuments();
+            } else {
+              showStatus(data.error || 'Upload failed.', true);
+            }
+            btn.disabled = false;
+          })
+          .catch(() => { showStatus('Network error.', true); btn.disabled = false; });
+        return;
+      }
+
+      // Multiple files — bulk upload
+      showStatus(`Uploading ${files.length} files…`, false);
+      statusEl.classList.remove('text-green-600');
+      statusEl.classList.add('text-slate-600');
+      const formData = new FormData();
+      for (const f of files) { formData.append('documents', f); }
+      formData.append('doc_type', docType);
+      _csrfFetch(`/return/${RETURN_ID}/documents/bulk-upload`, { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+          const results = data.results || [];
+          const ok = results.filter(r => r.success).length;
+          const fail = results.filter(r => !r.success).length;
+          const warns = results.filter(r => r.duplicate_warning).length;
+          let msg = `${ok} uploaded`;
+          if (warns) msg += `, ${warns} duplicate${warns > 1 ? 's' : ''} warned`;
+          if (fail) msg += `, ${fail} failed`;
+          showStatus(msg + '.', fail > 0 || warns > 0);
+          if (ok > 0) {
+            statusEl.classList.remove('text-slate-600');
+            statusEl.classList.add(fail > 0 ? 'text-amber-600' : 'text-green-600');
+            input.value = '';
+            loadDocuments();
+          }
+          btn.disabled = false;
+        })
+        .catch(() => { showStatus('Network error.', true); btn.disabled = false; });
+    });
+
+    // ── legacy single-upload path (kept for reference; dead code after refactor above) ──
+    function _legacySingleUpload_UNUSED() {
+      const file = input.files[0];
+      const formData = new FormData();
+      formData.append('document', file);
+      formData.append('doc_type', document.getElementById('doc-type-select').value);
+      _csrfFetch(`/return/${RETURN_ID}/documents/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            showStatus('Uploaded.', false);
+            statusEl.classList.remove('text-slate-600');
+            statusEl.classList.add('text-green-600');
+            input.value = '';
+            window._pendingClassifyFlashDocId = data.doc_id;
+            loadDocuments();
+            setTimeout(() => {
+              const pendingId = window._pendingClassifyFlashDocId;
+              _csrfFetch(`/return/${RETURN_ID}/documents`)
+                .then((r) => r.json())
+                .then((data2) => {
+                  _lastDocs = data2.documents || [];
+                  _updateDocIndicator(_lastDocs);
+                  const visible = _docFilterActive
+                    ? _lastDocs.filter((d) => _docNeedsAttention(d))
+                    : _lastDocs;
+                  _renderDocList(visible);
+                  if (pendingId != null) {
+                    const d = _lastDocs.find((x) => x.id === pendingId);
+                    const dt =
+                      d && d.doc_type
+                        ? String(d.doc_type).toLowerCase()
+                        : 'unknown';
+                    if (d && dt !== 'unknown') {
+                      const rowEl = document.querySelector(
+                        `[data-doc-row][data-doc-id="${pendingId}"]`
+                      );
+                      if (rowEl) {
+                        rowEl.classList.add(
+                          'ring-2',
+                          'ring-amber-400',
+                          'ring-offset-1',
+                          'rounded-lg'
+                        );
+                        setTimeout(() => {
+                          rowEl.classList.remove(
+                            'ring-2',
+                            'ring-amber-400',
+                            'ring-offset-1',
+                            'rounded-lg'
+                          );
+                        }, 2500);
+                      }
+                    }
+                    window._pendingClassifyFlashDocId = null;
+                  }
+                })
+                .catch(() => {
+                  window._pendingClassifyFlashDocId = null;
+                });
+            }, 10000);
+          } else {
+            showStatus(data.error || 'Upload failed.', true);
+          }
+        })
+        .catch(() => {
+          showStatus('Could not upload — try again.', true);
+        })
+        .finally(() => {
+          btn.disabled = false;
+        });
+    } // end _legacySingleUpload_UNUSED
+
+    loadDocuments();
+    loadFormData();
+    if (CAN_SCAN && PROMPT_SCAN) {
+      openScanModal({ autoStart: true });
+    }
+  })();
+
+  window.confirmExtraction = confirmExtraction;
+  window.deleteDocument = deleteDocument;
+  window.extractFields = extractFields;
+  window.printSticker = printSticker;
+  window.syncDocToDrake = syncDocToDrake;
+  window.toggleDocFilter = toggleDocFilter;
+  window.openScanModal = openScanModal;
+  window.skipScanModal = skipScanModal;
+  window.runScanAndUpload = runScanAndUpload;
+  window.searchDocuments = searchDocuments;
+  window.clearDocSearch = clearDocSearch;
+  window.toggleExtractionReview = toggleExtractionReview;
+  window.updateDocType = updateDocType;
+  window.addMissingDoc = addMissingDoc;
+  window.copyDraft = copyDraft;
+  window.deleteMissingDoc = deleteMissingDoc;
+  window.draftEmail = draftEmail;
+  window.quickToggle = quickToggle;
+  window.saveContactDate = saveContactDate;
+  window.saveContactStatus = saveContactStatus;
+  window.saveField = saveField;
+  window.setStatusDetail = setStatusDetail;
+  window.submitNote = submitNote;
+  window.toggleMissingDoc = toggleMissingDoc;
+  window.toggleStatusMenu = toggleStatusMenu;
+  // LIFE-1 / DEL-1 / DEP-1 — onclick handlers (must be globals; script is an IIFE)
+  window.showCancelForm = showCancelForm;
+  window.hideCancelForm = hideCancelForm;
+  window.confirmCancel = confirmCancel;
+  window.uncancelReturn = uncancelReturn;
+  window.deleteReturn = deleteReturn;
+  window.removeDependent = removeDependent;
+  window.applyExtracted = applyExtracted;
+  window.deleteFormRecord = deleteFormRecord;
+})();
+</script>
+{% endblock %}

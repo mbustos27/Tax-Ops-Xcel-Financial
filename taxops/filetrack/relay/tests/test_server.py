@@ -25,13 +25,38 @@ def test_missing_log_number_returns_400():
     mock_print.assert_not_called()
 
 
+def test_raw_zpl_prints_without_log_number():
+    with patch("filetrack.labels.printer.send_zpl") as mock_send:
+        status, body = _call(
+            {"zpl": "^XA^FO0,0^FDTEST^FS^XZ"},
+            expected_token="",
+            remote_addr="127.0.0.1",
+        )
+    assert status == 200
+    assert body["success"] is True
+    assert body["mode"] == "raw_zpl"
+    mock_send.assert_called_once()
+
+
+def test_raw_zpl_rejects_non_zpl():
+    with patch("filetrack.labels.printer.send_zpl") as mock_send:
+        status, body = _call(
+            {"zpl": "not a label"},
+            expected_token="",
+            remote_addr="127.0.0.1",
+        )
+    assert status == 400
+    mock_send.assert_not_called()
+
+
 def test_no_token_configured_allows_localhost_and_prints():
     with patch("filetrack.labels.print_label.print_label") as mock_print:
         status, body = _call({"log_number": "1234"}, expected_token="", remote_addr="127.0.0.1")
     assert status == 200
     assert body["success"] is True
     assert body["log_number"] == "1234"
-    mock_print.assert_called_once_with("1234")
+    mock_print.assert_called_once()
+    assert mock_print.call_args[0][0] == "1234"
 
 
 def test_no_token_configured_rejects_non_localhost():
@@ -52,7 +77,8 @@ def test_token_configured_requires_matching_header():
     assert status_wrong == 401
     assert status_ok == 200
     assert body_ok["success"] is True
-    mock_print.assert_called_once_with("1234")
+    mock_print.assert_called_once()
+    assert mock_print.call_args[0][0] == "1234"
 
 
 def test_token_configured_allows_non_localhost_with_correct_token():
@@ -66,7 +92,20 @@ def test_token_configured_allows_non_localhost_with_correct_token():
         )
     assert status == 200
     assert body["success"] is True
-    mock_print.assert_called_once_with("5678")
+    mock_print.assert_called_once()
+    assert mock_print.call_args[0][0] == "5678"
+
+
+def test_print_passes_client_name_fields():
+    with patch("filetrack.labels.print_label.print_label") as mock_print:
+        status, body = _call(
+            {"log_number": "99", "last_name": "Smith", "first_name": "Ann"},
+            expected_token="",
+            remote_addr="127.0.0.1",
+        )
+    assert status == 200
+    assert mock_print.call_args.kwargs["last_name"] == "Smith"
+    assert mock_print.call_args.kwargs["first_name"] == "Ann"
 
 
 def test_printer_not_found_returns_500_but_does_not_raise():
@@ -106,7 +145,8 @@ def test_flask_app_print_endpoint_end_to_end():
         )
     assert resp.status_code == 200
     assert resp.get_json()["success"] is True
-    mock_print.assert_called_once_with("999")
+    mock_print.assert_called_once()
+    assert mock_print.call_args[0][0] == "999"
 
 
 def test_flask_app_health_endpoint():

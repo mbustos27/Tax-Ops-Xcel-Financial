@@ -1,0 +1,130 @@
+[
+  {
+    "path": "T:\\taxops\\taxops.db",
+    "size": 10289152,
+    "mtime": "2026-08-10 10:52:32",
+    "wal": false,
+    "shm": false,
+    "page_count": 2512,
+    "journal_mode": "wal"
+  },
+  {
+    "path": "C:\\TaxOps\\taxops\\taxops.db",
+    "exists": false
+  },
+  {
+    "path": "T:\\taxops\\taxops_demo.db",
+    "size": 2871296,
+    "mtime": "2026-05-04 14:48:38",
+    "wal": false,
+    "shm": false,
+    "page_count": 701,
+    "journal_mode": "delete"
+  },
+  {
+    "path": "T:\\taxops\\taxops_prefill_apply_test.db",
+    "size": 9908224,
+    "mtime": "2026-08-07 12:50:37",
+    "wal": false,
+    "shm": false,
+    "page_count": 2419,
+    "journal_mode": "wal"
+  },
+  {
+    "path": "T:\\taxops\\taxops_rebuilt.db",
+    "size": 6049792,
+    "mtime": "2026-07-01 11:19:31",
+    "wal": false,
+    "shm": false,
+    "page_count": 1477,
+    "journal_mode": "delete"
+  },
+  {
+    "path": "T:\\taxops\\taxops_recovered.db",
+    "size": 5844992,
+    "mtime": "2026-07-01 11:13:13",
+    "wal": false,
+    "shm": false,
+    "page_count": 1427,
+    "journal_mode": "delete"
+  },
+  {
+    "path": "T:\\taxops\\taxops_test.db",
+    "size": 360448,
+    "mtime": "2026-06-26 14:27:37",
+    "wal": false,
+    "shm": false,
+    "page_count": 88,
+    "journal_mode": "wal"
+  },
+  {
+    "path": "T:\\taxops\\taxops_test_ext.db",
+    "size": 360448,
+    "mtime": "2026-06-26 14:27:55",
+    "wal": false,
+    "shm": false,
+    "page_count": 88,
+    "journal_mode": "wal"
+  },
+  {
+    "path": "T:\\taxops\\.codegraph\\codegraph.db",
+    "size": 5148672,
+    "mtime": "2026-05-20 11:19:40",
+    "wal": true,
+    "shm": true,
+    "page_count": 1257,
+    "journal_mode": "wal"
+  },
+  {
+    "path": "T:\\taxops\\backups\\taxops_backup_20260701T182519Z.sqlite",
+    "size": 6139904,
+    "mtime": "2026-07-01 11:25:19",
+    "wal": false,
+    "shm": false,
+    "page_count": 1499,
+    "journal_mode": "delete"
+  },
+  {
+    "path": "T:\\audit\\audit_20260731.sqlite",
+    "size": 1794048,
+    "mtime": "2026-07-31 10:58:28",
+    "wal": false,
+    "shm": false,
+    "page_count": 438,
+    "journal_mode": "delete"
+  },
+  {
+    "path": "T:\\audit\\audit_202607311100.sqlite",
+    "size": 1761280,
+    "mtime": "2026-07-31 15:03:55",
+    "wal": false,
+    "shm": false,
+    "page_count": 430,
+    "journal_mode": "delete"
+  },
+  {
+    "path": "T:\\audit\\snapshots\\taxops_snapshot_20260731.sqlite",
+    "size": 7163904,
+    "mtime": "2026-07-31 10:55:32",
+    "wal": true,
+    "shm": true,
+    "page_count": 1749,
+    "journal_mode": "wal"
+  },
+  {
+    "path": "T:\\punchbridge\\punchbridge.db",
+    "size": 0,
+    "mtime": "2026-07-10 11:06:20",
+    "wal": false,
+    "shm": false
+  },
+  {
+    "path": "T:\\punchbridge\\data\\punchbridge.db",
+    "size": 1257472,
+    "mtime": "2026-07-13 13:07:48",
+    "wal": false,
+    "shm": false,
+    "page_count": 307,
+    "journal_mode": "wal"
+  }
+]

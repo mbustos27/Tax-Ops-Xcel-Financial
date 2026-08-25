@@ -1,0 +1,131 @@
+*GPDSpecVersion: "1.0"
+*GPDFileName: "BRM4350J.GPD"
+*GPDFileVersion: "1.0"
+*Include: "brhbp.gpd"
+*ModelName: "Brother MFC-4350J"
+*PrintRate: 6
+*PrintRatePPM: 6
+*PrintRateUnit: PPM
+
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: LETTER
+    *Option: LETTER
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(4800, 6260)
+      *PrintableOrigin: PAIR(150, 150)
+      *CursorOrigin: PAIR(150, 150)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 0
+      }
+    }
+    *Option: B5
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(4000, 5738)
+      *PrintableOrigin: PAIR(150, 150)
+      *CursorOrigin: PAIR(150, 150)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 3
+      }
+    }
+    *Option: A5
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(3196, 4602)
+      *PrintableOrigin: PAIR(150, 150)
+      *CursorOrigin: PAIR(150, 220)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 4
+      }
+    }
+    *Option: ENV_10
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(2176, 5360)
+      *PrintableOrigin: PAIR(150, 150)
+      *CursorOrigin: PAIR(150, 150)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 5
+      }
+    }
+    *Option: ENV_DL
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(2296, 4862)
+      *PrintableOrigin: PAIR(150, 150)
+      *CursorOrigin: PAIR(150, 150)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 6
+      }
+    }
+    *Option: ENV_MONARCH
+    {
+      *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+      *PrintableArea: PAIR(2028, 4160)
+      *PrintableOrigin: PAIR(150, 150)
+      *CursorOrigin: PAIR(150, 150)
+      *Command: CmdSelect
+      {
+            *Order: DOC_SETUP.6
+            *CallbackID: 8
+      }
+    }
+}
+*Feature: Memory
+{
+    *rcNameID: =PRINTER_MEMORY_DISPLAY
+    *DefaultOption: 4096KB
+    *Option: 4096KB
+    {
+        *Name: "4MB"
+        *MemoryConfigKB: PAIR(4096, 3650)
+    }
+    *Option: 12288KB
+    {
+        *Name: "12MB"
+        *MemoryConfigKB: PAIR(12288, 12171)
+    }
+    *Option: 20480KB
+    {
+        *Name: "20MB"
+        *MemoryConfigKB: PAIR(20480, 17550)
+    }
+}
+*Feature: SleepTime
+{
+    *rcNameID: 262
+    *FeatureType: PRINTER_PROPERTY
+    *DefaultOption: Auto
+
+    *Option: Auto
+    {
+        *rcNameID: 263
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.4
+            *CallbackID: 10
+        }
+    }
+    *Option: ManualSettings
+    {
+        *rcNameID: 264
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.4
+            *CallbackID: 10
+        }
+    }
+}

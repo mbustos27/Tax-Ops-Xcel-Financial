@@ -1,0 +1,8 @@
+2026-07-29 16:50:01,763 INFO filetrack.relay filetrack.relay: listening on 0.0.0.0:8765 (printer=4BARCODE 4B-2054A)
+ * Tip: There are .env files present. Install python-dotenv to use them.
+2026-07-29 16:50:01,789 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8765
+ * Running on http://192.168.1.9:8765
+2026-07-29 16:50:01,791 INFO werkzeug [33mPress CTRL+C to quit[0m
+2026-07-29 16:50:02,262 INFO werkzeug 127.0.0.1 - - [29/Jul/2026 16:50:02] "GET /health HTTP/1.1" 200 -

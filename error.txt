@@ -1,0 +1,2 @@
+Scanner not ready. WIA DeviceManager failed: (-2147221008, 'CoInitialize has not been called.', None, None)
+Agent: http://192.168.1.9:8766

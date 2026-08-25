@@ -76,18 +76,24 @@ def _after_scan_agent_upload(conn, return_id: int) -> dict:
         meta["log_newly_allocated"] = newly
         if newly:
             try:
-                from filetrack.config import FILETRACK_ENABLED, FILETRACK_PRINT_MODE
+                from filetrack.labels.dispatch import try_print_log_label
 
-                if FILETRACK_ENABLED:
-                    if FILETRACK_PRINT_MODE == "relay":
-                        from filetrack.labels.relay_client import print_label_via_relay
-
-                        print_label_via_relay(log_number)
-                    else:
-                        from filetrack.labels.print_label import print_label
-
-                        print_label(log_number)
-                    meta["label_printed"] = True
+                name_row = conn.execute(
+                    """
+                    SELECT c.last_name, c.first_name, c.display_name, r.tax_year, r.intake_date
+                    FROM returns r JOIN clients c ON c.id = r.client_id
+                    WHERE r.id = ?
+                    """,
+                    (return_id,),
+                ).fetchone()
+                meta["label_printed"] = try_print_log_label(
+                    log_number,
+                    last_name=(name_row["last_name"] if name_row else "") or "",
+                    first_name=(name_row["first_name"] if name_row else "") or "",
+                    display_name=(name_row["display_name"] if name_row else "") or "",
+                    log_in_date=(name_row["intake_date"] if name_row else None),
+                    tax_year=(name_row["tax_year"] if name_row else None),
+                )
             except Exception as print_exc:
                 log.warning(
                     "Label print after scan upload failed for return %s log %s: %s",
@@ -178,6 +184,7 @@ def _parse_form_update_value(field: str, raw_val) -> object:
 
 @documents_bp.route("/return/<int:return_id>/documents/upload", methods=["POST"])
 @login_required
+@permission_required("can_manage_return_documents")
 def return_documents_upload(return_id: int):
     conn = get_connection()
     full_path: str | None = None
@@ -338,6 +345,7 @@ def return_documents_upload(return_id: int):
 
 @documents_bp.route("/return/<int:return_id>/documents/bulk-upload", methods=["POST"])
 @login_required
+@permission_required("can_manage_return_documents")
 def return_documents_bulk_upload(return_id: int):
     """DOC-HARD-7: accept multiple files in one request and queue each for extraction.
 
@@ -924,7 +932,7 @@ def return_document_view(return_id: int, doc_id: int):
 
 
 @documents_bp.route("/return/<int:return_id>/documents/<int:doc_id>/delete", methods=["POST"])
-@role_required("preparer")
+@permission_required("can_manage_return_documents")
 def return_document_delete(return_id: int, doc_id: int):
     conn = get_connection()
     try:
@@ -943,6 +951,7 @@ def return_document_delete(return_id: int, doc_id: int):
 
 @documents_bp.route("/return/<int:return_id>/documents/<int:doc_id>/tag", methods=["POST"])
 @login_required
+@permission_required("can_manage_return_documents")
 def return_document_tag(return_id: int, doc_id: int):
     payload = request.get_json(silent=True) or {}
     raw = payload.get("doc_type")
@@ -1119,4 +1128,3 @@ def return_document_confirm_extraction(return_id: int, doc_id: int):
 
 # Attach static rejection lookup + extraction requeue (post-ai_routes cleanup).
 import routes.reference  # noqa: E402, F401
-

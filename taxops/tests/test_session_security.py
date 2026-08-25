@@ -63,6 +63,44 @@ def test_csp_header_present_on_login_page(client):
     assert "frame-ancestors 'none'" in csp
 
 
+def test_document_view_allows_same_origin_iframe(client_logged_in, taxops_db_path, tmp_path):
+    """Prep viewer embeds /documents/.../view — must not send frame-ancestors none."""
+    from db import get_connection
+
+    pdf = tmp_path / "sample.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n")
+
+    conn = get_connection(taxops_db_path)
+    conn.execute(
+        "INSERT INTO clients (last_name, first_name, created_at, updated_at) "
+        "VALUES ('FRAME','TEST',datetime('now'),datetime('now'))"
+    )
+    cid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO returns (client_id, tax_year, log_number, created_at) "
+        "VALUES (?,?, '88', datetime('now'))",
+        (cid, 2025),
+    )
+    rid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO return_documents "
+        "(return_id, filename, original_filename, doc_type, source, file_path, "
+        " uploaded_at, is_deleted) "
+        "VALUES (?, 'sample.pdf', 'sample.pdf', 'misc', 'upload', ?, datetime('now'), 0)",
+        (rid, str(pdf)),
+    )
+    doc_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    rv = client_logged_in.get(f"/return/{rid}/documents/{doc_id}/view")
+    assert rv.status_code == 200, rv.get_data(as_text=True)[:300]
+    assert rv.headers.get("X-Frame-Options") == "SAMEORIGIN"
+    csp = rv.headers.get("Content-Security-Policy") or ""
+    assert "frame-ancestors 'self'" in csp
+    assert "frame-ancestors 'none'" not in csp
+
+
 # ── session permanence ────────────────────────────────────────────────────────
 
 def test_session_is_permanent_after_login(client, taxops_db_path):

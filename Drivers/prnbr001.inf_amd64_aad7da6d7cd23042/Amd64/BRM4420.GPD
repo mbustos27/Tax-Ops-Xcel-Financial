@@ -1,0 +1,380 @@
+*GPDSpecVersion: "1.0"
+*GPDFileVersion: "0.8"
+*Include: "StdNames.gpd"
+
+*Include: "BRCI02B.GPD"
+*GPDFileName: "BRM4420.GPD"
+*ModelName: "Brother MFC-4420C USB"
+*PrintRate: 11
+*PrintRatePPM: 11
+*PrintRateUnit: PPM
+*MasterUnits: PAIR(600, 600)
+*PrinterType: SERIAL
+
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: LETTER
+    *Option: LETTER
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *switch: PrintArea
+        {
+            *case: EdgeNear
+            {
+                *PrintableArea: PAIR(5080, 6576)
+                *PrintableOrigin: PAIR(11, 11)
+                *CursorOrigin: PAIR(11, 11)
+            }
+            *default:
+            {
+                *PrintableArea: PAIR(4960, 6456)
+                *PrintableOrigin: PAIR(70, 70)
+                *CursorOrigin: PAIR(70, 70)
+            }
+        }
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *Cmd: ""
+        }
+    }
+    *Option: LEGAL
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *switch: PrintArea
+        {
+            *case: EdgeNear
+            {
+                *PrintableArea: PAIR(5080, 6576)
+                *PrintableOrigin: PAIR(11, 11)
+                *CursorOrigin: PAIR(11, 11)
+            }
+            *default:
+            {
+                *PrintableArea: PAIR(4960, 8256)
+                *PrintableOrigin: PAIR(70, 70)
+                *CursorOrigin: PAIR(70, 70)
+            }
+        }
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *Cmd: ""
+        }
+    }
+    *Option: A4
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *switch: PrintArea
+        {
+            *case: EdgeNear
+            {
+                *PrintableArea: PAIR(4936, 6992)
+                *PrintableOrigin: PAIR(11, 11)
+                *CursorOrigin: PAIR(11, 11)
+            }
+            *default:
+            {
+                *PrintableArea: PAIR(4816, 6872)
+                *PrintableOrigin: PAIR(70, 70)
+                *CursorOrigin: PAIR(70, 70)
+            }
+        }
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *Cmd: ""
+        }
+    }
+    
+    *Option: EXECUTIVE
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *switch: PrintArea
+        {
+            *case: EdgeNear
+            {
+                *PrintableArea: PAIR(4328, 6280)
+                *PrintableOrigin: PAIR(11, 11)
+                *CursorOrigin: PAIR(11, 11)
+            }
+            *default:
+            {
+                *PrintableArea: PAIR(4208, 6160)
+                *PrintableOrigin: PAIR(70, 70)
+                *CursorOrigin: PAIR(70, 70)
+            }
+        }
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *Cmd: ""
+        }
+    }
+    *Option: A5
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *switch: PrintArea
+        {
+            *case: EdgeNear
+            {
+                *PrintableArea: PAIR(3472, 4936)
+                *PrintableOrigin: PAIR(11, 11)
+                *CursorOrigin: PAIR(11, 11)
+            }
+            *default:
+            {
+                *PrintableArea: PAIR(3352, 4816)
+                *PrintableOrigin: PAIR(70, 70)
+                *CursorOrigin: PAIR(70, 70)
+            }
+        }
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *Cmd: ""
+        }
+    }
+    *Option: ENV_10
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *switch: PrintArea
+        {
+            *case: EdgeNear
+            {
+                *PrintableArea: PAIR(2448, 5680)
+                *PrintableOrigin: PAIR(11, 11)
+                *CursorOrigin: PAIR(11, 11)
+            }
+            *default:
+            {
+                *PrintableArea: PAIR(2336, 4896)
+                *PrintableOrigin: PAIR(70, 401)
+                *CursorOrigin: PAIR(70, 401)
+            }
+        }
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *Cmd: ""
+        }
+    }
+    *Option: ENV_DL
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *switch: PrintArea
+        {
+            *case: EdgeNear
+            {
+                *PrintableArea: PAIR(2576, 5176)
+                *PrintableOrigin: PAIR(11, 11)
+                *CursorOrigin: PAIR(11, 11)
+            }
+            *default:
+            {
+                *PrintableArea: PAIR(2456, 4392)
+                *PrintableOrigin: PAIR(70, 401)
+                *CursorOrigin: PAIR(70, 401)
+            }
+        }
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *Cmd: ""
+        }
+    }
+    *Option: ENV_C5
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *switch: PrintArea
+        {
+            *case: EdgeNear
+            {
+                *PrintableArea: PAIR(3800, 5384)
+                *PrintableOrigin: PAIR(11, 11)
+                *CursorOrigin: PAIR(11, 11)
+            }
+            *default:
+            {
+                *PrintableArea: PAIR(3688, 4608)
+                *PrintableOrigin: PAIR(70, 401)
+                *CursorOrigin: PAIR(70, 401)
+            }
+        }
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *Cmd: ""
+        }
+    }
+    *Option: ENV_MONARCH
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *switch: PrintArea
+        {
+            *case: EdgeNear
+            {
+                *PrintableArea: PAIR(2304, 4480)
+                *PrintableOrigin: PAIR(11, 11)
+                *CursorOrigin: PAIR(11, 11)
+            }
+            *default:
+            {
+                *PrintableArea: PAIR(2184, 3696)
+                *PrintableOrigin: PAIR(70, 401)
+                *CursorOrigin: PAIR(70, 401)
+            }
+        }
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *Cmd: ""
+        }
+    }
+
+    *Option: BR_POST_CARD
+    {
+        *rcNameID: =BRID_PAPERSIZE_POSTCARD_DISPLAY
+        *PageDimensions: PAIR(2400, 3600)
+        *switch: PrintArea
+        {
+            *case: EdgeNear
+            {
+                *PrintableArea: PAIR(2376, 3576)
+                *PrintableOrigin: PAIR(11, 11)
+                *CursorOrigin: PAIR(11, 11)
+            }
+            *default:
+            {
+                *PrintableArea: PAIR(2256, 3456)
+                *PrintableOrigin: PAIR(70, 70)
+                *CursorOrigin: PAIR(70, 70)
+            }
+        }
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *CallbackID: 265
+        }
+    }
+    *Option: BR_INDEX_CARD
+    {
+        *rcNameID: =BRID_PAPERSIZE_INDEXCARD_DISPLAY
+        *PageDimensions: PAIR(3000, 4800)
+        *switch: PrintArea
+        {
+            *case: EdgeNear
+            {
+                *PrintableArea: PAIR(2976, 4776)
+                *PrintableOrigin: PAIR(11, 11)
+                *CursorOrigin: PAIR(11, 11)
+            }
+            *default:
+            {
+                *PrintableArea: PAIR(2856, 4656)
+                *PrintableOrigin: PAIR(70, 70)
+                *CursorOrigin: PAIR(70, 70)
+            }
+        }
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *CallbackID: 266
+        }
+    }
+
+    *Option: CUSTOMSIZE
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *MinSize: PAIR(2100,3000)
+        *MaxSize: PAIR(5100,8400)
+        *TopMargin: 70
+        *BottomMargin: 70
+        *MaxPrintableWidth: 5080
+        *MinLeftMargin: 70
+        *CenterPrintable?: TRUE
+    }
+}
+
+*Feature: MediaType
+{
+    *rcNameID: =MEDIA_TYPE_DISPLAY
+	*UpdateQualityMacro?: TRUE
+    *DefaultOption: Plain
+    *Option: Plain
+    {
+        *rcNameID: =BRID_MEDIATYPE_PLAIN_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *CallbackID: 20
+        }
+    }
+    *Option: Inkjet
+    {
+        *rcNameID: =BRID_MEDIATYPE_INKJET_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *CallbackID: 21
+        }
+		*Constraints: LIST( Resolution.Option1, Resolution.Option2 )
+    }
+    *Option: Glossy
+    {
+        *rcNameID: =BRID_MEDIATYPE_GLOSSY4_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *CallbackID: 22
+        }
+		*Constraints: LIST( Resolution.Option1, Resolution.Option2 )
+    }
+    *Option: Glossy_tri
+    {
+        *rcNameID: =BRID_MEDIATYPE_GLOSSY3_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *CallbackID: 26
+        }
+		*Constraints: LIST( Resolution.Option1, Resolution.Option2 )
+    }
+    *Option: Transparency
+    {
+        *rcNameID: =BRID_MEDIATYPE_OHP_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.2
+            *CallbackID: 24
+        }
+		*Constraints: LIST( Resolution.Option1, Resolution.Option2 )
+    }
+}
+
+*Feature: PrintArea
+{
+    *rcNameID: =BRID_EDGEPRINT_FIT_DISPLAY
+    *DefaultOption: EdgeNormal
+    *Option: EdgeNormal
+    {
+        *rcNameID: =OFF_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.8
+            *CallbackID: 80
+        }
+    }
+    *Option: EdgeNear
+    {
+        *rcNameID: =ON_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.8
+            *CallbackID: 81
+        }
+		*Constraints: LIST( PaperSize.A5, PaperSize.LEGAL, PaperSize.EXECUTIVE, PaperSize.ENV_10, PaperSize.ENV_DL, PaperSize.ENV_C5, PaperSize.ENV_MONARCH, PaperSize.CUSTOMSIZE )
+		*Constraints: LIST( MediaType.Transparency )
+    }
+}

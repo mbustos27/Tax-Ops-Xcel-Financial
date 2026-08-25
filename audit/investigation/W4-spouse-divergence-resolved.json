@@ -1,0 +1,216 @@
+{
+  "resolved_n": 37,
+  "still_open": 163,
+  "sample": [
+    {
+      "finding_id": "265177753d5ad5d363868c01180a2803d96b46981d098ae6b4853498662749cf",
+      "entity": "APOLINARIO|ADELFA",
+      "client_ids": [
+        473
+      ]
+    },
+    {
+      "finding_id": "f55b105ef4eae1bca730d600a4cfc26f8916be60b37aecd7ac448b60e0bb4fad",
+      "entity": "ANAYA|JOSE",
+      "client_ids": [
+        1433
+      ]
+    },
+    {
+      "finding_id": "77b5f295f9d5c081ce1fadd7c6612d5f88b2c084ecd09b3415cb94fcbe484ce8",
+      "entity": "PEREZ|LINDA",
+      "client_ids": [
+        1158
+      ]
+    },
+    {
+      "finding_id": "1723d84c8ec800611ab8c5074a20cbe8c4bf24dd84886492e393e6cc4a3c7325",
+      "entity": "GIMENEZ|ENRIQUE",
+      "client_ids": [
+        1469
+      ]
+    },
+    {
+      "finding_id": "1adba0c33a7a2fe605f8f21eb104abf3d850c1341e9ba9c4b97556a2458e5354",
+      "entity": "OLIVAREZ|RICHARD",
+      "client_ids": [
+        1474
+      ]
+    },
+    {
+      "finding_id": "283b68fd56d08bf246807ec2d1422b74c7a47b2a2bc830f06c7cc76aa4ac180f",
+      "entity": "MARQUEZ HUNG|EDGAR",
+      "client_ids": [
+        1389
+      ]
+    },
+    {
+      "finding_id": "6b10db3a7ace3469006a206305b3ac8a4c1e07f178b523f202d83b79f29a496e",
+      "entity": "TEST3|SCAN",
+      "client_ids": [
+        2175
+      ]
+    },
+    {
+      "finding_id": "0ceaa582b31c4eecee2c0b92b2d71a274e6ee6af5956795bc96634ddd8bb6e22",
+      "entity": "TEST7|SCAN",
+      "client_ids": [
+        2187
+      ]
+    },
+    {
+      "finding_id": "d4f3f1c6450dada8040b882241bca6b8ef706adad6e4bc35187fa4adefa45d84",
+      "entity": "1111|TEST|TEST2",
+      "client_ids": [
+        2155
+      ]
+    },
+    {
+      "finding_id": "919c945e292375053f435c32f7e773d63d88a13ae1c445d5448fa677db41f44a",
+      "entity": "3313|TEST3|TEST",
+      "client_ids": [
+        2156
+      ]
+    },
+    {
+      "finding_id": "a02379683117ba2170b67ec7597321194952e7ec288549cac13364acbe679e0b",
+      "entity": "FRANCO|ELIZA",
+      "client_ids": [
+        2157
+      ]
+    },
+    {
+      "finding_id": "a2f88e1edbcdcd91d8b568f3a24d342c9a113138e746a0ec53a3aa5f2ccd5eec",
+      "entity": "5151|TESTTTT|TEST2",
+      "client_ids": [
+        2158
+      ]
+    },
+    {
+      "finding_id": "7521aa1b3543ba0c930cb687c11f6f1a1e95a50cdab59418378d93da8ad764fc",
+      "entity": "1111|TEST|TEST",
+      "client_ids": [
+        2159
+      ]
+    },
+    {
+      "finding_id": "c1d23a670e906154fdc3563fcb2a4e1319b3c4e11a9be163e6d2fe32dbf3f845",
+      "entity": "TESTTTTT|TEST",
+      "client_ids": [
+        2162
+      ]
+    },
+    {
+      "finding_id": "8afacbec9c9f8cb74681416980807f9e01adfcafe836dc460aaf2547b50491c9",
+      "entity": "TEST|TEST",
+      "client_ids": [
+        2159
+      ]
+    },
+    {
+      "finding_id": "d154f8d298fbbbe3aae3d57a3a7c097adc344ca7946c1490fe2ede284e0247ef",
+      "entity": "1111|TEST|TEST2222",
+      "client_ids": [
+        2165
+      ]
+    },
+    {
+      "finding_id": "093424eeea5fefa42c86982cfaf074683cdd54383c35198d46b81503e9c52ab7",
+      "entity": "1111|TEST|TESTTTTTT32",
+      "client_ids": [
+        2166
+      ]
+    },
+    {
+      "finding_id": "da66a747f3f15ab58b7d445278906471bd8a8d8d97cda4e77d0c22b12296d404",
+      "entity": "TEST|TESTERRRRRR",
+      "client_ids": [
+        2167
+      ]
+    },
+    {
+      "finding_id": "38e79d3b2b14f04700297a459ad09471f0c9dece7a5b460eb1a559d9eb1266ee",
+      "entity": "TEST|TEST2345",
+      "client_ids": [
+        2168
+      ]
+    },
+    {
+      "finding_id": "90125a05c73fe9e7876005f18e8e36288669f997c1fea7431fcfbff0c919fc09",
+      "entity": "TEZT|YEST",
+      "client_ids": [
+        2169
+      ]
+    },
+    {
+      "finding_id": "571e9c9ac551e4bbacb5ccca301715e9c06581d9399300bad8557ba56712d095",
+      "entity": "SCAN|TEST2",
+      "client_ids": [
+        2171
+      ]
+    },
+    {
+      "finding_id": "ad8c91b723d70cb4ce9b18c8f4afcecdd686af7a968e97a47dae126f24a95c3e",
+      "entity": "SCAN3|TEST",
+      "client_ids": [
+        2172
+      ]
+    },
+    {
+      "finding_id": "77ccf21e7d8da752b373f0ee3ebadcfaa21ff17a90a4f4ab1b18c95375154448",
+      "entity": "SCAN|TEST3",
+      "client_ids": [
+        2173
+      ]
+    },
+    {
+      "finding_id": "ded1f07aeba64587ef114e87e05cdb831058165a5530eb7e83c483ad6edb0017",
+      "entity": "SCAN|TEST4",
+      "client_ids": [
+        2174
+      ]
+    },
+    {
+      "finding_id": "8e309b812b41c5f16f48abc3b59e7d50b338b52d27d6fb07e5adbc0e57e74ee0",
+      "entity": "TEST3|SCAN",
+      "client_ids": [
+        2175
+      ]
+    },
+    {
+      "finding_id": "89ffcf4f733811bcf49c33db6223bcf9d35e9bb4669e017b1183686be719c16f",
+      "entity": "TEST4|SCAN",
+      "client_ids": [
+        2176
+      ]
+    },
+    {
+      "finding_id": "2a14b972396a390f1b8a54feca48c7f9d1f491c774b6cf120c4e4ca153167a02",
+      "entity": "SCAN4|TEST",
+      "client_ids": [
+        2177
+      ]
+    },
+    {
+      "finding_id": "97c607002b7243f04ab37adc76d1023b06ba5db5eb4fb9b3eb1b0ce533326d19",
+      "entity": "SCAN5|TEST",
+      "client_ids": [
+        2180
+      ]
+    },
+    {
+      "finding_id": "8cd349a40311c2050dd24b8ebbea4e8b2f7be4eeafa20ae76a65309ea160368f",
+      "entity": "1111|VILLANUEVA VAZQUEZ|JUAN",
+      "client_ids": [
+        2265
+      ]
+    },
+    {
+      "finding_id": "fc5fd6d8bc42dd28780a2067d70291306285b14916c75dafef2f07b2d1d19f61",
+      "entity": "TEST5|SCAN5",
+      "client_ids": [
+        2182
+      ]
+    }
+  ]
+}

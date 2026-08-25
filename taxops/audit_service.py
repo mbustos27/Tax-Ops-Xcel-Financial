@@ -299,6 +299,35 @@ def _capture_before_for_request(conn) -> dict[str, Any]:
         meta["before"] = {"payload_preview": mask_audit_payload(body)}
         return meta
 
+    # Phase 3.4: dead-letter requeue — capture doc_id/return_id/status/attempts
+    # explicitly so "acting user, doc_id, return_id, timestamp" is answerable
+    # straight from audit_log without cross-referencing extraction_queue.
+    if ep == "email_health.api_email_health_requeue" and "eq_id" in va:
+        eqid = int(va["eq_id"])
+        meta["entity_type"] = "extraction_queue"
+        meta["entity_id"] = str(eqid)
+        row = conn.execute(
+            "SELECT id, doc_id, return_id, status, attempts, error_message "
+            "FROM extraction_queue WHERE id = ?",
+            (eqid,),
+        ).fetchone()
+        meta["before"] = dict(row) if row else None
+        return meta
+
+    # Phase 3.5: soft-delete restore — scoped by endpoint name (not the bare
+    # "item_id" view-arg, which the assign/delete/file email-inbox routes
+    # also use) so this does not change auditing behavior for those routes.
+    if ep == "api_email_inbox_restore" and "item_id" in va:
+        iid = int(va["item_id"])
+        meta["entity_type"] = "email_inbox"
+        meta["entity_id"] = str(iid)
+        row = conn.execute(
+            "SELECT id, is_deleted, filename, received_at FROM email_inbox WHERE id = ?",
+            (iid,),
+        ).fetchone()
+        meta["before"] = dict(row) if row else None
+        return meta
+
     meta["entity_type"] = "http_request"
     meta["entity_id"] = ep
     meta["before"] = {
@@ -331,6 +360,19 @@ def _capture_after_for_meta(conn, meta: dict[str, Any]) -> Any:
                 except (TypeError, ValueError):
                     pass
         return fetch_multi_return_bundles(conn, ids)
+    if et == "extraction_queue" and meta.get("entity_id"):
+        row = conn.execute(
+            "SELECT id, doc_id, return_id, status, attempts, error_message "
+            "FROM extraction_queue WHERE id = ?",
+            (int(meta["entity_id"]),),
+        ).fetchone()
+        return dict(row) if row else None
+    if et == "email_inbox" and meta.get("entity_id"):
+        row = conn.execute(
+            "SELECT id, is_deleted, filename, received_at FROM email_inbox WHERE id = ?",
+            (int(meta["entity_id"]),),
+        ).fetchone()
+        return dict(row) if row else None
     return {"note": "after snapshot not captured for this entity_type"}
 
 

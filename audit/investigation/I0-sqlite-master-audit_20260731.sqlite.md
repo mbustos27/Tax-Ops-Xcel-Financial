@@ -1,0 +1,21 @@
+# sqlite_master for snapshot/audit_20260731.sqlite
+
+- `index` **sqlite_autoindex_audit_match_1**
+- `index` **sqlite_autoindex_stage_drake_1**
+- `index` **sqlite_autoindex_stage_log_1**
+- `index` **sqlite_autoindex_stage_taxops_client_1**
+- `index` **sqlite_autoindex_stage_taxops_return_1**
+- `index` **sqlite_autoindex_stage_taxops_spouse_1**
+- `table` **audit_dropped**
+- `table` **audit_finding**
+- `table` **audit_gap_ty2025**
+- `table` **audit_match**
+- `table` **audit_residual**
+- `table` **audit_run**
+- `table` **audit_spouse**
+- `table` **audit_spouse_store_div**
+- `table` **stage_drake**
+- `table` **stage_log**
+- `table` **stage_taxops_client**
+- `table` **stage_taxops_return**
+- `table` **stage_taxops_spouse**
