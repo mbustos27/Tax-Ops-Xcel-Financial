@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ _('Missing Documents') }} — #{{ ret.log_number or ret.id }} — {{ ret.last_name }}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12px;
+    color: #1a1a1a;
+    background: #F4EFE9;
+    padding: 20px;
+  }
+
+  .sheet {
+    background: #fff;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 28px 32px;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 12px rgba(0,0,0,.12);
+  }
+
+  .print-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 720px;
+    margin: 0 auto 12px;
+  }
+  .print-bar button {
+    background: #6B2233;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 22px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .print-bar button:hover { background: #5a1c2a; }
+  .print-bar .close-link { font-size: 12px; color: #555; text-decoration: none; }
+
+  .header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    border-bottom: 3px solid #6B2233;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+  }
+  .office-name { font-size: 17px; font-weight: 700; color: #3D1019; }
+  .office-sub { font-size: 11px; color: #6B2233; margin-top: 2px; }
+  .form-title {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    color: #6B2233;
+    text-align: right;
+  }
+  .log-number {
+    font-size: 22px;
+    font-weight: 800;
+    font-family: ui-monospace, monospace;
+    color: #3D1019;
+    text-align: right;
+    margin-top: 2px;
+  }
+
+  table.meta {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 18px;
+  }
+  table.meta td {
+    padding: 4px 8px;
+    vertical-align: bottom;
+  }
+  table.meta td.lbl {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 9px;
+    letter-spacing: .06em;
+    color: #6B2233;
+    padding-bottom: 0;
+  }
+  table.meta td.val {
+    border-bottom: 1px solid #999;
+    min-width: 80px;
+    padding-top: 2px;
+  }
+
+  .callout {
+    background: #FFF7ED;
+    border: 2px solid #EA580C;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+  }
+  .callout-title {
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #9A3412;
+    margin-bottom: 4px;
+  }
+  .callout-body { font-size: 12px; color: #431407; line-height: 1.45; }
+
+  .items-title {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #6B2233;
+    margin-bottom: 8px;
+  }
+
+  .checklist { list-style: none; margin: 0; padding: 0; }
+  .checklist li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid #e8e8e8;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .chk-box {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #333;
+    margin-top: 1px;
+  }
+  .item-text { flex: 1; font-weight: 600; color: #1a1a1a; }
+  .item-meta { font-size: 10px; color: #666; margin-top: 2px; }
+  .resolved .item-text { text-decoration: line-through; color: #888; font-weight: 500; }
+  .resolved .chk-box { border-color: #aaa; }
+
+  .empty-note {
+    text-align: center;
+    padding: 24px 12px;
+    color: #666;
+    font-size: 13px;
+    border: 1px dashed #ccc;
+    border-radius: 8px;
+  }
+
+  .footer-note {
+    margin-top: 22px;
+    padding-top: 12px;
+    border-top: 1px dashed #ccc;
+    font-size: 10px;
+    color: #666;
+    line-height: 1.5;
+  }
+  .sig-line {
+    display: flex;
+    gap: 24px;
+    margin-top: 28px;
+  }
+  .sig-field {
+    flex: 1;
+    border-bottom: 1px solid #555;
+    min-height: 22px;
+  }
+  .sig-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: #6B2233;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-top: 4px;
+  }
+
+  .notes-block { margin-top: 20px; }
+  .notes-list { list-style: none; margin: 0; padding: 0; }
+  .notes-list li {
+    padding: 10px 0;
+    border-bottom: 1px solid #e8e8e8;
+  }
+  .notes-list li:last-child { border-bottom: none; }
+  .note-text {
+    font-size: 12px;
+    line-height: 1.45;
+    color: #1a1a1a;
+    white-space: pre-wrap;
+  }
+  .note-meta {
+    font-size: 10px;
+    color: #666;
+    margin-top: 4px;
+  }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .print-bar { display: none !important; }
+    .sheet { border: none; box-shadow: none; max-width: 100%; padding: 0; margin: 0; }
+    .callout, .header-row {
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    @page { margin: 0.55in; size: letter portrait; }
+  }
+</style>
+</head>
+<body>
+
+<div class="print-bar">
+  <button type="button" onclick="window.print()">{{ _('Print / Save as PDF') }}</button>
+  <a href="javascript:window.close()" class="close-link">{{ _('Close') }}</a>
+</div>
+
+<div class="sheet">
+
+  <div class="header-row">
+    <div>
+      <div class="office-name">Xcel Financial Services, LLC</div>
+      <div class="office-sub">{{ _('Missing documents & supporting notes') }}</div>
+    </div>
+    <div>
+      <div class="form-title">{{ _('MISSING DOCS') }}</div>
+      <div class="log-number">#{{ ret.log_number or ret.id }}</div>
+    </div>
+  </div>
+
+  <table class="meta">
+    <tr>
+      <td class="lbl" style="width:28%">{{ _('Client') }}</td>
+      <td class="lbl" style="width:18%">{{ _('Tax year') }}</td>
+      <td class="lbl" style="width:22%">{{ _('Intake date') }}</td>
+      <td class="lbl" style="width:22%">{{ _('Printed') }}</td>
+    </tr>
+    <tr>
+      <td class="val">{{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %}</td>
+      <td class="val">TY{{ ret.tax_year }}</td>
+      <td class="val">{{ ret.intake_date or '—' }}</td>
+      <td class="val">{{ printed_at }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">{{ _('Status') }}</td>
+      <td class="lbl">{{ _('Preparer') }}</td>
+      <td class="lbl" colspan="2">{{ _('Phone') }}</td>
+    </tr>
+    <tr>
+      <td class="val">{{ ret.client_status or '—' }}</td>
+      <td class="val">{{ ret.processor or '—' }}</td>
+      <td class="val" colspan="2">{{ ret.phone or '—' }}</td>
+    </tr>
+  </table>
+
+  {% if show_open_only and open_docs %}
+  <div class="callout">
+    <div class="callout-title">{{ _('Please provide the following') }}</div>
+    <div class="callout-body">
+      {{ _('Place this sheet in the client\'s physical return folder. Check off each item as it is received.') }}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if items %}
+  <div class="items-title">
+    {% if show_open_only %}
+      {{ _('Still needed') }} ({{ open_docs|length }})
+    {% else %}
+      {{ _('All tracked items') }}
+    {% endif %}
+  </div>
+  <ul class="checklist">
+    {% for doc in items %}
+    <li class="{% if doc.is_resolved %}resolved{% endif %}">
+      <span class="chk-box" aria-hidden="true"></span>
+      <div>
+        <div class="item-text">{{ doc.item_text }}</div>
+        {% if doc.created_at %}
+        <div class="item-meta">{{ _('Added') }} {{ doc.created_at[:10] }}{% if doc.is_resolved and doc.resolved_at %} · {{ _('Received') }} {{ doc.resolved_at[:10] }}{% endif %}</div>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty-note">
+    {% if show_open_only %}
+      {{ _('No open missing documents listed.') }}
+    {% else %}
+      {{ _('No missing documents have been tracked for this return.') }}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if notes %}
+  <div class="notes-block">
+    <div class="items-title">{{ _('Supporting notes') }} ({{ notes|length }})</div>
+    <ul class="notes-list">
+      {% for note in notes %}
+      <li>
+        <div class="note-text">{{ note.note_text }}</div>
+        <div class="note-meta">
+          {% if note.source %}{{ note.source }}{% else %}{{ _('Note') }}{% endif %}
+          {% if note.created_at %} · {{ note.created_at[:16] }}{% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if not items and not notes %}
+  <div class="empty-note" style="margin-top:16px">
+    {{ _('Nothing to print yet — add missing documents or notes on the return first.') }}
+  </div>
+  {% endif %}
+
+  <div class="sig-line">
+    <div style="flex:1">
+      <div class="sig-field"></div>
+      <div class="sig-label">{{ _('Staff — date received') }}</div>
+    </div>
+    <div style="flex:1">
+      <div class="sig-field"></div>
+      <div class="sig-label">{{ _('Client signature (optional)') }}</div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    {{ _('Return folder #%(log)s · Tax year %(ty)s · Printed from TaxOps',
+         log=ret.log_number or ret.id, ty=ret.tax_year) }}
+    {% if not show_open_only %} · {{ _('Includes resolved items') }}{% endif %}
+  </div>
+
+</div>
+</body>
+</html>

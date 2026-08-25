@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Missing Documents Report') }} — TY{{ report_year }}{% endblock %}
+
+{% block content %}
+<div class="max-w-screen-2xl mx-auto px-4 py-6 space-y-6">
+
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h1 class="text-xl font-bold text-slate-900">{{ _('Missing Documents Report') }}</h1>
+      <p class="text-sm text-slate-500 mt-1">
+        {{ _('Aggregate open missing-doc items to spot intake gaps and coach staff.') }}
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+      <nav class="flex items-center gap-1" aria-label="{{ _('Tax year') }}">
+        {% for y in available_years %}
+        <a href="/reports/missing-docs?year={{ y }}&status={{ status_filter }}"
+           class="pill shrink-0 {% if y == report_year %}pill-active{% else %}pill-inactive{% endif %}">
+          {{ y }}
+        </a>
+        {% endfor %}
+      </nav>
+      <a href="/reports/missing-docs?year={{ report_year }}&status=open"
+         class="text-xs font-semibold px-3 py-1.5 rounded-lg border {% if status_filter == 'open' %}bg-orange-100 border-orange-300 text-orange-900{% else %}border-slate-200 text-slate-600 hover:bg-slate-50{% endif %}">
+        {{ _('Open only') }}
+      </a>
+      <a href="/reports/missing-docs?year={{ report_year }}&status=all"
+         class="text-xs font-semibold px-3 py-1.5 rounded-lg border {% if status_filter == 'all' %}bg-slate-200 border-slate-400 text-slate-900{% else %}border-slate-200 text-slate-600 hover:bg-slate-50{% endif %}">
+        {{ _('All entries') }}
+      </a>
+      <button type="button" onclick="window.print()"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-600 hover:bg-slate-50 shadow-sm print:hidden">
+        {{ _('Print') }}
+      </button>
+    </div>
+  </div>
+
+  {% set sum = summary %}
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">{{ _('Returns this season') }}</p>
+      <p class="text-2xl font-bold text-slate-900 tabular-nums">{{ sum.season_returns or 0 }}</p>
+    </div>
+    <div class="bg-white rounded-xl border border-orange-200 bg-orange-50/40 shadow-sm p-4">
+      <p class="text-xs font-medium text-orange-800 uppercase tracking-wide mb-1">{{ _('With open missing docs') }}</p>
+      <p class="text-2xl font-bold text-orange-900 tabular-nums">{{ sum.returns_with_open or 0 }}</p>
+      <p class="text-xs text-orange-800/80 mt-1">{{ sum.pct_returns_with_open or 0 }}% {{ _('of season') }}</p>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">{{ _('Open line items') }}</p>
+      <p class="text-2xl font-bold text-slate-900 tabular-nums">{{ sum.open_items or 0 }}</p>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">{{ _('Distinct item types') }}</p>
+      <p class="text-2xl font-bold text-slate-900 tabular-nums">{{ items|length }}</p>
+    </div>
+  </div>
+
+  <section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+      <h2 class="text-sm font-bold text-slate-800">{{ _('Most common missing items') }}</h2>
+      <p class="text-xs text-slate-500">{{ _('Grouped by label (case-insensitive)') }}</p>
+    </div>
+    {% if items %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="text-left px-4 py-2.5 font-semibold">#</th>
+            <th class="text-left px-4 py-2.5 font-semibold">{{ _('Item') }}</th>
+            <th class="text-right px-4 py-2.5 font-semibold">{{ _('Open') }}</th>
+            <th class="text-right px-4 py-2.5 font-semibold">{{ _('Total logged') }}</th>
+            <th class="text-right px-4 py-2.5 font-semibold">{{ _('Returns (open)') }}</th>
+            <th class="text-right px-4 py-2.5 font-semibold print:hidden">{{ _('Actions') }}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          {% for row in items %}
+          <tr class="hover:bg-slate-50/80">
+            <td class="px-4 py-2.5 text-slate-400 font-mono text-xs">{{ loop.index }}</td>
+            <td class="px-4 py-2.5 font-medium text-slate-800">{{ row.display_text }}</td>
+            <td class="px-4 py-2.5 text-right tabular-nums font-semibold {% if row.open_count %}text-orange-700{% else %}text-slate-500{% endif %}">
+              {{ row.open_count }}
+            </td>
+            <td class="px-4 py-2.5 text-right tabular-nums text-slate-600">{{ row.total_count }}</td>
+            <td class="px-4 py-2.5 text-right tabular-nums text-slate-600">{{ row.returns_with_open }}</td>
+            <td class="px-4 py-2.5 text-right print:hidden">
+              {% if row.open_count %}
+              <button type="button"
+                      class="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                      data-norm-key="{{ row.norm_key }}"
+                      data-display="{{ row.display_text }}"
+                      onclick="showReturns(this)">
+                {{ _('View returns') }}
+              </button>
+              {% else %}
+              <span class="text-xs text-slate-400">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="px-4 py-10 text-center text-sm text-slate-400">
+      {{ _('No missing-document entries for this filter.') }}
+    </p>
+    {% endif %}
+  </section>
+
+  <section id="drill-panel" class="hidden bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden print:hidden">
+    <div class="px-4 py-3 border-b border-indigo-100 bg-indigo-50/60 flex items-center justify-between gap-2">
+      <h2 id="drill-title" class="text-sm font-bold text-indigo-950"></h2>
+      <button type="button" onclick="hideDrill()" class="text-xs text-slate-500 hover:text-slate-800">{{ _('Close') }}</button>
+    </div>
+    <div id="drill-body" class="p-4 text-sm text-slate-600">{{ _('Loading…') }}</div>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const YEAR = {{ report_year }};
+
+  window.hideDrill = function () {
+    const panel = document.getElementById('drill-panel');
+    if (panel) panel.classList.add('hidden');
+  };
+
+  window.showReturns = async function (btn) {
+    const normKey = btn.dataset.normKey;
+    const display = btn.dataset.display || normKey;
+    const panel = document.getElementById('drill-panel');
+    const title = document.getElementById('drill-title');
+    const body = document.getElementById('drill-body');
+    if (!panel || !body) return;
+    panel.classList.remove('hidden');
+    if (title) title.textContent = '{{ _("Returns waiting on") }}: ' + display;
+    body.innerHTML = '<p class="text-slate-400">{{ _("Loading…") }}</p>';
+  try {
+      const url = `/api/reports/missing-docs/returns?year=${YEAR}&norm_key=${encodeURIComponent(normKey)}`;
+      const resp = await _csrfFetch(url);
+      const data = await _authJson(resp);
+      const rows = data.returns || [];
+      if (!rows.length) {
+        body.innerHTML = '<p class="text-slate-500">{{ _("No open returns for this item.") }}</p>';
+        return;
+      }
+      body.innerHTML = '<ul class="divide-y divide-slate-100">' + rows.map(r => {
+        const name = (r.last_name || '') + (r.first_name ? ', ' + r.first_name : '');
+        const log = r.log_number || r.return_id;
+        return `<li class="py-2 flex flex-wrap items-center justify-between gap-2">
+          <span><span class="font-mono font-bold text-slate-800">#${log}</span>
+            <span class="text-slate-600 ml-2">${name}</span>
+            <span class="text-xs text-slate-400 ml-2">${r.client_status || ''}</span></span>
+          <span class="flex items-center gap-3">
+            <a href="/return/${r.return_id}/missing-docs/print" target="_blank" rel="noopener"
+               class="text-xs font-semibold text-orange-700 hover:text-orange-900">{{ _("Print sheet") }}</a>
+            <a href="/return/${r.return_id}" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">{{ _("Open return") }}</a>
+          </span>
+        </li>`;
+      }).join('') + '</ul>';
+    } catch (e) {
+      body.innerHTML = '<p class="text-red-600">' + (e.message || String(e)) + '</p>';
+    }
+  };
+})();
+</script>
+{% endblock %}

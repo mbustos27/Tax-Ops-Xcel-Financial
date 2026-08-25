@@ -39,7 +39,7 @@
       {% for r in needs_attention_items %}
       {% set rc = attn_reason_class(r.reason) %}
       <li>
-        <a href="/return/{{ r.return_id }}" class="attn-row attn-row--{{ rc }}">
+        <a href="{{ return_open_path(r.return_id) }}" class="attn-row attn-row--{{ rc }}">
           <span class="attn-badge attn-badge--{{ rc }}">{{ attn_reason_label(r.reason) }}</span>
           <div class="attn-row__main">
             <div class="attn-row__name">{{ attn_client_name(r) }}</div>
@@ -69,17 +69,19 @@
        class="rounded-xl px-4 py-3 space-y-2.5 shadow-sm flex-shrink-0" style="background:var(--bg-card);border:1px solid var(--border-default)">
 
     {% set active_form = filters.form or '' %}
-    {# Shared query tail: keep preparer, flags, and form when switching status or other filters #}
+    {# Shared query tail: keep preparer, flags, form, quick-q, and sort when switching filters #}
     {% set pproc = ('&processor=' ~ (filters.processor|urlencode)) if filters.processor else '' %}
     {% set pbal  = ('&balance_due=1') if filters.balance_due else '' %}
     {% set plate = ('&late_intake=1') if filters.late_intake else '' %}
     {% set pslow = ('&slow_cycle=1') if filters.slow_cycle else '' %}
     {% set pform = ('&form=' ~ (active_form|urlencode)) if active_form else '' %}
-    {% set persist = pproc ~ pbal ~ plate ~ pslow ~ pform %}
+    {% set pq    = ('&q=' ~ (filters.q|urlencode)) if filters.q else '' %}
+    {% set psort = ('&sort=' ~ (sort|urlencode)) if sort else '' %}
+    {% set persist = pproc ~ pbal ~ plate ~ pslow ~ pform ~ pq ~ psort %}
 
     {% set base = '/?year=' ~ current_year
         ~ (('&status=' ~ (filters.status[0]|urlencode)) if filters.status else '')
-        ~ pproc ~ pbal ~ plate ~ pslow %}
+        ~ pproc ~ pbal ~ plate ~ pslow ~ pq ~ psort %}
 
     <!-- Row 1: status pills -->
     <div id="status-pills" class="flex items-center gap-1.5 flex-nowrap overflow-x-auto" role="navigation" aria-label="{{ _('Filter by status') }}">
@@ -220,6 +222,8 @@
           </div>
         </div>
         <input id="table-filter" type="text" placeholder="{{ _('Quick filter\u2026') }}"
+               value="{{ filters.q or '' }}"
+               autocomplete="off"
                class="text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 w-44" style="border:1px solid var(--border-default);color:var(--text-primary);background:var(--input-bg)">
         <span class="text-sm whitespace-nowrap" style="color:var(--text-muted)">
           <span id="row-count">{{ returns | length }}</span> / <span id="total-count">{{ total_count }}</span> {{ _('returns') }}
@@ -277,6 +281,15 @@
         Assign preparer…
       </button>
     </div>
+    {% if get_effective_role() == 'admin' %}
+    <div class="hidden sm:block w-px h-6 shrink-0" style="background:var(--color-primary-border)" aria-hidden="true"></div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button type="button" id="btn-bulk-delete-open"
+              class="text-xs font-semibold px-2.5 py-1.5 rounded-lg border whitespace-nowrap text-white bg-red-700 hover:bg-red-800 border-red-800">
+        {{ _('Delete selected\u2026') }}
+      </button>
+    </div>
+    {% endif %}
   </div>
 
   <!-- ── Returns table — only this div scrolls ────────────────────────── -->
@@ -318,7 +331,7 @@
             {% if not _hide_financial %}data-fee="{{ r.total_fee or 0 }}" data-balance="{{ r.balance or 0 }}"{% endif %}
             data-intake="{{ r.intake_date or '' }}"
             data-return-id="{{ r.id }}"
-            onclick="if(!event.target.closest('.status-dropdown,.editable,.row-select-label')) window.location='/return/{{ r.id }}'">
+            onclick="if(!event.target.closest('.status-dropdown,.editable,.row-select-label')) window.location='{{ return_open_path(r.id) }}'">
 
           <!-- Select -->
           <td class="td text-center" onclick="event.stopPropagation()">
@@ -334,12 +347,15 @@
             <span class="font-mono font-black text-slate-800 text-base tracking-tight">{{ r.log_number or '—' }}</span>
           </td>
 
-          <!-- Tax Year -->
+          <!-- Tax Year — always highlighted so same-client multi-TY rows are obvious -->
           <td class="td text-center">
-            {% if r.tax_year and r.tax_year != current_year - 1 %}
-            <span class="inline-block px-1.5 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">{{ r.tax_year }}</span>
+            {% if r.tax_year %}
+            <span class="inline-block px-1.5 py-0.5 rounded text-xs font-bold
+              {% if r.tax_year != current_year - 1 %}bg-amber-50 text-amber-700 border border-amber-200{% else %}bg-slate-100 text-slate-700 border border-slate-200{% endif %}">
+              TY{{ r.tax_year }}
+            </span>
             {% else %}
-            <span class="text-xs text-slate-400">{{ r.tax_year or '—' }}</span>
+            <span class="text-xs text-slate-400">—</span>
             {% endif %}
           </td>
 
@@ -560,6 +576,32 @@
     </div>
   </div>
 
+  {% if get_effective_role() == 'admin' %}
+  <div id="bulk-delete-modal" class="fixed inset-0 z-[55] hidden items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="bulk-delete-modal-title">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border border-red-200">
+      <h3 id="bulk-delete-modal-title" class="text-lg font-bold text-red-800">{{ _('Permanently delete returns') }}</h3>
+      <p id="bulk-delete-modal-summary" class="text-sm text-slate-600 mt-2 leading-relaxed"></p>
+      <div class="mt-4">
+        <label for="bulk-delete-confirm-input" class="block text-xs font-semibold text-slate-600 mb-1">
+          {{ _('Type DELETE to confirm') }}
+        </label>
+        <input id="bulk-delete-confirm-input" type="text" autocomplete="off" spellcheck="false"
+               class="w-full text-sm rounded-lg px-3 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-400"
+               placeholder="DELETE">
+      </div>
+      <div class="mt-5 flex flex-wrap gap-2 justify-end">
+        <button type="button" class="bulk-modal-cancel px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-[var(--table-row-hover)]">
+          {{ _('Cancel') }}
+        </button>
+        <button type="button" id="bulk-delete-modal-commit"
+                class="px-4 py-2 text-sm font-semibold rounded-lg text-white bg-red-700 hover:bg-red-800 border border-red-800">
+          {{ _('Delete forever') }}
+        </button>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <div id="dashboard-bulk-toast"
        class="pointer-events-none fixed bottom-28 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-[56] opacity-0 translate-y-2 transition-all duration-200"
        aria-live="polite" role="status">
@@ -752,9 +794,11 @@ window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
       }
     }
 
-    const tyHtml = r.tax_year && r.tax_year !== yr - 1
-      ? `<span class="inline-block px-1.5 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">${r.tax_year}</span>`
-      : `<span class="text-xs text-slate-400">${r.tax_year || '—'}</span>`;
+    const tyHtml = r.tax_year
+      ? (r.tax_year !== yr - 1
+          ? `<span class="inline-block px-1.5 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">TY${r.tax_year}</span>`
+          : `<span class="inline-block px-1.5 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">TY${r.tax_year}</span>`)
+      : `<span class="text-xs text-slate-400">—</span>`;
 
     const ln = r.last_name || '', fn = r.first_name || '', dn = r.display_name || '';
     const clientMain = `<div class="font-semibold text-slate-800 leading-tight">${_esc(ln)}${fn ? ', ' + _esc(fn) : ''}</div>`;
@@ -835,10 +879,15 @@ window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
     if (endMsg)  endMsg.classList.toggle('hidden', ps.loading || ps.page < ps.total_pages);
   }
 
-  /* Replace tbody with page 1 (used when a filter changes via AJAX) */
+  /* Replace tbody with page 1 (used when a filter / quick-q / sort changes) */
+  let _dashFetchAbort = null;
   async function _resetToPage1() {
     const ps = window.__pagState;
-    if (ps.loading) return;
+    if (_dashFetchAbort) {
+      try { _dashFetchAbort.abort(); } catch (_) {}
+    }
+    const ac = new AbortController();
+    _dashFetchAbort = ac;
     ps.loading = true;
     _updateFooter();
 
@@ -853,7 +902,7 @@ window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
     apiUrl.searchParams.set('per_page', String(ps.per_page));
 
     try {
-      const resp = await fetch(apiUrl.toString(), { credentials: 'same-origin' });
+      const resp = await fetch(apiUrl.toString(), { credentials: 'same-origin', signal: ac.signal });
       if (resp.status === 401) { window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname); return; }
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
@@ -869,15 +918,21 @@ window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
         tbody.style.pointerEvents = '';
       }
       if (tbl) tbl.setAttribute('aria-busy', 'false');
+      if (typeof syncDashboardTableSelection === 'function') syncDashboardTableSelection();
     } catch (e) {
+      if (e && e.name === 'AbortError') return;
       if (tbody) { tbody.style.opacity = '1'; tbody.style.pointerEvents = ''; }
       if (tbl)   tbl.setAttribute('aria-busy', 'false');
       console.error('Dashboard load failed:', e);
     } finally {
-      ps.loading = false;
-      _updateFooter();
+      if (_dashFetchAbort === ac) {
+        ps.loading = false;
+        _dashFetchAbort = null;
+        _updateFooter();
+      }
     }
   }
+  window.__dashboardReloadPage1 = _resetToPage1;
 
   /* Append the next page (triggered by scroll sentinel) */
   async function _loadNextPage() {
@@ -913,6 +968,7 @@ window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
         tbody.insertAdjacentHTML('beforeend', data.returns.map(_renderReturnRow).join(''));
       }
       if (tbl) tbl.setAttribute('aria-busy', 'false');
+      if (typeof syncDashboardTableSelection === 'function') syncDashboardTableSelection();
     } catch (e) {
       console.error('Infinite scroll load failed:', e);
       ps.page = nextPage - 1; // allow retry
@@ -1029,92 +1085,61 @@ window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
     const url = new URL(window.location);
     if (value) url.searchParams.set(key, value);
     else       url.searchParams.delete(key);
+    url.searchParams.delete('page');
     window.location = url.toString();
   }
 
-  // ── Column sort ────────────────────────────────────────────────────────────
-  const STATUS_ORDER = ['PENDING INTAKE','LOG IN','PROCESSING','FINALIZE','PICKUP','EFILE READY','LOG OUT','REJECTED'];
-  let _sortCol = null, _sortAsc = true;
+  // ── Column sort (server-side against the full filtered year set) ──────────
+  // Industry pattern for paginated/infinite grids: sortModel → ORDER BY on the
+  // server, then reload page 1. Client-side sort of loaded rows only is wrong.
+  const _SORT_COLS = {
+    log: 'log', taxyear: 'taxyear', name: 'name', status: 'status',
+    preparer: 'preparer', fee: 'fee', balance: 'balance', intake: 'intake',
+  };
 
-  // Reflect the server-supplied initial sort on the Log # arrow
+  function _parseServerSort(raw) {
+    const s = String(raw || 'log_asc').toLowerCase();
+    const m = s.match(/^([a-z]+)_(asc|desc)$/);
+    if (!m || !_SORT_COLS[m[1]]) return { col: 'log', dir: 'asc', key: 'log_asc' };
+    return { col: m[1], dir: m[2], key: `${m[1]}_${m[2]}` };
+  }
+
+  function _applyServerSort(nextKey) {
+    window.__serverSort = nextKey;
+    const parsed = _parseServerSort(nextKey);
+    document.querySelectorAll('th.sortable .sort-arrow').forEach(a => { a.className = 'sort-arrow'; });
+    const th = document.querySelector(`th.sortable[data-col="${parsed.col}"]`);
+    if (th) th.querySelector('.sort-arrow').className = 'sort-arrow ' + parsed.dir;
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('sort', nextKey);
+    url.searchParams.delete('page');
+    window.history.replaceState({}, '', url.toString());
+
+    if (window.__pagState) window.__pagState.page = 0;
+    if (typeof loadPage === 'function') loadPage(1);
+    else window.location = url.toString();
+  }
+
   (function initSortArrows() {
-    const ss = window.__serverSort || 'log_asc';
-    if (ss === 'log_desc' || ss === 'log_asc') {
-      const logTh = document.querySelector('th.sortable[data-col="log"]');
-      if (logTh) {
-        logTh.querySelector('.sort-arrow').className = 'sort-arrow ' + (ss === 'log_asc' ? 'asc' : 'desc');
-      }
-      _sortCol = 'log';
-      _sortAsc = ss === 'log_asc';
-    }
+    const parsed = _parseServerSort(window.__serverSort);
+    const th = document.querySelector(`th.sortable[data-col="${parsed.col}"]`);
+    if (th) th.querySelector('.sort-arrow').className = 'sort-arrow ' + parsed.dir;
   })();
 
   document.querySelectorAll('th.sortable').forEach(th => {
     th.addEventListener('click', () => {
       const col = th.dataset.col;
-
-      // Log # sort is server-side — reload the full dataset in the correct order
-      if (col === 'log') {
-        const currentSort = window.__serverSort || 'log_asc';
-        const nextSort    = currentSort === 'log_asc' ? 'log_desc' : 'log_asc';
-        window.__serverSort = nextSort;
-
-        // Update arrow immediately for visual feedback
-        document.querySelectorAll('th.sortable .sort-arrow').forEach(a => a.className = 'sort-arrow');
-        th.querySelector('.sort-arrow').className = 'sort-arrow ' + (nextSort === 'log_asc' ? 'asc' : 'desc');
-
-        // Persist the sort in the URL so infinite-scroll page loads use the same order
-        const url = new URL(window.location.href);
-        url.searchParams.set('sort', nextSort);
-        window.history.replaceState({}, '', url.toString());
-
-        // Reload from page 1 with the new server-side order
-        window.__pagState.page = 0;  // _resetToPage1 checks loading, not page
-        loadPage(1);
-        return;
-      }
-
-      // All other columns: client-side sort of loaded rows only
-      if (_sortCol === col) _sortAsc = !_sortAsc;
-      else {
-        _sortCol = col; _sortAsc = true;
-        // Clear the log sort arrow when switching to a different column
-        window.__serverSort = null;
-      }
-
-      // Update arrow indicators
-      document.querySelectorAll('th.sortable .sort-arrow').forEach(a => a.className = 'sort-arrow');
-      th.querySelector('.sort-arrow').className = 'sort-arrow ' + (_sortAsc ? 'asc' : 'desc');
-
-      sortTable(col, th.dataset.type, _sortAsc);
+      if (!_SORT_COLS[col]) return;
+      const cur = _parseServerSort(window.__serverSort);
+      // First click on a new column sorts ascending; toggle on same column.
+      const dir = (cur.col === col) ? (cur.dir === 'asc' ? 'desc' : 'asc') : 'asc';
+      _applyServerSort(`${col}_${dir}`);
     });
   });
 
-  function sortTable(col, type, asc) {
-    const tbody = document.querySelector('.data-table tbody');
-    const rows  = Array.from(tbody.querySelectorAll('tr[data-log]')); // skip empty-state row
-    rows.sort((a, b) => {
-      let va = a.dataset[col] || '';
-      let vb = b.dataset[col] || '';
-      let cmp = 0;
-      if (type === 'num') {
-        cmp = (parseFloat(va) || 0) - (parseFloat(vb) || 0);
-      } else if (type === 'status') {
-        cmp = STATUS_ORDER.indexOf(va) - STATUS_ORDER.indexOf(vb);
-      } else {
-        cmp = va.localeCompare(vb, undefined, {sensitivity: 'base'});
-      }
-      return asc ? cmp : -cmp;
-    });
-    rows.forEach(r => tbody.appendChild(r));
-    // recount visible rows after sort
-    updateRowCount();
-  }
-
   function updateRowCount() {
-    const visible = document.querySelectorAll('.data-table tbody tr[data-search]:not(.tr-filter-hidden)').length;
-    const el = document.getElementById('row-count');
-    if (el) el.textContent = visible;
+    // Server owns filtered totals; row-count is refreshed by _updateFooter / q reload.
     if (typeof syncDashboardTableSelection === "function") syncDashboardTableSelection();
   }
 
@@ -1224,12 +1249,134 @@ window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
   document.addEventListener('DOMContentLoaded', () => {
     syncSaveDashboardFilterBtn();
     const tf = document.getElementById('table-filter');
-    tf?.addEventListener('input', () => { syncSaveDashboardFilterBtn(); });
+    let _serverQDebounce = 0;
+    let _lastServerQ = (new URL(window.location.href).searchParams.get('q') || '').trim();
+
+    function applyServerQuickFilter() {
+      const q = (tf?.value || '').trim().slice(0, 500);
+      if (q === _lastServerQ) {
+        syncSaveDashboardFilterBtn();
+        return;
+      }
+      _lastServerQ = q;
+      const url = new URL(window.location.href);
+      if (q) url.searchParams.set('q', q);
+      else url.searchParams.delete('q');
+      url.searchParams.delete('page');
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+
+      const exportBtn = document.getElementById('export-btn');
+      if (exportBtn) {
+        const exp = new URL(exportBtn.href, window.location.origin);
+        if (q) exp.searchParams.set('q', q);
+        else exp.searchParams.delete('q');
+        exportBtn.href = exp.pathname + exp.search;
+      }
+
+      syncSaveDashboardFilterBtn();
+      if (typeof window.__dashboardReloadPage1 === 'function') {
+        window.__dashboardReloadPage1();
+      }
+    }
+
+    tf?.addEventListener('input', () => {
+      syncSaveDashboardFilterBtn();
+      if (_serverQDebounce) clearTimeout(_serverQDebounce);
+      // Empty clears immediately; otherwise debounce (~industry 300ms for server search).
+      const delay = (tf.value || '').trim() ? 300 : 0;
+      _serverQDebounce = setTimeout(() => {
+        _serverQDebounce = 0;
+        applyServerQuickFilter();
+      }, delay);
+    });
     wireSavedFilterPills();
     wireSaveFlow();
   });
 })();
 </script>
+
+{% if get_effective_role() == 'admin' %}
+<!-- Fallback binder: opens delete modal even if a cached app.js predates bulk-delete -->
+<script>
+(function () {
+  function openModal(el) {
+    if (!el) return;
+    el.classList.remove('hidden');
+    el.classList.add('flex');
+  }
+  function closeModal(el) {
+    if (!el) return;
+    el.classList.add('hidden');
+    el.classList.remove('flex');
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    var btn = document.getElementById('btn-bulk-delete-open');
+    var modal = document.getElementById('bulk-delete-modal');
+    if (!btn || !modal || btn.dataset.bulkDeleteBound === '1') return;
+
+    btn.addEventListener('click', function () {
+      var ids = (typeof window.getSelectedReturnIds === 'function')
+        ? window.getSelectedReturnIds()
+        : [];
+      if (!ids.length) {
+        alert('Select one or more returns with the checkboxes first.');
+        return;
+      }
+      var sm = document.getElementById('bulk-delete-modal-summary');
+      if (sm) {
+        sm.innerHTML = '<p>This <strong>permanently deletes</strong> <strong>' + ids.length +
+          '</strong> return(s) and their notes, payments, documents, and history.</p>' +
+          '<p class="text-xs mt-2 text-red-700">This cannot be undone. Type DELETE below to confirm.</p>';
+      }
+      var inp = document.getElementById('bulk-delete-confirm-input');
+      if (inp) inp.value = '';
+      window.__bulkDeleteIds = ids;
+      openModal(modal);
+      if (inp) inp.focus();
+    });
+
+    modal.querySelectorAll('.bulk-modal-cancel').forEach(function (b) {
+      b.addEventListener('click', function () { closeModal(modal); });
+    });
+    modal.addEventListener('click', function (ev) {
+      if (ev.target === modal) closeModal(modal);
+    });
+
+    var commit = document.getElementById('bulk-delete-modal-commit');
+    commit && commit.addEventListener('click', async function () {
+      var ids = window.__bulkDeleteIds || [];
+      var typed = ((document.getElementById('bulk-delete-confirm-input') || {}).value || '').trim();
+      if (typed !== 'DELETE') {
+        alert('Type DELETE (all caps) to confirm.');
+        return;
+      }
+      if (!ids.length) return;
+      var fetchFn = typeof _csrfFetch === 'function' ? _csrfFetch : fetch;
+      try {
+        var resp = await fetchFn('/api/returns/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ return_ids: ids, confirm: 'DELETE' }),
+        });
+        var data = await resp.json().catch(function () { return {}; });
+        if (!resp.ok) {
+          alert(data.error || ('Delete failed (' + resp.status + ')'));
+          return;
+        }
+        closeModal(modal);
+        if (typeof clearAllRowCheckboxes === 'function') clearAllRowCheckboxes();
+        alert('Deleted ' + (data.deleted || ids.length) + ' return(s).');
+        window.location.reload();
+      } catch (e) {
+        alert(String((e && e.message) || e || 'Network error'));
+      }
+    });
+
+    btn.dataset.bulkDeleteBound = '1';
+  });
+})();
+</script>
+{% endif %}
 
 <!-- TOUR-3: auto-launch tour on first dashboard visit if not yet completed -->
 <script>

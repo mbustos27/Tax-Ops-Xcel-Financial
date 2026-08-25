@@ -40,7 +40,7 @@ def _clean(name: str) -> str:
     Hyphens are treated as spaces so PEREZ-QUINTANA == PEREZ QUINTANA.
     """
     name = name.upper()
-    name = re.sub(r"[-.,&;']", " ", name)
+    name = re.sub(r"[-.,&;'`]", " ", name)
     name = re.sub(r"\s+", " ", name).strip()
     return name
 
@@ -52,6 +52,11 @@ def _strip_suffixes(tokens: list[str]) -> list[str]:
 def normalize_name(raw: str) -> str:
     """Return a cleaned, suffix-stripped version of a raw name string."""
     return " ".join(_strip_suffixes(_clean(raw).split()))
+
+
+def _first_token(first: str) -> str:
+    stripped = strip_middle_initial(normalize_name(strip_spouse(first or "")))
+    return stripped.split()[0] if stripped else ""
 
 
 def strip_middle_initial(first: str) -> str:
@@ -148,11 +153,66 @@ def score_client_names_pair(
     if ln_a == ln_b and fn_a and fn_b:
         if strip_middle_initial(fn_a) == strip_middle_initial(fn_b):
             return 97
+        tok_a = _first_token(fn_a)
+        tok_b = _first_token(fn_b)
+        if tok_a and tok_a == tok_b:
+            # GIOVANNI M vs GIOVANNI MARTIN / QAIS A Y vs QAIS AHMAD YOUNIS
+            return 90
     full_a = (ln_a + " " + fn_a).strip()
     full_b = (ln_b + " " + fn_b).strip()
     score_full = fuzz.token_sort_ratio(full_a, full_b)
+    fn_a_stripped = strip_middle_initial(fn_a) if fn_a else ""
+    fn_b_stripped = strip_middle_initial(fn_b) if fn_b else ""
+    # Same last name must not auto-accept unrelated first names
+    # (NAVA/GONZALO vs NAVA/GUSTAVO was 90 from last-name floor alone).
+    if fn_a_stripped and fn_b_stripped and fn_a_stripped != fn_b_stripped:
+        score = int(score_full)
+        if _first_token(fn_a) != _first_token(fn_b):
+            score = min(score, ACCEPT_THRESHOLD - 1)
+        return score
     score_last = fuzz.token_sort_ratio(ln_a, ln_b)
     return int(max(score_full, int(score_last * 0.90)))
+
+
+def parse_mfj_primary_taxpayer(name_raw: str) -> tuple[str, Optional[str]]:
+    """
+    Primary filer ``(last, first)`` from a Drake MFJ ``Taxpayer Name`` cell.
+
+    ``ARGELIS ORTIZ & SANDRA CANIZALES`` → (``ORTIZ``, ``ARGELIS``)
+    ``PEDRO & MARIA CARDONA`` → (``CARDONA``, ``PEDRO``)  — shared-surname MFJ
+    ``ORTIZ, ARGELIS & SANDRA`` → (``ORTIZ``, ``ARGELIS``)
+    """
+    raw = (name_raw or "").strip()
+    if not raw:
+        return "", None
+    if "&" in raw.upper():
+        parts = [
+            p.strip()
+            for p in re.split(r"\s*&\s*", raw, maxsplit=1, flags=re.I)
+            if p.strip()
+        ]
+        if len(parts) >= 2:
+            primary_part, spouse_part = parts[0], parts[1]
+            primary_tokens = normalize_name(primary_part).split()
+            spouse_tokens = normalize_name(spouse_part).split()
+            # Shared-surname: ``PEDRO & MARIA CARDONA`` — primary is first token only.
+            if len(primary_tokens) == 1 and len(spouse_tokens) >= 2:
+                return spouse_tokens[-1], primary_tokens[0]
+            if "," in primary_part:
+                return parse_name(primary_part)
+            if len(primary_tokens) >= 2:
+                return primary_tokens[-1], " ".join(primary_tokens[:-1])
+            if primary_tokens:
+                return primary_tokens[0], None
+            return "", None
+    if "," in raw:
+        return parse_name(raw)
+    tokens = normalize_name(raw).split()
+    if len(tokens) >= 2:
+        return tokens[-1], " ".join(tokens[:-1])
+    if tokens:
+        return tokens[0], None
+    return "", None
 
 
 def split_joint_first_column(first_cell: str) -> tuple[str, Optional[str]]:
@@ -275,12 +335,21 @@ def find_client(
 
         # 2. Fuzzy full name
         score_full = fuzz.token_sort_ratio(full_norm, c_full)
-        # 3. Fuzzy last-name only (helps with compound surnames)
-        score_last = fuzz.token_sort_ratio(last_norm, c_ln)
-
-        # Weight: full name match takes priority; last-only is a fallback
-        score = max(score_full, int(score_last * 0.90))
-        method = "fuzzy_full" if score_full >= score_last else "fuzzy_last"
+        # 3. Fuzzy last-name only (helps with compound surnames / missing first)
+        if first_stripped and c_fn_stripped and first_stripped != c_fn_stripped:
+            same_last = c_ln == last_norm
+            same_first_tok = _first_token(first_norm) == _first_token(c_fn)
+            if same_last and same_first_tok:
+                score = max(int(score_full), 90)
+            elif not same_first_tok:
+                score = min(int(score_full), ACCEPT_THRESHOLD - 1)
+            else:
+                score = int(score_full)
+            method = "fuzzy_full"
+        else:
+            score_last = fuzz.token_sort_ratio(last_norm, c_ln)
+            score = max(score_full, int(score_last * 0.90))
+            method = "fuzzy_full" if score_full >= score_last else "fuzzy_last"
 
         if score > best_score:
             best_score  = score

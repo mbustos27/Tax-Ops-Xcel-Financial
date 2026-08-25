@@ -13,6 +13,7 @@ from name_matcher import (
     strip_spouse,
     is_business,
     split_joint_first_column,
+    parse_mfj_primary_taxpayer,
 )
 
 
@@ -166,3 +167,52 @@ def test_score_pair_suffix_stripped_before_compare():
     """JR / SR in last names should not artificially lower the score."""
     score = score_client_names_pair("SMITH JR", "JOHN", "SMITH", "JOHN")
     assert score >= ACCEPT_THRESHOLD
+
+
+def test_same_last_name_does_not_auto_accept_different_first():
+    """Gonzalo Nava must not auto-link to Gustavo Nava on last name alone."""
+    score = score_client_names_pair("NAVA", "GONZALO", "NAVA", "GUSTAVO")
+    assert score < ACCEPT_THRESHOLD
+
+
+def test_similar_first_names_same_last_do_not_auto_accept():
+    """MARTHA vs MAYRA and ISABEL vs ISMAEL scored 90+ on full-name fuzzy."""
+    assert score_client_names_pair("RODRIGUEZ", "MARTHA", "RODRIGUEZ", "MAYRA") < ACCEPT_THRESHOLD
+    assert score_client_names_pair("HERNANDEZ", "ISABEL", "HERNANDEZ", "ISMAEL") < ACCEPT_THRESHOLD
+
+
+def test_expanded_middle_name_still_accepts():
+    assert score_client_names_pair("BANDA PEREZ", "GIOVANNI M", "BANDA PEREZ", "GIOVANNI MARTIN") >= 90
+    assert score_client_names_pair("ABU TAHA", "QAIS AHMAD YOUNIS", "ABU TAHA", "QAIS A Y") >= 90
+
+
+def test_backtick_noise_does_not_split_first_token():
+    assert score_client_names_pair("FRANCO", "ELIZA", "FRANCO", "ELIZA`") >= ACCEPT_THRESHOLD
+
+
+def test_same_first_name_different_last_is_not_accept():
+    """JOSE M Gutierrez must not auto-link to JOSE Anaya."""
+    assert score_client_names_pair("GUTIERREZ", "JOSE M", "ANAYA", "JOSE & CLAUDIA") < ACCEPT_THRESHOLD
+
+
+def test_parse_mfj_primary_taxpayer():
+    assert parse_mfj_primary_taxpayer("ARGELIS ORTIZ & SANDRA CANIZALES") == ("ORTIZ", "ARGELIS")
+    assert parse_mfj_primary_taxpayer("PEDRO & MARIA CARDONA") == ("CARDONA", "PEDRO")
+    assert parse_mfj_primary_taxpayer("ORTIZ, ARGELIS & SANDRA") == ("ORTIZ", "ARGELIS")
+    assert parse_mfj_primary_taxpayer("ANTONIO OLEA III & VERONICA OLEA") == ("OLEA", "ANTONIO")
+    assert parse_mfj_primary_taxpayer("") == ("", None)
+
+
+def test_find_client_same_first_different_last_is_not_auto_match():
+    import sqlite3
+    from name_matcher import find_client
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE clients (id INTEGER PRIMARY KEY, last_name TEXT, first_name TEXT)"
+    )
+    conn.execute("INSERT INTO clients VALUES (1, 'ANAYA', 'JOSE & CLAUDIA')")
+    match = find_client(conn, "GUTIERREZ", "JOSE M")
+    assert match is None or match["needs_review"] or match["score"] < ACCEPT_THRESHOLD
+    conn.close()

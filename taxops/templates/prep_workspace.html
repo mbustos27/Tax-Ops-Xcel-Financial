@@ -1,0 +1,634 @@
+{% extends "base.html" %}
+{% block title %}Prep · {% if ret.log_number %}#{{ ret.log_number }} {% endif %}{{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-4 pb-8">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="min-w-0">
+      <p class="text-xs font-bold uppercase tracking-wider text-[#6B2233]">{{ _('Prep workspace') }}</p>
+      <h1 class="text-xl font-semibold text-slate-800 truncate">
+        <span class="font-mono font-black tabular-nums">{{ ret.log_number or '—' }}</span>
+        <span class="text-slate-300 mx-1">·</span>
+        {{ ret.last_name }}{% if ret.first_name %}, {{ ret.first_name }}{% endif %}
+        <span class="ml-2 text-xs px-2 py-0.5 rounded-full font-mono font-semibold bg-slate-100 text-slate-600">TY{{ ret.tax_year }}</span>
+      </h1>
+      <p class="text-xs text-slate-500 mt-1">
+        {{ ret.client_status or '—' }}
+        {% if ret.processor %} · {{ preparer_list_label(ret.processor) }}{% endif %}
+        {% if ret.filing_status %} · {{ ret.filing_status }}{% endif %}
+      </p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a href="/return/{{ ret.id }}"
+         class="text-xs font-semibold px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">
+        {{ _('Full return') }}
+      </a>
+      {% if ret.client_id %}
+      <a href="{{ url_for('client_profile', client_id=ret.client_id) }}"
+         class="text-xs font-semibold px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50">
+        {{ _('Client profile') }}
+      </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+    {# Purple sheet / system basics #}
+    <aside class="lg:col-span-4 space-y-4">
+      <section class="rounded-xl border border-violet-200 bg-violet-50/60 overflow-hidden">
+        <div class="px-4 py-3 border-b border-violet-200 flex items-center justify-between gap-2">
+          <h2 class="text-sm font-bold text-violet-950">{{ _('Purple sheet') }}</h2>
+          {% if purple.prefill_tax_year %}
+          <span class="text-[10px] font-mono font-bold text-violet-800 bg-white/80 border border-violet-200 rounded px-1.5 py-0.5">TY{{ purple.prefill_tax_year }}</span>
+          {% endif %}
+        </div>
+        <div class="p-4 space-y-3 text-sm">
+          {% if not purple.has_prefill %}
+          <p class="text-xs text-violet-900/70">{{ _('No Drake purple/CSM prefill linked for this client.') }}</p>
+          {% else %}
+          <div>
+            <p class="text-[10px] uppercase font-bold tracking-wide text-violet-800/70">{{ _('Name on file') }}</p>
+            <p class="font-semibold text-violet-950">{{ purple.purple_name or purple.csm_name or '—' }}</p>
+            {% if purple.csm_name and purple.purple_name and purple.csm_name != purple.purple_name %}
+            <p class="text-xs text-violet-900/70 mt-0.5">CSM: {{ purple.csm_name }}</p>
+            {% endif %}
+          </div>
+          <div class="flex flex-wrap gap-2 text-xs">
+            {% if purple.return_type %}
+            <span class="px-2 py-1 rounded-lg bg-white border border-violet-200 text-violet-900 font-semibold">{{ purple.return_type }}</span>
+            {% endif %}
+            {% if purple.csm_status %}
+            <span class="px-2 py-1 rounded-lg bg-white border border-violet-200 text-violet-900">{{ purple.csm_status }}</span>
+            {% endif %}
+            {% if purple.disposition %}
+            <span class="px-2 py-1 rounded-lg bg-white border border-violet-200 text-violet-900 font-mono text-[10px]">{{ purple.disposition }}</span>
+            {% endif %}
+          </div>
+          <div>
+            <p class="text-[10px] uppercase font-bold tracking-wide text-violet-800/70 mb-1.5">{{ _('Forms on purple') }}</p>
+            {% if purple.forms_present %}
+            <ul class="space-y-1">
+              {% for f in purple.forms_present %}
+              <li class="flex justify-between gap-2 text-xs bg-white/80 border border-violet-100 rounded-lg px-2.5 py-1.5">
+                <span class="text-violet-950 font-medium">{{ f.name }}</span>
+                <span class="font-mono text-violet-800">{{ f.count }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-xs text-violet-900/60">{{ _('No form counts recorded.') }}</p>
+            {% endif %}
+          </div>
+          {% set hh = purple.household or {} %}
+          {% if hh.taxpayer_dob or hh.taxpayer_phone or hh.taxpayer_email or hh.spouse_name %}
+          <div>
+            <p class="text-[10px] uppercase font-bold tracking-wide text-violet-800/70 mb-1.5">{{ _('Household') }}</p>
+            <dl class="space-y-1 text-xs">
+              {% if hh.taxpayer_dob %}<div class="flex justify-between gap-2"><dt class="text-violet-800/70">DOB</dt><dd class="font-medium text-violet-950">{{ hh.taxpayer_dob }}</dd></div>{% endif %}
+              {% if hh.taxpayer_phone %}<div class="flex justify-between gap-2"><dt class="text-violet-800/70">Phone</dt><dd class="font-medium text-violet-950">{{ hh.taxpayer_phone }}</dd></div>{% endif %}
+              {% if hh.taxpayer_email %}<div class="flex justify-between gap-2"><dt class="text-violet-800/70">Email</dt><dd class="font-medium text-violet-950 truncate">{{ hh.taxpayer_email }}</dd></div>{% endif %}
+              {% if hh.spouse_name %}<div class="flex justify-between gap-2"><dt class="text-violet-800/70">Spouse</dt><dd class="font-medium text-violet-950">{{ hh.spouse_name }}</dd></div>{% endif %}
+              {% if hh.spouse_dob %}<div class="flex justify-between gap-2"><dt class="text-violet-800/70">Spouse DOB</dt><dd class="font-medium text-violet-950">{{ hh.spouse_dob }}</dd></div>{% endif %}
+            </dl>
+          </div>
+          {% endif %}
+          {% if purple.dependents %}
+          <div>
+            <p class="text-[10px] uppercase font-bold tracking-wide text-violet-800/70 mb-1.5">{{ _('Dependents') }} ({{ purple.dependents|length }})</p>
+            <ul class="space-y-1 text-xs">
+              {% for d in purple.dependents[:12] %}
+              <li class="bg-white/80 border border-violet-100 rounded-lg px-2.5 py-1.5 text-violet-950">
+                {% if d is mapping %}
+                  {{ d.get('name') or d.get('full_name') or d.get('dependent_name') or d }}
+                {% else %}
+                  {{ d }}
+                {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div class="px-4 py-3 border-b border-slate-200">
+          <h2 class="text-sm font-bold text-slate-800">{{ _('This return in TaxOps') }}</h2>
+        </div>
+        <div class="p-4 space-y-2 text-xs">
+          <div class="flex justify-between gap-2"><span class="text-slate-500">Intake</span><span class="font-medium text-slate-800">{{ ret.intake_date or '—' }}</span></div>
+          <div class="flex justify-between gap-2"><span class="text-slate-500">Filing</span><span class="font-medium text-slate-800">{{ ret.filing_status or '—' }}</span></div>
+          <div class="flex justify-between gap-2"><span class="text-slate-500">Promise</span><span class="font-medium text-slate-800">{{ ret.promise_date or '—' }}</span></div>
+          {% set form_labels = [
+            ('form_1040','1040'),('sched_a_d','Sch A/D'),('sched_c','Sch C'),('sched_e','Sch E'),
+            ('form_1120','1120'),('form_1120s','1120S'),('form_1065_llc','1065'),('form_990_1041','990/1041')
+          ] %}
+          <div class="flex flex-wrap gap-1 pt-2">
+            {% for key, label in form_labels %}
+              {% if taxops_forms.get(key) %}
+              <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200">{{ label }}</span>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    {# Documents + viewer #}
+    <section class="lg:col-span-8 space-y-4">
+      <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div class="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-sm font-bold text-slate-800">{{ _('Documents') }}</h2>
+          <div class="flex flex-wrap gap-2">
+            {% if can_manage_return_documents %}
+            <label class="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
+              <input type="file" id="prep-doc-file" accept="image/*,.pdf" multiple class="hidden">
+              <span id="prep-upload-btn" class="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 font-semibold">{{ _('Upload') }}</span>
+            </label>
+            {% endif %}
+            {% if can_scan_intake_docs %}
+            <button type="button" id="prep-scan-btn"
+                    class="text-xs font-semibold text-white bg-[#6B2233] hover:bg-[#8B2E44] rounded-lg px-2.5 py-1.5">
+              {{ _('Scan') }}
+            </button>
+            {% endif %}
+          </div>
+        </div>
+        <div class="p-3 border-b border-slate-100">
+          <input type="search" id="prep-doc-search" placeholder="{{ _('Search documents…') }}"
+                 class="w-full text-sm border border-slate-200 rounded-lg px-3 py-2">
+        </div>
+        <div id="prep-doc-list" class="max-h-64 overflow-y-auto divide-y divide-slate-100 text-sm">
+          {% if prep_documents %}
+            {% for d in prep_documents %}
+            <button type="button" data-doc-id="{{ d.id }}"
+              class="prep-doc-row w-full text-left px-4 py-2.5 hover:bg-slate-50 flex flex-wrap items-center gap-2{% if viewer_open and loop.index0 == initial_doc_index %} bg-violet-50 ring-1 ring-inset ring-violet-200{% endif %}">
+              <span class="flex-1 min-w-0 font-medium text-slate-800 truncate">{{ d.filename or d.original_filename or ('#' ~ d.id) }}</span>
+              <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">{{ d.doc_type or 'unknown' }}</span>
+              <span class="text-xs text-slate-400 font-mono">{{ (d.uploaded_at or '')[:16] or '—' }}</span>
+            </button>
+            {% endfor %}
+          {% else %}
+          <p class="px-4 py-6 text-slate-400 text-center">{{ _('No documents yet.') }}</p>
+          {% endif %}
+        </div>
+        <p id="prep-doc-status" class="hidden px-4 py-2 text-xs font-medium border-t border-slate-100"></p>
+      </div>
+
+      <div class="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+        <div class="px-4 py-6 text-center text-sm text-slate-500">
+          {{ _('Click a document to open the large viewer. Use the side arrows to move between files.') }}
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block fixed_footer %}
+{# Viewer outside <main> so position:fixed covers the full viewport #}
+<div id="prep-viewer-modal"
+     class="{% if not viewer_open %}hidden {% endif %}fixed inset-0 z-[60] flex flex-col bg-black/70"
+     role="dialog" aria-modal="true" aria-labelledby="prep-viewer-label">
+  <div class="flex items-center gap-3 px-3 sm:px-4 py-2.5 bg-slate-900 text-white shrink-0">
+    <button type="button" id="prep-viewer-prev"
+            class="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-lg border border-white/20 hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none"
+            aria-label="{{ _('Previous document') }}" title="{{ _('Previous') }}">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </button>
+    <div class="flex-1 min-w-0 text-center sm:text-left">
+      <p id="prep-viewer-label" class="text-sm font-semibold truncate">
+        {% if initial_doc %}{{ initial_doc.filename or initial_doc.original_filename or ('#' ~ initial_doc.id) }}{% else %}{{ _('Document') }}{% endif %}
+      </p>
+      <p id="prep-viewer-meta" class="text-[11px] text-white/60 truncate">
+        {% if initial_doc %}{{ initial_doc_index + 1 }} / {{ prep_documents|length }}{% if initial_doc.doc_type %} · {{ initial_doc.doc_type }}{% endif %}{% endif %}
+      </p>
+    </div>
+    <a id="prep-viewer-open" href="{% if initial_doc %}/return/{{ ret.id }}/documents/{{ initial_doc.id }}/view{% else %}#{% endif %}" target="_blank" rel="noopener"
+       class="{% if not initial_doc %}hidden {% endif %}sm:inline text-xs font-semibold text-indigo-200 hover:text-white whitespace-nowrap px-2">
+      {{ _('Open tab') }}
+    </a>
+    <button type="button" id="prep-viewer-next"
+            class="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-lg border border-white/20 hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none"
+            aria-label="{{ _('Next document') }}" title="{{ _('Next') }}">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+      </svg>
+    </button>
+    <button type="button" id="prep-viewer-close"
+            class="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-lg border border-white/20 hover:bg-white/10 ml-1"
+            aria-label="{{ _('Close viewer') }}" title="{{ _('Close') }}">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+  </div>
+  <div class="relative flex-1 min-h-0 flex items-stretch bg-slate-800">
+    <button type="button" id="prep-viewer-prev-side"
+            class="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 z-10 items-center justify-center w-14 h-14 rounded-full bg-black/50 hover:bg-black/70 text-white border border-white/20 shadow-lg disabled:opacity-20 disabled:pointer-events-none"
+            aria-label="{{ _('Previous document') }}">
+      <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </button>
+    <iframe id="prep-viewer" title="{{ _('Document viewer') }}"
+            src="{% if initial_doc %}/return/{{ ret.id }}/documents/{{ initial_doc.id }}/view{% else %}about:blank{% endif %}"
+            class="w-full h-full bg-white border-0"></iframe>
+    <button type="button" id="prep-viewer-next-side"
+            class="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-10 items-center justify-center w-14 h-14 rounded-full bg-black/50 hover:bg-black/70 text-white border border-white/20 shadow-lg disabled:opacity-20 disabled:pointer-events-none"
+            aria-label="{{ _('Next document') }}">
+      <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+{% if can_scan_intake_docs %}
+<div id="scan-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+  <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-5 space-y-4 border border-slate-200">
+    <h3 class="text-lg font-semibold text-[#6B2233]">{{ _('Scan client documents now?') }}</h3>
+    <p class="text-sm text-slate-600">{{ _('Load pages in the Epson feeder.') }}</p>
+    <div id="scan-agent-health" class="text-xs rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">{{ _('Checking scanner…') }}</div>
+    <select id="scan-doc-type" class="border border-slate-200 rounded-lg px-3 py-2 text-sm w-full">
+      <option value="unknown" selected>{{ _('Mixed / sort later (recommended)') }}</option>
+      <option value="W-2">W-2</option>
+      <option value="1099">1099</option>
+      <option value="prior_return">{{ _('Prior Return') }}</option>
+      <option value="government_id">{{ _('Government ID') }}</option>
+      <option value="misc">Misc</option>
+    </select>
+    <label class="flex items-center gap-2 text-sm text-slate-700">
+      <input type="checkbox" id="scan-handwriting" class="rounded border-slate-300">
+      {{ _('Handwriting / no text enhancement') }}
+    </label>
+    <p id="scan-modal-status" class="hidden text-xs font-medium"></p>
+    <div class="flex flex-wrap gap-2 justify-end pt-2">
+      <button type="button" id="scan-modal-close" class="text-xs px-3 py-2 rounded-lg border border-slate-200 text-slate-600">{{ _('Close') }}</button>
+      <button type="button" id="scan-modal-restart" class="hidden text-xs px-3 py-2 rounded-lg border border-[#6B2233] text-[#6B2233] font-semibold">{{ _('Restart timer') }}</button>
+      <button type="button" id="scan-modal-go" class="text-xs px-3 py-2 rounded-lg bg-[#6B2233] text-white">{{ _('Scan & upload') }}</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% if viewer_open %}
+<script>document.body.classList.add('overflow-hidden');</script>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const RETURN_ID = {{ ret.id }};
+  const CAN_MANAGE = {% if can_manage_return_documents %}true{% else %}false{% endif %};
+  const CAN_SCAN = {% if can_scan_intake_docs %}true{% else %}false{% endif %};
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  let _docs = {{ prep_documents | tojson }};
+  let _docIndex = {% if viewer_open %}{{ initial_doc_index }}{% else %}-1{% endif %};
+  const VIEWER_PREOPENED = {% if viewer_open %}true{% else %}false{% endif %};
+
+  function _viewerIsOpen() {
+    const modal = document.getElementById('prep-viewer-modal');
+    return modal && !modal.classList.contains('hidden');
+  }
+
+  function _updateViewerMeta() {
+    const meta = document.getElementById('prep-viewer-meta');
+    if (!meta || _docIndex < 0 || !_docs.length) return;
+    const d = _docs[_docIndex];
+    const typ = d.doc_type || 'unknown';
+    meta.textContent = `${_docIndex + 1} / ${_docs.length}` + (typ ? ` · ${typ}` : '');
+  }
+
+  function showStatus(msg, isErr) {
+    const el = document.getElementById('prep-doc-status');
+    if (!el) return;
+    el.classList.remove('hidden');
+    el.textContent = msg;
+    el.className = 'px-4 py-2 text-xs font-medium border-t border-slate-100 ' +
+      (isErr ? 'text-red-600' : 'text-green-700');
+  }
+
+  function _setNavEnabled() {
+    const atStart = _docIndex <= 0;
+    const atEnd = _docIndex < 0 || _docIndex >= _docs.length - 1;
+    ['prep-viewer-prev', 'prep-viewer-prev-side'].forEach(id => {
+      const b = document.getElementById(id);
+      if (b) b.disabled = atStart;
+    });
+    ['prep-viewer-next', 'prep-viewer-next-side'].forEach(id => {
+      const b = document.getElementById(id);
+      if (b) b.disabled = atEnd;
+    });
+  }
+
+  function _highlightListRow() {
+    document.querySelectorAll('.prep-doc-row').forEach((row, i) => {
+      if (i === _docIndex) {
+        row.classList.add('bg-violet-50', 'ring-1', 'ring-inset', 'ring-violet-200');
+      } else {
+        row.classList.remove('bg-violet-50', 'ring-1', 'ring-inset', 'ring-violet-200');
+      }
+    });
+  }
+
+  function openViewerAt(index) {
+    if (!_docs.length || index < 0 || index >= _docs.length) return;
+    _docIndex = index;
+    const d = _docs[_docIndex];
+    const docId = d.id;
+    const filename = d.filename || d.original_filename || ('#' + docId);
+    const typ = d.doc_type || 'unknown';
+    const url = `/return/${RETURN_ID}/documents/${docId}/view`;
+    const modal = document.getElementById('prep-viewer-modal');
+    const frame = document.getElementById('prep-viewer');
+    const label = document.getElementById('prep-viewer-label');
+    const meta = document.getElementById('prep-viewer-meta');
+    const open = document.getElementById('prep-viewer-open');
+    if (frame) frame.src = url;
+    if (label) label.textContent = filename;
+    if (meta) {
+      meta.textContent = `${_docIndex + 1} / ${_docs.length}` +
+        (typ ? ` · ${typ}` : '');
+    }
+    if (open) {
+      open.href = url;
+      open.classList.remove('hidden');
+    }
+    if (modal) modal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+    _setNavEnabled();
+    _highlightListRow();
+  }
+
+  function closeViewer() {
+    const modal = document.getElementById('prep-viewer-modal');
+    const frame = document.getElementById('prep-viewer');
+    if (modal) modal.classList.add('hidden');
+    if (frame) frame.src = 'about:blank';
+    document.body.classList.remove('overflow-hidden');
+  }
+
+  function stepViewer(delta) {
+    if (!_docs.length) return;
+    const next = _docIndex + delta;
+    if (next < 0 || next >= _docs.length) return;
+    openViewerAt(next);
+  }
+
+  function viewDoc(docId) {
+    const idx = _docs.findIndex(d => String(d.id) === String(docId));
+    if (idx >= 0) openViewerAt(idx);
+  }
+
+  function renderDocs(docs) {
+    _docs = docs || [];
+    const list = document.getElementById('prep-doc-list');
+    if (!list) return;
+    if (!_docs.length) {
+      list.innerHTML = '<p class="px-4 py-6 text-slate-400 text-center">{{ _("No documents yet.") }}</p>';
+      _docIndex = -1;
+      return;
+    }
+    list.innerHTML = _docs.map(d => {
+      const fn = esc(d.filename || d.original_filename || ('#' + d.id));
+      const typ = esc(d.doc_type || 'unknown');
+      const when = esc((d.uploaded_at || '').slice(0, 16) || '—');
+      return `<button type="button" data-doc-id="${d.id}"
+        class="prep-doc-row w-full text-left px-4 py-2.5 hover:bg-slate-50 flex flex-wrap items-center gap-2">
+        <span class="flex-1 min-w-0 font-medium text-slate-800 truncate">${fn}</span>
+        <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">${typ}</span>
+        <span class="text-xs text-slate-400 font-mono">${when}</span>
+      </button>`;
+    }).join('');
+    if (_docIndex >= _docs.length) _docIndex = _docs.length - 1;
+    _highlightListRow();
+  }
+
+  document.getElementById('prep-doc-list')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.prep-doc-row');
+    if (btn && btn.dataset.docId) viewDoc(btn.dataset.docId);
+  });
+
+  async function loadDocs(q, opts) {
+    opts = opts || {};
+    const list = document.getElementById('prep-doc-list');
+    const viewerWasOpen = _viewerIsOpen();
+    const keepIndex = viewerWasOpen ? _docIndex : -1;
+    let url = `/return/${RETURN_ID}/documents`;
+    if (q) url += `?q=${encodeURIComponent(q)}`;
+    try {
+      const r = await _csrfFetch(url);
+      const data = await _authJson(r);
+      renderDocs(data.documents || []);
+      if (viewerWasOpen && _docs.length) {
+        const idx = Math.min(Math.max(keepIndex, 0), _docs.length - 1);
+        if (idx !== _docIndex) {
+          openViewerAt(idx);
+        } else {
+          _docIndex = idx;
+          _setNavEnabled();
+          _highlightListRow();
+          _updateViewerMeta();
+        }
+      } else if (opts.autoOpen && _docs.length) {
+        let idx = 0;
+        if (opts.docId != null) {
+          const found = _docs.findIndex(d => String(d.id) === String(opts.docId));
+          if (found >= 0) idx = found;
+        }
+        openViewerAt(idx);
+      }
+    } catch (e) {
+      if (list && !list.querySelector('.prep-doc-row')) {
+        list.innerHTML = '<p class="px-4 py-6 text-red-500 text-center">{{ _("Could not load documents.") }}</p>';
+      }
+    }
+  }
+
+  const search = document.getElementById('prep-doc-search');
+  let searchTimer = null;
+  if (search) {
+    search.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => loadDocs(search.value.trim()), 250);
+    });
+  }
+
+  document.getElementById('prep-viewer-close')?.addEventListener('click', closeViewer);
+  document.getElementById('prep-viewer-prev')?.addEventListener('click', () => stepViewer(-1));
+  document.getElementById('prep-viewer-next')?.addEventListener('click', () => stepViewer(1));
+  document.getElementById('prep-viewer-prev-side')?.addEventListener('click', () => stepViewer(-1));
+  document.getElementById('prep-viewer-next-side')?.addEventListener('click', () => stepViewer(1));
+  document.getElementById('prep-viewer-modal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'prep-viewer-modal') closeViewer();
+  });
+  document.addEventListener('keydown', (e) => {
+    const modal = document.getElementById('prep-viewer-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeViewer(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); stepViewer(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); stepViewer(1); }
+  });
+
+  if (CAN_MANAGE) {
+    const fileInput = document.getElementById('prep-doc-file');
+    const uploadBtn = document.getElementById('prep-upload-btn');
+    if (uploadBtn && fileInput) {
+      uploadBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', async () => {
+        const files = Array.from(fileInput.files || []);
+        if (!files.length) return;
+        const fd = new FormData();
+        files.forEach(f => fd.append('documents', f));
+        fd.append('doc_type', 'unknown');
+        try {
+          const r = await _csrfFetch(`/return/${RETURN_ID}/documents/bulk-upload`, { method: 'POST', body: fd });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.error || 'Upload failed');
+          showStatus('{{ _("Uploaded.") }}', false);
+          loadDocs(search && search.value.trim());
+        } catch (err) {
+          showStatus(err.message || String(err), true);
+        } finally {
+          fileInput.value = '';
+        }
+      });
+    }
+  }
+
+  // Minimal scan modal (same endpoints as return detail)
+  let _scanTimer = null;
+  let _scanCancel = false;
+  function openScan() {
+    const m = document.getElementById('scan-modal');
+    if (m) m.classList.remove('hidden');
+    _scanCancel = false;
+    refreshHealth().then(ok => { if (ok && !_scanCancel) startCountdown(); });
+  }
+  function closeScan() {
+    _scanCancel = true;
+    if (_scanTimer) { clearInterval(_scanTimer); _scanTimer = null; }
+    const m = document.getElementById('scan-modal');
+    if (m) m.classList.add('hidden');
+  }
+  async function refreshHealth() {
+    const box = document.getElementById('scan-agent-health');
+    try {
+      const resp = await fetch('/api/scan-agent/status', { credentials: 'same-origin' });
+      const data = await resp.json().catch(() => ({}));
+      const ready = !!(data.ok || data.scanner_found || data.scanner_ok);
+      if (box) {
+        box.textContent = ready
+          ? ('{{ _("Scanner ready") }}' + (data.scanner_names ? (': ' + data.scanner_names) : ''))
+          : ((data.tips && data.tips[0]) || data.scanner_error || '{{ _("Scanner not ready") }}');
+        box.className = 'text-xs rounded-lg border px-3 py-2 ' +
+          (ready ? 'border-emerald-200 bg-emerald-50 text-slate-700' : 'border-amber-200 bg-amber-50 text-amber-900');
+      }
+      return ready;
+    } catch (e) {
+      if (box) box.textContent = e.message || String(e);
+      return false;
+    }
+  }
+  function startCountdown() {
+    const status = document.getElementById('scan-modal-status');
+    const restart = document.getElementById('scan-modal-restart');
+    if (restart) restart.classList.add('hidden');
+    let n = 10;
+    if (status) {
+      status.classList.remove('hidden');
+      status.className = 'text-xs font-medium text-slate-600';
+      status.textContent = `Starting in ${n}s…`;
+    }
+    if (_scanTimer) clearInterval(_scanTimer);
+    _scanTimer = setInterval(() => {
+      n -= 1;
+      if (_scanCancel) { clearInterval(_scanTimer); _scanTimer = null; return; }
+      if (n <= 0) {
+        clearInterval(_scanTimer); _scanTimer = null;
+        runScan();
+        return;
+      }
+      if (status) status.textContent = `Starting in ${n}s…`;
+    }, 1000);
+  }
+  async function runScan() {
+    const status = document.getElementById('scan-modal-status');
+    const go = document.getElementById('scan-modal-go');
+    const restart = document.getElementById('scan-modal-restart');
+    if (go) go.disabled = true;
+    if (status) {
+      status.classList.remove('hidden');
+      status.className = 'text-xs font-medium text-slate-600';
+      status.textContent = '{{ _("Scanning…") }}';
+    }
+    try {
+      const up = await _csrfFetch(`/api/return/${RETURN_ID}/scan-intake`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          handwriting: !!(document.getElementById('scan-handwriting') || {}).checked,
+          doc_type: (document.getElementById('scan-doc-type') || {}).value || 'unknown',
+        }),
+      });
+      const data = await up.json().catch(() => ({}));
+      if (!up.ok) throw new Error(data.error || 'Scan failed');
+      if (status) {
+        status.textContent = `{{ _("Uploaded") }} ${data.page_count != null ? data.page_count : '?'} {{ _("page(s)") }}`;
+        status.className = 'text-xs font-medium text-green-700';
+      }
+      loadDocs(search && search.value.trim());
+      setTimeout(closeScan, 1200);
+    } catch (err) {
+      if (status) {
+        status.textContent = (err.message || String(err)) + ' — {{ _("Restart timer") }}';
+        status.className = 'text-xs font-medium text-red-600';
+      }
+      if (restart) restart.classList.remove('hidden');
+    } finally {
+      if (go) go.disabled = false;
+    }
+  }
+
+  if (CAN_SCAN) {
+    const scanBtn = document.getElementById('prep-scan-btn');
+    if (scanBtn) scanBtn.addEventListener('click', openScan);
+    const closeBtn = document.getElementById('scan-modal-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeScan);
+    const goBtn = document.getElementById('scan-modal-go');
+    if (goBtn) goBtn.addEventListener('click', runScan);
+    const restartBtn = document.getElementById('scan-modal-restart');
+    if (restartBtn) restartBtn.addEventListener('click', () => {
+      _scanCancel = false;
+      refreshHealth().then(ok => { if (ok) startCountdown(); else restartBtn.classList.remove('hidden'); });
+    });
+  }
+
+  const _startDocParam = new URLSearchParams(window.location.search).get('doc');
+  const _startDocId = _startDocParam && /^\d+$/.test(_startDocParam) ? _startDocParam : null;
+
+  if (VIEWER_PREOPENED) {
+    _setNavEnabled();
+    _highlightListRow();
+  }
+
+  loadDocs('', { autoOpen: !VIEWER_PREOPENED, docId: _startDocId });
+
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted && _docs.length && !_viewerIsOpen()) {
+      openViewerAt(_docIndex >= 0 ? _docIndex : 0);
+    }
+  });
+})();
+</script>
+{% endblock %}

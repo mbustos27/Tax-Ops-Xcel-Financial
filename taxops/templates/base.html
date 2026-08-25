@@ -409,7 +409,7 @@
               {% for r in needs_attention_items %}
               {% set rc = attn_reason_class(r.reason) %}
               <li>
-                <a href="/return/{{ r.return_id }}" class="attn-dd-row">
+                <a href="{{ return_open_path(r.return_id) }}" class="attn-dd-row">
                   <span class="attn-badge attn-badge--{{ rc }}">{{ attn_reason_label(r.reason) }}</span>
                   <div class="attn-row__main">
                     <div class="attn-row__name">{{ attn_client_name(r) }}</div>
@@ -473,7 +473,7 @@
             <ul class="max-h-96 overflow-y-auto divide-y" style="background:var(--dropdown-bg);border-color:var(--border-subtle)">
               {% for r in rejected_returns %}
               <li style="border-color:var(--border-subtle)">
-                <a href="/return/{{ r.id }}"
+                <a href="{{ return_open_path(r.id) }}"
                    class="flex items-start gap-3 px-4 py-3 transition-colors group"
                    style="color:inherit"
                    onmouseover="this.style.background='var(--surface-danger)'"
@@ -573,6 +573,18 @@
                        {% if privacy_mode %}bg-red-50 text-red-700 border-red-300 hover:bg-red-100{% endif %}">
           {% if privacy_mode %}{{ _('Privacy: ON') }}{% else %}{{ _('Privacy: OFF') }}{% endif %}
         </button>
+
+        {% if can_use_prep_mode %}
+        <button id="prep-mode-toggle"
+                type="button"
+                data-enabled="{{ '1' if prep_mode else '0' }}"
+                title="{{ _('When on, opening a client goes to the Prep documents workspace') }}"
+                class="text-xs font-medium rounded px-2 py-1 border transition-colors whitespace-nowrap
+                       {% if prep_mode %}bg-violet-100 text-violet-900 border-violet-300 hover:bg-violet-200{% else %}{% endif %}"
+                {% if not prep_mode %}style="color:var(--nav-text);border-color:var(--border-strong)"{% endif %}>
+          {% if prep_mode %}{{ _('Prep: ON') }}{% else %}{{ _('Prep: OFF') }}{% endif %}
+        </button>
+        {% endif %}
 
         <!-- Season picker — de-emphasized -->
         <div class="flex items-center gap-1">
@@ -961,6 +973,50 @@
         } catch (e) {
           if (!e || e.message !== 'Unauthorized') {
             console.error('Privacy mode toggle failed', e);
+          }
+        }
+      });
+    })();
+  </script>
+  <script>
+    (function () {
+      const btn = document.getElementById('prep-mode-toggle');
+      if (!btn) return;
+
+      function renderState(enabled) {
+        btn.dataset.enabled = enabled ? '1' : '0';
+        btn.textContent = enabled ? 'Prep: ON' : 'Prep: OFF';
+        if (enabled) {
+          btn.className = 'text-xs font-medium rounded px-2 py-1 border transition-colors whitespace-nowrap bg-violet-100 text-violet-900 border-violet-300 hover:bg-violet-200';
+          btn.style.background = '';
+          btn.style.color = '';
+          btn.style.borderColor = '';
+        } else {
+          btn.className = 'text-xs font-medium rounded px-2 py-1 border transition-colors whitespace-nowrap';
+          btn.style.background = 'var(--nav-input-bg)';
+          btn.style.color = 'var(--nav-text)';
+          btn.style.borderColor = 'var(--border-strong)';
+        }
+      }
+
+      renderState(btn.dataset.enabled === '1');
+
+      btn.addEventListener('click', async () => {
+        const current = btn.dataset.enabled === '1';
+        try {
+          const resp = await _csrfFetch('/api/prep-mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: !current }),
+          });
+          const data = await _authJson(resp);
+          if (data.success) {
+            renderState(!!data.prep_mode);
+            window.location.reload();
+          }
+        } catch (e) {
+          if (!e || e.message !== 'Unauthorized') {
+            console.error('Prep mode toggle failed', e);
           }
         }
       });

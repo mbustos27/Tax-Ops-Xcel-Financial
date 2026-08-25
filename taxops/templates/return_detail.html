@@ -112,6 +112,18 @@
             </svg>
             {{ _('Print sticker') }}
           </button>
+          {% if can_scan_intake_docs %}
+          <button type="button" id="reactivate-scan-btn" onclick="reactivateIntakeScan()"
+                  class="inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-all
+                         {% if ret.scan_deferred %}text-white bg-[#6B2233] hover:bg-[#8B2E44] border border-[#6B2233]
+                         {% else %}text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200{% endif %}">
+            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <span id="reactivate-scan-btn-label">{% if ret.scan_deferred %}{{ _('Scan documents now') }}{% else %}{{ _('Scan documents') }}{% endif %}</span>
+          </button>
+          {% endif %}
           {# LIFE-3: Intake sheet PDF #}
           <button type="button" onclick="window.open('/api/return/{{ ret.id }}/intake-sheet','_blank')"
                   class="inline-flex items-center justify-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 transition-all">
@@ -161,6 +173,20 @@
       </div>
     </div>
   </section>
+
+  {% if can_scan_intake_docs %}
+  <div id="scan-deferred-banner"
+       class="{% if not ret.scan_deferred %}hidden {% endif %}rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+    <div class="flex-1 min-w-0">
+      <p class="text-sm font-semibold text-amber-900">{{ _('Intake scan still needed') }}</p>
+      <p class="text-xs text-amber-800 mt-0.5">{{ _('Documents were skipped at intake. Load pages in the Epson feeder and scan now.') }}</p>
+    </div>
+    <button type="button" onclick="reactivateIntakeScan()"
+            class="shrink-0 text-xs font-semibold text-white bg-[#6B2233] hover:bg-[#8B2E44] rounded-lg px-4 py-2.5 transition-all">
+      {{ _('Start intake scan') }}
+    </button>
+  </div>
+  {% endif %}
 
   <!-- ── Quick flags ────────────────────────────────────────────────────── -->
   <div class="rounded-xl px-4 py-4 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -307,7 +333,7 @@
       {% endif %}
     </div>
     {% if ret.extension_requested and get_effective_role() in ('admin', 'preparer') %}
-    <a href="/extension-queue?year={{ ret.tax_year }}"
+    <a href="/extension-queue?year={{ current_year }}"
        class="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors"
        style="border-color:var(--color-primary-border);color:var(--color-primary-text);background:var(--bg-card)">
       Extension Queue &rarr;
@@ -591,7 +617,7 @@
       <div id="missing-docs-card"
            class="bg-white rounded-xl border overflow-hidden
                   {% if open_docs %}border-orange-300{% else %}border-slate-200{% endif %}">
-        <div class="section-header flex items-center justify-between
+        <div class="section-header flex items-center justify-between gap-2
                     {% if open_docs %}bg-orange-50 border-b border-orange-200{% endif %}">
           <span class="flex items-center gap-2">
             {{ _('Missing Documents') }}
@@ -605,9 +631,29 @@
             </span>
             {% endif %}
           </span>
-          {% if ret.client_status == 'HOLD' and not open_docs and missing_docs %}
-          <span class="text-xs text-slate-400 font-normal">All docs in — clear HOLD when ready</span>
-          {% endif %}
+          <div class="flex items-center gap-2">
+            {% if missing_docs or notes %}
+            <a href="/return/{{ ret.id }}/missing-docs/print" target="_blank" rel="noopener"
+               class="text-xs font-semibold px-2.5 py-1 rounded-lg border border-orange-300 text-orange-800 bg-orange-50 hover:bg-orange-100 transition-colors print:hidden">
+              {{ _('Print sheet') }}
+            </a>
+            {% if missing_docs %}
+            {% if open_docs %}
+            <a href="/return/{{ ret.id }}/missing-docs/print?all=1" target="_blank" rel="noopener"
+               class="text-xs text-slate-500 hover:text-slate-700 underline print:hidden">
+              {{ _('All items') }}
+            </a>
+            {% endif %}
+            {% endif %}
+            {% endif %}
+            <a href="/reports/missing-docs?year={{ ret.tax_year }}" target="_blank" rel="noopener"
+               class="text-xs text-slate-500 hover:text-slate-700 underline print:hidden">
+              {{ _('Season report') }}
+            </a>
+            {% if ret.client_status == 'HOLD' and not open_docs and missing_docs %}
+            <span class="text-xs text-slate-400 font-normal">All docs in — clear HOLD when ready</span>
+            {% endif %}
+          </div>
         </div>
 
         <!-- Add new item -->
@@ -771,9 +817,9 @@
                     class="shrink-0 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 transition-all">
               {{ _('Upload') }}
             </button>
-            {% if can_scan_intake_docs and not view_only %}
+            {% if can_scan_intake_docs %}
             <button type="button" id="doc-scan-btn"
-                    onclick="openScanModal()"
+                    onclick="reactivateIntakeScan()"
                     class="shrink-0 flex items-center gap-1.5 text-xs text-white bg-[#6B2233] hover:bg-[#8B2E44] rounded-lg px-3 py-2 transition-all">
               {{ _('Scan from Epson') }}
             </button>
@@ -832,6 +878,10 @@
           <p id="scan-modal-status" class="hidden text-xs font-medium"></p>
           <div class="flex flex-wrap gap-2 justify-end pt-2">
             <button type="button" onclick="skipScanModal()" class="text-xs px-3 py-2 rounded-lg border border-slate-200 text-slate-600">{{ _('Skip') }}</button>
+            <button type="button" id="scan-modal-restart" onclick="restartScanCountdown()"
+                    class="hidden text-xs px-3 py-2 rounded-lg border border-[#6B2233] text-[#6B2233] hover:bg-[#6B2233]/10 font-semibold">
+              {{ _('Restart timer') }}
+            </button>
             <button type="button" id="scan-modal-go" onclick="runScanAndUpload()" class="text-xs px-3 py-2 rounded-lg bg-[#6B2233] text-white">{{ _('Scan & upload') }}</button>
           </div>
         </div>
@@ -857,7 +907,15 @@
 
       <!-- Notes -->
       <div id="notes-card" class="bg-white rounded-xl border border-slate-200 overflow-hidden scroll-mt-4">
-        <div class="section-header">{{ _('Notes') }}</div>
+        <div class="section-header flex items-center justify-between gap-2">
+          <span>{{ _('Notes') }}</span>
+          {% if notes %}
+          <a href="/return/{{ ret.id }}/missing-docs/print" target="_blank" rel="noopener"
+             class="text-xs font-semibold text-indigo-700 hover:text-indigo-900 print:hidden">
+            {{ _('Print with missing docs') }}
+          </a>
+          {% endif %}
+        </div>
         {# Group A — receptionist and above can add notes #}
         <div class="p-3 border-b border-[var(--border-subtle)]">
           <textarea id="note-input" rows="2" placeholder="{{ _('Add a note\u2026 (Ctrl+Enter to save)') }}"
@@ -1347,8 +1405,9 @@
   const RETURN_ID = {{ ret.id }};
   const DRAKE_SYNC_ENABLED = {% if drake_enabled %}true{% else %}false{% endif %};
   const CAN_SCAN = {% if can_scan_intake_docs %}true{% else %}false{% endif %};
-  const CAN_DELETE_DOCS = {% if get_effective_role() in ('preparer', 'admin') %}true{% else %}false{% endif %};
+  const CAN_DELETE_DOCS = {% if has_permission('can_manage_return_documents') %}true{% else %}false{% endif %};
   const PROMPT_SCAN = {% if prompt_scan %}true{% else %}false{% endif %};
+  let SCAN_DEFERRED = {% if ret.scan_deferred %}true{% else %}false{% endif %};
   const SCAN_AGENT_URL = {{ (scan_agent_url or '')|tojson }};
   const SCAN_AGENT_TOKEN = {{ (scan_agent_token or '')|tojson }};
   const LOG_NUMBER = {{ (ret.log_number or '')|tojson }};
@@ -2697,10 +2756,43 @@
 
   let _scanAutoTimer = null;
   let _scanAutoCancelled = false;
+  let _scanCountdownActive = false;
+
+  function _setRestartScanBtn(visible) {
+    const btn = document.getElementById('scan-modal-restart');
+    if (!btn) return;
+    if (visible) btn.classList.remove('hidden');
+    else btn.classList.add('hidden');
+  }
+
+  function _setScanDeferredUi(deferred) {
+    SCAN_DEFERRED = !!deferred;
+    const banner = document.getElementById('scan-deferred-banner');
+    if (banner) {
+      if (SCAN_DEFERRED) banner.classList.remove('hidden');
+      else banner.classList.add('hidden');
+    }
+    const navBtn = document.getElementById('reactivate-scan-btn');
+    const labelEl = document.getElementById('reactivate-scan-btn-label');
+    if (navBtn) {
+      if (SCAN_DEFERRED) {
+        navBtn.className = 'inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-all text-white bg-[#6B2233] hover:bg-[#8B2E44] border border-[#6B2233]';
+        if (labelEl) labelEl.textContent = '{{ _("Scan documents now") }}';
+      } else {
+        navBtn.className = 'inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-all text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200';
+        if (labelEl) labelEl.textContent = '{{ _("Scan documents") }}';
+      }
+    }
+  }
+
+  function reactivateIntakeScan() {
+    openScanModal({ autoStart: true });
+  }
 
   function openScanModal(opts) {
     const autoStart = !!(opts && opts.autoStart);
     _scanAutoCancelled = false;
+    _scanCountdownActive = false;
     if (_scanAutoTimer) { clearInterval(_scanAutoTimer); _scanAutoTimer = null; }
     const m = document.getElementById('scan-modal');
     if (m) m.classList.remove('hidden');
@@ -2709,18 +2801,30 @@
       statusEl.classList.add('hidden');
       statusEl.textContent = '';
     }
+    _setRestartScanBtn(false);
     refreshScanAgentHealth().then((ok) => {
       if (autoStart && ok && !_scanAutoCancelled) {
         startScanCountdown();
+      } else if (autoStart && !ok) {
+        _setRestartScanBtn(true);
+        if (statusEl) {
+          statusEl.classList.remove('hidden');
+          statusEl.className = 'text-xs font-medium text-amber-700';
+          statusEl.textContent = 'Scanner not ready. Fix the agent, then Restart timer.';
+        }
+      } else {
+        _setRestartScanBtn(true);
       }
     });
   }
 
   function closeScanModal() {
     _scanAutoCancelled = true;
+    _scanCountdownActive = false;
     if (_scanAutoTimer) { clearInterval(_scanAutoTimer); _scanAutoTimer = null; }
     const m = document.getElementById('scan-modal');
     if (m) m.classList.add('hidden');
+    _setRestartScanBtn(false);
   }
 
   function skipScanModal() {
@@ -2729,12 +2833,36 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ deferred: true }),
+    }).then(() => {
+      _setScanDeferredUi(true);
     }).catch(() => {});
     try {
       const u = new URL(window.location.href);
       u.searchParams.delete('scan');
       window.history.replaceState({}, '', u.pathname + u.search);
     } catch (e) {}
+  }
+
+  function restartScanCountdown() {
+    _scanAutoCancelled = false;
+    if (_scanAutoTimer) { clearInterval(_scanAutoTimer); _scanAutoTimer = null; }
+    const statusEl = document.getElementById('scan-modal-status');
+    const goBtn = document.getElementById('scan-modal-go');
+    if (goBtn) goBtn.disabled = true;
+    refreshScanAgentHealth().then((ok) => {
+      if (goBtn) goBtn.disabled = false;
+      if (_scanAutoCancelled) return;
+      if (ok) {
+        startScanCountdown();
+      } else {
+        _setRestartScanBtn(true);
+        if (statusEl) {
+          statusEl.classList.remove('hidden');
+          statusEl.className = 'text-xs font-medium text-amber-700';
+          statusEl.textContent = 'Scanner still not ready. Check the agent, then Restart timer again.';
+        }
+      }
+    });
   }
 
   async function refreshScanAgentHealth() {
@@ -2830,21 +2958,26 @@
     const statusEl = document.getElementById('scan-modal-status');
     // Give staff time to seat pages in the Epson ADF before Transfer.
     let n = 10;
+    _scanCountdownActive = true;
+    _setRestartScanBtn(false);
     if (statusEl) {
       statusEl.classList.remove('hidden');
       statusEl.className = 'text-xs font-medium text-slate-600';
       statusEl.textContent = `Load pages in the Epson feeder now. Starting in ${n}s… (Skip to cancel)`;
     }
+    if (_scanAutoTimer) { clearInterval(_scanAutoTimer); _scanAutoTimer = null; }
     _scanAutoTimer = setInterval(() => {
       n -= 1;
       if (_scanAutoCancelled) {
         clearInterval(_scanAutoTimer);
         _scanAutoTimer = null;
+        _scanCountdownActive = false;
         return;
       }
       if (n <= 0) {
         clearInterval(_scanAutoTimer);
         _scanAutoTimer = null;
+        _scanCountdownActive = false;
         runScanAndUpload();
         return;
       }
@@ -2856,10 +2989,12 @@
 
   async function runScanAndUpload() {
     if (_scanAutoTimer) { clearInterval(_scanAutoTimer); _scanAutoTimer = null; }
+    _scanCountdownActive = false;
     const statusEl = document.getElementById('scan-modal-status');
     const goBtn = document.getElementById('scan-modal-go');
     const docType = (document.getElementById('scan-doc-type') || {}).value || 'unknown';
     const handwriting = !!(document.getElementById('scan-handwriting') || {}).checked;
+    _setRestartScanBtn(false);
     if (statusEl) {
       statusEl.classList.remove('hidden');
       statusEl.textContent = 'Scanning from Epson… keep pages in the feeder.';
@@ -2886,6 +3021,7 @@
           (docType === 'unknown' || data.auto_sort ? ' — sorting in background' : '');
         statusEl.className = 'text-xs font-medium text-green-700';
       }
+      _setScanDeferredUi(false);
       loadDocuments();
       loadFormData();
       setTimeout(closeScanModal, 1500);
@@ -2896,9 +3032,14 @@
       } catch (e) {}
     } catch (err) {
       if (statusEl) {
-        statusEl.textContent = err.message || String(err);
+        const msg = err.message || String(err);
+        const timedOut = /timeout|timed out|hung/i.test(msg);
+        statusEl.textContent = timedOut
+          ? (msg + ' — Load pages again, then Restart timer.')
+          : (msg + ' — Fix the issue, then Restart timer or Scan & upload.');
         statusEl.className = 'text-xs font-medium text-red-600';
       }
+      _setRestartScanBtn(true);
       refreshScanAgentHealth();
     } finally {
       if (goBtn) goBtn.disabled = false;
@@ -3173,6 +3314,8 @@
   window.openScanModal = openScanModal;
   window.skipScanModal = skipScanModal;
   window.runScanAndUpload = runScanAndUpload;
+  window.restartScanCountdown = restartScanCountdown;
+  window.reactivateIntakeScan = reactivateIntakeScan;
   window.searchDocuments = searchDocuments;
   window.clearDocSearch = clearDocSearch;
   window.toggleExtractionReview = toggleExtractionReview;

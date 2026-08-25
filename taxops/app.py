@@ -55,10 +55,14 @@ validate_taxops_environment_and_exit()
 from csv_analyzer import analyze, iter_data_rows, normalize_status
 from db import (
     CURRENT_SCHEMA_VERSION,
+    allowed_intake_tax_years,
     get_active_intake_tax_year,
     get_connection,
     get_schema_version,
     init_db,
+    next_season_log_number,
+    resolve_intake_tax_year,
+    return_already_logged_this_season,
     set_active_intake_tax_year,
 )
 from form_schema import FORM_INTEGER_COLUMNS, FORM_TABLE_INSERT_COLUMNS
@@ -101,7 +105,13 @@ app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 # SEC-3: only reload templates in debug/dev mode — avoids unnecessary disk I/O in production.
 app.config["TEMPLATES_AUTO_RELOAD"] = app.debug
 # CACHE / #143: ``?v=`` on static URLs — resolved via taxops_asset_cache_version() (+ optional TAXOPS_APP_VERSION).
+# Refreshed each request so uncommitted static edits change the query string without a full redeploy.
 app.config["APP_VERSION"] = taxops_asset_cache_version()
+
+
+@app.before_request
+def _refresh_static_asset_cache_version():
+    app.config["APP_VERSION"] = taxops_asset_cache_version()
 
 # SEC-3: session cookie hardening + lifetime.
 # SESSION_COOKIE_SECURE is gated on TAXOPS_HTTPS_ENABLED because the office LAN
@@ -349,6 +359,142 @@ def privacy_mode_enabled() -> bool:
     return bool(session.get("privacy_mode"))
 
 
+def can_use_prep_mode() -> bool:
+    """Prep workspace is for preparers and admins (not front desk)."""
+    return get_effective_role() in ("preparer", "admin")
+
+
+def prep_mode_enabled() -> bool:
+    return bool(session.get("prep_mode")) and can_use_prep_mode()
+
+
+def return_open_path(return_id: int) -> str:
+    """Dashboard/profile link target — Prep mode opens the documents workspace."""
+    if prep_mode_enabled():
+        return f"/prep/{int(return_id)}"
+    return f"/return/{int(return_id)}"
+
+
+def fetch_prep_purple_sheet(conn, *, client_id: int, tax_year: int | None) -> dict:
+    """Purple-sheet / CSM prefill summary for the Prep workspace (read-only)."""
+    empty = {
+        "has_prefill": False,
+        "csm_name": None,
+        "purple_name": None,
+        "prefill_tax_year": None,
+        "disposition": None,
+        "csm_status": None,
+        "return_type": None,
+        "form_counts": {},
+        "forms_present": [],
+        "household": {},
+        "dependents": [],
+    }
+    has_links = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='drake_prefill_links'"
+    ).fetchone()
+    if not has_links:
+        return empty
+
+    link = None
+    if tax_year is not None:
+        link = conn.execute(
+            """
+            SELECT id, tax_year, csm_name_raw, purple_name, prefill_status,
+                   disposition_status, csm_status_raw
+            FROM drake_prefill_links
+            WHERE client_id = ? AND tax_year = ?
+            ORDER BY
+              CASE prefill_status WHEN 'PRIOR_YEAR_FORMS_AVAILABLE' THEN 0 ELSE 1 END,
+              id DESC
+            LIMIT 1
+            """,
+            (client_id, tax_year),
+        ).fetchone()
+    if link is None:
+        link = conn.execute(
+            """
+            SELECT id, tax_year, csm_name_raw, purple_name, prefill_status,
+                   disposition_status, csm_status_raw
+            FROM drake_prefill_links
+            WHERE client_id = ?
+            ORDER BY
+              CASE prefill_status WHEN 'PRIOR_YEAR_FORMS_AVAILABLE' THEN 0 ELSE 1 END,
+              tax_year DESC, id DESC
+            LIMIT 1
+            """,
+            (client_id,),
+        ).fetchone()
+    if not link:
+        return empty
+
+    out = dict(empty)
+    out["has_prefill"] = True
+    out["csm_name"] = link["csm_name_raw"]
+    out["purple_name"] = link["purple_name"]
+    out["prefill_tax_year"] = link["tax_year"]
+    out["disposition"] = link["disposition_status"]
+    out["csm_status"] = link["csm_status_raw"]
+    out["prefill_status"] = link["prefill_status"]
+
+    has_fp = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='drake_form_prefill'"
+    ).fetchone()
+    if has_fp:
+        fp = conn.execute(
+            "SELECT form_counts, return_type FROM drake_form_prefill WHERE link_id = ?",
+            (link["id"],),
+        ).fetchone()
+        if fp:
+            out["return_type"] = fp["return_type"]
+            try:
+                counts = json.loads(fp["form_counts"] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                counts = {}
+            if isinstance(counts, dict):
+                out["form_counts"] = counts
+                present = []
+                for name, val in counts.items():
+                    if val is None or val == "" or val == 0 or val == "0":
+                        continue
+                    present.append({"name": name, "count": val})
+                out["forms_present"] = present
+
+    has_hh = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='drake_household_prefill'"
+    ).fetchone()
+    if has_hh:
+        hh = conn.execute(
+            """
+            SELECT taxpayer_dob, taxpayer_phone, taxpayer_email,
+                   spouse_name, spouse_dob, spouse_phone, dependents_json
+            FROM drake_household_prefill WHERE link_id = ?
+            """,
+            (link["id"],),
+        ).fetchone()
+        if hh:
+            out["household"] = {
+                "taxpayer_dob": hh["taxpayer_dob"],
+                "taxpayer_phone": hh["taxpayer_phone"],
+                "taxpayer_email": hh["taxpayer_email"],
+                "spouse_name": hh["spouse_name"],
+                "spouse_dob": hh["spouse_dob"],
+                "spouse_phone": hh["spouse_phone"],
+            }
+            try:
+                deps = json.loads(hh["dependents_json"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                deps = []
+            if isinstance(deps, list):
+                out["dependents"] = deps
+
+    return out
+
+
+app.jinja_env.globals["return_open_path"] = return_open_path
+app.jinja_env.globals["prep_mode_enabled"] = prep_mode_enabled
+
+
 def _mask_value(value):
     if value is None:
         return None
@@ -388,6 +534,7 @@ def _mask_client_payload(payload: dict) -> dict:
 from auth import login_required, role_required, view_only_for, get_effective_role, permission_required, has_permission  # noqa: E402 (import after path setup)
 app.jinja_env.globals["get_effective_role"] = get_effective_role
 app.jinja_env.globals["has_permission"] = has_permission
+# receptionist_allowed_statuses registered after STATUS_FLOW helpers below.
 
 
 def _compact_currency(v):
@@ -420,9 +567,21 @@ def _security_headers(response):
     - object-src 'none', base-uri 'self', form-action 'self' and
       frame-ancestors 'none' provide the highest-value protections even with
       'unsafe-inline' present.
+    - Document /view responses allow same-origin framing so Prep (and return
+      detail) can embed PDFs/images in an iframe without "refused to connect".
     - img-src includes data: and blob: for document upload previews.
     """
-    response.headers["X-Frame-Options"]        = "DENY"
+    try:
+        path = request.path or ""
+    except RuntimeError:
+        path = ""
+    allow_same_origin_frame = bool(
+        path.endswith("/view") and "/documents/" in path
+    )
+
+    response.headers["X-Frame-Options"] = (
+        "SAMEORIGIN" if allow_same_origin_frame else "DENY"
+    )
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"]        = "same-origin"
 
@@ -438,6 +597,7 @@ def _security_headers(response):
     else:
         response.headers["Cache-Control"] = "no-store"
 
+    frame_ancestors = "'self'" if allow_same_origin_frame else "'none'"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline'; "
@@ -448,7 +608,7 @@ def _security_headers(response):
         "object-src 'none'; "
         "base-uri 'self'; "
         "form-action 'self'; "
-        "frame-ancestors 'none';"
+        f"frame-ancestors {frame_ancestors};"
     )
     return response
 
@@ -699,6 +859,7 @@ SELECT
     r.transfer_flag, r.transfer_2025_flag, r.transfer_2026_flag,
     r.efile_date, r.ack_date, r.drake_status_raw,
     r.contact_status, r.last_contacted_date,
+    r.scan_deferred,
     r.filing_status,
     r.adjusted_gross_income,
     r.created_at, r.updated_at,
@@ -969,20 +1130,164 @@ def _parse_iso_date(value: str | None):
         return None
 
 
+def _apply_return_quick_filter_q(clauses: list, params: list, q_raw) -> None:
+    """Append WHERE fragments for dashboard/export quick filter ``q``.
+
+    Industry pattern for paginated/infinite grids (AG Grid server-side row model):
+    filter on the server against the full matching set — never only the loaded page.
+
+    Matching mirrors client quick-filter tokens: whitespace-split, case-insensitive,
+    AND across tokens. Each token may hit log number or client name fields.
+    All-digit tokens prefer exact/prefix log match (common log-number lookup).
+    """
+    if not q_raw:
+        return
+    q = str(q_raw).strip()
+    if not q:
+        return
+    tokens = [t for t in q.lower().split() if t]
+    if not tokens:
+        return
+    for tok in tokens:
+        if tok.isdigit():
+            clauses.append("(r.log_number = ? OR r.log_number LIKE ?)")
+            params.extend([tok, f"{tok}%"])
+        else:
+            qp = f"%{tok}%"
+            clauses.append(
+                "("
+                "lower(COALESCE(r.log_number,'')) LIKE ? OR "
+                "lower(c.last_name) LIKE ? OR "
+                "lower(c.first_name) LIKE ? OR "
+                "lower(COALESCE(c.display_name,'')) LIKE ?"
+                ")"
+            )
+            params.extend([qp, qp, qp, qp])
+
+
+def _dashboard_order_clause(sort: str | None) -> str:
+    """ORDER BY for dashboard pagination / export (full corpus, never loaded-page only).
+
+    Allowed keys: ``{col}_{asc|desc}`` for log, taxyear, name, status, preparer,
+    fee, balance, intake. Unknown values fall back to log ascending.
+    """
+    key = (sort or "log_asc").strip().lower()
+    if key.endswith("_desc"):
+        direction = "DESC"
+        col = key[:-5]
+    elif key.endswith("_asc"):
+        direction = "ASC"
+        col = key[:-4]
+    else:
+        direction = "ASC"
+        col = key
+
+    nulls_last_num = (
+        # SQLite: push NULL/empty log numbers after real ones
+        "CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END, "
+        f"CAST(r.log_number AS INTEGER) {direction}, r.id {direction}"
+    )
+    if col == "log":
+        return f"ORDER BY {nulls_last_num}"
+
+    if col == "taxyear":
+        return (
+            f"ORDER BY CASE WHEN r.tax_year IS NULL THEN 1 ELSE 0 END, "
+            f"r.tax_year {direction}, r.id {direction}"
+        )
+
+    if col == "name":
+        return (
+            f"ORDER BY lower(COALESCE(c.last_name,'')) {direction}, "
+            f"lower(COALESCE(c.first_name,'')) {direction}, r.id {direction}"
+        )
+
+    if col == "status":
+        whens = " ".join(
+            f"WHEN '{s}' THEN {i}" for i, s in enumerate(STATUS_FLOW)
+        )
+        return (
+            f"ORDER BY CASE r.client_status {whens} ELSE 999 END {direction}, "
+            f"r.id {direction}"
+        )
+
+    if col == "preparer":
+        return (
+            f"ORDER BY CASE WHEN r.processor IS NULL OR r.processor='' THEN 1 ELSE 0 END, "
+            f"lower(COALESCE(r.processor,'')) {direction}, r.id {direction}"
+        )
+
+    if col == "fee":
+        return (
+            f"ORDER BY CASE WHEN p.total_fee IS NULL THEN 1 ELSE 0 END, "
+            f"p.total_fee {direction}, r.id {direction}"
+        )
+
+    if col == "balance":
+        bal = "(COALESCE(p.total_fee, 0) - COALESCE(p.fee_paid, 0))"
+        return (
+            f"ORDER BY CASE WHEN p.total_fee IS NULL THEN 1 ELSE 0 END, "
+            f"{bal} {direction}, r.id {direction}"
+        )
+
+    if col == "intake":
+        return (
+            f"ORDER BY CASE WHEN r.intake_date IS NULL OR r.intake_date='' THEN 1 ELSE 0 END, "
+            f"r.intake_date {direction}, r.id {direction}"
+        )
+
+    return f"ORDER BY {nulls_last_num}"
+
+
+_DASHBOARD_SORT_KEYS = frozenset(
+    f"{col}_{d}"
+    for col in ("log", "taxyear", "name", "status", "preparer", "fee", "balance", "intake")
+    for d in ("asc", "desc")
+)
+
+
+def _normalize_dashboard_sort(raw: str | None) -> str:
+    key = (raw or "log_asc").strip().lower()
+    return key if key in _DASHBOARD_SORT_KEYS else "log_asc"
+
+
+def _season_list_clause(alias: str = "r") -> str:
+    """SQL: return belongs on the Season-Y work list (nav year), not tax_year.
+
+    Season Y includes anything intaken in calendar year Y (any tax_year) — so a
+    TY2024 return logged in 2026 stays on the 2026 list beside that client's
+    TY2025 row — plus Drake shells with no intake_date and tax_year = Y-1.
+    Bind params: ``[str(year), year - 1]``.
+    """
+    a = alias
+    return (
+        f"(strftime('%Y', {a}.intake_date) = ? OR "
+        f"({a}.intake_date IS NULL AND {a}.tax_year = ?))"
+    )
+
+
+def _season_year_for_return(intake_date, *, today=None) -> int:
+    """Queue/nav season for a return — intake calendar year, never tax_year."""
+    from datetime import date as _date
+    today = today or _date.today()
+    if intake_date:
+        s = str(intake_date).strip()
+        if len(s) >= 4 and s[:4].isdigit():
+            y = int(s[:4])
+            if 1990 <= y <= 2100:
+                return y
+    return today.year
+
+
 def query_returns(filters: dict | None = None) -> list[dict]:
     conn = get_connection()  # REL-4: closed in finally below
     f = filters or {}
     clauses: list[str] = []
     params:  list      = []
 
-    # "year" here is the INTAKE/SEASON year (e.g. 2026 = the 2025-2026 filing season).
-    # A return belongs to season Y if it was brought in during calendar year Y,
-    # OR if it has no intake date but its tax_year = Y-1 (Drake-imported TY2025 records).
+    # Season list (nav year) — not tax_year. See _season_list_clause.
     year = f.get("year") or date.today().year
-    clauses.append(
-        "(strftime('%Y', r.intake_date) = ? OR "
-        "(r.intake_date IS NULL AND r.tax_year = ?))"
-    )
+    clauses.append(_season_list_clause("r"))
     params.append(str(year))
     params.append(year - 1)
 
@@ -1058,20 +1363,10 @@ def query_returns(filters: dict | None = None) -> list[dict]:
     if f.get("scan_deferred"):
         clauses.append("COALESCE(r.scan_deferred, 0) = 1")
 
-    if f.get("q"):
-        q = f["q"].strip()
-        if q.isdigit():
-            clauses.append("r.log_number = ?")
-            params.append(q)
-        else:
-            qp = f"%{q.lower()}%"
-            clauses.append(
-                "(lower(c.last_name) LIKE ? OR lower(c.first_name) LIKE ? OR lower(COALESCE(c.display_name,'')) LIKE ?)"
-            )
-            params.extend([qp, qp, qp])
+    _apply_return_quick_filter_q(clauses, params, f.get("q"))
 
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-    order = "ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END, CAST(r.log_number AS INTEGER), r.id"
+    order = _dashboard_order_clause(f.get("sort"))
     sql   = f"{_SELECT} {where} {order}"
 
     try:
@@ -1094,10 +1389,7 @@ def query_returns_paginated(filters: dict | None = None, *, page: int = 1, per_p
     params:  list      = []
 
     year = f.get("year") or date.today().year
-    clauses.append(
-        "(strftime('%Y', r.intake_date) = ? OR "
-        "(r.intake_date IS NULL AND r.tax_year = ?))"
-    )
+    clauses.append(_season_list_clause("r"))
     params.append(str(year))
     params.append(year - 1)
 
@@ -1170,31 +1462,10 @@ def query_returns_paginated(filters: dict | None = None, *, page: int = 1, per_p
     if f.get("scan_deferred"):
         clauses.append("COALESCE(r.scan_deferred, 0) = 1")
 
-    if f.get("q"):
-        q = f["q"].strip()
-        if q.isdigit():
-            clauses.append("r.log_number = ?")
-            params.append(q)
-        else:
-            qp = f"%{q.lower()}%"
-            clauses.append(
-                "(lower(c.last_name) LIKE ? OR lower(c.first_name) LIKE ? OR lower(COALESCE(c.display_name,'')) LIKE ?)"
-            )
-            params.extend([qp, qp, qp])
+    _apply_return_quick_filter_q(clauses, params, f.get("q"))
 
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-
-    _sort = f.get("sort", "log_asc")
-    if _sort == "log_desc":
-        order = (
-            "ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END,"
-            " CAST(r.log_number AS INTEGER) DESC, r.id DESC"
-        )
-    else:  # log_asc (default)
-        order = (
-            "ORDER BY CASE WHEN r.log_number IS NULL OR r.log_number='' THEN 1 ELSE 0 END,"
-            " CAST(r.log_number AS INTEGER) ASC, r.id ASC"
-        )
+    order = _dashboard_order_clause(f.get("sort"))
 
     per_page = min(100, max(1, int(per_page)))
     page     = max(1, int(page))
@@ -1562,6 +1833,8 @@ def base_ctx(year: int | None = None) -> dict:
         "processors":           preparer_dropdown_options(get_processors(y)),
         "app_env":              APP_ENV,
         "privacy_mode":         privacy_mode_enabled(),
+        "prep_mode":            prep_mode_enabled(),
+        "can_use_prep_mode":    can_use_prep_mode(),
         "pending_review_count": pending_review,
         "rejected_returns":     rejected,
         "rejected_count":       len(rejected),
@@ -2068,13 +2341,25 @@ def health():
             conn.execute("SELECT 1").fetchone()
         finally:
             conn.close()
-        db_detail = {"ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000, 3)}
+        _db_size = None
+        try:
+            _db_size = os.path.getsize(DB_PATH)
+        except OSError:
+            pass
+        db_detail = {
+            "ok": True,
+            "latency_ms": round((time.perf_counter() - t0) * 1000, 3),
+            # Ops wire-check: which SQLite file this process opened (no secrets).
+            "path": DB_PATH,
+            "size_bytes": _db_size,
+        }
     except sqlite3.Error as ex:
         db_ok = False
         db_detail = {
             "ok": False,
             "latency_ms": round((time.perf_counter() - t0) * 1000, 3),
             "error": str(ex),
+            "path": DB_PATH,
         }
 
     schema_ver: int | None = None
@@ -2159,9 +2444,7 @@ def api_dashboard_returns():
     year     = int(request.args.get("year", date.today().year))
     page     = max(1, int(request.args.get("page", 1)))
     per_page = min(100, max(1, int(request.args.get("per_page", 50))))
-    _api_sort = request.args.get("sort", "log_asc")
-    if _api_sort not in ("log_asc", "log_desc"):
-        _api_sort = "log_asc"
+    _api_sort = _normalize_dashboard_sort(request.args.get("sort"))
     filters  = {
         "year":           year,
         "status":         request.args.getlist("status") or None,
@@ -2459,9 +2742,7 @@ def dashboard():
     page     = max(1, int(request.args.get("page", 1)))
     per_page = min(100, max(1, int(request.args.get("per_page", 50))))
 
-    _sort_arg = request.args.get("sort", "log_asc")
-    if _sort_arg not in ("log_asc", "log_desc"):
-        _sort_arg = "log_asc"
+    _sort_arg = _normalize_dashboard_sort(request.args.get("sort"))
     filters = {
         "year":        year,
         "status":      request.args.getlist("status") or None,
@@ -2548,6 +2829,7 @@ def return_detail(return_id: int):
         "scan_agent_token": SCAN_AGENT_TOKEN,
         "can_scan_intake_docs": has_permission("can_scan_intake_docs"),
         "prompt_scan":    request.args.get("scan") == "1",
+        "today":          date.today().isoformat(),
     })
     return render_template("return_detail.html", **ctx)
 
@@ -2616,6 +2898,13 @@ def client_profile(client_id: int):
     anchor_return_id = returns[0]["id"] if returns else None
 
     nm = profile_title_for_client(client_row, client_id, privacy=privacy_mode_enabled())
+
+    # R1: show composed street/city/state/zip on profile when legacy address is thin
+    if not privacy_mode_enabled():
+        composed = compose_intake_address_line(client_row)
+        if composed:
+            client_disp = dict(client_disp)
+            client_disp["address"] = composed
 
     yr = date.today().year
     filing_for_form = ""
@@ -3347,14 +3636,14 @@ def payments():
 @app.route("/intake", methods=["GET", "POST"])
 @login_required
 def intake():
-    # Tax Year is no longer a per-intake choice — it's a single admin-set
-    # value, changed only at season rollover (see /admin/season-rollover),
-    # never per walk-in. This is what actually fixed the "goes to 1233
-    # instead of 1270s" bug: staff could never accidentally leave a stale
-    # default selected, because there's no longer a selectable default.
+    # Tax Year defaults to the admin season setting (active_intake_tax_year).
+    # Staff may pick a prior year within allowed_intake_tax_years() so late
+    # and multi-year returns can be logged this season. Invalid submissions
+    # are rejected — never silently remapped to the season default.
     _tay_conn = get_connection()
     try:
         active_intake_tax_year = get_active_intake_tax_year(_tay_conn)
+        intake_tax_years = allowed_intake_tax_years(_tay_conn)
     finally:
         _tay_conn.close()
 
@@ -3368,6 +3657,8 @@ def intake():
             "habit_profile": None,
             "intake_suggested_upcharge_pct": _upc,
             "active_intake_tax_year": active_intake_tax_year,
+            "intake_tax_years": intake_tax_years,
+            "selected_tax_year": active_intake_tax_year,
         })
         return render_template("intake.html", **ctx)
 
@@ -3383,7 +3674,9 @@ def intake():
         ctx = base_ctx()
         ctx.update({"active_page": "intake", "today": today_iso, "error": "Last name is required.",
                     "prefill": {}, "intake_suggested_upcharge_pct": _upc,
-                    "active_intake_tax_year": active_intake_tax_year})
+                    "active_intake_tax_year": active_intake_tax_year,
+                    "intake_tax_years": intake_tax_years,
+                    "selected_tax_year": f.get("tax_year") or active_intake_tax_year})
         return render_template("intake.html", **ctx), 400
 
     def _v(key):
@@ -3420,12 +3713,20 @@ def intake():
     # loop) lets the retry loop below call it without touching a single
     # line of existing field-handling logic.
     def _run_intake_write():
-        # Server-authoritative: the intake form no longer sends a real choice
-        # here (Tax Year is a locked display on the form, not a dropdown —
-        # see intake.html). Any client-submitted "tax_year" is ignored on
-        # purpose, so this can never again be silently wrong per-intake; the
-        # only way it changes is an admin running /admin/season-rollover.
-        tax_year = get_active_intake_tax_year(conn)
+        # Staff may select the season default or a prior year in range.
+        # resolve_intake_tax_year rejects out-of-window values instead of
+        # silently falling back (old dropdown bug).
+        tax_year = resolve_intake_tax_year(conn, f.get("tax_year"))
+
+        # prior_year_log is a log number, never a calendar year (36 must not
+        # become 1936). Sanitize against this client's real log numbers.
+        known_logs_for_prior: list[str] = []
+        _early_cid = _i("client_id")
+        if _early_cid:
+            known_logs_for_prior = _client_known_log_numbers(conn, _early_cid)
+        prior_year_log_val = _sanitize_prior_year_log(
+            _v("prior_year_log"), known_log_numbers=known_logs_for_prior
+        )
 
         # RACE-1: acquire the write lock *before* the MAX read below (not on
         # the first INSERT, as sqlite3's default deferred-transaction mode
@@ -3434,54 +3735,98 @@ def intake():
         # writers queue behind this lock until commit()/rollback() below.
         conn.execute("BEGIN IMMEDIATE")
 
-        # ── Auto log number (max + 1 for this tax year) ───────────────────────
-        row = conn.execute(
-            "SELECT MAX(CAST(log_number AS INTEGER)) AS mx FROM returns WHERE tax_year = ?",
-            (tax_year,),
-        ).fetchone()
-        log_number = str((row["mx"] or 0) + 1)
+        intake_date_val = _v("intake_date") or today_iso
+        # One log book for the season (active TY, e.g. 2025). A 2023 return
+        # logged today still gets the next 2025-book number; tax_year stays 2023.
+        log_number = next_season_log_number(conn, intake_date=intake_date_val)
 
         # ── Client — insert new or update existing (re-intake) ────────────────
         existing_client_id = _i("client_id")
         # INTAKE-2: derive ssn_last4 from full SSN field (never stored in full)
         taxpayer_ssn_last4 = _ssn_last4_from_full("ssn_full")
-        spouse_ssn_last4   = _ssn_last4_from_full("spouse_ssn_full")
+        filing_status_val = (_v("filing_status") or "").strip().upper()
+        spouse_filing = filing_status_val in ("MFJ", "MFS")
+        # Spouse fields are only required / applied when filing MFJ or MFS.
+        # Switching MFJ→SINGLE must not keep requiring spouse, and must not
+        # wipe historical spouse columns on the client from a disabled form.
+        if spouse_filing:
+            spouse_ssn_last4 = _ssn_last4_from_full("spouse_ssn_full")
+            spouse_last = (_v("spouse_last_name") or "").upper() or None
+            spouse_first = (_v("spouse_first_name") or "").upper() or None
+            spouse_dob = _v("spouse_dob")
+            spouse_occ = _v("spouse_occupation")
+            spouse_cell = _v("spouse_cell")
+            spouse_work = _v("spouse_work_phone")
+            spouse_email = _v("spouse_email")
+        else:
+            spouse_ssn_last4 = None
+            spouse_last = spouse_first = spouse_dob = spouse_occ = None
+            spouse_cell = spouse_work = spouse_email = None
 
         if existing_client_id:
-            conn.execute(
-                """
-                UPDATE clients SET
-                    last_name=?, first_name=?, ssn_last4=?,
-                    spouse_last_name=?, spouse_first_name=?,
-                    taxpayer_dob=?, spouse_dob=?,
-                    taxpayer_occupation=?, spouse_occupation=?,
-                    taxpayer_phone=COALESCE(?, taxpayer_phone),
-                    taxpayer_cell=COALESCE(?, taxpayer_cell),
-                    taxpayer_work_phone=COALESCE(?, taxpayer_work_phone),
-                    spouse_cell=COALESCE(?, spouse_cell),
-                    spouse_work_phone=COALESCE(?, spouse_work_phone),
-                    taxpayer_email=COALESCE(?, taxpayer_email),
-                    spouse_email=COALESCE(?, spouse_email),
-                    address=?, referral_flag=?, referred_by=?,
-                    is_new_client=0, prior_year_log=?, updated_at=?
-                WHERE id=?
-                """,
-                (
-                    last_name, first_name, taxpayer_ssn_last4,
-                    (_v("spouse_last_name") or "").upper() or None,
-                    (_v("spouse_first_name") or "").upper() or None,
-                    _v("taxpayer_dob"), _v("spouse_dob"),
-                    _v("taxpayer_occupation"), _v("spouse_occupation"),
-                    _v("taxpayer_phone"), _v("taxpayer_cell"), _v("taxpayer_work_phone"),
-                    _v("spouse_cell"), _v("spouse_work_phone"),
-                    _v("taxpayer_email"), _v("spouse_email"),
-                    _v("address"),
-                    1 if f.get("referral_flag") else 0,
-                    _v("referred_by"),
-                    _v("prior_year_log"),
-                    ts, existing_client_id,
-                ),
-            )
+            if spouse_filing:
+                conn.execute(
+                    """
+                    UPDATE clients SET
+                        last_name=?, first_name=?, ssn_last4=?,
+                        spouse_last_name=?, spouse_first_name=?,
+                        taxpayer_dob=?, spouse_dob=?,
+                        taxpayer_occupation=?, spouse_occupation=?,
+                        taxpayer_phone=COALESCE(?, taxpayer_phone),
+                        taxpayer_cell=COALESCE(?, taxpayer_cell),
+                        taxpayer_work_phone=COALESCE(?, taxpayer_work_phone),
+                        spouse_cell=COALESCE(?, spouse_cell),
+                        spouse_work_phone=COALESCE(?, spouse_work_phone),
+                        taxpayer_email=COALESCE(?, taxpayer_email),
+                        spouse_email=COALESCE(?, spouse_email),
+                        address=?, referral_flag=?, referred_by=?,
+                        is_new_client=0, prior_year_log=?, updated_at=?
+                    WHERE id=?
+                    """,
+                    (
+                        last_name, first_name, taxpayer_ssn_last4,
+                        spouse_last, spouse_first,
+                        _v("taxpayer_dob"), spouse_dob,
+                        _v("taxpayer_occupation"), spouse_occ,
+                        _v("taxpayer_phone"), _v("taxpayer_cell"), _v("taxpayer_work_phone"),
+                        spouse_cell, spouse_work,
+                        _v("taxpayer_email"), spouse_email,
+                        _v("address"),
+                        1 if f.get("referral_flag") else 0,
+                        _v("referred_by"),
+                        prior_year_log_val,
+                        ts, existing_client_id,
+                    ),
+                )
+            else:
+                # Non-spouse filing: leave clients.spouse_* unchanged
+                conn.execute(
+                    """
+                    UPDATE clients SET
+                        last_name=?, first_name=?, ssn_last4=?,
+                        taxpayer_dob=?,
+                        taxpayer_occupation=?,
+                        taxpayer_phone=COALESCE(?, taxpayer_phone),
+                        taxpayer_cell=COALESCE(?, taxpayer_cell),
+                        taxpayer_work_phone=COALESCE(?, taxpayer_work_phone),
+                        taxpayer_email=COALESCE(?, taxpayer_email),
+                        address=?, referral_flag=?, referred_by=?,
+                        is_new_client=0, prior_year_log=?, updated_at=?
+                    WHERE id=?
+                    """,
+                    (
+                        last_name, first_name, taxpayer_ssn_last4,
+                        _v("taxpayer_dob"),
+                        _v("taxpayer_occupation"),
+                        _v("taxpayer_phone"), _v("taxpayer_cell"), _v("taxpayer_work_phone"),
+                        _v("taxpayer_email"),
+                        _v("address"),
+                        1 if f.get("referral_flag") else 0,
+                        _v("referred_by"),
+                        prior_year_log_val,
+                        ts, existing_client_id,
+                    ),
+                )
             client_id = existing_client_id
         else:
             conn.execute(
@@ -3501,67 +3846,180 @@ def intake():
                 """,
                 (
                     last_name, first_name, taxpayer_ssn_last4,
-                    (_v("spouse_last_name") or "").upper() or None,
-                    (_v("spouse_first_name") or "").upper() or None,
-                    _v("taxpayer_dob"), _v("spouse_dob"),
-                    _v("taxpayer_occupation"), _v("spouse_occupation"),
+                    spouse_last, spouse_first,
+                    _v("taxpayer_dob"), spouse_dob,
+                    _v("taxpayer_occupation"), spouse_occ,
                     _v("taxpayer_phone"), _v("taxpayer_cell"), _v("taxpayer_work_phone"),
-                    _v("spouse_cell"), _v("spouse_work_phone"),
-                    _v("taxpayer_email"), _v("spouse_email"),
+                    spouse_cell, spouse_work,
+                    _v("taxpayer_email"), spouse_email,
                     _v("address"),
                     1 if f.get("referral_flag") else 0,
                     _v("referred_by"),
                     int(f.get("is_new_client", "0")),
-                    _v("prior_year_log"),
+                    prior_year_log_val,
                     ts, ts,
                 ),
             )
             client_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
         # ── Return ────────────────────────────────────────────────────────────
-        conn.execute(
-            """
-            INSERT INTO returns (
-                client_id, log_number, tax_year, client_status,
-                processor, verified, intake_date, interview_by,
-                filing_status, promise_date, delivered_by,
-                date_signatures_emailed, date_reports_emailed,
-                overtime_flag, insurance_type, digital_assets,
-                bank_name, bank_routing, bank_account, bank_account_type,
-                notes_intake,
-                is_amended, has_w7, is_extension,
-                estimate_irs, estimate_state, final_irs, final_state,
-                created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                client_id,
-                log_number,
-                tax_year,
-                "PROCESSING",
-                normalize_preparer(_v("processor")),
-                1 if f.get("verified") else 0,
-                _v("intake_date") or today_iso,
-                _v("interview_by"),
-                _v("filing_status"),
-                _v("promise_date"),
-                _v("delivered_by"),
-                _v("date_signatures_emailed"),
-                _v("date_reports_emailed"),
-                int(f.get("overtime_flag", "0")),
-                _v("insurance_type"),
-                int(f.get("digital_assets", "0")),
-                _v("bank_name"), _v("bank_routing"), _v("bank_account"), _v("bank_account_type"),
-                _v("notes_intake"),
-                1 if f.get("is_amended") else None,
-                1 if f.get("has_w7") else None,
-                1 if f.get("is_extension") else None,
-                _n("estimate_irs"), _n("estimate_state"),
-                _n("final_irs"), _n("final_state"),
-                ts, ts,
-            ),
-        )
-        return_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        # Re-intake of a returning client often hits a season-rollover
+        # PENDING INTAKE shell for the same (client_id, tax_year). The unique
+        # index idx_returns_unique_client_year forbids a second row — complete
+        # that shell instead of INSERT. An *old* tax year's PROCESSING return
+        # must not block logging this season (Jarmi Lopez TY2023 LOG #36).
+        def _existing_for_year(ty):
+            return conn.execute(
+                """
+                SELECT id, log_number, client_status, intake_date
+                FROM returns
+                WHERE client_id = ? AND tax_year = ?
+                  AND COALESCE(client_status, '') != 'CANCELLED'
+                LIMIT 1
+                """,
+                (client_id, ty),
+            ).fetchone()
+
+        existing_return = _existing_for_year(tax_year)
+        reused_pending_shell = False
+        relogged_prior_season = False
+        updating_existing_return = False
+        prior_status = None
+        if existing_return is not None:
+            prior_status = (existing_return["client_status"] or "").strip()
+            active_ty = int(get_active_intake_tax_year(conn))
+            if prior_status == "PENDING INTAKE":
+                updating_existing_return = True
+                reused_pending_shell = True
+            elif return_already_logged_this_season(
+                existing_return["intake_date"],
+                intake_date_val,
+                tax_year=int(tax_year),
+                active_tax_year=active_ty,
+            ):
+                log_disp = existing_return["log_number"] or "(no log #)"
+                raise ValueError(
+                    f"This client already has a {tax_year} return "
+                    f"(LOG #{log_disp}, status {prior_status}). "
+                    f"Open that return instead of creating a new intake."
+                )
+            else:
+                # Same TY from a prior season (Jarmi TY2023 LOG #36). Keep
+                # tax_year; put it on this season's list with a new book #.
+                updating_existing_return = True
+                relogged_prior_season = True
+                log_number = next_season_log_number(
+                    conn, intake_date=intake_date_val
+                )
+
+        if updating_existing_return:
+            return_id = int(existing_return["id"])
+            # PENDING shells from season rollover have log_number NULL and must
+            # get a fresh season-book number. Relogs always get a new number
+            # (old LOG #36 must not stay on this season's sticker).
+            keep_existing_log = False
+            if reused_pending_shell and existing_return["log_number"] and not relogged_prior_season:
+                cand = str(existing_return["log_number"]).strip()
+                clash = conn.execute(
+                    """
+                    SELECT id FROM returns
+                    WHERE tax_year = ? AND log_number = ? AND id != ?
+                    LIMIT 1
+                    """,
+                    (tax_year, cand, return_id),
+                ).fetchone()
+                if clash is None:
+                    keep_existing_log = True
+                    log_number = cand
+            if not keep_existing_log:
+                log_number = next_season_log_number(
+                    conn, intake_date=intake_date_val
+                )
+            conn.execute(
+                """
+                UPDATE returns SET
+                    log_number=?, client_status='PROCESSING',
+                    processor=?, verified=?, intake_date=?, interview_by=?,
+                    filing_status=?, promise_date=?, delivered_by=?,
+                    date_signatures_emailed=?, date_reports_emailed=?,
+                    overtime_flag=?, insurance_type=?, digital_assets=?,
+                    bank_name=?, bank_routing=?, bank_account=?, bank_account_type=?,
+                    notes_intake=?,
+                    is_amended=?, has_w7=?, is_extension=?,
+                    estimate_irs=?, estimate_state=?, final_irs=?, final_state=?,
+                    updated_at=?
+                WHERE id=?
+                """,
+                (
+                    log_number,
+                    normalize_preparer(_v("processor")),
+                    1 if f.get("verified") else 0,
+                    _v("intake_date") or today_iso,
+                    _v("interview_by"),
+                    _v("filing_status"),
+                    _v("promise_date"),
+                    _v("delivered_by"),
+                    _v("date_signatures_emailed"),
+                    _v("date_reports_emailed"),
+                    int(f.get("overtime_flag", "0")),
+                    _v("insurance_type"),
+                    int(f.get("digital_assets", "0")),
+                    _v("bank_name"), _v("bank_routing"), _v("bank_account"),
+                    _v("bank_account_type"),
+                    _v("notes_intake"),
+                    1 if f.get("is_amended") else None,
+                    1 if f.get("has_w7") else None,
+                    1 if f.get("is_extension") else None,
+                    _n("estimate_irs"), _n("estimate_state"),
+                    _n("final_irs"), _n("final_state"),
+                    ts, return_id,
+                ),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO returns (
+                    client_id, log_number, tax_year, client_status,
+                    processor, verified, intake_date, interview_by,
+                    filing_status, promise_date, delivered_by,
+                    date_signatures_emailed, date_reports_emailed,
+                    overtime_flag, insurance_type, digital_assets,
+                    bank_name, bank_routing, bank_account, bank_account_type,
+                    notes_intake,
+                    is_amended, has_w7, is_extension,
+                    estimate_irs, estimate_state, final_irs, final_state,
+                    created_at, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    client_id,
+                    log_number,
+                    tax_year,
+                    "PROCESSING",
+                    normalize_preparer(_v("processor")),
+                    1 if f.get("verified") else 0,
+                    _v("intake_date") or today_iso,
+                    _v("interview_by"),
+                    _v("filing_status"),
+                    _v("promise_date"),
+                    _v("delivered_by"),
+                    _v("date_signatures_emailed"),
+                    _v("date_reports_emailed"),
+                    int(f.get("overtime_flag", "0")),
+                    _v("insurance_type"),
+                    int(f.get("digital_assets", "0")),
+                    _v("bank_name"), _v("bank_routing"), _v("bank_account"),
+                    _v("bank_account_type"),
+                    _v("notes_intake"),
+                    1 if f.get("is_amended") else None,
+                    1 if f.get("has_w7") else None,
+                    1 if f.get("is_extension") else None,
+                    _n("estimate_irs"), _n("estimate_state"),
+                    _n("final_irs"), _n("final_state"),
+                    ts, ts,
+                ),
+            )
+            return_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
         # ── Return forms ──────────────────────────────────────────────────────
         form_fields = [
@@ -3570,11 +4028,24 @@ def intake():
             "corp_officer", "business_owner", "form_990_1041",
         ]
         form_vals = {field: (1 if f.get(field) else None) for field in form_fields}
-        conn.execute(
-            f"""INSERT INTO return_forms (return_id, {', '.join(form_fields)})
-                VALUES (?, {', '.join('?' for _ in form_fields)})""",
-            [return_id] + [form_vals[k] for k in form_fields],
-        )
+        if updating_existing_return:
+            cur = conn.execute(
+                f"""UPDATE return_forms SET {', '.join(f'{field}=?' for field in form_fields)}
+                    WHERE return_id=?""",
+                [form_vals[k] for k in form_fields] + [return_id],
+            )
+            if cur.rowcount == 0:
+                conn.execute(
+                    f"""INSERT INTO return_forms (return_id, {', '.join(form_fields)})
+                        VALUES (?, {', '.join('?' for _ in form_fields)})""",
+                    [return_id] + [form_vals[k] for k in form_fields],
+                )
+        else:
+            conn.execute(
+                f"""INSERT INTO return_forms (return_id, {', '.join(form_fields)})
+                    VALUES (?, {', '.join('?' for _ in form_fields)})""",
+                [return_id] + [form_vals[k] for k in form_fields],
+            )
 
         # ── Payment ───────────────────────────────────────────────────────────
         # INTAKE-8: apply auto-discount for new clients (no prior return)
@@ -3582,23 +4053,37 @@ def intake():
         if existing_client_id is None and discount_val is None:
             discount_val = float(INTAKE_AUTO_DISCOUNT) if INTAKE_AUTO_DISCOUNT else None
 
-        conn.execute(
-            """
-            INSERT INTO payments (
-                return_id, total_fee, fee_paid, receipt_number, receipt2_number,
-                accounting_fee, w7_fee, form_1099_fee, license_fee,
-                reprocess_fee, discount_amount, special_discount, down_payment
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                return_id,
-                _n("total_fee"), _n("fee_paid"),
-                _v("receipt_number"), _v("receipt2_number"),
-                _n("accounting_fee"), _n("w7_fee"), _n("form_1099_fee"), _n("license_fee"),
-                _n("reprocess_fee"), discount_val, _n("special_discount"),
-                _n("down_payment"),
-            ),
+        pay_vals = (
+            _n("total_fee"), _n("fee_paid"),
+            _v("receipt_number"), _v("receipt2_number"),
+            _n("accounting_fee"), _n("w7_fee"), _n("form_1099_fee"), _n("license_fee"),
+            _n("reprocess_fee"), discount_val, _n("special_discount"),
+            _n("down_payment"),
         )
+        if updating_existing_return and conn.execute(
+            "SELECT 1 FROM payments WHERE return_id=? LIMIT 1", (return_id,)
+        ).fetchone():
+            conn.execute(
+                """
+                UPDATE payments SET
+                    total_fee=?, fee_paid=?, receipt_number=?, receipt2_number=?,
+                    accounting_fee=?, w7_fee=?, form_1099_fee=?, license_fee=?,
+                    reprocess_fee=?, discount_amount=?, special_discount=?, down_payment=?
+                WHERE return_id=?
+                """,
+                pay_vals + (return_id,),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO payments (
+                    return_id, total_fee, fee_paid, receipt_number, receipt2_number,
+                    accounting_fee, w7_fee, form_1099_fee, license_fee,
+                    reprocess_fee, discount_amount, special_discount, down_payment
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (return_id,) + pay_vals,
+            )
 
         # ── Dependents ────────────────────────────────────────────────────────
         dep_count = int(f.get("dep_count", "6"))
@@ -3640,14 +4125,35 @@ def intake():
                 )
 
         # ── Status event ──────────────────────────────────────────────────────
-        conn.execute(
-            """
-            INSERT INTO status_events
-              (return_id, event_type, old_status, new_status, event_timestamp, source_file, note)
-            VALUES (?, 'STATUS_CHANGED', NULL, 'PROCESSING', ?, 'INTAKE', 'Created via intake form')
-            """,
-            (return_id, ts),
-        )
+        if reused_pending_shell:
+            conn.execute(
+                """
+                INSERT INTO status_events
+                  (return_id, event_type, old_status, new_status, event_timestamp, source_file, note)
+                VALUES (?, 'STATUS_CHANGED', 'PENDING INTAKE', 'PROCESSING', ?, 'INTAKE',
+                        'Completed intake on PENDING INTAKE shell')
+                """,
+                (return_id, ts),
+            )
+        elif relogged_prior_season:
+            conn.execute(
+                """
+                INSERT INTO status_events
+                  (return_id, event_type, old_status, new_status, event_timestamp, source_file, note)
+                VALUES (?, 'STATUS_CHANGED', ?, 'PROCESSING', ?, 'INTAKE',
+                        'Re-logged prior-season return onto this season log book')
+                """,
+                (return_id, prior_status, ts),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO status_events
+                  (return_id, event_type, old_status, new_status, event_timestamp, source_file, note)
+                VALUES (?, 'STATUS_CHANGED', NULL, 'PROCESSING', ?, 'INTAKE', 'Created via intake form')
+                """,
+                (return_id, ts),
+            )
 
         # ── Notes ─────────────────────────────────────────────────────────────
         if _v("notes_intake"):
@@ -3658,46 +4164,16 @@ def intake():
 
         conn.commit()
 
-        # M3: print a physical file label for the new log_number, behind a
-        # feature flag. This is a convenience, not a hard invariant like the
-        # DB writes above — any failure here (module missing, printer off,
-        # pywin32 not installed, relay unreachable) is logged and swallowed,
-        # never breaks intake.
-        #
-        # FILETRACK_PRINT_MODE picks how the label actually gets to the
-        # printer: "local" calls win32print directly (only works when the
-        # printer is a real local Windows queue on THIS process's machine —
-        # never true for a Windows *service*'s Session 0 if the printer is
-        # only attached to a different workstation). "relay" instead POSTs
-        # the job to filetrack.relay.server running on the machine the
-        # printer is actually attached to. See filetrack/DEPLOYMENT.md.
-        from filetrack.config import FILETRACK_ENABLED
-        if FILETRACK_ENABLED:
-            try:
-                from filetrack.config import FILETRACK_PRINT_MODE
-                _label_kwargs = dict(log_in_date=_v("intake_date") or today_iso)
-                if FILETRACK_PRINT_MODE == "relay":
-                    from filetrack.labels.relay_client import print_label_via_relay
-                    print_label_via_relay(log_number, **_label_kwargs)
-                else:
-                    from filetrack.labels.print_label import print_label as _filetrack_print_label
-                    _filetrack_print_label(log_number, **_label_kwargs)
-            except Exception as _print_exc:
-                # RelayError's message is already the actionable, human-
-                # readable summary (see relay_client._classify_network_error)
-                # — surface it as its own WARNING line, ahead of the full
-                # exc_info traceback below, so whoever is skimming
-                # taxops_stderr.log doesn't have to parse a stack trace to
-                # find out what to actually go check on the print station.
-                from filetrack.labels.relay_client import RelayError
-                if isinstance(_print_exc, RelayError):
-                    logging.getLogger("filetrack").warning(
-                        "filetrack: label print failed for log_number=%s — %s",
-                        log_number, _print_exc,
-                    )
-                logging.getLogger("filetrack").warning(
-                    "filetrack: label print failed for log_number=%s", log_number, exc_info=True,
-                )
+        # M3: print LOG sticker (same path as UI Print sticker / scan-complete).
+        # Failures logged+swallowed — never breaks intake.
+        from filetrack.labels.dispatch import try_print_log_label
+        try_print_log_label(
+            log_number,
+            last_name=last_name or "",
+            first_name=(f.get("first_name") or "").strip(),
+            log_in_date=_v("intake_date") or today_iso,
+            tax_year=tax_year,
+        )
 
         if has_permission("can_scan_intake_docs"):
             return redirect(f"/return/{return_id}?scan=1")
@@ -3710,6 +4186,10 @@ def intake():
         # constraint) are never mistaken for the log-number race and retried.
         msg = str(exc)
         return "returns.log_number" in msg and "returns.tax_year" in msg
+
+    def _is_client_year_conflict(exc: sqlite3.IntegrityError) -> bool:
+        msg = str(exc)
+        return "returns.client_id" in msg and "returns.tax_year" in msg
 
     try:
         _LOG_NUMBER_MAX_ATTEMPTS = 3
@@ -3727,18 +4207,39 @@ def intake():
                 if _is_log_number_conflict(exc) and _log_number_attempt < _LOG_NUMBER_MAX_ATTEMPTS:
                     continue
                 ctx = base_ctx()
+                submitted_ty = f.get("tax_year") or active_intake_tax_year
                 if _is_log_number_conflict(exc):
                     err_msg, status = "Could not assign a log number, please retry.", 409
+                elif _is_client_year_conflict(exc):
+                    err_msg, status = (
+                        f"This client already has a {submitted_ty} return. "
+                        "Open that return instead of creating a new intake.",
+                        409,
+                    )
                 else:
                     err_msg, status = str(exc), 500
                 ctx.update({"active_page": "intake", "today": today_iso, "error": err_msg,
-                            "active_intake_tax_year": active_intake_tax_year})
+                            "active_intake_tax_year": active_intake_tax_year,
+                            "intake_tax_years": intake_tax_years,
+                            "selected_tax_year": submitted_ty})
                 return render_template("intake.html", **ctx), status
+            except ValueError as exc:
+                # Friendly client+year conflict from the PENDING INTAKE check,
+                # or an out-of-range tax_year from resolve_intake_tax_year.
+                conn.rollback()
+                ctx = base_ctx()
+                ctx.update({"active_page": "intake", "today": today_iso, "error": str(exc),
+                            "active_intake_tax_year": active_intake_tax_year,
+                            "intake_tax_years": intake_tax_years,
+                            "selected_tax_year": f.get("tax_year") or active_intake_tax_year})
+                return render_template("intake.html", **ctx), 409
     except Exception as exc:
         conn.rollback()
         ctx = base_ctx()
         ctx.update({"active_page": "intake", "today": today_iso, "error": str(exc),
-                    "active_intake_tax_year": active_intake_tax_year})
+                    "active_intake_tax_year": active_intake_tax_year,
+                    "intake_tax_years": intake_tax_years,
+                    "selected_tax_year": f.get("tax_year") or active_intake_tax_year})
         return render_template("intake.html", **ctx), 500
     finally:
         conn.close()
@@ -4138,6 +4639,7 @@ def export_excel():
         "form":        request.args.get("form"),
         "reject_contact": request.args.get("reject_contact"),
         "q":           request.args.get("q"),
+        "sort":        _normalize_dashboard_sort(request.args.get("sort")),
         "scan_deferred": (
             "1"
             if (request.args.get("filter") or "").strip().lower() == "scan_deferred"
@@ -4653,35 +5155,167 @@ def api_client_error():
     return jsonify({"ok": True})
 
 
+def _client_name_search_tokens(q_raw: str) -> list[str]:
+    """Whitespace-split tokens for intake client lookup (AND across fields)."""
+    return [t for t in (q_raw or "").strip().lower().split() if t]
+
+
+def _score_client_search_hit(row, tokens: list[str], active_year: int) -> tuple:
+    """Rank intake autofill hits: exact-ish names and preintake shells first."""
+    ln = (row["last_name"] or "").lower()
+    fn = (row["first_name"] or "").lower()
+    disp = (row["display_name"] or "").lower()
+    hay = f"{ln} {fn} {disp}"
+    preintake = 1 if row["preintake"] else 0
+    # Prefer last-name / first-name prefix matches on the first token
+    first = tokens[0] if tokens else ""
+    last_prefix = 1 if first and ln.startswith(first) else 0
+    first_prefix = 1 if first and fn.startswith(first) else 0
+    all_in_hay = 1 if all(t in hay for t in tokens) else 0
+    # Prefer clients who already have prior-year Drake/TaxOps history
+    has_history = 1 if row["last_year"] else 0
+    # Lower id as weak tie-break (stable)
+    return (-preintake, -last_prefix, -first_prefix, -all_in_hay, -has_history, ln, fn, int(row["id"]))
+
+
 @app.get("/api/clients/search")
 @login_required
 def api_client_search():
-    """Search existing clients by name for re-intake prefill."""
+    """Search existing clients by name for re-intake / Drake preintake prefill.
+
+    Tokens are AND'd across name fields so ``Omar Abdel`` finds
+    ``ABDEL HADY, OMAR`` (whole-string LIKE on one column misses Drake names).
+
+    Also matches spouse / purple / CSM names from ``drake_prefill_links`` so
+    joint filers like ``BARRERA, ADRIAN & BLANCA`` are findable via either
+    spouse name (``blanca barrera``) once the prefill→client link has run.
+    """
     q = (request.args.get("q") or "").strip()
-    if len(q) < 2:
+    tokens = _client_name_search_tokens(q)
+    if len(q) < 2 or not tokens:
         return jsonify([])
-    qp = f"%{q.lower()}%"
+
     conn = get_connection()
-    rows = conn.execute(
-        """
-        SELECT c.id, c.last_name, c.first_name, c.display_name,
-               c.spouse_first_name, c.spouse_last_name,
-               MAX(r.tax_year) AS last_year
-        FROM clients c
-        LEFT JOIN returns r ON r.client_id = c.id
-        WHERE lower(c.last_name) LIKE ? OR lower(c.first_name) LIKE ?
-           OR lower(COALESCE(c.display_name,'')) LIKE ?
-           OR lower(COALESCE(c.spouse_first_name,'')) LIKE ?
-           OR lower(COALESCE(c.spouse_last_name,'')) LIKE ?
-        GROUP BY c.id
-        ORDER BY c.last_name, c.first_name
-        LIMIT 12
-        """,
-        (qp, qp, qp, qp, qp),
-    ).fetchall()
+    active_year = get_active_intake_tax_year(conn)
+    has_prefill = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='drake_prefill_links'"
+    ).fetchone()
+    clauses: list[str] = []
+    params: list = []
+    for tok in tokens:
+        qp = f"%{tok}%"
+        if has_prefill:
+            clauses.append(
+                "("
+                "lower(c.last_name) LIKE ? OR lower(c.first_name) LIKE ? OR "
+                "lower(COALESCE(c.display_name,'')) LIKE ? OR "
+                "lower(COALESCE(c.spouse_first_name,'')) LIKE ? OR "
+                "lower(COALESCE(c.spouse_last_name,'')) LIKE ? OR "
+                "lower(COALESCE(dpl.csm_name_raw,'')) LIKE ? OR "
+                "lower(COALESCE(dpl.purple_name,'')) LIKE ?"
+                ")"
+            )
+            params.extend([qp, qp, qp, qp, qp, qp, qp])
+        else:
+            clauses.append(
+                "("
+                "lower(c.last_name) LIKE ? OR lower(c.first_name) LIKE ? OR "
+                "lower(COALESCE(c.display_name,'')) LIKE ? OR "
+                "lower(COALESCE(c.spouse_first_name,'')) LIKE ? OR "
+                "lower(COALESCE(c.spouse_last_name,'')) LIKE ?"
+                ")"
+            )
+            params.extend([qp, qp, qp, qp, qp])
+
+    where_sql = " AND ".join(clauses)
+    if has_prefill:
+        rows = conn.execute(
+            f"""
+            SELECT c.id, c.last_name, c.first_name, c.display_name,
+                   c.spouse_first_name, c.spouse_last_name,
+                   MAX(r.tax_year) AS last_year,
+                   MAX(CASE WHEN r.tax_year = ? THEN r.client_status END) AS active_status,
+                   MAX(CASE WHEN r.tax_year = ? THEN 1 ELSE 0 END) AS has_active_year,
+                   MAX(CASE WHEN dpl.prefill_status = 'PRIOR_YEAR_FORMS_AVAILABLE'
+                            THEN dpl.tax_year END) AS prefill_year,
+                   MAX(CASE WHEN dpl.prefill_status = 'PRIOR_YEAR_FORMS_AVAILABLE'
+                            THEN 1 ELSE 0 END) AS prior_year_forms
+            FROM clients c
+            LEFT JOIN returns r ON r.client_id = c.id
+            LEFT JOIN drake_prefill_links dpl ON dpl.client_id = c.id
+            WHERE {where_sql}
+            GROUP BY c.id
+            LIMIT 80
+            """,
+            [active_year, active_year] + params,
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            f"""
+            SELECT c.id, c.last_name, c.first_name, c.display_name,
+                   c.spouse_first_name, c.spouse_last_name,
+                   MAX(r.tax_year) AS last_year,
+                   MAX(CASE WHEN r.tax_year = ? THEN r.client_status END) AS active_status,
+                   MAX(CASE WHEN r.tax_year = ? THEN 1 ELSE 0 END) AS has_active_year,
+                   NULL AS prefill_year,
+                   0 AS prior_year_forms
+            FROM clients c
+            LEFT JOIN returns r ON r.client_id = c.id
+            WHERE {where_sql}
+            GROUP BY c.id
+            LIMIT 80
+            """,
+            [active_year, active_year] + params,
+        ).fetchall()
+
+    scored = []
+    client_ids = [int(r["id"]) for r in rows]
+    years_by_client: dict[int, list[dict]] = {cid: [] for cid in client_ids}
+    if client_ids:
+        placeholders = ",".join("?" for _ in client_ids)
+        year_rows = conn.execute(
+            f"""
+            SELECT client_id, tax_year, log_number, client_status
+            FROM returns
+            WHERE client_id IN ({placeholders})
+              AND COALESCE(client_status, '') != 'CANCELLED'
+            ORDER BY tax_year DESC, id DESC
+            """,
+            client_ids,
+        ).fetchall()
+        for yr in year_rows:
+            years_by_client[int(yr["client_id"])].append({
+                "tax_year": yr["tax_year"],
+                "log_number": yr["log_number"],
+                "status": yr["client_status"],
+            })
     conn.close()
-    results = []
+
     for r in rows:
+        has_active = bool(r["has_active_year"])
+        active_status = (r["active_status"] or "").strip() if has_active else ""
+        preintake = (not has_active) or (active_status == "PENDING INTAKE")
+        last_year = r["last_year"] or r["prefill_year"]
+        existing_years = years_by_client.get(int(r["id"]), [])
+        item = {
+            "id": r["id"],
+            "last_name": r["last_name"],
+            "first_name": r["first_name"],
+            "display_name": r["display_name"],
+            "spouse_first_name": r["spouse_first_name"],
+            "spouse_last_name": r["spouse_last_name"],
+            "last_year": last_year,
+            "preintake": preintake,
+            "active_status": active_status or None,
+            "active_tax_year": active_year,
+            "prior_year_forms": bool(r["prior_year_forms"]),
+            "existing_years": existing_years,
+        }
+        scored.append((_score_client_search_hit(item, tokens, active_year), item))
+
+    scored.sort(key=lambda x: x[0])
+    results = []
+    for _, r in scored[:20]:
         name = _build_name_full(
             r["first_name"] or "", r["last_name"] or "",
             r["display_name"] or "",
@@ -4690,11 +5324,237 @@ def api_client_search():
         if privacy_mode_enabled():
             name = f"XXXXX #{r['id']}"
         results.append({
-            "id":        r["id"],
-            "name":      name,
+            "id": r["id"],
+            "name": name,
             "last_year": r["last_year"],
+            "preintake": bool(r["preintake"]),
+            "prior_year_forms": bool(r["prior_year_forms"]),
+            "active_status": r["active_status"],
+            "active_tax_year": r["active_tax_year"],
+            "existing_years": r["existing_years"],
         })
     return jsonify(results)
+
+
+# Drake purple form-count headers → intake return_forms checkboxes (count ≥ 1).
+_PREFILL_FORM_CHECKBOX_MAP = {
+    "Schedule A": "sched_a_d",
+    "Schedule C": "sched_c",
+    "Schedule E": "sched_e",
+    "Form 1120": "form_1120",
+    "Form 1120S": "form_1120s",
+    "Form 1065": "form_1065_llc",
+    "Form 990": "form_990_1041",
+    "Form 1041": "form_990_1041",
+}
+
+# Drake Filing Status codes (TAXPAYER.csv) → intake <select> option values
+_DRAKE_FS_TO_INTAKE = {
+    "1": "SINGLE",
+    "2": "MFJ",
+    "3": "MFS",
+    "4": "HH",
+    "5": "QUAL NON DEP",
+}
+
+# Intake spouse block / auto-MFJ only for these
+_SPOUSE_FILING_STATUSES = frozenset({"MFJ", "MFS"})
+
+
+def compose_intake_address_line(client_row: dict) -> str:
+    """Build the single intake `address` field from structured R1 columns.
+
+    Stage D COALESCE filled address_street/city/state/zip but left legacy
+    `clients.address` untouched. Intake only prefills `address`, so when
+    legacy is empty (or equals street only), compose a mailable line for the
+    reintake JSON payload. Does not write the database.
+    """
+    legacy = (client_row.get("address") or "").strip()
+    street = (client_row.get("address_street") or "").strip()
+    city = (client_row.get("address_city") or "").strip()
+    state = (client_row.get("address_state") or "").strip()
+    zipc = (client_row.get("address_zip") or "").strip()
+
+    if not street and not city and not state and not zipc:
+        return legacy
+
+    def _city_state_zip() -> str:
+        if city and state:
+            return f"{city}, {state} {zipc}".strip()
+        return " ".join(p for p in (city, state, zipc) if p).strip()
+
+    if not legacy and street:
+        tail = _city_state_zip()
+        return f"{street}, {tail}" if tail else street
+
+    # Legacy is street-only duplicate of address_street — append locality
+    if legacy and street and legacy.upper() == street.upper() and _city_state_zip():
+        return f"{street}, {_city_state_zip()}"
+
+    return legacy
+
+
+def map_drake_filing_status(code) -> str:
+    """Map Drake 1–5 filing status to intake select value, or ''."""
+    if code is None:
+        return ""
+    return _DRAKE_FS_TO_INTAKE.get(str(code).strip(), "")
+
+
+def _effective_intake_filing_status(last_return: dict) -> str:
+    """Prefer stored intake FS; else map Drake code. Uppercased or ''."""
+    if not last_return:
+        return ""
+    stored = (last_return.get("filing_status") or "").strip().upper()
+    if stored:
+        return stored
+    return (map_drake_filing_status(last_return.get("filing_status_drake")) or "").upper()
+
+
+def _enrich_reintake_from_prefill(
+    conn, client_id: int, client_data: dict
+) -> tuple[dict, dict, dict | None]:
+    """
+    Guarantee name (and fill gaps) from drake_prefill_links / household.
+
+    Returns (client_data, form_checkbox_hints, drake_spouse_from_prefill_or_None).
+    Never overwrites a non-empty client field. Never touches SSN.
+    """
+    has_links = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='drake_prefill_links'"
+    ).fetchone()
+    if not has_links:
+        return client_data, {}, None
+
+    link = conn.execute(
+        """
+        SELECT id, csm_name_raw, purple_name, tax_year, prefill_status
+        FROM drake_prefill_links
+        WHERE client_id = ?
+        ORDER BY
+          CASE prefill_status
+            WHEN 'PRIOR_YEAR_FORMS_AVAILABLE' THEN 0
+            ELSE 1
+          END,
+          tax_year DESC, id DESC
+        LIMIT 1
+        """,
+        (client_id,),
+    ).fetchone()
+    if not link:
+        return client_data, {}, None
+
+    csm_raw = (link["csm_name_raw"] or "").strip()
+    if csm_raw:
+        last, first = parse_name(csm_raw)
+        if last and not (client_data.get("last_name") or "").strip():
+            client_data["last_name"] = last
+        if first and not (client_data.get("first_name") or "").strip():
+            client_data["first_name"] = first
+
+    spouse_from_prefill = None
+    has_spouse = bool(
+        (client_data.get("spouse_first_name") or "").strip()
+        or (client_data.get("spouse_last_name") or "").strip()
+    )
+    if not has_spouse and csm_raw:
+        try:
+            from drake_prefill_importer import _spouse_from_csm_name
+        except ImportError:
+            # Importer pulls in optional analysis deps; spouse-from-CSM is a nicety,
+            # never a reason to fail the whole re-intake lookup.
+            logging.getLogger("taxops").warning(
+                "reintake: drake_prefill_importer unavailable, skipping CSM spouse split"
+            )
+            _spouse_from_csm_name = None
+
+        sp_first, sp_last = _spouse_from_csm_name(csm_raw) if _spouse_from_csm_name else (None, None)
+        if sp_first:
+            client_data["spouse_first_name"] = sp_first
+            if sp_last:
+                client_data["spouse_last_name"] = sp_last
+            spouse_from_prefill = {
+                "spouse_first_name": sp_first,
+                "spouse_last_name": sp_last or "",
+                "spouse_middle_initial": "",
+                "spouse_dob": "",
+                "source": "drake_prefill",
+            }
+
+    # Household contact / DOB (keyed by link_id — never spouses/client_dependents)
+    has_hh = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='drake_household_prefill'"
+    ).fetchone()
+    if has_hh:
+        hh = conn.execute(
+            """
+            SELECT taxpayer_dob, taxpayer_phone, taxpayer_email,
+                   spouse_name, spouse_dob, spouse_phone
+            FROM drake_household_prefill WHERE link_id = ?
+            """,
+            (link["id"],),
+        ).fetchone()
+        if hh:
+            if hh["taxpayer_dob"] and not (client_data.get("taxpayer_dob") or "").strip():
+                client_data["taxpayer_dob"] = hh["taxpayer_dob"]
+            phone = (hh["taxpayer_phone"] or "").strip()
+            if phone and not (client_data.get("taxpayer_cell") or "").strip():
+                client_data["taxpayer_cell"] = phone
+            if hh["taxpayer_email"] and not (client_data.get("taxpayer_email") or "").strip():
+                client_data["taxpayer_email"] = hh["taxpayer_email"]
+            if hh["spouse_dob"] and not (client_data.get("spouse_dob") or "").strip():
+                client_data["spouse_dob"] = hh["spouse_dob"]
+            if hh["spouse_phone"] and not (client_data.get("spouse_cell") or "").strip():
+                client_data["spouse_cell"] = hh["spouse_phone"]
+            # Spouse name from household if still empty
+            if not (client_data.get("spouse_first_name") or "").strip() and hh["spouse_name"]:
+                sp_name = (hh["spouse_name"] or "").strip()
+                toks = sp_name.split()
+                if toks:
+                    client_data["spouse_first_name"] = toks[0]
+                    if len(toks) > 1:
+                        client_data["spouse_last_name"] = " ".join(toks[1:])
+                    elif (client_data.get("last_name") or "").strip():
+                        client_data["spouse_last_name"] = client_data["last_name"]
+                    spouse_from_prefill = {
+                        "spouse_first_name": client_data.get("spouse_first_name") or "",
+                        "spouse_last_name": client_data.get("spouse_last_name") or "",
+                        "spouse_middle_initial": "",
+                        "spouse_dob": hh["spouse_dob"] or "",
+                        "source": "drake_household_prefill",
+                    }
+
+    form_hints: dict = {}
+    has_fp = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='drake_form_prefill'"
+    ).fetchone()
+    if has_fp:
+        fp = conn.execute(
+            "SELECT form_counts, return_type FROM drake_form_prefill WHERE link_id = ?",
+            (link["id"],),
+        ).fetchone()
+        if fp and fp["form_counts"]:
+            try:
+                counts = json.loads(fp["form_counts"])
+            except (TypeError, ValueError):
+                counts = {}
+            for header, field in _PREFILL_FORM_CHECKBOX_MAP.items():
+                val = counts.get(header)
+                if isinstance(val, (int, float)) and val >= 1:
+                    form_hints[field] = 1
+            rt = (fp["return_type"] or "").strip().upper().replace("-", "")
+            if rt in ("1040", "1040SR"):
+                form_hints["form_1040"] = 1
+            elif rt == "1120":
+                form_hints["form_1120"] = 1
+            elif rt == "1120S":
+                form_hints["form_1120s"] = 1
+            elif rt == "1065":
+                form_hints["form_1065_llc"] = 1
+            elif rt in ("990", "1041"):
+                form_hints["form_990_1041"] = 1
+
+    return client_data, form_hints, spouse_from_prefill
 
 
 @app.get("/api/clients/<int:client_id>/reintake")
@@ -4702,29 +5562,102 @@ def api_client_search():
 def api_client_reintake(client_id: int):
     """
     Return everything needed to pre-populate the re-intake form for a
-    returning client: client fields + most recent return's data + dependents.
+    returning client: client fields + source return's data + dependents.
     SSN fields are intentionally excluded.
-    """
-    conn = get_connection()
-    client = conn.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
-    if not client:
-        conn.close()
-        return jsonify({"error": "Not found"}), 404
 
-    # Most recent return for this client
-    ret = conn.execute(
+    Optional ``?tax_year=YYYY`` selects which year is being opened (season
+    default or a prior year). Prefill still uses the same Drake/profile
+    mechanism whether or not the client already has another year on file.
+    """
+    raw_ty = (request.args.get("tax_year") or "").strip()
+    target_tax_year = int(raw_ty) if raw_ty.isdigit() else None
+    try:
+        return _api_client_reintake_impl(client_id, target_tax_year=target_tax_year)
+    except Exception as exc:
+        logging.getLogger("taxops").exception(
+            "reintake failed client_id=%s", client_id
+        )
+        return jsonify({"error": f"reintake_exception: {type(exc).__name__}: {exc}"}), 500
+
+
+def _sanitize_prior_year_log(raw, *, known_log_numbers: list | None = None) -> str | None:
+    """Keep prior_year_log as a log # — never a calendar year expansion.
+
+    A former UI bug applied 2-digit year expansion to this field (log 36 → 1936).
+    If ``raw`` looks like 19xx/20xx and the last two digits match a known log for
+    the client, restore the real log number. Blank → None.
+    """
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    known: list[str] = []
+    for ln in known_log_numbers or []:
+        if ln is None or str(ln).strip() == "":
+            continue
+        known.append(str(ln).strip())
+    if _re.fullmatch(r"(19|20)\d{2}", s) and known:
+        suffix_i = int(s) % 100  # 1936 → 36, 2005 → 5
+        for ln in known:
+            try:
+                if int(str(ln)) == suffix_i:
+                    return str(int(ln))
+            except ValueError:
+                continue
+    return s
+
+
+def _client_known_log_numbers(conn, client_id: int) -> list[str]:
+    rows = conn.execute(
         """
+        SELECT log_number FROM returns
+        WHERE client_id = ? AND log_number IS NOT NULL AND TRIM(log_number) != ''
+        ORDER BY tax_year DESC, id DESC
+        """,
+        (client_id,),
+    ).fetchall()
+    return [str(r["log_number"]).strip() for r in rows]
+
+
+def _pick_reintake_source_return(conn, client_id: int, target_tax_year: int | None):
+    """Choose which prior return to copy return-level fields from.
+
+    Same path for first-time season reintake and for adding another TY when
+    the client already has a year: prefer the newest return strictly older
+    than the target year; otherwise the newest return overall.
+    """
+    base = """
         SELECT r.*, rf.form_1040, rf.sched_a_d, rf.sched_c, rf.sched_e,
                rf.form_1120, rf.form_1120s, rf.form_1065_llc,
                rf.corp_officer, rf.business_owner, rf.form_990_1041
         FROM returns r
         LEFT JOIN return_forms rf ON rf.return_id = r.id
         WHERE r.client_id = ?
-        ORDER BY r.tax_year DESC, r.id DESC
-        LIMIT 1
-        """,
+          AND COALESCE(r.client_status, '') != 'CANCELLED'
+    """
+    if target_tax_year is not None:
+        row = conn.execute(
+            base + " AND r.tax_year < ? ORDER BY r.tax_year DESC, r.id DESC LIMIT 1",
+            (client_id, target_tax_year),
+        ).fetchone()
+        if row is not None:
+            return row
+    return conn.execute(
+        base + " ORDER BY r.tax_year DESC, r.id DESC LIMIT 1",
         (client_id,),
     ).fetchone()
+
+
+def _api_client_reintake_impl(client_id: int, target_tax_year: int | None = None):
+    conn = get_connection()
+    client = conn.execute("SELECT * FROM clients WHERE id=?", (client_id,)).fetchone()
+    if not client:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+
+    # Source return for carry-forward (not necessarily the year being opened).
+    ret = _pick_reintake_source_return(conn, client_id, target_tax_year)
 
     # Dependents from that return
     deps = []
@@ -4758,7 +5691,9 @@ def api_client_reintake(client_id: int):
             (client_id,),
         ).fetchall()
         for cd in cd_rows:
-            full = " ".join(filter(None, [cd["first_name"], cd["last_name"]]))
+            # Drake convention: blank dependent last → taxpayer last (same as spouse UI)
+            dep_last = (cd["last_name"] or "").strip() or (client["last_name"] or "").strip()
+            full = " ".join(filter(None, [cd["first_name"], dep_last]))
             entry = {
                 "full_name":       _mask_value(full) if privacy_mode_enabled() else full,
                 "relationship":    _mask_value(cd["relationship"]) if privacy_mode_enabled() else cd["relationship"],
@@ -4817,11 +5752,61 @@ def api_client_reintake(client_id: int):
                         "source":     sp_row["source"],
                     }
 
-    habit_profile = build_client_habit_profile(conn, client_id)
-    conn.close()
-
     data = dict(client)
     data.pop("ssn_last4", None)
+
+    # R1: expose composed address for intake autofill (legacy column may be empty
+    # after structured COALESCE). Response-only — does not UPDATE clients.
+    data["address"] = compose_intake_address_line(data)
+
+    # Prefill/household enrichment — names at minimum, then contact/DOB/forms
+    data, form_prefill_hints, spouse_from_link = _enrich_reintake_from_prefill(
+        conn, client_id, data
+    )
+    if not drake_spouse and spouse_from_link:
+        drake_spouse = {
+            "spouse_first_name": (
+                _mask_value(spouse_from_link["spouse_first_name"])
+                if privacy_mode_enabled()
+                else spouse_from_link["spouse_first_name"]
+            ),
+            "spouse_last_name": (
+                _mask_value(spouse_from_link["spouse_last_name"])
+                if privacy_mode_enabled()
+                else spouse_from_link["spouse_last_name"]
+            ),
+            "spouse_middle_initial": spouse_from_link.get("spouse_middle_initial") or "",
+            "spouse_dob": spouse_from_link.get("spouse_dob") or "",
+            "source": spouse_from_link.get("source") or "drake_prefill",
+        }
+    # Keep client_has_spouse in sync for MFJ hint below (uses enriched data)
+    client_has_spouse = bool(
+        (data.get("spouse_first_name") or "").strip()
+        or (data.get("spouse_last_name") or "").strip()
+        or drake_spouse
+    )
+
+    habit_profile = build_client_habit_profile(conn, client_id)
+    other_returns = [
+        {
+            "tax_year": r["tax_year"],
+            "log_number": r["log_number"],
+            "status": r["client_status"],
+            "id": r["id"],
+        }
+        for r in conn.execute(
+            """
+            SELECT id, tax_year, log_number, client_status
+            FROM returns
+            WHERE client_id = ?
+              AND COALESCE(client_status, '') != 'CANCELLED'
+            ORDER BY tax_year DESC, id DESC
+            """,
+            (client_id,),
+        ).fetchall()
+    ]
+    conn.close()
+
     if privacy_mode_enabled():
         data = _mask_client_payload(data)
 
@@ -4832,12 +5817,67 @@ def api_client_reintake(client_id: int):
         if privacy_mode_enabled():
             last_return = _mask_return_payload(last_return)
 
+    # Merge allowlisted form hints only where last_return left the checkbox empty
+    for field, on in form_prefill_hints.items():
+        if last_return.get(field) in (None, 0, "", False):
+            last_return[field] = on
+
+    # R1: if prior return has no filing_status, map Drake FS code when present
+    if last_return and not (last_return.get("filing_status") or "").strip():
+        mapped = map_drake_filing_status(last_return.get("filing_status_drake"))
+        if mapped:
+            last_return["filing_status"] = mapped
+
+    # Do not spouse-autofill (or imply MFJ) when Drake/intake FS is Single, HH, etc.
+    # Qais class: spouses row from a wrong fold + blank filing_status → intake
+    # auto-set MFJ. Suppressing drake_spouse when FS is non-spouse fixes that.
+    effective_fs = _effective_intake_filing_status(last_return)
+    if effective_fs and effective_fs not in _SPOUSE_FILING_STATUSES:
+        drake_spouse = None
+        # Response-only: do not surface spouse name fields on the client payload
+        # when this year's Drake/intake status does not use a spouse block.
+        for k in (
+            "spouse_first_name",
+            "spouse_last_name",
+            "spouse_dob",
+            "spouse_email",
+            "spouse_cell",
+            "spouse_work_phone",
+            "spouse_occupation",
+        ):
+            if k in data:
+                data[k] = None
+        _sp_row_full = None
+
     # ID-type flags for intake warnings
     spouse_id_type  = _sp_row_full["id_type"]  if _sp_row_full else None
     spouse_first_flag = (
         _sp_row_full["first_name"] or ""
-        if _sp_row_full else (client["spouse_first_name"] or "")
+        if _sp_row_full else (data.get("spouse_first_name") or "")
     ).strip() or None
+
+    # When opening a year that isn't the source return's year, surface that
+    # return's log # as prior_year_log (same reintake path — don't blank it).
+    if (
+        ret
+        and target_tax_year is not None
+        and ret["tax_year"] is not None
+        and int(ret["tax_year"]) != int(target_tax_year)
+        and ret["log_number"]
+        and not (data.get("prior_year_log") or "").strip()
+    ):
+        data["prior_year_log"] = str(ret["log_number"]).strip()
+
+    # Undo 2-digit year expansion (log 36 stored as 1936) so an old log #
+    # never looks like a tax year and never blocks this-year intake.
+    known_logs = [
+        str(r["log_number"]).strip()
+        for r in other_returns
+        if r.get("log_number")
+    ]
+    data["prior_year_log"] = _sanitize_prior_year_log(
+        data.get("prior_year_log"), known_log_numbers=known_logs
+    )
 
     return jsonify({
         "client":      data,
@@ -4845,10 +5885,15 @@ def api_client_reintake(client_id: int):
         "dependents":  deps if deps else drake_deps,
         "drake_deps_prefilled": bool(drake_deps) and not bool(deps),
         "drake_spouse": drake_spouse,
+        "form_prefill_hints": form_prefill_hints,
         "habit_profile": habit_profile,
         "has_spouse_row":  bool(_sp_row_full),
         "spouse_id_type":  spouse_id_type,
         "spouse_first_for_flag": spouse_first_flag,
+        "existing_years": other_returns,
+        "other_returns": other_returns,
+        "target_tax_year": target_tax_year,
+        "source_tax_year": (last_return.get("tax_year") if last_return else None),
     })
 
 
@@ -4974,6 +6019,98 @@ def api_privacy_mode():
     enabled = data.get("enabled")
     session["privacy_mode"] = bool(enabled)
     return jsonify({"success": True, "privacy_mode": bool(session.get("privacy_mode"))})
+
+
+@app.post("/api/prep-mode")
+@login_required
+def api_prep_mode():
+    """Toggle Prep workspace mode (preparer/admin). When on, client opens go to /prep/<id>."""
+    if not can_use_prep_mode():
+        return jsonify({"error": "forbidden"}), 403
+    data = _get_json_safe() if request.data else {}
+    enabled = bool(data.get("enabled"))
+    session["prep_mode"] = enabled
+    return jsonify({"success": True, "prep_mode": prep_mode_enabled()})
+
+
+@app.get("/prep/<int:return_id>")
+@login_required
+@role_required("preparer")
+def prep_workspace(return_id: int):
+    """Documents-first preparer workspace with purple-sheet side panel."""
+    ret = get_one(return_id)
+    if not ret:
+        abort(404)
+    conn = get_connection()
+    try:
+        purple = fetch_prep_purple_sheet(
+            conn,
+            client_id=int(ret["client_id"]),
+            tax_year=ret.get("tax_year"),
+        )
+        forms_row = conn.execute(
+            """
+            SELECT form_1040, sched_a_d, sched_c, sched_e,
+                   form_1120, form_1120s, form_1065_llc,
+                   corp_officer, business_owner, form_990_1041
+            FROM return_forms WHERE return_id = ?
+            """,
+            (return_id,),
+        ).fetchone()
+        taxops_forms = dict(forms_row) if forms_row else {}
+        prep_document_rows = conn.execute(
+            """
+            SELECT id, filename, original_filename, doc_type, uploaded_at
+            FROM return_documents
+            WHERE return_id = ? AND is_deleted = 0
+            ORDER BY uploaded_at DESC
+            """,
+            (return_id,),
+        ).fetchall()
+        prep_documents = [dict(r) for r in prep_document_rows]
+    finally:
+        conn.close()
+
+    start_doc_raw = (request.args.get("doc") or "").strip()
+    initial_doc_index = 0
+    if start_doc_raw.isdigit() and prep_documents:
+        want = int(start_doc_raw)
+        for i, d in enumerate(prep_documents):
+            if int(d["id"]) == want:
+                initial_doc_index = i
+                break
+    viewer_open = bool(prep_documents)
+    initial_doc = prep_documents[initial_doc_index] if viewer_open else None
+
+    if privacy_mode_enabled():
+        ret = _mask_return_payload(ret)
+        if purple.get("csm_name"):
+            purple["csm_name"] = _mask_value(purple["csm_name"])
+        if purple.get("purple_name"):
+            purple["purple_name"] = _mask_value(purple["purple_name"])
+        hh = purple.get("household") or {}
+        for k in ("taxpayer_phone", "taxpayer_email", "spouse_name", "spouse_phone"):
+            if hh.get(k):
+                hh[k] = _mask_value(hh[k])
+        purple["household"] = hh
+
+    ctx = base_ctx(date.today().year)
+    ctx.update({
+        "active_page": "prep",
+        "ret": ret,
+        "purple": purple,
+        "taxops_forms": taxops_forms,
+        "prep_documents": prep_documents,
+        "initial_doc_index": initial_doc_index,
+        "initial_doc": initial_doc,
+        "viewer_open": viewer_open,
+        "can_scan_intake_docs": has_permission("can_scan_intake_docs"),
+        "can_manage_return_documents": has_permission("can_manage_return_documents"),
+        "drake_enabled": bool(DRAKE_FOLDER_STRUCTURE_ENABLED),
+        "scan_agent_url": SCAN_AGENT_URL,
+        "scan_agent_token": SCAN_AGENT_TOKEN,
+    })
+    return render_template("prep_workspace.html", **ctx)
 
 
 @app.get("/api/filters")
@@ -5278,6 +6415,108 @@ def api_returns_bulk_processor():
         )
     finally:
         conn.close()
+
+
+@app.post("/api/returns/bulk-delete")
+@role_required("admin")
+def api_returns_bulk_delete():
+    """DEL-3: Hard-delete many returns from the dashboard selection (admin-only).
+
+    Irreversible. Requires confirm == \"DELETE\". All-or-nothing: if any id is
+    missing, nothing is deleted (same transactional style as bulk-status).
+    """
+    payload = _get_json_safe() or {}
+    raw_ids = payload.get("return_ids")
+    confirm = str(payload.get("confirm") or "").strip()
+    if confirm != "DELETE":
+        return jsonify({
+            "error": 'Type DELETE in confirm to permanently remove these returns',
+        }), 400
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({"error": "return_ids required (non-empty list)"}), 400
+    if len(raw_ids) > BULK_RETURN_IDS_CAP:
+        return jsonify({"error": f"Too many returns (max {BULK_RETURN_IDS_CAP})"}), 400
+    try:
+        parsed_ids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        return jsonify({"error": "return_ids must be integers"}), 400
+    # De-dupe while preserving order
+    seen: set[int] = set()
+    ids: list[int] = []
+    for i in parsed_ids:
+        if i not in seen:
+            seen.add(i)
+            ids.append(i)
+
+    user = session.get("username")
+    ip = request.remote_addr
+    from db import _delete_return_children
+
+    deleted: list[dict] = []
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        errors = []
+        rows_by_id = {}
+        for rid in ids:
+            ret = conn.execute(
+                """SELECT r.id, r.log_number, r.tax_year, r.client_status, r.client_id,
+                          c.last_name, c.first_name
+                   FROM returns r JOIN clients c ON c.id = r.client_id
+                   WHERE r.id = ?""",
+                (rid,),
+            ).fetchone()
+            if not ret:
+                errors.append({"return_id": rid, "error": "Return not found"})
+            else:
+                rows_by_id[rid] = dict(ret)
+        if errors:
+            conn.rollback()
+            return jsonify({"success": False, "errors": errors, "deleted": 0}), 409
+
+        for rid in ids:
+            before = rows_by_id[rid]
+            _delete_return_children(conn, rid)
+            conn.execute("DELETE FROM returns WHERE id = ?", (rid,))
+            deleted.append({
+                "id": before["id"],
+                "log_number": before["log_number"],
+                "tax_year": before["tax_year"],
+                "last_name": before["last_name"],
+                "first_name": before["first_name"],
+            })
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    from audit_service import _enqueue_write
+    log = logging.getLogger("taxops")
+    for before in deleted:
+        _enqueue_write(
+            user_id=user, action="RETURN_DELETED", entity_type="return",
+            entity_id=str(before["id"]), before=before, after=None,
+            ip_address=ip, http_status=200,
+        )
+        log.warning(
+            "RETURN_DELETED (bulk): return_id=%s log_number=%s tax_year=%s client=%s, %s by user=%s",
+            before["id"], before["log_number"], before["tax_year"],
+            before["last_name"], before["first_name"], user,
+        )
+    _enqueue_write(
+        user_id=user, action="RETURNS_BULK_DELETED", entity_type="return",
+        entity_id=",".join(str(d["id"]) for d in deleted[:50]),
+        before={"count": len(deleted), "return_ids": [d["id"] for d in deleted]},
+        after=None,
+        ip_address=ip, http_status=200,
+    )
+    return jsonify({
+        "success": True,
+        "deleted": len(deleted),
+        "deleted_return_ids": [d["id"] for d in deleted],
+    })
 
 
 @app.post("/api/returns/bulk-update")
@@ -5617,6 +6856,54 @@ def api_missing_doc_delete(return_id: int, doc_id: int):
     return jsonify({"success": True})
 
 
+@app.get("/return/<int:return_id>/missing-docs/print")
+@login_required
+def missing_docs_print(return_id: int):
+    """Printable missing-document checklist for the physical return folder."""
+    ret = get_one(return_id)
+    if not ret:
+        abort(404)
+    show_open_only = (request.args.get("all") or "").strip().lower() not in ("1", "true", "yes")
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM missing_docs WHERE return_id=? ORDER BY is_resolved, created_at, id",
+            (return_id,),
+        ).fetchall()
+        all_docs = [dict(r) for r in rows]
+        note_rows = conn.execute(
+            "SELECT note_text, source, created_at FROM notes "
+            "WHERE return_id=? AND TRIM(COALESCE(note_text, '')) != '' "
+            "ORDER BY created_at ASC, id ASC",
+            (return_id,),
+        ).fetchall()
+        notes = [dict(n) for n in note_rows]
+    finally:
+        conn.close()
+
+    open_docs = [d for d in all_docs if not d.get("is_resolved")]
+    items = open_docs if show_open_only else all_docs
+
+    if privacy_mode_enabled():
+        ret = _mask_return_payload(ret)
+        if ret.get("phone"):
+            ret["phone"] = _mask_value(ret["phone"])
+        for note in notes:
+            if note.get("note_text"):
+                note["note_text"] = _mask_value(note["note_text"])
+
+    return render_template(
+        "missing_docs_print.html",
+        ret=ret,
+        items=items,
+        open_docs=open_docs,
+        all_docs=all_docs,
+        notes=notes,
+        show_open_only=show_open_only,
+        printed_at=date.today().strftime("%Y-%m-%d"),
+    )
+
+
 # ── DEP-1: Remove dependent from return ──────────────────────────────────────
 
 @app.delete("/api/return/<int:return_id>/dependents/<int:dep_id>")
@@ -5782,16 +7069,24 @@ def api_delete_return(return_id: int):
         if not ret:
             return jsonify({"error": "Return not found"}), 404
 
-        # Require the caller to echo back the log_number as an explicit,
-        # hard-to-fat-finger confirmation of *which* return is being destroyed
-        # (mirrors the "type to confirm" pattern used for other destructive
-        # admin actions in this app).
-        confirm = str(data.get("confirm_log_number") or "").strip()
-        if confirm != str(ret["log_number"] or ""):
-            return jsonify({
-                "error": "confirm_log_number must match this return's log number",
-                "log_number": ret["log_number"],
-            }), 400
+        # Require an explicit confirmation token hard to fat-finger.
+        # Prefer log number when present; otherwise require the numeric return id
+        # (many Drake-imported / test rows have a blank log_number).
+        log_token = str(ret["log_number"] or "").strip()
+        if log_token:
+            confirm = str(data.get("confirm_log_number") or "").strip()
+            if confirm != log_token:
+                return jsonify({
+                    "error": "confirm_log_number must match this return's log number",
+                    "log_number": ret["log_number"],
+                }), 400
+        else:
+            confirm_id = str(data.get("confirm_return_id") or "").strip()
+            if confirm_id != str(return_id):
+                return jsonify({
+                    "error": "This return has no log number — confirm_return_id must match the return id",
+                    "return_id": return_id,
+                }), 400
 
         before = dict(ret)
         from db import _delete_return_children
@@ -5816,6 +7111,71 @@ def api_delete_return(return_id: int):
         before["last_name"], before["first_name"], user,
     )
     return jsonify({"success": True, "deleted_return_id": return_id})
+
+
+@app.post("/api/clients/<int:client_id>/delete")
+@role_required("admin")
+def api_delete_client(client_id: int):
+    """DEL-2: Hard-delete a client and every return attached to them (admin-only)."""
+    data = _get_json_safe() or {}
+    user = session.get("username")
+    ip = request.remote_addr
+    conn = get_connection()
+    try:
+        cli = conn.execute(
+            "SELECT id, last_name, first_name, display_name FROM clients WHERE id = ?",
+            (client_id,),
+        ).fetchone()
+        if not cli:
+            return jsonify({"error": "Client not found"}), 404
+
+        confirm = str(data.get("confirm_client_id") or "").strip()
+        if confirm != str(client_id):
+            return jsonify({
+                "error": "confirm_client_id must match this client's id",
+                "client_id": client_id,
+            }), 400
+
+        ret_count = conn.execute(
+            "SELECT COUNT(*) n FROM returns WHERE client_id = ?", (client_id,)
+        ).fetchone()["n"]
+        before = {
+            "id": cli["id"],
+            "last_name": cli["last_name"],
+            "first_name": cli["first_name"],
+            "display_name": cli["display_name"],
+            "return_count": ret_count,
+        }
+
+        from db import _delete_client_cascade
+        conn.execute("BEGIN IMMEDIATE")
+        deleted_return_ids = _delete_client_cascade(conn, client_id)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    from audit_service import _enqueue_write
+    _enqueue_write(
+        user_id=user, action="CLIENT_DELETED", entity_type="client",
+        entity_id=str(client_id),
+        before=before,
+        after={"deleted_return_ids": deleted_return_ids},
+        ip_address=ip, http_status=200,
+    )
+    logging.getLogger("taxops").warning(
+        "CLIENT_DELETED: client_id=%s name=%s, %s returns=%s by user=%s",
+        client_id, before.get("last_name"), before.get("first_name"),
+        deleted_return_ids, user,
+    )
+    return jsonify({
+        "success": True,
+        "deleted_client_id": client_id,
+        "deleted_return_ids": deleted_return_ids,
+        "deleted_return_count": len(deleted_return_ids),
+    })
 
 
 # ── BANK-1: Routing number lookup (local JSON only) ───────────────────────────
@@ -5879,6 +7239,70 @@ def api_client_prior_fee(client_id: int):
         "tax_year": row["tax_year"],
         "total_fee": float(row["total_fee"]),
     })
+
+
+# ── Filetrack LOG sticker (same ZPL as intake create) ─────────────────────────
+
+@app.post("/api/return/<int:return_id>/print-label")
+@login_required
+def api_return_print_label(return_id: int):
+    """Reprint the physical LOG label via the same dispatch as intake.
+
+    Uses filetrack.labels.render_label → relay/local. Not the old HTML sticker.
+    """
+    from filetrack.config import FILETRACK_ENABLED
+    from filetrack.labels.dispatch import dispatch_print_log_label
+    from filetrack.labels.relay_client import RelayError
+
+    if not FILETRACK_ENABLED:
+        return jsonify({
+            "success": False,
+            "error": "Filetrack printing is disabled (FILETRACK_ENABLED=false).",
+        }), 400
+
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT r.log_number, r.intake_date, r.tax_year,
+                   c.last_name, c.first_name, c.display_name
+            FROM returns r
+            JOIN clients c ON c.id = r.client_id
+            WHERE r.id = ?
+            """,
+            (return_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return jsonify({"success": False, "error": "Return not found"}), 404
+    log_number = row["log_number"]
+    if not log_number:
+        return jsonify({"success": False, "error": "Return has no log number yet."}), 400
+
+    data = _get_json_safe() or {}
+    # Optional override for backdated reprints; blank/missing → intake_date → today.
+    log_in_date = (data.get("log_in_date") or "").strip() or (row["intake_date"] or None)
+
+    try:
+        dispatch_print_log_label(
+            log_number,
+            last_name=row["last_name"] or "",
+            first_name=row["first_name"] or "",
+            display_name=row["display_name"] or "",
+            log_in_date=log_in_date,
+            tax_year=row["tax_year"],
+        )
+    except RelayError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 502
+    except Exception as exc:
+        logging.getLogger("filetrack").warning(
+            "print-label API failed return_id=%s log=%s", return_id, log_number, exc_info=True,
+        )
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+    return jsonify({"success": True, "log_number": str(log_number)})
 
 
 # ── LIFE-3: Intake sheet PDF ──────────────────────────────────────────────────
@@ -6016,38 +7440,145 @@ def _first_names_likely_same_middles(a_first: str, b_first: str) -> bool:
 
 
 def _first_names_likely_duplicate(fa: str, fb: str) -> bool:
-    fa_st = (fa or "").upper().strip()
-    fb_st = (fb or "").upper().strip()
-    if not fa_st or not fb_st:
+    """True when first names likely refer to the same taxpayer.
+
+    Compares the *primary* name before `` & `` (joint filers). Accepts exact
+    primary match or middle-initial / suffix differences (BRYAN vs BRYAN O).
+
+    Deliberately does NOT use bare substring containment (``ANA`` in ``DIANA``)
+    — that created false dupes. Multi-year returns on one client are normal and
+    never produce a pair by themselves; only separate client rows are compared.
+    """
+    pa = _first_primary_for_compare(fa)
+    pb = _first_primary_for_compare(fb)
+    if not pa or not pb:
         return False
-    # String containment / one side extends the other (incl. joint "X" in "X & Y")
-    if (
-        fa_st.startswith(fb_st) or fb_st.startswith(fa_st) or
-        fa_st in fb_st or fb_st in fa_st
-    ):
+    if pa == pb:
         return True
     if _first_names_likely_same_middles(fa, fb):
         return True
     return False
 
 
+def _parse_year_logs(year_logs: str | None) -> dict[int, str]:
+    """Parse ``GROUP_CONCAT(tax_year || ':' || log)`` into {year: log}."""
+    out: dict[int, str] = {}
+    for part in (year_logs or "").split(","):
+        part = part.strip()
+        if not part or ":" not in part:
+            continue
+        y_s, _, log = part.partition(":")
+        try:
+            y = int(y_s)
+        except ValueError:
+            continue
+        # Prefer a non-blank log if duplicates appear in the concat
+        if y not in out or (log and not out[y]):
+            out[y] = log.strip()
+    return out
+
+
+def _classify_duplicate_pair(keep: dict, discard: dict) -> dict:
+    """Annotate a candidate pair so staff can tell year-splits from real people."""
+    kssn = (keep.get("ssn_last4") or "").strip()
+    dssn = (discard.get("ssn_last4") or "").strip()
+    k_years = _parse_year_logs(keep.get("year_logs"))
+    d_years = _parse_year_logs(discard.get("year_logs"))
+    k_ys, d_ys = set(k_years), set(d_years)
+    overlap = sorted(k_ys & d_ys)
+    only_keep = sorted(k_ys - d_ys)
+    only_discard = sorted(d_ys - k_ys)
+
+    flags: list[str] = []
+    merge_allowed = True
+    confidence = "medium"
+    reason = "Same primary first name"
+
+    if kssn and dssn and kssn != dssn:
+        confidence = "blocked"
+        merge_allowed = False
+        reason = "Different SSN last4 — likely different people (do not merge)"
+        flags.append("ssn_conflict")
+    elif kssn and dssn and kssn == dssn:
+        confidence = "high"
+        reason = "Same SSN last4"
+        flags.append("same_ssn")
+    elif k_ys and d_ys and not overlap:
+        confidence = "high"
+        reason = "Complementary tax years — likely one person split across client rows"
+        flags.append("year_split")
+    else:
+        pa = _first_primary_for_compare(keep.get("first_name") or "")
+        pb = _first_primary_for_compare(discard.get("first_name") or "")
+        if pa == pb and ("&" in (keep.get("first_name") or "") or "&" in (discard.get("first_name") or "")):
+            reason = "Joint name vs primary-only spelling (same primary)"
+            flags.append("joint_vs_primary")
+        elif _first_names_likely_same_middles(keep.get("first_name") or "", discard.get("first_name") or ""):
+            reason = "Names differ only by middle initial / suffix"
+            flags.append("middle_initial")
+
+        conflicting_logs = []
+        for y in overlap:
+            a, b = k_years.get(y) or "", d_years.get(y) or ""
+            if a and b and a != b:
+                conflicting_logs.append(y)
+        if conflicting_logs:
+            confidence = "caution"
+            reason = (
+                "Same tax year(s) with different log #s — confirm these are not "
+                f"two different people (TY{', TY'.join(str(y) for y in conflicting_logs)})"
+            )
+            flags.append("different_logs_same_year")
+        elif overlap and (only_keep or only_discard):
+            flags.append("partial_year_overlap")
+            reason = "Overlapping years plus extra years — merge keeps every year"
+        elif overlap:
+            flags.append("same_year_overlap")
+
+    if len(k_ys) > 1 or len(d_ys) > 1:
+        flags.append("multi_year_on_side")
+
+    def _year_lines(years: dict[int, str]) -> list[str]:
+        if not years:
+            return ["(no returns)"]
+        return [
+            f"TY{y}: log {years[y] or '—'}"
+            for y in sorted(years)
+        ]
+
+    return {
+        "confidence": confidence,
+        "merge_allowed": merge_allowed,
+        "reason": reason,
+        "flags": flags,
+        "ssn_keep": kssn or None,
+        "ssn_discard": dssn or None,
+        "years_keep": _year_lines(k_years),
+        "years_discard": _year_lines(d_years),
+        "overlap_years": overlap,
+        "only_keep_years": only_keep,
+        "only_discard_years": only_discard,
+    }
+
+
 def _find_duplicate_pairs() -> list[dict]:
     """
-    Find likely duplicate client records with the same last_name and either:
-    - overlapping / contained first_name strings, or
-    - first names that differ only by middle initials / extra 1–2 char tokens
-      (BRYAN vs BRYAN O) using the primary name before " & " for joint filers.
+    Find likely duplicate *client rows* (not multi-year returns on one client).
+
+    One client with TY2024 + TY2025 is normal and never flagged. Pairs are two
+    different client IDs with the same last name and matching primary first name.
     """
     conn = get_connection()
     clients = conn.execute(
         """
-        SELECT c.id, c.last_name, c.first_name, c.display_name,
+        SELECT c.id, c.last_name, c.first_name, c.display_name, c.ssn_last4,
                COUNT(r.id)                         AS return_count,
                MAX(r.log_number)                   AS best_log,
                GROUP_CONCAT(r.id)                  AS return_ids,
                GROUP_CONCAT(COALESCE(r.log_number,''))  AS log_numbers,
                GROUP_CONCAT(r.tax_year)            AS tax_years,
-               GROUP_CONCAT(r.client_status)       AS statuses
+               GROUP_CONCAT(r.client_status)       AS statuses,
+               GROUP_CONCAT(r.tax_year || ':' || COALESCE(r.log_number,'')) AS year_logs
         FROM clients c
         LEFT JOIN returns r ON r.client_id = c.id
         GROUP BY c.id
@@ -6083,22 +7614,129 @@ def _find_duplicate_pairs() -> list[dict]:
                 a_score = (1 if a["best_log"] else 0) + (a["return_count"] or 0)
                 b_score = (1 if b["best_log"] else 0) + (b["return_count"] or 0)
                 keep, discard = (a, b) if a_score >= b_score else (b, a)
+                meta = _classify_duplicate_pair(keep, discard)
                 pairs.append({
                     "keep":    keep,
                     "discard": discard,
+                    **meta,
                 })
 
-    return sorted(pairs, key=lambda p: (p["keep"]["last_name"] or ""))
+    conf_rank = {"high": 0, "medium": 1, "caution": 2, "blocked": 3}
+    return sorted(
+        pairs,
+        key=lambda p: (
+            conf_rank.get(p.get("confidence") or "medium", 9),
+            p["keep"]["last_name"] or "",
+            p["keep"]["first_name"] or "",
+        ),
+    )
+
+
+def _client_duplicate_audit() -> dict:
+    """Full client-list duplicate audit (exact name, SSN last4, fuzzy merge pairs).
+
+    Never returns full SSN — only last4 presence / conflict flags for staff review.
+    """
+    conn = get_connection()
+    try:
+        total_clients = conn.execute("SELECT COUNT(*) c FROM clients").fetchone()["c"]
+        exact_rows = conn.execute(
+            """
+            SELECT lower(trim(last_name)) AS ln,
+                   lower(trim(first_name)) AS fn,
+                   COUNT(*) AS cnt,
+                   GROUP_CONCAT(id) AS ids,
+                   COUNT(DISTINCT COALESCE(ssn_last4, '')) AS distinct_ssn
+            FROM clients
+            WHERE last_name IS NOT NULL AND trim(last_name) != ''
+              AND first_name IS NOT NULL AND trim(first_name) != ''
+            GROUP BY 1, 2
+            HAVING COUNT(*) > 1
+            ORDER BY cnt DESC, ln, fn
+            """
+        ).fetchall()
+        ssn_rows = conn.execute(
+            """
+            SELECT ssn_last4 AS ssn,
+                   COUNT(*) AS cnt,
+                   GROUP_CONCAT(id) AS ids,
+                   GROUP_CONCAT(last_name || ', ' || COALESCE(first_name,'')) AS names
+            FROM clients
+            WHERE ssn_last4 IS NOT NULL AND trim(ssn_last4) != ''
+            GROUP BY ssn_last4
+            HAVING COUNT(*) > 1
+            ORDER BY cnt DESC
+            """
+        ).fetchall()
+        safe_auto_groups = conn.execute(
+            """
+            SELECT COUNT(*) c FROM (
+              SELECT lower(last_name) AS ln,
+                     lower(COALESCE(first_name, '')) AS fn
+              FROM clients
+              GROUP BY 1, 2
+              HAVING COUNT(*) > 1
+                 AND COUNT(DISTINCT CASE
+                       WHEN ssn_last4 IS NOT NULL AND trim(ssn_last4) != ''
+                       THEN ssn_last4 END) <= 1
+            )
+            """
+        ).fetchone()["c"]
+    finally:
+        conn.close()
+
+    fuzzy_pairs = _find_duplicate_pairs()
+    exact_groups = []
+    exact_clients = 0
+    conflict_ssn = 0
+    for r in exact_rows:
+        exact_clients += int(r["cnt"] or 0)
+        if int(r["distinct_ssn"] or 0) > 1:
+            conflict_ssn += 1
+        exact_groups.append({
+            "last_name": r["ln"],
+            "first_name": r["fn"],
+            "count": int(r["cnt"]),
+            "client_ids": [int(x) for x in str(r["ids"] or "").split(",") if x],
+            "ssn_conflict": int(r["distinct_ssn"] or 0) > 1,
+        })
+
+    ssn_groups = []
+    for r in ssn_rows:
+        ssn_groups.append({
+            "ssn_last4": r["ssn"],
+            "count": int(r["cnt"]),
+            "client_ids": [int(x) for x in str(r["ids"] or "").split(",") if x],
+            "names": r["names"],
+        })
+
+    return {
+        "total_clients": int(total_clients),
+        "exact_name": {
+            "groups": len(exact_groups),
+            "clients": exact_clients,
+            "ssn_conflict_groups": conflict_ssn,
+            "sample": exact_groups[:40],
+        },
+        "ssn_last4": {
+            "groups": len(ssn_groups),
+            "sample": ssn_groups[:40],
+        },
+        "fuzzy_merge_pairs": len(fuzzy_pairs),
+        "safe_auto_dedupe_groups": int(safe_auto_groups),
+    }
 
 
 def _merge_pair_key(ka: int, kb: int) -> str:
     return f"{min(ka, kb)}-{max(ka, kb)}"
 
 
-def _merge_pairs_for_session() -> list[dict]:
+def _merge_pairs_for_session(*, include_blocked: bool = False) -> list[dict]:
     skipped = set(session.get("merge_skipped", []))
     out: list[dict] = []
     for p in _find_duplicate_pairs():
+        if not include_blocked and not p.get("merge_allowed", True):
+            continue
         k, d = int(p["keep"]["id"]), int(p["discard"]["id"])
         if _merge_pair_key(k, d) in skipped:
             continue
@@ -6110,9 +7748,76 @@ def _merge_pairs_for_session() -> list[dict]:
 @role_required("admin")
 def merge_clients_page():
     pairs = _merge_pairs_for_session()
+    blocked = [
+        p for p in _find_duplicate_pairs()
+        if not p.get("merge_allowed", True)
+    ]
+    audit = _client_duplicate_audit()
     ctx = base_ctx(date.today().year)
-    ctx.update({"active_page": "merge", "pairs": pairs})
+    ctx.update({
+        "active_page": "merge",
+        "pairs": pairs,
+        "blocked_pairs": blocked,
+        "dup_audit": audit,
+    })
     return render_template("merge_clients.html", **ctx)
+
+
+@app.get("/api/clients/duplicates/audit")
+@role_required("admin")
+def api_clients_duplicates_audit():
+    """Full client duplicate audit JSON (exact name, SSN last4, fuzzy pairs)."""
+    return jsonify({"success": True, "audit": _client_duplicate_audit()})
+
+
+@app.post("/api/clients/duplicates/safe-dedupe")
+@role_required("admin")
+def api_clients_duplicates_safe_dedupe():
+    """
+    Merge exact duplicates that share last_name + first_name + ssn_last4
+    (same rules as import-time ``_deduplicate_existing_records``).
+
+    Does NOT merge same-name clients with conflicting / missing SSN — those
+    stay on /merge-clients for staff review.
+    """
+    data = _get_json_safe() or {}
+    if data.get("confirm") != "DEDUPE":
+        return jsonify({"error": 'Confirmation required: send {"confirm": "DEDUPE"}'}), 400
+
+    from db import _deduplicate_existing_records
+
+    dry_run = bool(data.get("dry_run"))
+    if dry_run:
+        audit = _client_duplicate_audit()
+        return jsonify({
+            "success": True,
+            "dry_run": True,
+            "safe_auto_dedupe_groups": audit["safe_auto_dedupe_groups"],
+            "exact_name_groups": audit["exact_name"]["groups"],
+            "fuzzy_merge_pairs": audit["fuzzy_merge_pairs"],
+        })
+
+    actor = _session_username() or "unknown"
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN")
+        removed = _deduplicate_existing_records(conn)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+    audit_after = _client_duplicate_audit()
+    logging.getLogger("taxops").warning(
+        "CLIENT_SAFE_DEDUPE: removed=%s by user=%s", removed, actor,
+    )
+    return jsonify({
+        "success": True,
+        "removed": removed,
+        "audit": audit_after,
+    })
 
 
 @app.post("/api/merge-clients")
@@ -6125,8 +7830,18 @@ def api_merge_clients():
     data       = _get_json_safe()
     keep_id    = int(data.get("keep_id", 0))
     discard_id = int(data.get("discard_id", 0))
+    force      = bool(data.get("force"))
     if not keep_id or not discard_id or keep_id == discard_id:
         return jsonify({"error": "Invalid IDs"}), 400
+
+    # Block accidental merges when SSN last4 conflicts unless staff forces.
+    for p in _find_duplicate_pairs():
+        ids = {int(p["keep"]["id"]), int(p["discard"]["id"])}
+        if ids == {keep_id, discard_id} and not p.get("merge_allowed", True) and not force:
+            return jsonify({
+                "error": p.get("reason") or "SSN conflict — refuse merge without force=true",
+                "confidence": p.get("confidence"),
+            }), 400
 
     conn = get_connection()
     try:
@@ -6134,13 +7849,29 @@ def api_merge_clients():
         discard_row = conn.execute("SELECT * FROM clients WHERE id=?", (discard_id,)).fetchone()
         if not keep_row or not discard_row:
             return jsonify({"error": "Client not found"}), 404
-
-        # sqlite3.Row has no .get — materialize dicts before optional-field access.
+        # sqlite3.Row has no .get() — convert before optional-field access.
         keep = dict(keep_row)
         discard = dict(discard_row)
 
+        # Also block ad-hoc merges (not in pair list) with conflicting SSN
+        kssn = (keep.get("ssn_last4") or "").strip()
+        dssn = (discard.get("ssn_last4") or "").strip()
+        if kssn and dssn and kssn != dssn and not force:
+            return jsonify({
+                "error": "Different SSN last4 — likely different people. Refuse merge.",
+            }), 400
+
         ts = now()
-        merge_client_into(conn, keep_id, discard_id, ts)
+        operator = (session.get("username") or session.get("display_name") or "").strip() or None
+        merge_client_into(
+            conn,
+            keep_id,
+            discard_id,
+            ts,
+            operator=operator,
+            reason_code="api_merge_clients",
+            note=(data.get("note") or None),
+        )
         conn.commit()
 
         keep_name = _build_name_full(
@@ -6160,8 +7891,8 @@ def api_merge_clients():
 @login_required
 def api_merge_clients_bulk():
     """
-    Auto-merge all duplicate pairs (same as Merge Dupes list, respecting skipped pairs in session).
-    `dry_run: true` returns a count and sample; false runs the merge in separate transactions.
+    Auto-merge high-confidence duplicate pairs only (same SSN or complementary
+    tax years). Medium/caution pairs stay on the review list.
     """
     data    = request.get_json(silent=True) or {}
     dry_run = bool(data.get("dry_run"))
@@ -6169,16 +7900,29 @@ def api_merge_clients_bulk():
     if limit < 1 or limit > 5000:
         limit = 2000
 
-    pairs = _merge_pairs_for_session()[:limit]
+    # Default: only confidence=high. Opt-in for medium via include_medium.
+    allowed = {"high"}
+    if data.get("include_medium"):
+        allowed.add("medium")
+    if data.get("include_caution"):
+        allowed.add("caution")
+
+    pairs = [
+        p for p in _merge_pairs_for_session()
+        if (p.get("confidence") or "medium") in allowed and p.get("merge_allowed", True)
+    ][:limit]
     if dry_run:
         return jsonify({
             "success":  True,
             "dry_run":  True,
             "count":    len(pairs),
+            "confidence_filter": sorted(allowed),
             "previews": [
                 {
                     "keep_id":    int(p["keep"]["id"]),
                     "discard_id": int(p["discard"]["id"]),
+                    "confidence": p.get("confidence"),
+                    "reason":     p.get("reason"),
                     "name": (p["keep"]["last_name"] or "")
                     + ", " + (p["keep"].get("first_name") or ""),
                 }
@@ -6188,12 +7932,21 @@ def api_merge_clients_bulk():
 
     merged = 0
     errors: list[dict] = []
+    operator = (session.get("username") or session.get("display_name") or "").strip() or None
     for p in pairs:
         k = int(p["keep"]["id"])
         d = int(p["discard"]["id"])
         conn = get_connection()
         try:
-            merge_client_into(conn, k, d, now())
+            merge_client_into(
+                conn,
+                k,
+                d,
+                now(),
+                operator=operator,
+                reason_code="api_merge_clients_bulk",
+                note=p.get("reason"),
+            )
             conn.commit()
             merged += 1
         except Exception as e:
@@ -7117,7 +8870,16 @@ def api_audit_merge_client():
     keep_id    = int(data["keep_id"])
     conn = get_connection()
     try:
-        merge_client_into(conn, keep_id=keep_id, discard_id=discard_id, updated_ts=now())
+        operator = (session.get("username") or session.get("display_name") or "").strip() or None
+        merge_client_into(
+            conn,
+            keep_id=keep_id,
+            discard_id=discard_id,
+            updated_ts=now(),
+            operator=operator,
+            reason_code="api_audit_merge_client",
+            note=(data.get("note") or None),
+        )
         conn.commit()
         return jsonify({"success": True})
     except Exception as e:
@@ -7849,6 +9611,7 @@ def api_admin_seed_preintake_run():
         })
     finally:
         conn.close()
+
 
 # ── AUDIT admin (AUDIT-3…AUDIT-7) ───────────────────────────────────────────
 

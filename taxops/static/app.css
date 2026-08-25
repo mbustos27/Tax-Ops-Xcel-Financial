@@ -1075,7 +1075,9 @@ button, [role="button"], a.nav-link, .pill, .status-badge {
   color: var(--status-processing-text);
   border-color: var(--status-processing-border);
 }
-.attn-chip--empty { opacity: 0.45; }
+.attn-chip--empty {
+  opacity: 0.45;
+}
 .attn-list {
   list-style: none;
   margin: 0;
@@ -1103,10 +1105,19 @@ button, [role="button"], a.nav-link, .pill, .status-badge {
   background: var(--bg-hover);
   border-color: var(--border-subtle);
 }
-.attn-row--ef { border-left-color: var(--status-rejected-dot); }
-.attn-row--contact { border-left-color: var(--status-hold-dot); }
-.attn-row--stale { border-left-color: var(--status-processing-dot); }
-.attn-row__main { min-width: 0; flex: 1; }
+.attn-row--ef {
+  border-left-color: var(--status-rejected-dot);
+}
+.attn-row--contact {
+  border-left-color: var(--status-hold-dot);
+}
+.attn-row--stale {
+  border-left-color: var(--status-processing-dot);
+}
+.attn-row__main {
+  min-width: 0;
+  flex: 1;
+}
 .attn-row__name {
   font-size: 0.8125rem;
   font-weight: 600;
@@ -1171,6 +1182,8 @@ button, [role="button"], a.nav-link, .pill, .status-badge {
   color: var(--text-muted);
   border-top: 1px solid var(--border-subtle);
 }
+
+/* Nav attention control */
 #attention-bell:hover { background: var(--nav-hover-bg); }
 #attention-bell.attn-bell--active { color: var(--color-primary); }
 #attention-dropdown {
@@ -1218,7 +1231,9 @@ button, [role="button"], a.nav-link, .pill, .status-badge {
   max-height: 22rem;
   overflow-y: auto;
 }
-.attn-dd-list li + li { border-top: 1px solid var(--border-subtle); }
+.attn-dd-list li + li {
+  border-top: 1px solid var(--border-subtle);
+}
 .attn-dd-row {
   display: flex;
   align-items: flex-start;
@@ -1238,6 +1253,7 @@ button, [role="button"], a.nav-link, .pill, .status-badge {
   font-size: 0.8125rem;
   font-weight: 500;
 }
+
 [data-theme="dark"] .attn-panel {
   background:
     linear-gradient(
@@ -1250,7 +1266,6 @@ button, [role="button"], a.nav-link, .pill, .status-badge {
 [data-theme="dark"] .attn-row {
   background: color-mix(in srgb, var(--bg-card) 70%, #000);
 }
-
 .sb-pending {
   background-color: var(--status-pending-bg);
   color:            var(--status-pending-text);

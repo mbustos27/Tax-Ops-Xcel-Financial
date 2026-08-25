@@ -399,9 +399,31 @@ async function submitNote(returnId) {
 }
 
 // ── Table quick-filter (client-side) ────────────────────────────────────────
+// Matching follows the common data-grid quick-filter pattern (e.g. AG Grid):
+// trim → split on whitespace → case-insensitive substring → AND (every token
+// must appear somewhere in the row's data-search text). A contiguous full-string
+// includes() fails for cross-field queries like "john smith" when the blob is
+// "log last first".
 
 let _tableFilterDebounce = 0;
 let _tableFilterRaf      = 0;
+
+function parseQuickFilterTokens(query) {
+  return String(query || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function rowMatchesQuickFilter(searchLcase, tokens) {
+  if (!tokens || !tokens.length) return true;
+  const hay = searchLcase || "";
+  for (let i = 0; i < tokens.length; i++) {
+    if (!hay.includes(tokens[i])) return false;
+  }
+  return true;
+}
 
 function _cacheSearchLcase(row) {
   if (row._searchLcase === undefined) {
@@ -410,22 +432,40 @@ function _cacheSearchLcase(row) {
   return row._searchLcase;
 }
 
+/** Apply quick-filter tokens to a NodeList/array of tr[data-search] rows. */
+function applyQuickFilterTokens(rows, tokens) {
+  let visible = 0;
+  for (const row of rows) {
+    const match = rowMatchesQuickFilter(_cacheSearchLcase(row), tokens);
+    row.classList.toggle("tr-filter-hidden", !match);
+    if (match) visible++;
+  }
+  return visible;
+}
+
 function runTableQuickFilter() {
   const input = document.getElementById("table-filter");
   if (!input) return;
 
-  const q   = input.value.trim().toLowerCase();
-  const all = document.querySelectorAll("tr[data-search]");
-  let visible = 0;
-  for (const row of all) {
-    const lc    = _cacheSearchLcase(row);
-    const match = !q || lc.includes(q);
-    row.classList.toggle("tr-filter-hidden", !match);
-    if (match) visible++;
+  // Paginated dashboard: rows are a window into the year set. Filtering must
+  // go through ?q= on /api/dashboard/returns (see dashboard.html). DOM-only
+  // filtering would miss unloaded pages.
+  if (window.__pagState) {
+    syncDashboardTableSelection();
+    return;
   }
+
+  const tokens  = parseQuickFilterTokens(input.value);
+  const all     = document.querySelectorAll("tr[data-search]");
+  const visible = applyQuickFilterTokens(all, tokens);
   const counter = document.getElementById("row-count");
   if (counter) counter.textContent = visible;
   syncDashboardTableSelection();
+  try {
+    document.dispatchEvent(
+      new CustomEvent("taxops:table-filtered", { detail: { visible, tokens } })
+    );
+  } catch (_) { /* older browsers — ignore */ }
 }
 
 function scheduleTableQuickFilter(_immediate) {
@@ -444,8 +484,9 @@ function initTableFilter() {
     if (_tableFilterDebounce) {
       clearTimeout(_tableFilterDebounce);
     }
+    // Short queries apply immediately; longer ones debounce (~industry 150–300ms).
     const shortQuery = (input.value || "").trim().length <= 1;
-    const delay      = shortQuery ? 0 : 100;
+    const delay      = shortQuery ? 0 : 150;
     _tableFilterDebounce = setTimeout(() => {
       _tableFilterDebounce = 0;
       scheduleTableQuickFilter();
@@ -454,6 +495,13 @@ function initTableFilter() {
 
   input.addEventListener("input", onFilterInput, { passive: true });
 }
+
+// Used by queue/batch pages that keep their own input wiring.
+window.parseQuickFilterTokens = parseQuickFilterTokens;
+window.rowMatchesQuickFilter = rowMatchesQuickFilter;
+window.applyQuickFilterTokens = applyQuickFilterTokens;
+window.scheduleTableQuickFilter = scheduleTableQuickFilter;
+window.runTableQuickFilter = runTableQuickFilter;
 
 // ── Dashboard row checkboxes (persists in sessionStorage across status/form/preparer) ─
 
@@ -638,7 +686,7 @@ function formatBulkErrorList(errors) {
 async function dashboardBulkFetchJson(endpoint, payload) {
   let resp;
   try {
-    resp = await fetch(endpoint, {
+    resp = await _csrfFetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -671,23 +719,32 @@ function initDashboardBulkActions() {
   const bar = document.getElementById("bulk-actions-bar");
   const statusModal = document.getElementById("bulk-status-modal");
   const prepModal = document.getElementById("bulk-preparer-modal");
+  const deleteModal = document.getElementById("bulk-delete-modal");
   if (!bar || !statusModal || !prepModal) return;
 
   const stPick = document.getElementById("bulk-status-pick");
   const prPick = document.getElementById("bulk-preparer-pick");
 
-  [statusModal, prepModal].forEach((modal) => {
+  function _clearBulkDeleteConfirm() {
+    const confInp = document.getElementById("bulk-delete-confirm-input");
+    if (confInp) confInp.value = "";
+  }
+
+  [statusModal, prepModal, deleteModal].filter(Boolean).forEach((modal) => {
     modal.querySelectorAll(".bulk-modal-cancel").forEach((b) => {
       b.addEventListener("click", () => {
         closeBulkModal(statusModal);
         closeBulkModal(prepModal);
+        if (deleteModal) closeBulkModal(deleteModal);
         _bulkConfirm = null;
+        _clearBulkDeleteConfirm();
       });
     });
     modal.addEventListener("click", (ev) => {
       if (ev.target === modal) {
         closeBulkModal(modal);
         _bulkConfirm = null;
+        _clearBulkDeleteConfirm();
       }
     });
   });
@@ -741,6 +798,42 @@ function initDashboardBulkActions() {
     _bulkConfirm = { kind: "preparer", ids, processor: raw.trim() === "" ? null : raw };
     openBulkModal(prepModal);
   });
+
+  const delOpenBtn = document.getElementById("btn-bulk-delete-open");
+  delOpenBtn?.addEventListener("click", () => {
+    const modal = deleteModal || document.getElementById("bulk-delete-modal");
+    if (!modal) {
+      showDashboardBulkToast(
+        "error",
+        `<p class="font-semibold">Delete UI missing</p><p class="text-xs mt-1">Hard-refresh the page (Ctrl+F5). If it still fails, restart TaxOps so static JS reloads.</p>`,
+        8000,
+      );
+      return;
+    }
+    const ids =
+      typeof window.getSelectedReturnIds === "function" ? window.getSelectedReturnIds() : [];
+    if (!ids.length) {
+      showDashboardBulkToast(
+        "warn",
+        `<p class="font-semibold">No returns selected</p><p class="text-xs mt-1 opacity-90">Select one or more rows with the checkboxes first.</p>`,
+        5000,
+      );
+      return;
+    }
+    const sm = document.getElementById("bulk-delete-modal-summary");
+    if (sm) {
+      sm.innerHTML = `
+        <p>This <strong>permanently deletes</strong> <strong class="tabular-nums">${ids.length}</strong> return${ids.length === 1 ? "" : "s"}
+        and their notes, payments, documents, and history.</p>
+        <p class="text-xs mt-2 text-red-700">This cannot be undone. Clients are kept; only the selected returns are removed.</p>
+        <p class="text-xs mt-2 text-slate-500">If any selected id is missing, nothing is deleted.</p>`;
+    }
+    _clearBulkDeleteConfirm();
+    _bulkConfirm = { kind: "delete", ids };
+    openBulkModal(modal);
+    document.getElementById("bulk-delete-confirm-input")?.focus();
+  });
+  if (delOpenBtn) delOpenBtn.dataset.bulkDeleteBound = "1";
 
   document.getElementById("bulk-status-modal-commit")?.addEventListener("click", async () => {
     if (_bulkCommitInFlight || !_bulkConfirm || _bulkConfirm.kind !== "status") return;
@@ -845,6 +938,69 @@ function initDashboardBulkActions() {
           7000,
         );
       }
+    } finally {
+      _bulkCommitInFlight = false;
+      btns.forEach((x) => {
+        x.disabled = false;
+      });
+      _bulkConfirm = null;
+    }
+  });
+
+  document.getElementById("bulk-delete-modal-commit")?.addEventListener("click", async () => {
+    if (_bulkCommitInFlight || !_bulkConfirm || _bulkConfirm.kind !== "delete" || !deleteModal) return;
+    const pending = _bulkConfirm;
+    const confInp = document.getElementById("bulk-delete-confirm-input");
+    const typed = (confInp?.value || "").trim();
+    if (typed !== "DELETE") {
+      showDashboardBulkToast(
+        "warn",
+        `<p class="font-semibold">Confirmation did not match</p><p class="text-xs mt-1">Type DELETE (all caps) to proceed.</p>`,
+        5000,
+      );
+      confInp?.focus();
+      return;
+    }
+    const btns = deleteModal.querySelectorAll("button");
+    _bulkCommitInFlight = true;
+    btns.forEach((x) => {
+      x.disabled = true;
+    });
+    try {
+      const result = await dashboardBulkFetchJson("/api/returns/bulk-delete", {
+        return_ids: pending.ids,
+        confirm: "DELETE",
+      });
+      if (result.unauthorized) return;
+
+      closeBulkModal(deleteModal);
+      _clearBulkDeleteConfirm();
+      const b = result.body || {};
+      const errs = b.errors || [];
+
+      if (!result.ok) {
+        if (result.networkError) {
+          showDashboardBulkToast(
+            "error",
+            `<p class="font-semibold">Bulk delete failed</p><p class="text-xs mt-1">${escHtml(result.networkError)}</p>`,
+          );
+          return;
+        }
+        const msg = b.error
+          ? `<p>${escHtml(String(b.error))}</p>`
+          : `<p class="font-semibold">Could not delete returns (${result.status})</p>`;
+        showDashboardBulkToast("error", msg + formatBulkErrorList(errs));
+        return;
+      }
+
+      const nDel = typeof b.deleted === "number" ? b.deleted : pending.ids.length;
+      clearAllRowCheckboxes();
+      showDashboardBulkToast(
+        "success",
+        `<p class="font-semibold">Deleted ${nDel} return${nDel !== 1 ? "s" : ""}</p><p class="text-xs mt-1">Reloading the dashboard…</p>`,
+        4000,
+      );
+      window.setTimeout(() => window.location.reload(), 350);
     } finally {
       _bulkCommitInFlight = false;
       btns.forEach((x) => {
