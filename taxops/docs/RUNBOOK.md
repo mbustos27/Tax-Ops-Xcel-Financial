@@ -7,6 +7,8 @@
 
 > **Quick reference** — jump to a section:
 > [Restart](#1-service-restart) · [Verify online](#2-verify-the-service-is-running) · [Logs](#3-log-locations) · [Health endpoint](#4-health-check-healthendpoint) · [Backup / Restore](#5-backup-and-restore) · [Smoke test](#6-smoke-test-after-deploy-or-restart) · [NSSM env vars](#7-updating-nssm-environment-variables) · [Gmail rotation](#8-gmail-app-password-rotation) · [Troubleshooting](#9-troubleshooting-matrix)
+>
+> **Focused checklists:** [Spouse import](runbooks/spouse-import.md) · [Restart after template deploy](runbooks/restart-service-checklist.md)
 
 ---
 

@@ -3,11 +3,15 @@ import_spouse_info.py
 ~~~~~~~~~~~~~~~~~~~~~
 Import Drake TY2025 MFJ spouse data into the TaxLog ``spouses`` table.
 
-Matches the **primary taxpayer** (name before ``&`` in the MFJ line) to a
-TaxLog client, then stores spouse name/DOB on that client's ``spouses`` row
-for intake prefill.
+**Sanctioned path only.** Matches the **primary taxpayer** (name before ``&``
+in the MFJ line) to a TaxLog client, then stores spouse name/DOB on that
+client's ``spouses`` row for intake prefill.
 
-Usage (from T:\\taxops on the server):
+Deprecated (do not revive): matching the Drake *spouse-side* name via
+``find_client()`` and attaching the row to that client — that mis-scored
+same-surname households (see ``docs/runbooks/spouse-import.md``).
+
+Usage (from T:\\taxops on the workstation / C:\\TaxOps\\taxops on the server):
 
     python scripts/import_spouse_info.py [PATH_TO_CSV] [--dry-run]
     python scripts/import_spouse_info.py CSVFILES\\TY2024Spouses.csv --combined-format
@@ -104,7 +108,11 @@ def _match_primary_taxpayer(
     conn: sqlite3.Connection,
     cache: list[dict],
 ) -> Optional[dict]:
-    """Match Drake MFJ line to TaxLog client via primary filer name only."""
+    """Match Drake MFJ line to TaxLog client via primary filer name only.
+
+    Do not replace this with spouse-side ``find_client(spouse_last, spouse_first)``
+    — that approach is deprecated (wrong-household 90% scores). See runbook.
+    """
     tp_last, tp_first = parse_mfj_primary_taxpayer(name_raw)
     if is_business(tp_last, tp_first):
         return None

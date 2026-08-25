@@ -200,6 +200,8 @@ def test_parse_mfj_primary_taxpayer():
     assert parse_mfj_primary_taxpayer("PEDRO & MARIA CARDONA") == ("CARDONA", "PEDRO")
     assert parse_mfj_primary_taxpayer("ORTIZ, ARGELIS & SANDRA") == ("ORTIZ", "ARGELIS")
     assert parse_mfj_primary_taxpayer("ANTONIO OLEA III & VERONICA OLEA") == ("OLEA", "ANTONIO")
+    assert parse_mfj_primary_taxpayer("ALBERT H & MARY E BARELA") == ("BARELA", "ALBERT H")
+    assert parse_mfj_primary_taxpayer("ERIC R & MARIA J HESSE") == ("HESSE", "ERIC R")
     assert parse_mfj_primary_taxpayer("") == ("", None)
 
 

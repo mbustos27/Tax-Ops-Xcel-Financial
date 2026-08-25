@@ -180,6 +180,7 @@ def parse_mfj_primary_taxpayer(name_raw: str) -> tuple[str, Optional[str]]:
 
     ``ARGELIS ORTIZ & SANDRA CANIZALES`` → (``ORTIZ``, ``ARGELIS``)
     ``PEDRO & MARIA CARDONA`` → (``CARDONA``, ``PEDRO``)  — shared-surname MFJ
+    ``ALBERT H & MARY E BARELA`` → (``BARELA``, ``ALBERT H``)  — shared surname + MI
     ``ORTIZ, ARGELIS & SANDRA`` → (``ORTIZ``, ``ARGELIS``)
     """
     raw = (name_raw or "").strip()
@@ -198,6 +199,14 @@ def parse_mfj_primary_taxpayer(name_raw: str) -> tuple[str, Optional[str]]:
             # Shared-surname: ``PEDRO & MARIA CARDONA`` — primary is first token only.
             if len(primary_tokens) == 1 and len(spouse_tokens) >= 2:
                 return spouse_tokens[-1], primary_tokens[0]
+            # Shared-surname with middle initial: ``ALBERT H & MARY E BARELA``
+            if (
+                len(primary_tokens) >= 2
+                and len(spouse_tokens) >= 2
+                and len(primary_tokens[-1]) == 1
+                and primary_tokens[-1].isalpha()
+            ):
+                return spouse_tokens[-1], " ".join(primary_tokens)
             if "," in primary_part:
                 return parse_name(primary_part)
             if len(primary_tokens) >= 2:

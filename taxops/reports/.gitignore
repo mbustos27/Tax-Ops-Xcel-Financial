@@ -1,0 +1,3 @@
+# Generated audit CSVs may contain client names — never commit.
+*
+!.gitignore
