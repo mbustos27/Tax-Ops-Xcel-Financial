@@ -90,11 +90,44 @@ Skip first 2 metadata lines; header includes `Taxpayer Name`, `Spouse Last Name`
 
 ---
 
+## Export verification
+
+After import or cleanup, cross-check confirmed `spouses` rows against Drake exports
+(`CSVFILES/TAXPAYERspouse25.csv`, `CSVFILES/TY2024Spouses.csv`):
+
+```powershell
+cd T:\taxops
+
+# Full verify pass → reports\spouse_export_verify_YYYYMMDD_HHMMSS.csv (gitignored)
+python scripts\verify_spouses_vs_export.py --db T:\taxops\taxops.db
+
+# Remove export-backed wrong attaches from latest verify CSV (dry-run first)
+python scripts\cleanup_wrong_spouse_attaches.py --db T:\taxops\taxops.db
+python scripts\cleanup_wrong_spouse_attaches.py --db T:\taxops\taxops.db --apply
+
+# Remove TEST junk spouse rows only (UNKNOWN TEST + TEST client name)
+python scripts\cleanup_wrong_spouse_attaches.py --db T:\taxops\taxops.db --only-test
+python scripts\cleanup_wrong_spouse_attaches.py --db T:\taxops\taxops.db --only-test --apply
+```
+
+Verdicts include `OK_EXPORT`, `WRONG_ATTACH`, `WRONG_SINGLE_HAS_SPOUSE`, `NO_EXPORT`,
+and `SPOUSE_IS_OTHER_CLIENT_NO_EXPORT`. Never `--apply` without reviewing the dry-run list.
+
+**Session handoff (2026-08-25):** [Spouse export verify + cleanup](../handoffs/spouse-export-verify-cleanup-2026-08-25.md)
+
+---
+
 ## Audit / cleanup helpers (read-only by default)
 
 ```powershell
 # Confirmed-row primary mismatch report (no DB writes)
 python scripts\audit_confirmed_spouses.py --db T:\taxops\taxops.db
+
+# Wave4 orphan human-review CSV (no DB writes; use before reject_wave4_orphans --apply)
+python scripts\wave4_orphan_review.py --db T:\taxops\taxops.db
+
+# NO_EXPORT DOB enrichment investigation (no DB writes)
+python scripts\investigate_no_export_spouses.py --db T:\taxops\taxops.db
 
 # Wave4 0% orphans with no Drake spouse line (dry-run; --apply only after sign-off)
 python scripts\reject_wave4_orphans.py --db T:\taxops\taxops.db

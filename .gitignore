@@ -67,6 +67,8 @@ taxops/taxops_test_ext.db
 taxops/data/exports/*.csv
 taxops/scripts/*.csv
 taxops/scripts/*.log
+# Spouse/export audit CSVs from verify and orphan review scripts.
+taxops/reports/
 # Vector store / RAG embeddings cache.
 chroma_db/
 # Logs and nightly backup drops.
