@@ -11,7 +11,7 @@ from form_schema import CREATE_TABLE_FRAGMENTS_DOC7, get_form_alter_columns_by_t
 # DEBT-6: increment this integer whenever a new migration block is added to
 # _migrate_existing_tables.  The value is stored in app_settings and surfaced
 # via /health so ops can confirm a deploy applied all migrations.
-CURRENT_SCHEMA_VERSION = 28
+CURRENT_SCHEMA_VERSION = 30
 
 _log = logging.getLogger(__name__)
 
@@ -921,6 +921,14 @@ def _deduplicate_existing_records(conn: sqlite3.Connection) -> int:
                 f"UPDATE {tbl} SET client_id = ? WHERE client_id = ?",
                 (kept_id, discard_id),
             )
+        for tbl in ("drake_prefill_links", "work_orders", "client_profile_backfill_history"):
+            try:
+                conn.execute(
+                    f"UPDATE {tbl} SET client_id = ? WHERE client_id = ?",
+                    (kept_id, discard_id),
+                )
+            except sqlite3.OperationalError:
+                pass
         for tbl in ("spouses", "client_spouse_import"):
             kept_has = conn.execute(
                 f"SELECT 1 FROM {tbl} WHERE client_id = ?", (kept_id,)
@@ -934,6 +942,36 @@ def _deduplicate_existing_records(conn: sqlite3.Connection) -> int:
                     f"UPDATE {tbl} SET client_id = ? WHERE client_id = ?",
                     (kept_id, discard_id),
                 )
+        # billing_requests / client_email_sends: UNIQUE may block a blind UPDATE.
+        for row in conn.execute(
+            "SELECT id, campaign_id FROM client_email_sends WHERE client_id = ?",
+            (discard_id,),
+        ).fetchall():
+            clash = conn.execute(
+                """
+                SELECT 1 FROM client_email_sends
+                 WHERE client_id = ? AND campaign_id = ? AND id != ?
+                 LIMIT 1
+                """,
+                (kept_id, row["campaign_id"], row["id"]),
+            ).fetchone()
+            if clash:
+                conn.execute("DELETE FROM client_email_sends WHERE id = ?", (row["id"],))
+            else:
+                conn.execute(
+                    "UPDATE client_email_sends SET client_id = ? WHERE id = ?",
+                    (kept_id, row["id"]),
+                )
+        try:
+            conn.execute(
+                """
+                UPDATE billing_requests SET client_id = ?
+                 WHERE client_id = ?
+                """,
+                (kept_id, discard_id),
+            )
+        except sqlite3.OperationalError:
+            pass
 
         conn.execute("DELETE FROM clients WHERE id = ?", (discard_id,))
         _log.info(
@@ -1076,6 +1114,8 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "prior_year_log TEXT",
             # ID type: 1=SSN, 2=ITIN, NULL=unknown
             "id_type INTEGER",
+            # Mass-email platform — client opt-out (Prompt J)
+            "do_not_email INTEGER NOT NULL DEFAULT 0",
         ],
         "returns": [
             "processor TEXT",
@@ -2400,6 +2440,105 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_cpbh_run "
         "ON client_profile_backfill_history(run_label)"
+    )
+
+    # Schema v29 — Mass-email platform foundation (Prompt J): templates, campaigns,
+    # per-client send audit/dedupe, tax deadlines. No outbound send wiring yet.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS email_templates (
+          id                INTEGER PRIMARY KEY AUTOINCREMENT,
+          key               TEXT NOT NULL UNIQUE,
+          subject           TEXT NOT NULL,
+          body_html         TEXT NOT NULL,
+          body_text         TEXT,
+          variables_schema  TEXT,
+          is_active         INTEGER NOT NULL DEFAULT 1,
+          created_at        TEXT NOT NULL,
+          updated_at        TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS email_campaigns (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          template_id         INTEGER NOT NULL REFERENCES email_templates(id),
+          audience_definition TEXT NOT NULL,
+          status              TEXT NOT NULL DEFAULT 'draft',
+          created_by          TEXT,
+          created_at          TEXT NOT NULL,
+          scheduled_for       TEXT,
+          sent_at             TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_email_campaigns_template "
+        "ON email_campaigns(template_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_email_campaigns_status "
+        "ON email_campaigns(status, created_at)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS client_email_sends (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          campaign_id      INTEGER NOT NULL REFERENCES email_campaigns(id),
+          client_id        INTEGER NOT NULL REFERENCES clients(id),
+          return_id        INTEGER REFERENCES returns(id),
+          recipient_email  TEXT NOT NULL,
+          sent_at          TEXT,
+          status           TEXT NOT NULL DEFAULT 'pending',
+          error_detail     TEXT,
+          dedupe_key       TEXT,
+          UNIQUE (campaign_id, client_id)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_client_email_sends_campaign "
+        "ON client_email_sends(campaign_id, status)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tax_deadlines (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          label       TEXT NOT NULL,
+          applies_to  TEXT NOT NULL,
+          due_date    TEXT NOT NULL,
+          tax_year    INTEGER NOT NULL,
+          is_active   INTEGER NOT NULL DEFAULT 1
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tax_deadlines_year_active "
+        "ON tax_deadlines(tax_year, is_active, due_date)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_clients_do_not_email "
+        "ON clients(do_not_email)"
+    )
+
+    # Schema v30 — campaign category (personal vs business return types).
+    for _tbl in ("email_templates", "email_campaigns"):
+        if "category" not in _table_columns(conn, _tbl):
+            try:
+                conn.execute(
+                    f"ALTER TABLE {_tbl} ADD COLUMN category TEXT NOT NULL DEFAULT 'all'"
+                )
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc).lower():
+                    raise
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_email_templates_category "
+        "ON email_templates(category, is_active)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_email_campaigns_category "
+        "ON email_campaigns(category, status)"
     )
 
     # DEBT-6: stamp the schema version so /health can confirm migrations ran.

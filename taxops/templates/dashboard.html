@@ -74,14 +74,15 @@
     {% set pbal  = ('&balance_due=1') if filters.balance_due else '' %}
     {% set plate = ('&late_intake=1') if filters.late_intake else '' %}
     {% set pslow = ('&slow_cycle=1') if filters.slow_cycle else '' %}
+    {% set pupcoming = ('&upcoming_deadline=1') if filters.upcoming_deadline else '' %}
     {% set pform = ('&form=' ~ (active_form|urlencode)) if active_form else '' %}
     {% set pq    = ('&q=' ~ (filters.q|urlencode)) if filters.q else '' %}
     {% set psort = ('&sort=' ~ (sort|urlencode)) if sort else '' %}
-    {% set persist = pproc ~ pbal ~ plate ~ pslow ~ pform ~ pq ~ psort %}
+    {% set persist = pproc ~ pbal ~ plate ~ pslow ~ pupcoming ~ pform ~ pq ~ psort %}
 
     {% set base = '/?year=' ~ current_year
         ~ (('&status=' ~ (filters.status[0]|urlencode)) if filters.status else '')
-        ~ pproc ~ pbal ~ plate ~ pslow ~ pq ~ psort %}
+        ~ pproc ~ pbal ~ plate ~ pslow ~ pupcoming ~ pq ~ psort %}
 
     <!-- Row 1: status pills -->
     <div id="status-pills" class="flex items-center gap-1.5 flex-nowrap overflow-x-auto" role="navigation" aria-label="{{ _('Filter by status') }}">
@@ -101,7 +102,7 @@
     {% if filters.status and 'REJECTED' in filters.status %}
     <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto border-t pt-2.5" style="border-color:var(--border-subtle)">
       <span class="text-sm font-medium shrink-0" style="color:var(--text-muted)">{{ _('Reject follow-up:') }}</span>
-      {% set rbase = '/?year=' ~ current_year ~ '&status=' ~ ('REJECTED'|urlencode) ~ pproc ~ pbal ~ plate ~ pslow ~ pform %}
+      {% set rbase = '/?year=' ~ current_year ~ '&status=' ~ ('REJECTED'|urlencode) ~ pproc ~ pbal ~ plate ~ pslow ~ pupcoming ~ pform %}
       <a href="{{ rbase }}"
          class="pill shrink-0 {% if not filters.reject_contact %}pill-active{% else %}pill-inactive{% endif %}">{{ _('All') }}</a>
       <a href="{{ rbase }}&reject_contact=needs_followup"
@@ -141,6 +142,11 @@
               class="pill shrink-0 {% if filters.slow_cycle %}bg-rose-600 text-white border-rose-600{% else %}pill-inactive{% endif %}"
               {% if not filters.slow_cycle %}style="background:var(--bg-page)"{% endif %}>
         🐢 {{ _('Slow Cycle') }}
+      </button>
+      <button onclick="applyFilter('upcoming_deadline', '{{ '' if filters.upcoming_deadline else '1' }}')"
+              class="pill shrink-0 {% if filters.upcoming_deadline %}bg-orange-600 text-white border-orange-600{% else %}pill-inactive{% endif %}"
+              {% if not filters.upcoming_deadline %}style="background:var(--bg-page)"{% endif %}>
+        📅 {{ _('Upcoming Deadline') }}
       </button>
 
       <div class="w-px h-5 shrink-0 mx-1" style="background:var(--border-default)"></div>
@@ -231,12 +237,23 @@
         <a id="export-btn"
            href="/export?{{ request.query_string.decode() }}"
            class="flex items-center gap-1.5 pill pill-inactive font-semibold whitespace-nowrap"
-           title="Export to Excel">
+           title="{{ _('Export filtered returns to Excel') }}">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round"
                   d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
           </svg>
           {{ _('Export') }}
+        </a>
+        <a id="print-deadlines-btn"
+           href="/export/upcoming-deadlines/print?year={{ current_year }}{{ persist }}"
+           class="flex items-center gap-1.5 pill pill-inactive font-semibold whitespace-nowrap"
+           title="{{ _('Print upcoming deadlines (next 30 days)') }}"
+           target="_blank" rel="noopener">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/>
+          </svg>
+          {{ _('Print Deadlines') }}
         </a>
       </div>
     </div>
@@ -383,7 +400,7 @@
             {% if r.risk_flags %}
             <div class="flex flex-wrap gap-1">
               {% for flag in r.risk_flags %}
-              <span class="risk-badge {% if flag == 'LATE INTAKE' %}risk-late{% elif flag == 'CLIENT CONTACT' %}risk-contact{% else %}risk-slow{% endif %}">
+              <span class="risk-badge {% if flag == 'LATE INTAKE' %}risk-late{% elif flag == 'CLIENT CONTACT' %}risk-contact{% elif flag == 'UPCOMING DEADLINE' %}risk-deadline{% else %}risk-slow{% endif %}">
                 {{ flag }}
               </span>
               {% endfor %}
@@ -769,7 +786,7 @@ window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
 
     const flagHtml = r.risk_flags && r.risk_flags.length
       ? `<div class="flex flex-wrap gap-1">${r.risk_flags.map(f => {
-          const c = f === 'LATE INTAKE' ? 'risk-late' : f === 'CLIENT CONTACT' ? 'risk-contact' : 'risk-slow';
+          const c = f === 'LATE INTAKE' ? 'risk-late' : f === 'CLIENT CONTACT' ? 'risk-contact' : f === 'UPCOMING DEADLINE' ? 'risk-deadline' : 'risk-slow';
           return `<span class="risk-badge ${c}">${_esc(f)}</span>`;
         }).join('')}</div>`
       : '<span class="text-slate-300">—</span>';
@@ -1265,12 +1282,8 @@ window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
       url.searchParams.delete('page');
       window.history.replaceState({}, '', url.pathname + url.search + url.hash);
 
-      const exportBtn = document.getElementById('export-btn');
-      if (exportBtn) {
-        const exp = new URL(exportBtn.href, window.location.origin);
-        if (q) exp.searchParams.set('q', q);
-        else exp.searchParams.delete('q');
-        exportBtn.href = exp.pathname + exp.search;
+      if (typeof window.syncDashboardExportLinks === 'function') {
+        window.syncDashboardExportLinks();
       }
 
       syncSaveDashboardFilterBtn();
@@ -1291,6 +1304,15 @@ window.__serverSort   = {{ sort | tojson }};  /* "log_asc" | "log_desc" */
     });
     wireSavedFilterPills();
     wireSaveFlow();
+
+    window.syncDashboardExportLinks = function () {
+      const qs = window.location.search || '';
+      const exportBtn = document.getElementById('export-btn');
+      const printDeadlinesBtn = document.getElementById('print-deadlines-btn');
+      if (exportBtn) exportBtn.href = '/export' + qs;
+      if (printDeadlinesBtn) printDeadlinesBtn.href = '/export/upcoming-deadlines/print' + qs;
+    };
+    window.syncDashboardExportLinks();
   });
 })();
 </script>

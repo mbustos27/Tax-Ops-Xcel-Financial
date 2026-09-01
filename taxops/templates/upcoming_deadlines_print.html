@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ _('Upcoming Deadlines') }} — {{ current_year }}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12px;
+    color: #1a1a1a;
+    background: #F4EFE9;
+    padding: 20px;
+  }
+
+  .sheet {
+    background: #fff;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 28px 32px;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 12px rgba(0,0,0,.12);
+  }
+
+  .print-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 980px;
+    margin: 0 auto 12px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .print-bar button {
+    background: #6B2233;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 22px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .print-bar button:hover { background: #5a1c2a; }
+  .print-bar a { font-size: 12px; color: #555; text-decoration: none; }
+
+  .header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    border-bottom: 3px solid #6B2233;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+    gap: 16px;
+  }
+  .office-name { font-size: 17px; font-weight: 700; color: #3D1019; }
+  .office-sub { font-size: 11px; color: #6B2233; margin-top: 2px; }
+  .form-title {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    color: #6B2233;
+    text-align: right;
+  }
+  .meta-line { font-size: 11px; color: #555; text-align: right; margin-top: 4px; }
+
+  table.data {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  table.data th {
+    background: #6B2233;
+    color: #fff;
+    text-align: left;
+    padding: 7px 8px;
+    font-weight: 700;
+    border: 1px solid #5a1c2a;
+  }
+  table.data td {
+    padding: 6px 8px;
+    border: 1px solid #e5e7eb;
+    vertical-align: top;
+  }
+  table.data tr:nth-child(even) td { background: #fafafa; }
+  .num { text-align: center; font-variant-numeric: tabular-nums; }
+  .urgent { color: #c2410c; font-weight: 700; }
+  .empty {
+    padding: 24px;
+    text-align: center;
+    color: #64748b;
+    font-size: 13px;
+  }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .print-bar { display: none; }
+    .sheet { box-shadow: none; border: none; max-width: none; padding: 0; }
+    table.data { font-size: 10px; }
+    table.data th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<div class="print-bar">
+  <button type="button" onclick="window.print()">{{ _('Print / Save as PDF') }}</button>
+  <a href="/?year={{ current_year }}">{{ _('Back to dashboard') }}</a>
+</div>
+
+<div class="sheet">
+  <div class="header-row">
+    <div>
+      <div class="office-name">Xcel Financial</div>
+      <div class="office-sub">{{ _('Tax Operations') }}</div>
+    </div>
+    <div>
+      <div class="form-title">{{ _('UPCOMING DEADLINES') }}</div>
+      <div class="meta-line">{{ _('Season') }} {{ current_year }} · {{ _('Generated') }} {{ generated_on }}</div>
+      <div class="meta-line">{{ _('Within next') }} {{ window_days }} {{ _('days') }} · {{ rows|length }} {{ _('returns') }}</div>
+    </div>
+  </div>
+
+  {% if rows %}
+  <table class="data">
+    <thead>
+      <tr>
+        <th>{{ _('Log #') }}</th>
+        <th>{{ _('Client') }}</th>
+        <th class="num">{{ _('TY') }}</th>
+        <th>{{ _('Status') }}</th>
+        <th>{{ _('Preparer') }}</th>
+        <th>{{ _('Forms') }}</th>
+        <th class="num">{{ _('Due') }}</th>
+        <th class="num">{{ _('Days') }}</th>
+        <th>{{ _('Deadline') }}</th>
+        <th>{{ _('Drake') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="num"><strong>{% if r.log_number %}{{ r.log_number }}{% else %}—{% endif %}</strong>{% if not r.log_number and r.id %}<br><span style="font-size:9px;color:#64748b">id {{ r.id }}</span>{% endif %}</td>
+        <td>{{ r.name_full or ((r.last_name or '') ~ ', ' ~ (r.first_name or '')) }}</td>
+        <td class="num">{{ r.tax_year or '' }}</td>
+        <td>{{ r.client_status or '' }}</td>
+        <td>{{ r.processor or '—' }}</td>
+        <td>{{ (r.forms or [])|join(', ') or '—' }}</td>
+        <td class="num">{{ r.deadline_date or '—' }}</td>
+        <td class="num {% if r.days_until_deadline != '' and r.days_until_deadline <= 14 %}urgent{% endif %}">
+          {{ r.days_until_deadline if r.days_until_deadline != '' else '—' }}
+        </td>
+        <td>{{ r.deadline_label or '—' }}</td>
+        <td>{{ r.drake_status_raw or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">{{ _('No open returns with a deadline in the next %(days)s days.', days=window_days) }}</p>
+  {% endif %}
+</div>
+
+</body>
+</html>

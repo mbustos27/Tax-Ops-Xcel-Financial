@@ -571,6 +571,8 @@
                          bg-amber-50 text-amber-700 border-amber-200
                          {% elif flag == 'CLIENT CONTACT' %}
                          bg-orange-50 text-orange-800 border-orange-200
+                         {% elif flag == 'UPCOMING DEADLINE' %}
+                         bg-orange-50 text-orange-800 border-orange-300
                          {% else %}
                          bg-rose-50 text-rose-700 border-rose-200
                          {% endif %}">
@@ -731,7 +733,7 @@
           <label class="flex items-center gap-2 cursor-pointer p-2.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all select-none">
             <input type="checkbox"
                    {% if val %}checked{% endif %}
-                   onchange="saveField({{ ret.id }}, '{{ field }}', this.checked ? 1 : 0)"
+                   onchange="saveField({{ ret.id }}, '{{ field }}', this.checked ? 1 : 0, this)"
                    class="rounded border-slate-300 text-blue-600 focus:ring-blue-400 focus:ring-offset-0">
             <span class="text-sm text-slate-700">{{ label }}</span>
           </label>
@@ -1129,12 +1131,23 @@
     window.location.reload();
   }
 
-  async function saveField(returnId, field, value) {
-    await _csrfFetch(`/api/return/${returnId}/field`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ field, value }),
-    });
+  async function saveField(returnId, field, value, el) {
+    try {
+      const resp = await _csrfFetch(`/api/return/${returnId}/field`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field, value }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) {
+        if (el && el.type === 'checkbox') el.checked = !el.checked;
+        alert(data.error || 'Could not save form change.');
+        return;
+      }
+    } catch (_e) {
+      if (el && el.type === 'checkbox') el.checked = !el.checked;
+      alert('Could not save form change.');
+    }
   }
 
   // ── LIFE-1: Cancel / uncancel return ─────────────────────────────────────

@@ -39,6 +39,7 @@ from typing import Any, Dict, List, Optional
 from config import CSMDATA_SOURCE, DRAKE_SOURCE, DRAKE_STATUS_MAP, DRAKE_TYPE_FORMS
 from events import create_status_events
 from name_matcher import find_client as fuzzy_find_client, ACCEPT_THRESHOLD, strip_spouse, split_spouse_name_chunk
+from efile_logout_sync import maybe_sync_efile_logout
 from normalizer import normalize_currency, normalize_date, normalize_string, normalize_tax_year, is_locked_status
 from preparer import normalize_preparer
 from utils import ImportStats, ImportResult, now
@@ -145,7 +146,22 @@ def process_drake_csv(
             return_id, created_r, updated_r, before, after = _upsert_return(
                 conn, client_id, normalized["returns"], match["return_id"]
             )
-            _upsert_forms(conn, return_id, normalized["return_forms"])
+            from drake_form_sync import (
+                fetch_existing_forms,
+                fetch_prefill_forms_for_client,
+                merge_drake_return_forms,
+                upsert_return_forms,
+            )
+
+            existing_forms = fetch_existing_forms(conn, return_id)
+            prefill = fetch_prefill_forms_for_client(conn, client_id, tax_year)
+            merged_forms = merge_drake_return_forms(
+                csm_type_forms=normalized["return_forms"],
+                prefill_counts=prefill[0] if prefill else None,
+                prefill_return_type=prefill[1] if prefill else None,
+                existing=existing_forms,
+            )
+            upsert_return_forms(conn, return_id, merged_forms, overwrite=True)
             _upsert_payment(conn, return_id, normalized["payments"])
 
             note = normalized.get("note")
@@ -174,6 +190,11 @@ def process_drake_csv(
             _insert_import_row(conn, batch_id, row_number, row, "ERROR", str(exc))
             stats.error_count += 1
             stats.errors.append(f"Row {row_number}: {exc}")
+
+    from efile_logout_sync import revert_premature_logouts, sync_efile_accepted_logouts
+
+    sync_efile_accepted_logouts(conn, tax_year=tax_year, dry_run=False)
+    revert_premature_logouts(conn, tax_year=tax_year, dry_run=False)
 
     stats.duration_seconds = time.monotonic() - _t0
     return stats
@@ -660,7 +681,10 @@ def _upsert_return(
                 now(), now(),
             ),
         )
-        return int(cur.lastrowid), True, False, {}, dict(data)
+        rid = int(cur.lastrowid)
+        maybe_sync_efile_logout(conn, rid, source=DRAKE_SOURCE)
+        fresh = conn.execute("SELECT * FROM returns WHERE id=?", (rid,)).fetchone()
+        return rid, True, False, {}, dict(fresh)
 
     before = dict(existing)
     changed = False
@@ -745,12 +769,26 @@ def _upsert_return(
                 ),
             )
 
+        maybe_sync_efile_logout(conn, int(existing["id"]), source=DRAKE_SOURCE)
+
     fresh = conn.execute("SELECT * FROM returns WHERE id=?", (int(existing["id"]),)).fetchone()
     return int(existing["id"]), False, changed, before, dict(fresh)
 
 
-def _upsert_forms(conn: sqlite3.Connection, return_id: int, forms: Dict[str, Any]) -> None:
+def _upsert_forms(
+    conn: sqlite3.Connection,
+    return_id: int,
+    forms: Dict[str, Any],
+    *,
+    overwrite: bool = False,
+) -> None:
     row = conn.execute("SELECT id FROM return_forms WHERE return_id=? LIMIT 1", (return_id,)).fetchone()
+    values = (
+        forms.get("form_1040"), forms.get("sched_a_d"), forms.get("sched_c"),
+        forms.get("sched_e"), forms.get("form_1120"), forms.get("form_1120s"),
+        forms.get("form_1065_llc"), forms.get("corp_officer"),
+        forms.get("business_owner"), forms.get("form_990_1041"),
+    )
     if row is None:
         conn.execute(
             """
@@ -759,13 +797,25 @@ def _upsert_forms(conn: sqlite3.Connection, return_id: int, forms: Dict[str, Any
              form_1120, form_1120s, form_1065_llc, corp_officer, business_owner, form_990_1041)
             VALUES (?,?,?,?,?,?,?,?,?,?,?)
             """,
-            (
-                return_id,
-                forms.get("form_1040"), forms.get("sched_a_d"), forms.get("sched_c"),
-                forms.get("sched_e"), forms.get("form_1120"), forms.get("form_1120s"),
-                forms.get("form_1065_llc"), forms.get("corp_officer"),
-                forms.get("business_owner"), forms.get("form_990_1041"),
-            ),
+            (return_id, *values),
+        )
+    elif overwrite:
+        conn.execute(
+            """
+            UPDATE return_forms SET
+              form_1040     = ?,
+              sched_a_d     = ?,
+              sched_c       = ?,
+              sched_e       = ?,
+              form_1120     = ?,
+              form_1120s    = ?,
+              form_1065_llc = ?,
+              corp_officer  = ?,
+              business_owner = ?,
+              form_990_1041 = ?
+            WHERE return_id = ?
+            """,
+            (*values, return_id),
         )
     else:
         conn.execute(
@@ -783,49 +833,50 @@ def _upsert_forms(conn: sqlite3.Connection, return_id: int, forms: Dict[str, Any
               form_990_1041 = COALESCE(?, form_990_1041)
             WHERE return_id = ?
             """,
-            (
-                forms.get("form_1040"), forms.get("sched_a_d"), forms.get("sched_c"),
-                forms.get("sched_e"), forms.get("form_1120"), forms.get("form_1120s"),
-                forms.get("form_1065_llc"), forms.get("corp_officer"),
-                forms.get("business_owner"), forms.get("form_990_1041"),
-                return_id,
-            ),
+            (*values, return_id),
         )
 
 
-def _upsert_payment(conn: sqlite3.Connection, return_id: int, payment: Dict[str, Any]) -> None:
+def _upsert_payment(conn: sqlite3.Connection, return_id: int, payment: Dict[str, Any]) -> bool:
+    """Upsert billing row. Drake total_fee always wins when present; fee_paid is manual-only."""
     if not any(v is not None for v in payment.values()):
-        return
-    row = conn.execute("SELECT id FROM payments WHERE return_id=? LIMIT 1", (return_id,)).fetchone()
+        return False
+    drake_fee = payment.get("total_fee")
+    row = conn.execute("SELECT id, total_fee FROM payments WHERE return_id=? LIMIT 1", (return_id,)).fetchone()
+    changed = False
     if row is None:
         conn.execute(
             """INSERT INTO payments
                (return_id, total_fee, fee_paid, bank_deposit, refund_amount, balance_due)
                VALUES (?,?,?,?,?,?)""",
-            (return_id, payment.get("total_fee"), payment.get("fee_paid"),
+            (return_id, drake_fee, payment.get("fee_paid"),
              payment.get("bank_deposit"), payment.get("refund_amount"),
              payment.get("balance_due")),
         )
-    else:
-        conn.execute(
-            """
-            UPDATE payments SET
-              total_fee     = COALESCE(?, total_fee),
-              fee_paid      = COALESCE(?, fee_paid),
-              bank_deposit  = COALESCE(?, bank_deposit),
-              refund_amount = CASE WHEN ? IS NOT NULL THEN ? ELSE refund_amount END,
-              balance_due   = CASE WHEN ? IS NOT NULL THEN ? ELSE balance_due END
-            WHERE return_id = ?
-            """,
-            (
-                payment.get("total_fee"),
-                payment.get("fee_paid"),
-                payment.get("bank_deposit"),
-                payment.get("refund_amount"), payment.get("refund_amount"),
-                payment.get("balance_due"),   payment.get("balance_due"),
-                return_id,
-            ),
-        )
+        return drake_fee is not None
+    old_fee = row["total_fee"]
+    conn.execute(
+        """
+        UPDATE payments SET
+          total_fee     = CASE WHEN ? IS NOT NULL THEN ? ELSE total_fee END,
+          fee_paid      = COALESCE(?, fee_paid),
+          bank_deposit  = COALESCE(?, bank_deposit),
+          refund_amount = CASE WHEN ? IS NOT NULL THEN ? ELSE refund_amount END,
+          balance_due   = CASE WHEN ? IS NOT NULL THEN ? ELSE balance_due END
+        WHERE return_id = ?
+        """,
+        (
+            drake_fee, drake_fee,
+            payment.get("fee_paid"),
+            payment.get("bank_deposit"),
+            payment.get("refund_amount"), payment.get("refund_amount"),
+            payment.get("balance_due"),   payment.get("balance_due"),
+            return_id,
+        ),
+    )
+    if drake_fee is not None and old_fee != drake_fee:
+        changed = True
+    return changed
 
 
 def _insert_note_if_new(

@@ -68,6 +68,13 @@ from db import (
 from form_schema import FORM_INTEGER_COLUMNS, FORM_TABLE_INSERT_COLUMNS
 from merge_ops import merge_client_into
 from bulk_returns import bulk_apply_processor_changes, bulk_apply_status_changes
+from return_deadlines import (
+    UPCOMING_DEADLINE_DAYS,
+    UPCOMING_DEADLINE_FLAG,
+    enrich_deadline_fields,
+    load_tax_deadline_lookup,
+    sql_upcoming_deadline_clause,
+)
 from name_matcher import find_client as fuzzy_find_client, is_business, parse_name, _all_clients_cache
 from normalizer import normalize_date, normalize_currency, normalize_string, canonical_status, is_locked_status
 from preparer import (
@@ -96,6 +103,7 @@ from utils import (
 from mail_watcher import start_mail_watcher
 from extractor import start_extraction_worker
 from drake_documents_sync import sync_to_drake
+from drake_form_sync import PREFILL_FORM_CHECKBOX_MAP as _PREFILL_FORM_CHECKBOX_MAP
 
 _APP_START_MONOTONIC = time.monotonic()
 
@@ -182,6 +190,7 @@ from routes.work_order_quick_picks import wo_quick_picks_bp
 from routes.notifications import notifications_bp
 from routes.compliance import compliance_bp
 from routes.reception_agents import reception_agents_bp
+from routes.email_campaigns import email_campaigns_bp
 app.register_blueprint(documents_bp)
 app.register_blueprint(accounting_bp)
 app.register_blueprint(users_bp)
@@ -190,6 +199,7 @@ app.register_blueprint(sender_rules_bp)
 app.register_blueprint(email_health_bp)
 app.register_blueprint(filetrack_bp)
 app.register_blueprint(reception_agents_bp)
+app.register_blueprint(email_campaigns_bp)
 # POST /filetrack/status is hit by the headless filetrack.listener process
 # (M3), which has no browser session and therefore no CSRF token to send —
 # it authenticates instead via its own X-Filetrack-Token header (see
@@ -786,6 +796,13 @@ LATE_INTAKE_MONTH = 4
 LATE_INTAKE_DAY = 1
 SLOW_CYCLE_DAYS = 21
 
+# Fields that live in the return_forms table (checkboxes on return detail page)
+FORM_EDITABLE = {
+    "form_1040", "sched_a_d", "sched_c", "sched_e",
+    "form_1120", "form_1120s", "form_1065_llc",
+    "corp_officer", "business_owner", "form_990_1041",
+}
+
 # Fields that live in the returns table and may be edited via /api/return/<id>/field
 RETURN_EDITABLE = {
     "processor", "verified", "email_marker", "tax_year",
@@ -832,6 +849,12 @@ PAYMENT_EDITABLE = {
     "bank_deposit", "refund_amount", "payment_method", "check_number",
 }
 
+# Client profile + intake desk may edit these via /api/return/<id>/field without preparer role.
+FRONT_DESK_FIELD_EDIT = CLIENT_EDITABLE | {"filing_status"}
+
+# Preparer+ only (return ops, payments, processor — not filing_status).
+PREPARER_FIELD_EDIT = (RETURN_EDITABLE | PAYMENT_EDITABLE | FORM_EDITABLE) - FRONT_DESK_FIELD_EDIT
+
 CARD_FEE_RATE = 0.03   # 3 % card processing surcharge
 
 # Return document uploads (DOC-2)
@@ -858,6 +881,7 @@ SELECT
     r.is_amended, r.has_w7, r.is_extension,
     r.transfer_flag, r.transfer_2025_flag, r.transfer_2026_flag,
     r.efile_date, r.ack_date, r.drake_status_raw,
+    r.extension_requested, r.extension_due_date,
     r.contact_status, r.last_contacted_date,
     r.scan_deferred,
     r.filing_status,
@@ -905,7 +929,7 @@ def _build_name_full(first: str, last: str, display_name: str,
     return base
 
 
-def _enrich(r: dict) -> dict:
+def _enrich(r: dict, deadline_lookup: dict | None = None) -> dict:
     total = _to_float(r.get("total_fee"))
     paid  = _to_float(r.get("fee_paid"))
     r["balance"]      = round(total - paid, 2) if total else None
@@ -941,9 +965,17 @@ def _enrich(r: dict) -> dict:
     cs = r.get("contact_status") or ""
     if r.get("client_status") == "REJECTED" and cs in ("", "not_contacted", "follow_up_needed"):
         r["risk_flags"].append("CLIENT CONTACT")
+    enrich_deadline_fields(r, deadline_lookup)
+    if r.get("upcoming_deadline_flag"):
+        r["risk_flags"].append(UPCOMING_DEADLINE_FLAG)
     if privacy_mode_enabled():
         r = _mask_return_payload(r)
     return r
+
+
+def _enrich_rows(rows, conn) -> list[dict]:
+    lookup = load_tax_deadline_lookup(conn)
+    return [_enrich(dict(r), deadline_lookup=lookup) for r in rows]
 
 
 _NEEDS_ATTENTION_DRAKE_DONE = (
@@ -1279,6 +1311,47 @@ def _season_year_for_return(intake_date, *, today=None) -> int:
     return today.year
 
 
+def _filters_from_request(year: int | None = None) -> dict:
+    """Parse dashboard filter query params (shared by page, API, export, print)."""
+    y = int(year if year is not None else request.args.get("year", date.today().year))
+    return {
+        "year": y,
+        "status": request.args.getlist("status") or None,
+        "processor": request.args.get("processor"),
+        "balance_due": request.args.get("balance_due"),
+        "late_intake": request.args.get("late_intake"),
+        "slow_cycle": request.args.get("slow_cycle"),
+        "upcoming_deadline": request.args.get("upcoming_deadline"),
+        "form": request.args.get("form"),
+        "reject_contact": request.args.get("reject_contact"),
+        "q": request.args.get("q"),
+        "sort": _normalize_dashboard_sort(request.args.get("sort")),
+        "scan_deferred": (
+            "1"
+            if (request.args.get("filter") or "").strip().lower() == "scan_deferred"
+            or request.args.get("scan_deferred")
+            else None
+        ),
+    }
+
+
+def _export_filename_suffix(filters: dict) -> str:
+    parts: list[str] = []
+    if filters.get("upcoming_deadline"):
+        parts.append("upcoming-deadlines")
+    if filters.get("balance_due"):
+        parts.append("balance-due")
+    if filters.get("late_intake"):
+        parts.append("late-intake")
+    if filters.get("slow_cycle"):
+        parts.append("slow-cycle")
+    st = filters.get("status")
+    if st:
+        label = st[0] if isinstance(st, list) else st
+        parts.append(str(label).replace(" ", "-"))
+    return "-".join(parts) if parts else "ALL"
+
+
 def query_returns(filters: dict | None = None) -> list[dict]:
     conn = get_connection()  # REL-4: closed in finally below
     f = filters or {}
@@ -1322,6 +1395,9 @@ def query_returns(filters: dict | None = None) -> list[dict]:
             "(julianday(COALESCE(r.logout_date, r.ack_date)) - julianday(r.intake_date)) >= ?)"
         )
         params.append(SLOW_CYCLE_DAYS)
+
+    if f.get("upcoming_deadline"):
+        clauses.append(sql_upcoming_deadline_clause("r"))
 
     if f.get("form"):
         form_col = f["form"]
@@ -1371,7 +1447,7 @@ def query_returns(filters: dict | None = None) -> list[dict]:
 
     try:
         rows = conn.execute(sql, params).fetchall()
-        return [_enrich(dict(r)) for r in rows]
+        return _enrich_rows(rows, conn)
     finally:
         conn.close()
 
@@ -1424,6 +1500,9 @@ def query_returns_paginated(filters: dict | None = None, *, page: int = 1, per_p
             "(julianday(COALESCE(r.logout_date, r.ack_date)) - julianday(r.intake_date)) >= ?)"
         )
         params.append(SLOW_CYCLE_DAYS)
+
+    if f.get("upcoming_deadline"):
+        clauses.append(sql_upcoming_deadline_clause("r"))
 
     if f.get("form"):
         form_col = f["form"]
@@ -1486,7 +1565,7 @@ def query_returns_paginated(filters: dict | None = None, *, page: int = 1, per_p
     try:
         total_count = conn.execute(count_sql, params).fetchone()["n"]
         rows = conn.execute(paginated_sql, params + [per_page, offset]).fetchall()
-        return [_enrich(dict(r)) for r in rows], total_count
+        return _enrich_rows(rows, conn), total_count
     finally:
         conn.close()
 
@@ -1494,7 +1573,10 @@ def query_returns_paginated(filters: dict | None = None, *, page: int = 1, per_p
 def get_one(return_id: int) -> dict | None:
     with contextlib.closing(get_connection()) as conn:
         row = conn.execute(f"{_SELECT} WHERE r.id = ?", (return_id,)).fetchone()
-        return _enrich(dict(row)) if row else None
+        if not row:
+            return None
+        lookup = load_tax_deadline_lookup(conn)
+        return _enrich(dict(row), deadline_lookup=lookup)
 
 
 def batch_fetch_returns(return_ids: list[int]) -> dict[int, dict]:
@@ -1510,7 +1592,8 @@ def batch_fetch_returns(return_ids: list[int]) -> dict[int, dict]:
         rows = conn.execute(
             f"{_SELECT} WHERE r.id IN ({placeholders})", list(return_ids)
         ).fetchall()
-    return {r["id"]: _enrich(dict(r)) for r in rows}
+        lookup = load_tax_deadline_lookup(conn)
+        return {r["id"]: _enrich(dict(r), deadline_lookup=lookup) for r in rows}
 
 
 def _fetch_returns_for_client(conn: sqlite3.Connection, client_id: int) -> list[dict]:
@@ -1518,7 +1601,7 @@ def _fetch_returns_for_client(conn: sqlite3.Connection, client_id: int) -> list[
         f"{_SELECT} WHERE r.client_id = ? ORDER BY r.tax_year DESC, r.id DESC",
         (client_id,),
     ).fetchall()
-    return [_enrich(dict(r)) for r in rows]
+    return _enrich_rows(rows, conn)
 
 
 def _fetch_client_documents(conn: sqlite3.Connection, client_id: int) -> list[dict]:
@@ -2445,24 +2528,8 @@ def api_dashboard_returns():
     page     = max(1, int(request.args.get("page", 1)))
     per_page = min(100, max(1, int(request.args.get("per_page", 50))))
     _api_sort = _normalize_dashboard_sort(request.args.get("sort"))
-    filters  = {
-        "year":           year,
-        "status":         request.args.getlist("status") or None,
-        "processor":      request.args.get("processor"),
-        "balance_due":    request.args.get("balance_due"),
-        "late_intake":    request.args.get("late_intake"),
-        "slow_cycle":     request.args.get("slow_cycle"),
-        "form":           request.args.get("form"),
-        "reject_contact": request.args.get("reject_contact"),
-        "q":              request.args.get("q"),
-        "sort":           _api_sort,
-        "scan_deferred":  (
-            "1"
-            if (request.args.get("filter") or "").strip().lower() == "scan_deferred"
-            or request.args.get("scan_deferred")
-            else None
-        ),
-    }
+    filters = _filters_from_request(year)
+    filters["sort"] = _api_sort
     rows, total_count = query_returns_paginated(filters, page=page, per_page=per_page)
     # Privacy invariant #7: ssn_last4 must not appear in list-endpoint JSON responses.
     # Strip at the data layer — client-side hiding is not sufficient (audit finding M7).
@@ -2545,7 +2612,7 @@ def can_publish_shared_dashboard_filters() -> bool:
 def _dashboard_request_has_explicit_filters() -> bool:
     if len(request.args.getlist("status")) > 0:
         return True
-    for key in ("processor", "balance_due", "late_intake", "slow_cycle", "form", "reject_contact", "q", "scan_deferred"):
+    for key in ("processor", "balance_due", "late_intake", "slow_cycle", "upcoming_deadline", "form", "reject_contact", "q", "scan_deferred"):
         v = request.args.get(key)
         if v is not None and str(v).strip():
             return True
@@ -2589,7 +2656,7 @@ def _sanitize_dashboard_filter_payload(raw: object) -> dict:
     if processor is not None and str(processor).strip():
         out["processor"] = str(processor).strip()
 
-    for flag in ("balance_due", "late_intake", "slow_cycle"):
+    for flag in ("balance_due", "late_intake", "slow_cycle", "upcoming_deadline"):
         val = raw.get(flag)
         if val in ("1", 1, True, "true", "yes", "on"):
             out[flag] = "1"
@@ -2626,7 +2693,7 @@ def _dashboard_filter_query_string(filter_data: dict, year: int) -> str:
     proc = d.get("processor")
     if proc:
         pairs.append(("processor", str(proc)))
-    for flag in ("balance_due", "late_intake", "slow_cycle"):
+    for flag in ("balance_due", "late_intake", "slow_cycle", "upcoming_deadline"):
         if d.get(flag) == "1":
             pairs.append((flag, "1"))
     if d.get("form"):
@@ -2654,6 +2721,8 @@ def _dashboard_filter_snapshot_from_current_request(year: int) -> dict:
         fd["late_intake"] = "1"
     if request.args.get("slow_cycle"):
         fd["slow_cycle"] = "1"
+    if request.args.get("upcoming_deadline"):
+        fd["upcoming_deadline"] = "1"
     form = request.args.get("form")
     if form and form.strip() in _ALLOWED_DASH_SAVE_FORM_FIELDS:
         fd["form"] = form.strip()
@@ -2743,24 +2812,8 @@ def dashboard():
     per_page = min(100, max(1, int(request.args.get("per_page", 50))))
 
     _sort_arg = _normalize_dashboard_sort(request.args.get("sort"))
-    filters = {
-        "year":        year,
-        "status":      request.args.getlist("status") or None,
-        "processor":   request.args.get("processor"),
-        "balance_due": request.args.get("balance_due"),
-        "late_intake": request.args.get("late_intake"),
-        "slow_cycle":  request.args.get("slow_cycle"),
-        "form":        request.args.get("form"),
-        "reject_contact": request.args.get("reject_contact"),
-        "q":           request.args.get("q"),
-        "sort":        _sort_arg,
-        "scan_deferred": (
-            "1"
-            if (request.args.get("filter") or "").strip().lower() == "scan_deferred"
-            or request.args.get("scan_deferred")
-            else None
-        ),
-    }
+    filters = _filters_from_request(year)
+    filters["sort"] = _sort_arg
     returns, total_count = query_returns_paginated(filters, page=page, per_page=per_page)
     total_pages = max(1, math.ceil(total_count / per_page))
     ctx = base_ctx(year)
@@ -4162,6 +4215,26 @@ def intake():
                 (return_id, _v("notes_intake"), ts),
             )
 
+        from drake_prefill_importer import promote_drake_email_to_client
+        from email_inbox_link import link_inbox_for_client_email
+
+        if not (_v("taxpayer_email")):
+            promote_drake_email_to_client(conn, client_id)
+        _email_row = conn.execute(
+            "SELECT taxpayer_email FROM clients WHERE id=?", (client_id,)
+        ).fetchone()
+        _client_email = (
+            (_email_row["taxpayer_email"] or "").strip() if _email_row else ""
+        )
+        if _client_email:
+            link_inbox_for_client_email(
+                conn,
+                client_id,
+                return_id=return_id,
+                assigned_by=session.get("username") or "intake",
+                taxpayer_email=_client_email,
+            )
+
         conn.commit()
 
         # M3: print LOG sticker (same path as UI Print sticker / scan-complete).
@@ -4619,41 +4692,110 @@ def _import_row(conn, row_data: dict, tax_year: int, ts: str, today_iso: str, st
 
 # ── Export ────────────────────────────────────────────────────────────────────
 
-@app.route("/export")
-@role_required("admin")
-def export_excel():
-    """Export the current filtered view as an .xlsx file."""
-    import io
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from openpyxl.utils import get_column_letter
+def _dashboard_export_rows(filters: dict) -> list[dict]:
+    """Full filtered dashboard corpus for export/print (never paginated slice)."""
+    return query_returns(filters)
 
-    year = int(request.args.get("year", date.today().year))
-    filters = {
-        "year":        year,
-        "status":      request.args.getlist("status") or None,
-        "processor":   request.args.get("processor"),
-        "balance_due": request.args.get("balance_due"),
-        "late_intake": request.args.get("late_intake"),
-        "slow_cycle":  request.args.get("slow_cycle"),
-        "form":        request.args.get("form"),
-        "reject_contact": request.args.get("reject_contact"),
-        "q":           request.args.get("q"),
-        "sort":        _normalize_dashboard_sort(request.args.get("sort")),
-        "scan_deferred": (
-            "1"
-            if (request.args.get("filter") or "").strip().lower() == "scan_deferred"
-            or request.args.get("scan_deferred")
-            else None
-        ),
-    }
-    rows = query_returns(filters)
+
+def _dashboard_export_columns(hide_financial: bool) -> list[tuple[str, int]]:
+    cols: list[tuple[str, int]] = [
+        ("Log #", 9), ("Last Name", 22), ("First Name", 18),
+        ("Year", 7), ("Status", 14), ("Preparer", 12),
+        ("Forms", 18), ("Deadline", 13), ("Days Left", 10),
+        ("Deadline Type", 28), ("Flags", 22),
+        ("Intake Date", 13), ("Pickup Date", 13), ("Logout Date", 13),
+    ]
+    if not hide_financial:
+        cols.extend([("Total Fee", 12), ("Fee Paid", 12), ("Balance", 12), ("Receipt #", 13)])
+    cols.append(("✓", 5))
+    return cols
+
+
+def _dashboard_export_row_values(r: dict, hide_financial: bool) -> list:
+    forms_str = "  ".join(r.get("forms") or [])
+    flags_str = ", ".join(r.get("risk_flags") or [])
+    days_left = r.get("days_until_deadline")
+    if days_left == "":
+        days_left = None
+    values: list = [
+        r.get("log_number") or "",
+        r.get("last_name") or "",
+        r.get("first_name") or "",
+        r.get("tax_year") or "",
+        r.get("client_status") or "",
+        r.get("processor") or "",
+        forms_str,
+        r.get("deadline_date") or "",
+        days_left,
+        r.get("deadline_label") or "",
+        flags_str,
+        r.get("intake_date") or "",
+        r.get("pickup_date") or "",
+        r.get("logout_date") or "",
+    ]
+    if not hide_financial:
+        values.extend([
+            r.get("total_fee") or 0,
+            r.get("fee_paid") or 0,
+            r.get("balance") or 0,
+            r.get("receipt_number") or "",
+        ])
+    values.append("✓" if r.get("verified") else "")
+    return values
+
+
+def _export_dashboard_csv(rows: list, year: int, hide_financial: bool, suffix: str):
+    """Fallback when openpyxl is not installed — same columns as the xlsx export."""
+    import csv
+    import io
+
+    columns = _dashboard_export_columns(hide_financial)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([label for label, _w in columns])
+    for r in rows:
+        writer.writerow(_dashboard_export_row_values(r, hide_financial))
+    data = io.BytesIO(buf.getvalue().encode("utf-8-sig"))
+    return send_file(
+        data,
+        as_attachment=True,
+        download_name=f"TaxOps_{year}_{suffix}.csv",
+        mimetype="text/csv; charset=utf-8",
+    )
+
+
+@app.route("/export")
+@login_required
+@view_only_for("receptionist")
+def export_excel():
+    """Export the current filtered dashboard view as an .xlsx file.
+
+    Falls back to CSV if openpyxl is missing (avoids Internal Server Error on
+    the Export button when the service Python is missing that dependency).
+    """
+    import io
+
+    filters = _filters_from_request()
+    year = int(filters["year"])
+    hide_financial = get_effective_role() == "receptionist"
+    rows = _dashboard_export_rows(filters)
+    suffix = _export_filename_suffix(filters)
+
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        app.logger.error(
+            "openpyxl not installed — Export falling back to CSV. "
+            "Run: python -m pip install \"openpyxl>=3.1.0\""
+        )
+        return _export_dashboard_csv(rows, year, hide_financial, suffix)
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = f"TaxOps {year}"
 
-    # ── Styles ────────────────────────────────────────────────────────────────
     HEADER_FILL  = PatternFill("solid", fgColor="1E293B")
     HEADER_FONT  = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
     DATA_FONT    = Font(name="Calibri", size=11)
@@ -4671,105 +4813,112 @@ def export_excel():
         "LOG OUT":     "F1F5F9",
     }
 
-    # ── Header row ────────────────────────────────────────────────────────────
-    COLUMNS = [
-        ("Log #",        9),  ("Last Name",    22), ("First Name",   18),
-        ("Year",         7),  ("Status",       14), ("Preparer",     12),
-        ("Forms",        18), ("Intake Date",  13), ("Pickup Date",  13),
-        ("Logout Date",  13), ("Total Fee",    12), ("Fee Paid",     12),
-        ("Balance",      12), ("Receipt #",    13), ("✓",             5),
-    ]
+    COLUMNS = _dashboard_export_columns(hide_financial)
+
     for col_idx, (label, width) in enumerate(COLUMNS, start=1):
         cell = ws.cell(row=1, column=col_idx, value=label)
-        cell.font      = HEADER_FONT
-        cell.fill      = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.fill = HEADER_FILL
         cell.alignment = CENTER
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
     ws.row_dimensions[1].height = 22
     ws.freeze_panes = "A2"
 
-    # ── Data rows ─────────────────────────────────────────────────────────────
+    money_start = None
+    for idx, (label, _w) in enumerate(COLUMNS, start=1):
+        if label == "Total Fee":
+            money_start = idx
+            break
+
     for row_idx, r in enumerate(rows, start=2):
         status  = r.get("client_status") or ""
         fill_hex = STATUS_COLORS.get(status, "FFFFFF")
         row_fill = PatternFill("solid", fgColor=fill_hex)
-
-        forms_str = "  ".join(r.get("forms") or [])
-        balance   = r.get("balance") or 0
-        total_fee = r.get("total_fee") or 0
-        fee_paid  = r.get("fee_paid") or 0
-
-        values = [
-            r.get("log_number") or "",
-            r.get("last_name")  or "",
-            r.get("first_name") or "",
-            r.get("tax_year")   or "",
-            status,
-            r.get("processor")  or "",
-            forms_str,
-            r.get("intake_date")  or "",
-            r.get("pickup_date")  or "",
-            r.get("logout_date")  or "",
-            total_fee,
-            fee_paid,
-            balance,
-            r.get("receipt_number") or "",
-            "✓" if r.get("verified") else "",
-        ]
+        balance  = r.get("balance") or 0
+        values = _dashboard_export_row_values(r, hide_financial)
 
         for col_idx, value in enumerate(values, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
-            cell.fill   = row_fill
+            cell.fill = row_fill
             cell.border = BORDER
-            cell.font   = DATA_FONT
-            # Money columns
-            if col_idx in (11, 12, 13) and isinstance(value, (int, float)) and value:
-                cell.number_format = MONEY
-                cell.alignment     = Alignment(horizontal="right", vertical="center")
-                if col_idx == 13 and balance > 0:
-                    cell.font = Font(name="Calibri", size=11, bold=True, color="DC2626")
-            elif col_idx == 1:
-                cell.font      = Font(name="Calibri", bold=True, size=11)
+            cell.font = DATA_FONT
+            label = COLUMNS[col_idx - 1][0]
+            if money_start and col_idx >= money_start and col_idx < money_start + 3:
+                if isinstance(value, (int, float)) and value:
+                    cell.number_format = MONEY
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+                    if label == "Balance" and balance > 0:
+                        cell.font = Font(name="Calibri", size=11, bold=True, color="DC2626")
+            elif label == "Log #":
+                cell.font = Font(name="Calibri", bold=True, size=11)
                 cell.alignment = CENTER
-            elif col_idx in (4, 15):
+            elif label in ("Year", "Days Left", "✓"):
                 cell.alignment = CENTER
+                if label == "Days Left" and isinstance(value, int) and 0 <= value <= 30:
+                    cell.font = Font(name="Calibri", size=11, bold=True, color="C2410C")
             else:
                 cell.alignment = LEFT
 
         ws.row_dimensions[row_idx].height = 18
 
-    # ── Auto-filter ───────────────────────────────────────────────────────────
     ws.auto_filter.ref = f"A1:{get_column_letter(len(COLUMNS))}1"
 
-    # ── Footer summary ────────────────────────────────────────────────────────
-    footer_row = len(rows) + 2
-    ws.cell(row=footer_row, column=10, value="TOTALS").font = BOLD_FONT
-    total_fee_sum = sum(r.get("total_fee") or 0 for r in rows)
-    fee_paid_sum  = sum(r.get("fee_paid")  or 0 for r in rows)
-    balance_sum   = sum(r.get("balance")   or 0 for r in rows)
-    for col_idx, val in [(11, total_fee_sum), (12, fee_paid_sum), (13, balance_sum)]:
-        c = ws.cell(row=footer_row, column=col_idx, value=val)
-        c.font         = BOLD_FONT
-        c.number_format = MONEY
-        c.alignment    = Alignment(horizontal="right", vertical="center")
-        if col_idx == 13 and val > 0:
-            c.font = Font(name="Calibri", bold=True, size=11, color="DC2626")
+    if not hide_financial and money_start:
+        footer_row = len(rows) + 2
+        ws.cell(row=footer_row, column=money_start - 1, value="TOTALS").font = BOLD_FONT
+        total_fee_sum = sum(r.get("total_fee") or 0 for r in rows)
+        fee_paid_sum  = sum(r.get("fee_paid")  or 0 for r in rows)
+        balance_sum   = sum(r.get("balance")   or 0 for r in rows)
+        for col_idx, val in [
+            (money_start, total_fee_sum),
+            (money_start + 1, fee_paid_sum),
+            (money_start + 2, balance_sum),
+        ]:
+            c = ws.cell(row=footer_row, column=col_idx, value=val)
+            c.font = BOLD_FONT
+            c.number_format = MONEY
+            c.alignment = Alignment(horizontal="right", vertical="center")
+            if col_idx == money_start + 2 and val > 0:
+                c.font = Font(name="Calibri", bold=True, size=11, color="DC2626")
 
-    # ── Stream to response ────────────────────────────────────────────────────
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
 
-    status_label = (filters["status"][0] if filters["status"] else "ALL").replace(" ", "-")
-    filename = f"TaxOps_{year}_{status_label}.xlsx"
+    filename = f"TaxOps_{year}_{suffix}.xlsx"
 
-    from flask import send_file
     return send_file(
         buf,
         as_attachment=True,
         download_name=filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/export/upcoming-deadlines/print")
+@login_required
+@view_only_for("receptionist")
+def export_upcoming_deadlines_print():
+    """Printable upcoming-deadline report for the current dashboard season/filters."""
+    filters = _filters_from_request()
+    filters["upcoming_deadline"] = "1"
+    rows = _dashboard_export_rows(filters)
+    rows.sort(
+        key=lambda r: (
+            (r.get("last_name") or "").upper(),
+            (r.get("first_name") or "").upper(),
+            str(r.get("log_number") or r.get("id") or ""),
+        )
+    )
+    year = int(filters["year"])
+    return render_template(
+        "upcoming_deadlines_print.html",
+        rows=rows,
+        filters=filters,
+        current_year=year,
+        generated_on=date.today().isoformat(),
+        window_days=UPCOMING_DEADLINE_DAYS,
     )
 
 
@@ -5178,6 +5327,18 @@ def _score_client_search_hit(row, tokens: list[str], active_year: int) -> tuple:
     return (-preintake, -last_prefix, -first_prefix, -all_in_hay, -has_history, ln, fn, int(row["id"]))
 
 
+@app.get("/api/address/search")
+@login_required
+def api_address_search():
+    """US address suggestions for intake autofill (Census + Nominatim)."""
+    from address_search import search_addresses
+
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 3:
+        return jsonify([])
+    return jsonify(search_addresses(q, limit=6))
+
+
 @app.get("/api/clients/search")
 @login_required
 def api_client_search():
@@ -5335,18 +5496,6 @@ def api_client_search():
         })
     return jsonify(results)
 
-
-# Drake purple form-count headers → intake return_forms checkboxes (count ≥ 1).
-_PREFILL_FORM_CHECKBOX_MAP = {
-    "Schedule A": "sched_a_d",
-    "Schedule C": "sched_c",
-    "Schedule E": "sched_e",
-    "Form 1120": "form_1120",
-    "Form 1120S": "form_1120s",
-    "Form 1065": "form_1065_llc",
-    "Form 990": "form_990_1041",
-    "Form 1041": "form_990_1041",
-}
 
 # Drake Filing Status codes (TAXPAYER.csv) → intake <select> option values
 _DRAKE_FS_TO_INTAKE = {
@@ -6604,6 +6753,8 @@ def _validate_field(field: str, value) -> tuple[bool, str]:
         "verified", "is_amended", "has_w7", "is_extension",
         "transfer_flag", "transfer_2025_flag", "transfer_2026_flag",
         "signatures_given", "signatures_received", "referral_flag",
+        "extension_requested",
+        *FORM_EDITABLE,
     }
     # ISO-8601 date fields (YYYY-MM-DD or empty)
     _DATE_FIELDS = {
@@ -6664,14 +6815,25 @@ def _validate_field(field: str, value) -> tuple[bool, str]:
 
 
 @app.post("/api/return/<int:return_id>/field")
-@role_required("preparer")
+@login_required
 def api_field(return_id: int):
     data  = _get_json_safe()
     field = (data.get("field") or "").strip()
     value = data.get("value")
+
+    if field in FRONT_DESK_FIELD_EDIT:
+        if not has_permission("can_edit_client_profile"):
+            return jsonify({"error": "forbidden", "required_permission": "can_edit_client_profile"}), 403
+    elif field in PREPARER_FIELD_EDIT:
+        from config import ROLE_HIERARCHY
+        if ROLE_HIERARCHY.get(get_effective_role(), 0) < ROLE_HIERARCHY.get("preparer", 0):
+            return jsonify({"error": "forbidden", "required_role": "preparer"}), 403
+    else:
+        return jsonify({"error": "Field not editable"}), 400
+
     if field == "processor":
         value = normalize_preparer(value) if (value is not None and str(value).strip() != "") else None
-    elif field in (RETURN_EDITABLE | CLIENT_EDITABLE | PAYMENT_EDITABLE):
+    elif field in (RETURN_EDITABLE | CLIENT_EDITABLE | PAYMENT_EDITABLE | FORM_EDITABLE):
         ok, coerced = _validate_field(field, value)
         if not ok:
             return jsonify({"error": coerced}), 400
@@ -6684,13 +6846,9 @@ def api_field(return_id: int):
                 f"UPDATE returns SET {field}=?, updated_at=? WHERE id=?",
                 (value, now(), return_id),
             )
-            # Auto-advance to LOG OUT when a completion date is recorded.
-            # logout_date = physically logged out; ack_date = IRS accepted.
-            # Either one means the engagement is closed.
-            auto_logout = (
-                (field == "ack_date"    and value) or
-                (field == "logout_date" and value)
-            )
+            # Auto-advance to LOG OUT only when IRS acceptance is recorded.
+            # logout_date is physical pickup / Drake Completed — not case-closed by itself.
+            auto_logout = field == "ack_date" and value
             if auto_logout:
                 cur = conn.execute(
                     "SELECT client_status FROM returns WHERE id=?", (return_id,)
@@ -6716,6 +6874,16 @@ def api_field(return_id: int):
                     f"UPDATE clients SET {field}=?, updated_at=? WHERE id=?",
                     (value, now(), cid["client_id"]),
                 )
+                if field == "taxpayer_email" and (value or "").strip():
+                    from email_inbox_link import link_inbox_for_client_email
+
+                    link_inbox_for_client_email(
+                        conn,
+                        int(cid["client_id"]),
+                        return_id=return_id,
+                        assigned_by=session.get("username") or "profile",
+                        taxpayer_email=str(value).strip(),
+                    )
         elif field in PAYMENT_EDITABLE:
             prow = conn.execute(
                 "SELECT id FROM payments WHERE return_id=?", (return_id,)
@@ -6727,6 +6895,21 @@ def api_field(return_id: int):
             else:
                 conn.execute(
                     f"INSERT INTO payments (return_id, {field}) VALUES (?,?)", (return_id, value)
+                )
+        elif field in FORM_EDITABLE:
+            row = conn.execute(
+                "SELECT id FROM return_forms WHERE return_id=? LIMIT 1",
+                (return_id,),
+            ).fetchone()
+            if row:
+                conn.execute(
+                    f"UPDATE return_forms SET {field}=? WHERE return_id=?",
+                    (value, return_id),
+                )
+            else:
+                conn.execute(
+                    f"INSERT INTO return_forms (return_id, {field}) VALUES (?, ?)",
+                    (return_id, value),
                 )
         else:
             return jsonify({"error": "Field not editable"}), 400
@@ -7342,6 +7525,26 @@ def api_intake_sheet(return_id: int):
                FROM dependents WHERE return_id=? AND is_deleted=0 ORDER BY id""",
             (return_id,),
         ).fetchall()
+
+        drake_email = ""
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='drake_prefill_links'"
+        ).fetchone():
+            hh = conn.execute(
+                """
+                SELECT hh.taxpayer_email
+                FROM returns r
+                JOIN drake_prefill_links l ON l.client_id = r.client_id
+                JOIN drake_household_prefill hh ON hh.link_id = l.id
+                WHERE r.id = ?
+                  AND trim(coalesce(hh.taxpayer_email, '')) != ''
+                ORDER BY l.tax_year DESC, l.id DESC
+                LIMIT 1
+                """,
+                (return_id,),
+            ).fetchone()
+            if hh:
+                drake_email = (hh["taxpayer_email"] or "").strip()
     finally:
         conn.close()
 
@@ -7363,6 +7566,8 @@ def api_intake_sheet(return_id: int):
     net_fee   = max(0.0, total_fee - discount - sp_disc)
     fee_paid  = float((pmt["fee_paid"] or 0)) if pmt else 0.0
 
+    display_email = (r.get("taxpayer_email") or "").strip() or drake_email
+
     return render_template(
         "intake_print.html",
         r=r,
@@ -7377,6 +7582,8 @@ def api_intake_sheet(return_id: int):
         net_fee=net_fee,
         fee_paid=fee_paid,
         return_id=return_id,
+        display_email=display_email,
+        drake_email_fallback=drake_email if drake_email and not (r.get("taxpayer_email") or "").strip() else "",
     )
 
 

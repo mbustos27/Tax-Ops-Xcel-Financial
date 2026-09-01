@@ -37,6 +37,7 @@ ENDPOINTS: list[tuple[str, tuple[int, ...]]] = [
     ("/login",     (200,)),
     ("/review",    (200, 302)),
     ("/payments",  (200, 302)),
+    ("/export",    (200, 302)),  # 302 login redirect; must not 500
 ]
 
 

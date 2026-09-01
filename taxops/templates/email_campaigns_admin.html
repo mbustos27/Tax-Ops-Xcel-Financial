@@ -1,0 +1,512 @@
+{% extends "base.html" %}
+{% block title %}Email Campaigns — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="p-6 max-w-6xl mx-auto space-y-8">
+
+  <div>
+    <h1 class="text-2xl font-bold" style="color:var(--text-primary)">Client Email Campaigns</h1>
+    <p class="text-sm mt-1" style="color:var(--text-secondary)">
+      Choose return category → preview audience and <strong>rendered email</strong> → test send → approve → live send.
+    </p>
+  </div>
+
+  <section class="rounded-xl p-4 text-sm" style="background:var(--card-bg);border:1px solid var(--border-subtle)">
+    <h2 class="font-bold mb-2" style="color:var(--text-primary)">Send safety gates</h2>
+    <ul class="space-y-1" style="color:var(--text-secondary)">
+      <li>SMTP dry run: <strong id="gate-dry-run">{{ send_safety.smtp_dry_run }}</strong></li>
+      <li>Allow SMTP: <strong id="gate-allow">{{ send_safety.allow_smtp }}</strong></li>
+      <li>Will open SMTP socket: <strong id="gate-connect">{{ send_safety.will_connect }}</strong></li>
+      <li>SMTP configured: <strong>{{ send_safety.smtp_configured }}</strong></li>
+    </ul>
+    {% if send_safety.will_connect %}
+    <p class="mt-2 text-amber-700 font-semibold">Live SMTP is ENABLED — real email can be sent.</p>
+    {% else %}
+    <p class="mt-2 font-semibold" style="color:var(--status-finalize-text)">Safe mode — records only, no outbound SMTP.</p>
+    {% endif %}
+  </section>
+
+  <section class="rounded-xl p-5 space-y-4" style="background:var(--card-bg);border:1px solid var(--border-subtle)">
+    <h2 class="text-sm font-bold uppercase tracking-wide" style="color:var(--text-secondary)">New campaign</h2>
+
+    <div id="form-result" class="hidden rounded-lg px-4 py-2.5 text-sm font-medium"></div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs font-semibold mb-1" for="campaign-category">Return category</label>
+        <select id="campaign-category" class="w-full rounded-lg border px-3 py-2 text-sm"
+                style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+          {% for cat in campaign_categories %}
+          <option value="{{ cat.id }}">{{ cat.label }}</option>
+          {% endfor %}
+        </select>
+        <p class="text-xs mt-1" style="color:var(--text-muted)">Filters audience by return type (1040 vs 1120 / 1120-S / 1065).</p>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold mb-1" for="template-id">Template</label>
+        <select id="template-id" class="w-full rounded-lg border px-3 py-2 text-sm"
+                style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+          {% for t in email_templates %}
+          <option value="{{ t.id }}" data-category="{{ t.category or 'all' }}" data-key="{{ t.key }}">{{ t.key }} — {{ t.subject[:80] }}{% if t.subject|length > 80 %}…{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold mb-1" for="tax-year">Tax year</label>
+        <input id="tax-year" type="number" value="{{ campaign_default_tax_year }}" class="w-full rounded-lg border px-3 py-2 text-sm"
+               style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+        <p class="text-xs mt-1" style="color:var(--text-muted)">Use active intake year ({{ campaign_default_tax_year }}) until TY2026 season starts.</p>
+      </div>
+      <div class="sm:col-span-2">
+        <label class="block text-xs font-semibold mb-1" for="status-filter">Client status (comma-separated)</label>
+        <input id="status-filter" type="text" placeholder="PROCESSING, HOLD" value="PROCESSING"
+               class="w-full rounded-lg border px-3 py-2 text-sm"
+               style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="open-missing-docs" type="checkbox">
+        <label for="open-missing-docs" class="text-sm">Open missing documents only</label>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="is-extension" type="checkbox">
+        <label for="is-extension" class="text-sm">Extension track only</label>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="stale-processing" type="checkbox">
+        <label for="stale-processing" class="text-sm">Stale processing (60+ days in PROCESSING)</label>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="slow-cycle" type="checkbox">
+        <label for="slow-cycle" class="text-sm">Slow cycle (21+ day intake→close)</label>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="in-progress-only" type="checkbox">
+        <label for="in-progress-only" class="text-sm">In-progress statuses only</label>
+      </div>
+    </div>
+
+    <div id="deadline-panel" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-lg" style="background:var(--bg-subtle)">
+      <div class="sm:col-span-2">
+        <label class="block text-xs font-semibold mb-1" for="tax-deadline-id">Tax deadline</label>
+        <select id="tax-deadline-id" class="w-full rounded-lg border px-3 py-2 text-sm"
+                style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+          <option value="">— select deadline —</option>
+        </select>
+        <p class="text-xs mt-1" style="color:var(--text-muted)">Used with early/final deadline reminder templates.</p>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold mb-1" for="extension-within-days">Extension due within (days)</label>
+        <input id="extension-within-days" type="number" min="0" placeholder="14"
+               class="w-full rounded-lg border px-3 py-2 text-sm"
+               style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold mb-1" for="deadline-within-days">Deadline window max (days out)</label>
+        <input id="deadline-within-days" type="number" min="0" placeholder="30"
+               class="w-full rounded-lg border px-3 py-2 text-sm"
+               style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold mb-1" for="deadline-min-days">Deadline window min (days out)</label>
+        <input id="deadline-min-days" type="number" min="0" placeholder="0"
+               class="w-full rounded-lg border px-3 py-2 text-sm"
+               style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-3">
+      <button type="button" id="btn-preview" class="px-4 py-2 rounded-lg text-sm font-semibold"
+              style="background:var(--btn-primary-bg);color:var(--btn-primary-text)">Preview audience &amp; email</button>
+      <button type="button" id="btn-create" class="px-4 py-2 rounded-lg text-sm font-semibold"
+              style="background:var(--btn-secondary-bg);color:var(--btn-secondary-text)">Save draft campaign</button>
+    </div>
+
+    <div id="preview-stats" class="hidden text-sm p-3 rounded-lg" style="background:var(--bg-subtle);color:var(--text-secondary)"></div>
+
+    <div id="email-preview-panel" class="hidden space-y-3 border rounded-xl p-4" style="border-color:var(--border-subtle)">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h3 class="text-sm font-bold uppercase tracking-wide" style="color:var(--text-secondary)">Email preview</h3>
+        <div class="flex items-center gap-2">
+          <label class="text-xs font-semibold" for="preview-sample-idx">Sample recipient</label>
+          <select id="preview-sample-idx" class="rounded-lg border px-2 py-1 text-sm"
+                  style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)"></select>
+        </div>
+      </div>
+      <div class="rounded-lg px-3 py-2 text-sm font-semibold" style="background:var(--bg-subtle);color:var(--text-primary)">
+        Subject: <span id="preview-subject"></span>
+      </div>
+      <div class="flex gap-2">
+        <button type="button" id="tab-html" class="preview-tab px-3 py-1 rounded text-xs font-semibold">HTML</button>
+        <button type="button" id="tab-text" class="preview-tab px-3 py-1 rounded text-xs font-semibold">Plain text</button>
+      </div>
+      <div id="preview-html-wrap" class="rounded-lg border overflow-hidden" style="border-color:var(--border-subtle)">
+        <iframe id="preview-html-frame" title="Email HTML preview" class="w-full border-0" style="min-height:420px;background:#f4f4f4"></iframe>
+      </div>
+      <pre id="preview-text-wrap" class="hidden text-xs p-3 rounded-lg overflow-x-auto whitespace-pre-wrap"
+           style="background:var(--bg-subtle);color:var(--text-secondary);max-height:420px"></pre>
+      <p class="text-xs" style="color:var(--text-muted)">
+        Preview uses real client data for the selected sample (name, log #, missing items). Not sent until test/live send.
+      </p>
+    </div>
+  </section>
+
+  <section class="rounded-xl p-5 space-y-4" style="background:var(--card-bg);border:1px solid var(--border-subtle)">
+    <h2 class="text-sm font-bold uppercase tracking-wide" style="color:var(--text-secondary)">Test &amp; send</h2>
+    <p class="text-sm" style="color:var(--text-muted)">Campaign ID from draft or recent list below.</p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs font-semibold mb-1" for="campaign-id">Campaign ID</label>
+        <input id="campaign-id" type="number" min="1" class="w-full rounded-lg border px-3 py-2 text-sm"
+               style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold mb-1" for="test-address">Test inbox (your address)</label>
+        <input id="test-address" type="email" placeholder="you@firm.com" class="w-full rounded-lg border px-3 py-2 text-sm"
+               style="background:var(--input-bg);border-color:var(--input-border);color:var(--text-primary)">
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-3">
+      <button type="button" id="btn-test-send" class="px-4 py-2 rounded-lg text-sm font-semibold"
+              style="background:var(--btn-secondary-bg);color:var(--btn-secondary-text)">Test send</button>
+      <button type="button" id="btn-approve" class="px-4 py-2 rounded-lg text-sm font-semibold"
+              style="background:var(--btn-secondary-bg);color:var(--btn-secondary-text)">Approve after test</button>
+      <button type="button" id="btn-live-send" class="px-4 py-2 rounded-lg text-sm font-semibold"
+              style="background:var(--status-rejected-bg);color:#fff">Live send (approved only)</button>
+    </div>
+    <pre id="send-output" class="hidden text-xs p-3 rounded-lg overflow-x-auto"
+         style="background:var(--bg-subtle);color:var(--text-secondary)"></pre>
+  </section>
+
+  {% if recent_campaigns %}
+  <section class="rounded-xl overflow-hidden" style="border:1px solid var(--border-subtle)">
+    <div class="px-5 py-3 border-b" style="background:var(--bg-subtle)">
+      <span class="text-xs font-bold tracking-widest uppercase" style="color:var(--text-secondary)">Recent campaigns</span>
+    </div>
+    <table class="w-full text-sm">
+      <thead>
+        <tr style="background:var(--bg-subtle)">
+          <th class="text-left px-4 py-2">ID</th>
+          <th class="text-left px-4 py-2">Category</th>
+          <th class="text-left px-4 py-2">Template</th>
+          <th class="text-left px-4 py-2">Status</th>
+          <th class="text-left px-4 py-2">Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in recent_campaigns %}
+        <tr style="border-top:1px solid var(--border-subtle)">
+          <td class="px-4 py-2"><button type="button" class="pick-campaign font-mono underline" data-id="{{ c.id }}">{{ c.id }}</button></td>
+          <td class="px-4 py-2">{{ c.category or 'all' }}</td>
+          <td class="px-4 py-2">{{ c.template_key }}</td>
+          <td class="px-4 py-2">{{ c.status }}</td>
+          <td class="px-4 py-2">{{ c.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+</div>
+
+<script>
+const _allTemplateOptions = Array.from(document.getElementById('template-id').options);
+let _previewSamples = [];
+let _taxDeadlines = [];
+
+const TEMPLATE_PRESETS = {
+  missing_docs_reminder: {
+    status: 'PROCESSING, HOLD',
+    open_missing_docs: true,
+  },
+  extension_deadline_reminder: {
+    status: 'PROCESSING, HOLD, FINALIZE',
+    is_extension: true,
+    extension_within_days: 14,
+  },
+  deadline_reminder_early: {
+    status: 'PROCESSING, HOLD, FINALIZE',
+    in_progress_only: true,
+    deadline_within_days: 30,
+    deadline_min_days: 8,
+    show_deadline_panel: true,
+  },
+  deadline_reminder_final: {
+    status: 'PROCESSING, HOLD, FINALIZE',
+    in_progress_only: true,
+    deadline_within_days: 7,
+    deadline_min_days: 0,
+    show_deadline_panel: true,
+  },
+  stale_processing_reminder: {
+    status: '',
+    stale_processing: true,
+  },
+  slow_cycle_reminder: {
+    status: 'PROCESSING, HOLD, FINALIZE, PICKUP',
+    slow_cycle: true,
+  },
+};
+
+async function loadTaxDeadlines() {
+  const ty = parseInt(document.getElementById('tax-year').value, 10) || {{ campaign_default_tax_year }};
+  const r = await _csrfFetch(`/api/email-campaigns/deadlines?tax_year=${ty}`);
+  const data = await r.json();
+  _taxDeadlines = data.deadlines || [];
+  const sel = document.getElementById('tax-deadline-id');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— select deadline —</option>';
+  _taxDeadlines.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = String(d.id);
+    opt.textContent = `${d.label} (${d.due_date})`;
+    sel.appendChild(opt);
+  });
+  if (prev && Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
+}
+
+function applyTemplatePreset() {
+  const sel = document.getElementById('template-id');
+  const opt = sel.options[sel.selectedIndex];
+  const key = opt ? opt.dataset.key : '';
+  const preset = TEMPLATE_PRESETS[key];
+  if (!preset) return;
+
+  document.getElementById('status-filter').value = preset.status || '';
+  document.getElementById('open-missing-docs').checked = !!preset.open_missing_docs;
+  document.getElementById('is-extension').checked = !!preset.is_extension;
+  document.getElementById('stale-processing').checked = !!preset.stale_processing;
+  document.getElementById('slow-cycle').checked = !!preset.slow_cycle;
+  document.getElementById('in-progress-only').checked = !!preset.in_progress_only;
+  document.getElementById('extension-within-days').value = preset.extension_within_days ?? '';
+  document.getElementById('deadline-within-days').value = preset.deadline_within_days ?? '';
+  document.getElementById('deadline-min-days').value = preset.deadline_min_days ?? '';
+
+  const panel = document.getElementById('deadline-panel');
+  if (preset.show_deadline_panel) {
+    panel.classList.remove('hidden');
+    loadTaxDeadlines();
+  } else {
+    panel.classList.add('hidden');
+  }
+}
+
+function audiencePayload() {
+  const statuses = (document.getElementById('status-filter').value || '')
+    .split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  const aud = {
+    tax_year: parseInt(document.getElementById('tax-year').value, 10) || {{ campaign_default_tax_year }},
+    campaign_category: document.getElementById('campaign-category').value,
+  };
+  if (statuses.length) aud.status = statuses;
+  if (document.getElementById('open-missing-docs').checked) aud.open_missing_docs = true;
+  if (document.getElementById('is-extension').checked) aud.is_extension = true;
+  if (document.getElementById('stale-processing').checked) aud.stale_processing = true;
+  if (document.getElementById('slow-cycle').checked) aud.slow_cycle = true;
+  if (document.getElementById('in-progress-only').checked) aud.in_progress_only = true;
+
+  const extWithin = document.getElementById('extension-within-days').value;
+  if (extWithin !== '') aud.extension_due_within_days = parseInt(extWithin, 10);
+
+  const tdId = document.getElementById('tax-deadline-id').value;
+  if (tdId) aud.tax_deadline_id = parseInt(tdId, 10);
+  const dWithin = document.getElementById('deadline-within-days').value;
+  if (dWithin !== '') aud.deadline_due_within_days = parseInt(dWithin, 10);
+  const dMin = document.getElementById('deadline-min-days').value;
+  if (dMin !== '') aud.deadline_due_min_days = parseInt(dMin, 10);
+  return aud;
+}
+
+function filterTemplatesForCategory() {
+  const cat = document.getElementById('campaign-category').value;
+  const sel = document.getElementById('template-id');
+  const prev = sel.value;
+  sel.innerHTML = '';
+  _allTemplateOptions.forEach(opt => {
+    const tc = opt.dataset.category || 'all';
+    if (tc === 'all' || tc === cat) {
+      sel.appendChild(opt.cloneNode(true));
+    }
+  });
+  if (sel.options.length) {
+    const hasPrev = Array.from(sel.options).some(o => o.value === prev);
+    sel.value = hasPrev ? prev : sel.options[0].value;
+  }
+}
+
+function showResult(el, ok, msg) {
+  el.classList.remove('hidden');
+  el.textContent = msg;
+  el.style.background = ok ? 'var(--status-finalize-bg)' : 'var(--status-rejected-bg)';
+  el.style.color = ok ? 'var(--status-finalize-text)' : '#fff';
+}
+
+function formatStats(stats) {
+  if (!stats) return '';
+  const parts = [
+    `Return rows matched: ${stats.audience_return_rows}`,
+    `Unique clients: ${stats.unique_clients_matched}`,
+    `Resolved recipients: ${stats.resolved_recipients}`,
+    `Dropped (no email): ${stats.dropped_no_email}`,
+    `Dropped (opt-out): ${stats.dropped_do_not_email}`,
+  ];
+  if (stats.deadline_window_blocked) {
+    parts.push(`Deadline window: blocked (${stats.deadline_window_reason || 'outside window'})`);
+    if (stats.days_until_deadline != null) {
+      parts.push(`Days until deadline: ${stats.days_until_deadline}`);
+    }
+  } else if (stats.deadline_window_active && stats.days_until_deadline != null) {
+    parts.push(`Days until deadline: ${stats.days_until_deadline}`);
+  }
+  return parts.join(' · ');
+}
+
+function renderPreviewSample(idx) {
+  const sample = _previewSamples[idx];
+  if (!sample) return;
+  document.getElementById('preview-subject').textContent = sample.subject || '(no subject)';
+  const iframe = document.getElementById('preview-html-frame');
+  iframe.srcdoc = sample.body_html || '<p style="padding:16px">No HTML body</p>';
+  document.getElementById('preview-text-wrap').textContent = sample.body_text || '(no plain-text body)';
+}
+
+function setPreviewTab(mode) {
+  const htmlWrap = document.getElementById('preview-html-wrap');
+  const textWrap = document.getElementById('preview-text-wrap');
+  const tabHtml = document.getElementById('tab-html');
+  const tabText = document.getElementById('tab-text');
+  if (mode === 'text') {
+    htmlWrap.classList.add('hidden');
+    textWrap.classList.remove('hidden');
+    tabText.style.background = 'var(--color-primary)';
+    tabText.style.color = '#fff';
+    tabHtml.style.background = 'var(--bg-subtle)';
+    tabHtml.style.color = 'var(--text-secondary)';
+  } else {
+    textWrap.classList.add('hidden');
+    htmlWrap.classList.remove('hidden');
+    tabHtml.style.background = 'var(--color-primary)';
+    tabHtml.style.color = '#fff';
+    tabText.style.background = 'var(--bg-subtle)';
+    tabText.style.color = 'var(--text-secondary)';
+  }
+}
+
+document.getElementById('campaign-category').addEventListener('change', filterTemplatesForCategory);
+document.getElementById('template-id').addEventListener('change', applyTemplatePreset);
+document.getElementById('tax-year').addEventListener('change', () => {
+  if (!document.getElementById('deadline-panel').classList.contains('hidden')) {
+    loadTaxDeadlines();
+  }
+});
+filterTemplatesForCategory();
+applyTemplatePreset();
+
+document.getElementById('tab-html').addEventListener('click', () => setPreviewTab('html'));
+document.getElementById('tab-text').addEventListener('click', () => setPreviewTab('text'));
+setPreviewTab('html');
+
+document.getElementById('preview-sample-idx').addEventListener('change', (e) => {
+  renderPreviewSample(parseInt(e.target.value, 10) || 0);
+});
+
+document.getElementById('btn-preview').addEventListener('click', async () => {
+  const templateId = parseInt(document.getElementById('template-id').value, 10);
+  const r = await _csrfFetch('/api/email-campaigns/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      template_id: templateId,
+      audience_definition: audiencePayload(),
+      sample_limit: 5,
+    }),
+  });
+  const data = await r.json();
+  const statsEl = document.getElementById('preview-stats');
+  statsEl.classList.remove('hidden');
+  statsEl.textContent = formatStats(data.stats);
+
+  _previewSamples = data.samples || [];
+  const panel = document.getElementById('email-preview-panel');
+  const idxSel = document.getElementById('preview-sample-idx');
+  idxSel.innerHTML = '';
+  if (_previewSamples.length === 0) {
+    panel.classList.add('hidden');
+    statsEl.textContent += ' · No rendered samples (check template or audience).';
+    return;
+  }
+  _previewSamples.forEach((s, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    const label = s.log_number ? `Log #${s.log_number}` : `client ${s.client_id}`;
+    opt.textContent = `${label} — ${s.client_name || 'Client'}`;
+    idxSel.appendChild(opt);
+  });
+  panel.classList.remove('hidden');
+  renderPreviewSample(0);
+  setPreviewTab('html');
+});
+
+document.getElementById('btn-create').addEventListener('click', async () => {
+  const templateId = parseInt(document.getElementById('template-id').value, 10);
+  const r = await _csrfFetch('/api/email-campaigns/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template_id: templateId, audience_definition: audiencePayload() }),
+  });
+  const data = await r.json();
+  const el = document.getElementById('form-result');
+  if (r.ok) {
+    document.getElementById('campaign-id').value = data.campaign_id;
+    showResult(el, true, `Draft campaign #${data.campaign_id} created`);
+  } else {
+    showResult(el, false, data.error || 'Create failed');
+  }
+});
+
+document.getElementById('btn-test-send').addEventListener('click', async () => {
+  const cid = parseInt(document.getElementById('campaign-id').value, 10);
+  const testAddress = document.getElementById('test-address').value.trim();
+  const r = await _csrfFetch(`/api/email-campaigns/${cid}/test-send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ test_address: testAddress }),
+  });
+  const data = await r.json();
+  const out = document.getElementById('send-output');
+  out.classList.remove('hidden');
+  out.textContent = JSON.stringify(data, null, 2);
+});
+
+document.getElementById('btn-approve').addEventListener('click', async () => {
+  const cid = parseInt(document.getElementById('campaign-id').value, 10);
+  const r = await _csrfFetch(`/api/email-campaigns/${cid}/approve`, { method: 'POST' });
+  const data = await r.json();
+  const out = document.getElementById('send-output');
+  out.classList.remove('hidden');
+  out.textContent = JSON.stringify(data, null, 2);
+});
+
+document.getElementById('btn-live-send').addEventListener('click', async () => {
+  if (!confirm('Live send to all resolved client addresses? Only proceed if test send looked correct.')) return;
+  const cid = parseInt(document.getElementById('campaign-id').value, 10);
+  const r = await _csrfFetch(`/api/email-campaigns/${cid}/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approve_confirmed: true }),
+  });
+  const data = await r.json();
+  const out = document.getElementById('send-output');
+  out.classList.remove('hidden');
+  out.textContent = JSON.stringify(data, null, 2);
+});
+
+document.querySelectorAll('.pick-campaign').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.getElementById('campaign-id').value = btn.dataset.id;
+  });
+});
+</script>
+{% endblock %}

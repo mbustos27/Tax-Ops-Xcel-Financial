@@ -70,11 +70,13 @@
         {% set _can_extension = has_permission('can_manage_extension_queue') %}
         {% set _can_email_tools = has_permission('can_use_email_tools') %}
         {% set _can_scan = has_permission('can_scan_intake_docs') %}
-        {% set _has_any_tools = _is_preparer or _can_efile or _can_extension or _can_email_tools or _can_scan %}
+        {% set _can_send_email = has_permission('can_send_client_email') %}
+        {% set _has_any_tools = _is_preparer or _can_efile or _can_extension or _can_email_tools or _can_send_email or _can_scan %}
         {% set daily_active =
-            active_page in ('logout','efile','extension','work_orders','email_inbox','receipt_queue',
+            active_page in ('logout','efile','extension','work_orders','email_inbox','email_campaigns','receipt_queue',
                             'dependents_review','spouses_review')
             or request.path.startswith('/email-inbox')
+            or request.path.startswith('/admin/email-campaigns')
             or (request.args.get('filter') == 'scan_deferred')
         %}
         {% set occasional_active =
@@ -139,6 +141,12 @@
               <span class="shrink-0 bg-blue-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{{ ei }}</span>
               {% endif %}
             </a>
+            {% if _can_send_email %}
+            <a href="/admin/email-campaigns"
+               class="tools-item {% if active_page == 'email_campaigns' %}tools-item-active{% endif %}">
+              {{ _('Email Campaigns') }}
+            </a>
+            {% endif %}
             {% endif %}
             {% if _can_scan %}
             <a href="/?filter=scan_deferred"

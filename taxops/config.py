@@ -381,6 +381,27 @@ GMAIL_CATEGORY_FOLDERS: dict = {
 # Set to False for non-Gmail IMAP servers (Exchange, Fastmail, etc.)
 USE_GMAIL_CATEGORIES: bool = os.environ.get("USE_GMAIL_CATEGORIES", "true").lower() == "true"
 
+OFFICE_PHONE: str = os.environ.get("OFFICE_PHONE", "")
+
+# Outbound client email (mass campaigns) — Prompt J placeholders; wired in Prompt L.
+# Leave SMTP_HOST blank until ops configures send method (see docs/investigations/mass-email-send-method.md).
+SMTP_HOST: str = os.environ.get("SMTP_HOST", "")
+SMTP_PORT: int = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER: str = os.environ.get("SMTP_USER", "")
+SMTP_PASS: str = os.environ.get("SMTP_PASS", "")
+SMTP_FROM: str = os.environ.get("SMTP_FROM", "")
+SMTP_USE_TLS: bool = os.environ.get("SMTP_USE_TLS", "true").lower() == "true"
+# Default true until human completes test-mode send (Prompt L).
+SMTP_DRY_RUN: bool = os.environ.get("SMTP_DRY_RUN", "true").lower() == "true"
+# Second gate: must be explicitly true before any SMTP socket is opened (tests stay dry).
+EMAIL_CAMPAIGN_ALLOW_SMTP: bool = (
+    os.environ.get("EMAIL_CAMPAIGN_ALLOW_SMTP", "false").lower() == "true"
+)
+# Live sends per second cap when throttling (Prompt L / Workspace limits).
+EMAIL_CAMPAIGN_SEND_DELAY_SEC: float = float(
+    os.environ.get("EMAIL_CAMPAIGN_SEND_DELAY_SEC", "1.0")
+)
+
 # ── Email classification helpers ──────────────────────────────────────────────
 # Domains that are always promotional for a tax office — never client documents.
 # Checked before the LLM is called to save time and improve accuracy.
@@ -564,6 +585,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "can_manage_extension_queue":  frozenset({"preparer", "admin"}),
     # Email inbox is admin-only until the workflow is fully hardened.
     "can_use_email_tools":         frozenset({"admin"}),
+    # Mass-email campaigns: preview/test/live send (admin-only; Prompt L).
+    "can_send_client_email":       frozenset({"admin"}),
     # Compliance Tracker: day-to-day filing period work (status updates,
     # roll-forward, correspondence notes) is preparer+admin — the actual
     # CDTFA/city filing work, not front-desk. Client/account/credential
@@ -576,6 +599,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     # Return documents: list/view/upload/tag/soft-delete (reception desk + preparers).
     # Drake sync stays separate (login + Drake flag) — not front-desk critical.
     "can_manage_return_documents": frozenset({"receptionist", "preparer", "admin"}),
+    # Client profile contact fields + filing status on latest return (intake desk).
+    "can_edit_client_profile":     frozenset({"receptionist", "preparer", "admin"}),
 }
 
 
@@ -643,9 +668,10 @@ DRAKE_STATUS_MAP: dict[str, str] = {
     # Transmitted, awaiting ack
     "E-FILED":                      "EFILE READY",
     "EFILED":                       "EFILE READY",
-    # Acknowledged / accepted → case closed
+    # Acknowledged / accepted → case closed (full return e-filed)
     "EF ACCEPTED":                  "LOG OUT",
-    "EF EXT ACCEPTED":              "LOG OUT",
+    # Extension-only ack — return still open until extended due date
+    "EF EXT ACCEPTED":              "PROCESSING",
     "EF ACCEPTED - STATE ONLY":     "LOG OUT",
     "EF ACCEPTED STATE ONLY":       "LOG OUT",
     "EF ACCEPT":                    "LOG OUT",
