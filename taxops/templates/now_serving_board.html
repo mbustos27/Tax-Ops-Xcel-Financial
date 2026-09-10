@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Now Serving') }} — TaxOps{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-5 pb-16" id="ns-board-root"
+     data-is-admin="{{ '1' if is_admin else '0' }}">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-800">{{ _('Now Serving') }}</h1>
+      <p class="text-sm text-slate-500 mt-0.5">{{ _('Call the next guest or send them to the other window.') }}</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a href="/now-serving/kiosk" target="_blank" rel="noopener"
+         class="text-xs font-semibold px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">
+        {{ _('Open kiosk') }}
+      </a>
+      {% if is_admin %}
+      <button type="button" id="ns-reset"
+              class="text-xs font-semibold px-3 py-2 rounded-lg border border-red-300 text-red-700 hover:bg-red-50">
+        {{ _('End-of-day reset') }}
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <p id="ns-err" class="hidden text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="ns-columns">
+    {% for w in [1, 2] %}
+    {% set col = snapshot.windows[w|string] %}
+    <section class="bg-white rounded-xl border border-slate-200 overflow-hidden" data-window="{{ w }}">
+      <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between"
+           style="background:var(--color-primary-light)">
+        <h2 class="font-bold text-sm" style="color:var(--color-primary-text)">{{ _('Window') }} {{ w }}</h2>
+        <span class="text-xs font-semibold text-slate-500">
+          <span data-role="waiting-count">{{ col.waiting_count }}</span> {{ _('waiting') }}
+        </span>
+      </div>
+      <div class="p-5 space-y-4">
+        <div>
+          <div class="text-[11px] uppercase tracking-wide font-bold text-slate-400">{{ _('Now Serving') }}</div>
+          <div class="text-4xl font-black tabular-nums mt-1" style="color:var(--color-primary)"
+               data-role="serving-label">
+            {{ col.serving.label if col.serving else '—' }}
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button"
+                  class="ns-call min-h-11 px-4 rounded-lg text-sm font-semibold text-white"
+                  style="background:var(--color-primary)"
+                  data-window="{{ w }}"
+                  {% if col.waiting_count == 0 %}disabled{% endif %}>
+            {{ _('Call Next') }}
+          </button>
+          <button type="button"
+                  class="ns-transfer min-h-11 px-4 rounded-lg text-sm font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50"
+                  data-window="{{ w }}"
+                  data-ticket-id="{{ col.serving.id if col.serving else '' }}"
+                  {% if not col.serving %}disabled{% endif %}>
+            {{ _('Send to Window') }} {{ 3 - w }}
+          </button>
+        </div>
+        <ul class="text-sm text-slate-600 space-y-1 max-h-40 overflow-y-auto" data-role="waiting-list">
+          {% for t in col.waiting %}
+          <li class="font-mono">{{ t.label }}</li>
+          {% else %}
+          <li class="text-slate-400" data-empty="1">{{ _('No one waiting') }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+(function () {
+  const root = document.getElementById('ns-board-root');
+  if (!root) return;
+  const isAdmin = root.dataset.isAdmin === '1';
+  const errEl = document.getElementById('ns-err');
+  const CALL = {{ _('Call Next') | tojson }};
+  const SEND = {{ _('Send to Window') | tojson }};
+  const NONE = {{ _('No one waiting') | tojson }};
+  const WAITING = {{ _('waiting') | tojson }};
+
+  function showErr(msg) {
+    if (!errEl) return;
+    if (!msg) { errEl.classList.add('hidden'); errEl.textContent = ''; return; }
+    errEl.textContent = msg;
+    errEl.classList.remove('hidden');
+  }
+
+  function paint(snap) {
+    if (!snap || !snap.windows) return;
+    [1, 2].forEach(function (w) {
+      const col = snap.windows[String(w)] || {};
+      const section = root.querySelector('section[data-window="' + w + '"]');
+      if (!section) return;
+      const serving = col.serving;
+      section.querySelector('[data-role="serving-label"]').textContent =
+        (serving && serving.label) ? serving.label : '—';
+      section.querySelector('[data-role="waiting-count"]').textContent =
+        col.waiting_count != null ? col.waiting_count : 0;
+      const callBtn = section.querySelector('.ns-call');
+      const xferBtn = section.querySelector('.ns-transfer');
+      if (callBtn) callBtn.disabled = !(col.waiting_count > 0);
+      if (xferBtn) {
+        xferBtn.disabled = !serving;
+        xferBtn.dataset.ticketId = serving ? String(serving.id) : '';
+        xferBtn.textContent = SEND + ' ' + (3 - w);
+      }
+      const list = section.querySelector('[data-role="waiting-list"]');
+      if (list) {
+        const rows = col.waiting || [];
+        if (!rows.length) {
+          list.innerHTML = '<li class="text-slate-400" data-empty="1">' + NONE + '</li>';
+        } else {
+          list.innerHTML = rows.map(function (t) {
+            return '<li class="font-mono">' + (t.label || '') + '</li>';
+          }).join('');
+        }
+      }
+    });
+  }
+
+  async function postJson(url, body) {
+    const resp = await _csrfFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await resp.json().catch(function () { return {}; });
+    return { ok: resp.ok, status: resp.status, data: data };
+  }
+
+  root.addEventListener('click', async function (e) {
+    const call = e.target.closest('.ns-call');
+    const xfer = e.target.closest('.ns-transfer');
+    if (call) {
+      showErr('');
+      call.disabled = true;
+      const res = await postJson('/now-serving/api/call-next', { window: parseInt(call.dataset.window, 10) });
+      if (res.data.snapshot) paint(res.data.snapshot);
+      if (!res.ok || !res.data.success) showErr(res.data.error || 'Call next failed');
+      return;
+    }
+    if (xfer) {
+      const tid = parseInt(xfer.dataset.ticketId, 10);
+      if (!tid) return;
+      showErr('');
+      xfer.disabled = true;
+      const res = await postJson('/now-serving/api/transfer', { ticket_id: tid });
+      if (res.data.snapshot) paint(res.data.snapshot);
+      if (!res.ok || !res.data.success) showErr(res.data.error || 'Transfer failed');
+    }
+  });
+
+  document.getElementById('ns-reset')?.addEventListener('click', async function () {
+    if (!isAdmin) return;
+    if (!confirm({{ _('Clear all tickets and restart numbering at 1? This cannot be undone.') | tojson }})) return;
+    showErr('');
+    const res = await postJson('/now-serving/api/reset', { confirm: true });
+    if (res.data.snapshot) paint(res.data.snapshot);
+    if (!res.ok || !res.data.success) showErr(res.data.error || 'Reset failed');
+  });
+
+  paint({{ snapshot | tojson }});
+
+  // Staff board: poll every 4s (no SSE — keeps load light and refresh predictable).
+  setInterval(function () {
+    fetch('/now-serving/api/snapshot', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(paint)
+      .catch(function () {});
+  }, 4000);
+})();
+</script>
+{% endblock %}

@@ -26,6 +26,26 @@ notifications_bp = Blueprint("notifications", __name__)
 _LIST_LIMIT = 30
 
 
+def notify_user(
+    conn,
+    *,
+    user_id: int,
+    title: str,
+    body: str | None,
+    link_url: str | None,
+    entity_type: str | None,
+    entity_id: int | None,
+    ts: str,
+) -> int:
+    """Insert one in-app notification row for a single auth_users.id."""
+    conn.execute(
+        "INSERT INTO notifications (user_id, title, body, link_url, entity_type, entity_id, is_read, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
+        (user_id, title, body, link_url, entity_type, entity_id, ts),
+    )
+    return int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+
 def _current_user_id(conn) -> int | None:
     username = session.get("username")
     if not username:

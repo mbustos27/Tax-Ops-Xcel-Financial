@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Now Serving — Lobby Display</title>
+  <style>
+    :root {
+      --cabernet: #6B2233;
+      --cabernet-deep: #3d1420;
+      --ink: #f8f4f5;
+      --muted: #c9b4b9;
+      --card: rgba(255, 255, 255, 0.08);
+      --flash: #f5d76e;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: radial-gradient(120% 100% at 50% 0%, #5a1d2c 0%, var(--cabernet-deep) 55%, #1a0a10 100%);
+      color: var(--ink);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+    .shell {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: clamp(1rem, 2.5vw, 2.5rem);
+      gap: clamp(0.75rem, 2vh, 1.5rem);
+    }
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(1.75rem, 4vw, 3.25rem);
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: clamp(0.95rem, 1.8vw, 1.35rem);
+      font-weight: 600;
+    }
+    .boards {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: clamp(0.75rem, 2vw, 1.75rem);
+      min-height: 0;
+    }
+    .board {
+      background: var(--card);
+      border: 2px solid rgba(255, 255, 255, 0.14);
+      border-radius: clamp(1rem, 2vw, 1.75rem);
+      padding: clamp(1rem, 2.5vw, 2rem);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      transition: box-shadow 0.35s ease, border-color 0.35s ease, transform 0.35s ease;
+    }
+    .board.flash {
+      border-color: var(--flash);
+      box-shadow: 0 0 0 4px rgba(245, 215, 110, 0.35), 0 20px 50px rgba(0, 0, 0, 0.35);
+      transform: scale(1.015);
+    }
+    .win {
+      font-size: clamp(1.1rem, 2.4vw, 2rem);
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .label-en, .label-es {
+      margin-top: 0.35rem;
+      font-size: clamp(0.95rem, 1.8vw, 1.35rem);
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .serving {
+      margin-top: 0.5rem;
+      font-size: clamp(4rem, 14vw, 11rem);
+      font-weight: 900;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+      text-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+    }
+    .waiting {
+      margin-top: clamp(0.75rem, 2vh, 1.5rem);
+      font-size: clamp(0.9rem, 1.6vw, 1.25rem);
+      color: var(--muted);
+    }
+    footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: clamp(0.75rem, 1.2vw, 0.95rem);
+    }
+    .status-dot {
+      display: inline-block;
+      width: 0.65rem;
+      height: 0.65rem;
+      border-radius: 50%;
+      background: #6ee7a8;
+      margin-right: 0.4rem;
+      vertical-align: middle;
+    }
+    .status-dot.off { background: #f87171; }
+    .controls button {
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 0.45rem 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .controls button[aria-pressed="true"] {
+      background: rgba(245, 215, 110, 0.25);
+      border-color: var(--flash);
+      color: #fff8d6;
+    }
+    #sound-gate {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(20, 8, 12, 0.82);
+      backdrop-filter: blur(4px);
+    }
+    #sound-gate.hidden { display: none; }
+    #sound-gate button {
+      border: none;
+      background: #fff;
+      color: var(--cabernet);
+      font-size: clamp(1.1rem, 2.5vw, 1.6rem);
+      font-weight: 800;
+      padding: 1.1rem 1.75rem;
+      border-radius: 1rem;
+      cursor: pointer;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+      max-width: 90vw;
+      text-align: center;
+      line-height: 1.35;
+    }
+    @media (max-width: 700px) {
+      .boards { grid-template-columns: 1fr; }
+      .serving { font-size: clamp(3.5rem, 22vw, 6rem); }
+    }
+  </style>
+</head>
+<body>
+  <div id="sound-gate">
+    <button type="button" id="enable-sound">
+      Tap to enable voice / Toque para activar voz<br>
+      <span style="font-weight:600;font-size:0.75em;opacity:0.8">English + Español</span>
+    </button>
+  </div>
+
+  <div class="shell">
+    <header>
+      <div>
+        <h1>Now Serving</h1>
+        <div class="sub">Ahora sirviendo</div>
+      </div>
+      <div class="controls">
+        <button type="button" id="mute-btn" aria-pressed="false">Mute voice</button>
+      </div>
+    </header>
+
+    <div class="boards" id="boards">
+      <section class="board" data-window="1">
+        <div class="win">Window 1 · Ventanilla 1</div>
+        <div class="label-en">Now serving</div>
+        <div class="label-es">Ahora sirviendo</div>
+        <div class="serving" data-role="serving">—</div>
+        <div class="waiting"><span data-role="waiting">0</span> waiting · en espera</div>
+      </section>
+      <section class="board" data-window="2">
+        <div class="win">Window 2 · Ventanilla 2</div>
+        <div class="label-en">Now serving</div>
+        <div class="label-es">Ahora sirviendo</div>
+        <div class="serving" data-role="serving">—</div>
+        <div class="waiting"><span data-role="waiting">0</span> waiting · en espera</div>
+      </section>
+    </div>
+
+    <footer>
+      <div>
+        <span id="live-dot" class="status-dot off" aria-hidden="true"></span>
+        <span id="live-label">Connecting…</span>
+      </div>
+      <div id="last-announcement" aria-live="polite"></div>
+    </footer>
+  </div>
+
+  <script type="application/json" id="initial-snapshot">{{ initial_snapshot | tojson }}</script>
+  <script>
+(function () {
+  const MUTE_KEY = "taxops-ns-display-mute";
+  const boards = document.getElementById("boards");
+  const liveDot = document.getElementById("live-dot");
+  const liveLabel = document.getElementById("live-label");
+  const muteBtn = document.getElementById("mute-btn");
+  const soundGate = document.getElementById("sound-gate");
+  const enableSound = document.getElementById("enable-sound");
+  const lastAnn = document.getElementById("last-announcement");
+
+  let muted = false;
+  try { muted = sessionStorage.getItem(MUTE_KEY) === "1"; } catch (e) {}
+  let voiceReady = false;
+  let speakQueue = Promise.resolve();
+  let lastByWindow = { "1": null, "2": null };
+  let primed = false;
+  let voices = [];
+
+  function setMuteUI() {
+    muteBtn.setAttribute("aria-pressed", muted ? "true" : "false");
+    muteBtn.textContent = muted ? "Unmute voice" : "Mute voice";
+  }
+  setMuteUI();
+
+  muteBtn.addEventListener("click", function () {
+    muted = !muted;
+    try { sessionStorage.setItem(MUTE_KEY, muted ? "1" : "0"); } catch (e) {}
+    setMuteUI();
+    if (muted && window.speechSynthesis) window.speechSynthesis.cancel();
+  });
+
+  function loadVoices() {
+    if (!window.speechSynthesis) return;
+    voices = window.speechSynthesis.getVoices() || [];
+  }
+  if (window.speechSynthesis) {
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }
+
+  // Prefer natural / neural voices over legacy desktop TTS (David, Zira, etc.).
+  var EN_NAME_PREFER = [
+    /google us english/i,
+    /microsoft aria/i,
+    /microsoft jenny/i,
+    /microsoft guy/i,
+    /microsoft michelle/i,
+    /microsoft andrew/i,
+    /microsoft emma/i,
+    /neural/i,
+    /natural/i,
+    /samantha/i,
+    /karen/i,
+    /moira/i,
+    /daniel/i,
+    /alex\b/i,
+    /premium/i,
+    /enhanced/i,
+    /online \(natural\)/i,
+  ];
+  var EN_NAME_AVOID = [
+    /microsoft david/i,
+    /microsoft zira/i,
+    /microsoft mark/i,
+    /microsoft hazel/i,
+    /microsoft susan/i,
+    /desktop/i,
+  ];
+  var ES_MX_NAME_PREFER = [
+    /m[eé]xico|mexican|mexico/i,
+    /sabina/i,
+    /dalia/i,
+    /jorge/i,
+    /renata/i,
+    /google espa[nñ]ol.*m[eé]xico/i,
+    /microsoft .*spanish.*mexico/i,
+    /es-mx/i,
+    /neural/i,
+    /natural/i,
+    /online \(natural\)/i,
+  ];
+
+  function scoreVoice(v, wantLang) {
+    if (!v) return -1e9;
+    var lang = (v.lang || "").toLowerCase().replace(/_/g, "-");
+    var name = (v.name || "");
+    var score = 0;
+    var want = (wantLang || "").toLowerCase().replace(/_/g, "-");
+
+    if (want.indexOf("es") === 0) {
+      if (lang === "es-mx" || lang.indexOf("es-mx") === 0) score += 200;
+      else if (lang === "es-us" || lang.indexOf("es-us") === 0) score += 120; // often MX-adjacent on Chromium
+      else if (lang.indexOf("es-419") === 0) score += 110;
+      else if (lang.indexOf("es") === 0) score += 40;
+      else return -1e9;
+      for (var i = 0; i < ES_MX_NAME_PREFER.length; i++) {
+        if (ES_MX_NAME_PREFER[i].test(name) || ES_MX_NAME_PREFER[i].test(lang)) score += 35;
+      }
+      if (/google/i.test(name)) score += 25;
+      if (/microsoft/i.test(name) && /natural|neural|online/i.test(name)) score += 30;
+      if (/desktop/i.test(name) && !/natural|neural/i.test(name)) score -= 40;
+    } else {
+      // English — prefer US, then other en, boost natural/neural names.
+      if (lang === "en-us" || lang.indexOf("en-us") === 0) score += 100;
+      else if (lang.indexOf("en-gb") === 0 || lang.indexOf("en-au") === 0) score += 50;
+      else if (lang.indexOf("en") === 0) score += 60;
+      else return -1e9;
+      for (var j = 0; j < EN_NAME_PREFER.length; j++) {
+        if (EN_NAME_PREFER[j].test(name)) score += 40;
+      }
+      for (var k = 0; k < EN_NAME_AVOID.length; k++) {
+        if (EN_NAME_AVOID[k].test(name)) score -= 80;
+      }
+      if (/google/i.test(name)) score += 30;
+      if (/microsoft/i.test(name) && /natural|neural|online/i.test(name)) score += 35;
+      if (/compact|mobile/i.test(name)) score -= 20;
+    }
+
+    // Local voices are more reliable on a Pi/kiosk without cloud TTS.
+    try {
+      if (v.localService) score += 8;
+    } catch (e) {}
+    return score;
+  }
+
+  function pickVoice(wantLang) {
+    var list = voices || [];
+    if (!list.length) return null;
+    var best = null;
+    var bestScore = -1e9;
+    for (var i = 0; i < list.length; i++) {
+      var s = scoreVoice(list[i], wantLang);
+      if (s > bestScore) {
+        bestScore = s;
+        best = list[i];
+      }
+    }
+    return bestScore > -1e8 ? best : null;
+  }
+
+  function speakOnce(text, lang) {
+    return new Promise(function (resolve) {
+      if (!voiceReady || muted || !window.speechSynthesis || !text) {
+        resolve();
+        return;
+      }
+      loadVoices();
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = lang;
+      var voice = pickVoice(lang);
+      if (voice) {
+        u.voice = voice;
+        // Keep utterance lang aligned with the chosen voice when possible.
+        if (voice.lang) u.lang = voice.lang;
+      }
+      // Slightly slower + neutral pitch reads clearer on lobby speakers.
+      u.rate = lang.toLowerCase().indexOf("es") === 0 ? 0.92 : 0.94;
+      u.pitch = 1.0;
+      u.onend = function () { resolve(); };
+      u.onerror = function () { resolve(); };
+      window.speechSynthesis.speak(u);
+    });
+  }
+
+    function enqueueAnnounce(label, windowNum) {
+    const en = "Now serving number " + label + " at window " + windowNum;
+    const es = "Ahora sirviendo el número " + label + " en ventanilla " + windowNum;
+    if (lastAnn) lastAnn.textContent = en + " · " + es;
+    speakQueue = speakQueue.then(function () {
+      return speakOnce(en, "en-US");
+    }).then(function () {
+      return new Promise(function (r) { setTimeout(r, 320); });
+    }).then(function () {
+      return speakOnce(es, "es-MX");
+    });
+  }
+
+  function flashBoard(section) {
+    section.classList.remove("flash");
+    void section.offsetWidth;
+    section.classList.add("flash");
+    setTimeout(function () { section.classList.remove("flash"); }, 1600);
+  }
+
+  function paint(snap) {
+    if (!snap || !snap.windows) return;
+    ["1", "2"].forEach(function (w) {
+      const col = snap.windows[w] || {};
+      const section = boards.querySelector('section[data-window="' + w + '"]');
+      if (!section) return;
+      const serving = col.serving;
+      const label = serving && serving.label ? serving.label : "—";
+      const idKey = serving ? String(serving.id) : null;
+      section.querySelector('[data-role="serving"]').textContent = label;
+      section.querySelector('[data-role="waiting"]').textContent =
+        col.waiting_count != null ? col.waiting_count : 0;
+
+      if (!primed) {
+        lastByWindow[w] = idKey;
+        return;
+      }
+      if (idKey && idKey !== lastByWindow[w]) {
+        lastByWindow[w] = idKey;
+        flashBoard(section);
+        enqueueAnnounce(label, w);
+      } else if (!idKey) {
+        lastByWindow[w] = null;
+      }
+    });
+    if (!primed) primed = true;
+  }
+
+  function setLive(ok) {
+    liveDot.classList.toggle("off", !ok);
+    liveLabel.textContent = ok ? "Live" : "Reconnecting…";
+  }
+
+  var POLL_MS = 3000; // 2–4s live poll (default mid-range)
+  try {
+    var pollParam = new URLSearchParams(window.location.search).get("poll");
+    if (pollParam) {
+      var n = parseInt(pollParam, 10);
+      if (n >= 2000 && n <= 4000) POLL_MS = n;
+    }
+  } catch (e) {}
+
+  function pollSnapshot() {
+    return fetch("/now-serving/api/snapshot", { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("snapshot " + r.status);
+        return r.json();
+      })
+      .then(function (snap) {
+        paint(snap);
+        setLive(true);
+      })
+      .catch(function () {
+        setLive(false);
+      });
+  }
+
+  function startPoll() {
+    pollSnapshot();
+    setInterval(pollSnapshot, POLL_MS);
+  }
+
+  // SSE for faster push when the network supports it; poll is the reliable baseline.
+  function connectEvents() {
+    var es;
+    try {
+      es = new EventSource("/now-serving/api/events");
+    } catch (e) {
+      return;
+    }
+    es.onmessage = function (ev) {
+      try {
+        paint(JSON.parse(ev.data));
+        setLive(true);
+      } catch (err) {}
+    };
+    es.onerror = function () {
+      try { es.close(); } catch (e) {}
+      setTimeout(connectEvents, 5000);
+    };
+  }
+
+  function unlockVoice() {
+    voiceReady = true;
+    soundGate.classList.add("hidden");
+    // Warm up speech engine (silent no-op utterance helps some Chromium builds).
+    if (window.speechSynthesis) {
+      try {
+        const warm = new SpeechSynthesisUtterance(" ");
+        warm.volume = 0;
+        window.speechSynthesis.speak(warm);
+      } catch (e) {}
+    }
+  }
+
+  enableSound.addEventListener("click", unlockVoice);
+  // Chromium kiosk with --autoplay-policy=no-user-gesture-required can skip the gate.
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("autosound") === "1") {
+      unlockVoice();
+    }
+  } catch (e) {}
+
+  try {
+    const initial = JSON.parse(document.getElementById("initial-snapshot").textContent || "{}");
+    paint(initial);
+  } catch (e) {}
+  startPoll();
+  connectEvents();
+})();
+  </script>
+</body>
+</html>

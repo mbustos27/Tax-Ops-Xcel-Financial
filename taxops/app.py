@@ -188,9 +188,12 @@ from routes.filetrack import api_filetrack_status, filetrack_bp
 from routes.work_orders import work_orders_bp
 from routes.work_order_quick_picks import wo_quick_picks_bp
 from routes.notifications import notifications_bp
+from routes.announcements import announcements_bp
+from routes.staff_messages import staff_messages_bp
 from routes.compliance import compliance_bp
 from routes.reception_agents import reception_agents_bp
 from routes.email_campaigns import email_campaigns_bp
+from routes.now_serving import now_serving_bp
 app.register_blueprint(documents_bp)
 app.register_blueprint(accounting_bp)
 app.register_blueprint(users_bp)
@@ -200,6 +203,7 @@ app.register_blueprint(email_health_bp)
 app.register_blueprint(filetrack_bp)
 app.register_blueprint(reception_agents_bp)
 app.register_blueprint(email_campaigns_bp)
+app.register_blueprint(now_serving_bp)
 # POST /filetrack/status is hit by the headless filetrack.listener process
 # (M3), which has no browser session and therefore no CSRF token to send —
 # it authenticates instead via its own X-Filetrack-Token header (see
@@ -215,6 +219,8 @@ _csrf.exempt(api_filetrack_status)
 app.register_blueprint(work_orders_bp)
 app.register_blueprint(wo_quick_picks_bp)
 app.register_blueprint(notifications_bp)
+app.register_blueprint(announcements_bp)
+app.register_blueprint(staff_messages_bp)
 app.register_blueprint(compliance_bp)
 
 
@@ -1605,20 +1611,38 @@ def _fetch_returns_for_client(conn: sqlite3.Connection, client_id: int) -> list[
 
 
 def _fetch_client_documents(conn: sqlite3.Connection, client_id: int) -> list[dict]:
-    rows = conn.execute(
+    """Return-scoped docs for this client PLUS client-profile (non-tax) docs."""
+    return_rows = conn.execute(
         """
         SELECT rd.id, rd.return_id, rd.filename, rd.original_filename,
                rd.doc_type, rd.uploaded_at, rd.uploaded_by,
-               r.tax_year, r.log_number
+               r.tax_year, r.log_number,
+               'return' AS scope, NULL AS scanned_from_return_id
           FROM return_documents rd
           JOIN returns r ON r.id = rd.return_id
          WHERE r.client_id = ?
            AND IFNULL(rd.is_deleted, 0) = 0
-         ORDER BY rd.uploaded_at IS NULL ASC, rd.uploaded_at DESC, rd.id DESC
         """,
         (client_id,),
     ).fetchall()
-    return [dict(r) for r in rows]
+    client_rows = conn.execute(
+        """
+        SELECT cd.id, NULL AS return_id, cd.filename, cd.original_filename,
+               cd.doc_type, cd.uploaded_at, cd.uploaded_by,
+               NULL AS tax_year, NULL AS log_number,
+               'client' AS scope, cd.scanned_from_return_id
+          FROM client_documents cd
+         WHERE cd.client_id = ?
+           AND IFNULL(cd.is_deleted, 0) = 0
+        """,
+        (client_id,),
+    ).fetchall()
+    merged = [dict(r) for r in return_rows] + [dict(r) for r in client_rows]
+    merged.sort(
+        key=lambda d: (d.get("uploaded_at") or "", d.get("id") or 0),
+        reverse=True,
+    )
+    return merged
 
 
 def _fetch_client_activity(conn: sqlite3.Connection, client_id: int, limit: int = 150) -> list[dict]:
@@ -1820,8 +1844,12 @@ def base_ctx(year: int | None = None) -> dict:
         receipt_review_count = 0
     # Email inbox — count unassigned attachments for the nav badge.
     try:
+        from utils import inbox_recent_cutoff_iso
+        cutoff = inbox_recent_cutoff_iso()
         unassigned_email_count = conn.execute(
-            "SELECT COUNT(*) n FROM email_inbox WHERE is_assigned=0 AND is_deleted=0"
+            "SELECT COUNT(*) n FROM email_inbox "
+            "WHERE is_assigned=0 AND is_deleted=0 AND received_at >= ?",
+            (cutoff,),
         ).fetchone()["n"]
     except Exception:
         unassigned_email_count = 0
@@ -2585,8 +2613,12 @@ def api_unread_documents():
     """
     conn = get_connection()
     try:
+        from utils import inbox_recent_cutoff_iso
+        cutoff = inbox_recent_cutoff_iso()
         row = conn.execute(
-            "SELECT COUNT(*) n FROM email_inbox WHERE is_assigned=0 AND is_deleted=0"
+            "SELECT COUNT(*) n FROM email_inbox "
+            "WHERE is_assigned=0 AND is_deleted=0 AND received_at >= ?",
+            (cutoff,),
         ).fetchone()
         return jsonify({"count": row["n"]})
     finally:
@@ -2869,7 +2901,7 @@ def return_detail(return_id: int):
     # Always use current calendar year for the season picker — never the return's tax year.
     ctx = base_ctx(date.today().year)
     ctx.update({
-        "active_page":    "dashboard",
+        "active_page":    "return",
         "ret":            ret,
         "notes":          notes_payload,
         "events":         [dict(e) for e in events],
@@ -2966,7 +2998,7 @@ def client_profile(client_id: int):
 
     ctx = base_ctx(yr)
     ctx.update({
-        "active_page":           "dashboard",
+        "active_page":           "client_profile",
         "client_id":             client_id,
         "client":                client_disp,
         "client_anchor_return_id": anchor_return_id,
@@ -2974,7 +3006,16 @@ def client_profile(client_id: int):
         "client_documents":      documents,
         "client_activity":       activity,
         "doc_year_options":      doc_year_options,
-        "doc_type_options":      sorted(_ALLOWED_RETURN_DOC_TYPES),
+        "doc_type_options":      sorted(
+            set(_ALLOWED_RETURN_DOC_TYPES) | {
+                "authorization", "correspondence", "engagement",
+            }
+        ),
+        "client_doc_type_options": sorted(
+            {"government_id", "authorization", "correspondence", "engagement", "misc"}
+        ),
+        "can_scan_intake_docs": has_permission("can_scan_intake_docs"),
+        "can_manage_return_documents": has_permission("can_manage_return_documents"),
         "filing_status_options": FILING_STATUS_OPTIONS,
         "filing_status_anchor": filing_for_form,
         "profile_title_name": nm,
@@ -3113,39 +3154,57 @@ _INBOX_FILTERS = {
     "needs_manual_tagging": lambda d: d["needs_manual_tagging"],
     "has_suggestion": lambda d: d.get("suggested_return_id") is not None,
     "older_than_7d": lambda d: d["age_bucket"] == "red",
+    "backlog": lambda d: not d.get("is_recent", True),
 }
 
 
-def _build_inbox_items(conn, *, filter_key: str | None = None) -> tuple[list[dict], dict]:
-    """Fetch, enrich (manual-tag flag, age bucket, suggestions), and
-    optionally filter unassigned/non-deleted email_inbox rows.
+def _build_inbox_items(
+    conn,
+    *,
+    filter_key: str | None = None,
+    scope: str = "recent",
+) -> tuple[list[dict], dict]:
+    """Fetch, enrich, and filter unassigned/non-deleted email_inbox rows.
 
-    Returns (items, summary) where summary has unassigned_total and
-    older_than_7d_total computed over the *unfiltered* set (so the header
-    summary line/count badge always reflects the whole queue, independent of
-    which filter chip is active). Default sort is oldest-first.
+    Default scope is *recent* (last EMAIL_INBOX_DISPLAY_DAYS, typically 14).
+    Use scope='backlog' or filter=backlog for older unassigned items.
+    scope='all' disables the age window (admin triage of full queue).
+
+    Returns (items, summary). Summary always reflects the full unassigned set
+    plus recent/backlog split so badges stay honest when a filter is active.
+    Default sort: newest-first for recent scope, oldest-first for backlog.
     """
-    from utils import needs_manual_tagging, age_bucket
+    from utils import needs_manual_tagging, age_bucket, inbox_recent_cutoff_iso, is_inbox_recent
     from email_suggest import enrich_items_with_suggestions
+    from config import EMAIL_INBOX_DISPLAY_DAYS
 
+    cutoff = inbox_recent_cutoff_iso()
     rows = conn.execute(
         "SELECT * FROM email_inbox WHERE is_assigned=0 AND is_deleted=0 "
-        "ORDER BY received_at ASC"
+        "ORDER BY received_at DESC"
     ).fetchall()
     items = [dict(r) for r in rows]
     for d in items:
         d["needs_manual_tagging"] = needs_manual_tagging(d.get("filename") or "")
         d["age_bucket"] = age_bucket(d.get("received_at"))
-    # Phase 3.1: non-binding suggestions, computed here (never in the IMAP
-    # poll cycle) and cached on the row. Never adds SSN/EIN/TIN/file_path.
+        d["is_recent"] = is_inbox_recent(d.get("received_at"))
     enrich_items_with_suggestions(conn, items)
 
     summary = {
         "unassigned_total": len(items),
+        "unassigned_recent_total": sum(1 for d in items if d["is_recent"]),
+        "unassigned_backlog_total": sum(1 for d in items if not d["is_recent"]),
         "older_than_7d_total": sum(1 for d in items if d["age_bucket"] == "red"),
+        "display_days": EMAIL_INBOX_DISPLAY_DAYS,
     }
 
-    if filter_key and filter_key in _INBOX_FILTERS:
+    if scope == "backlog" or filter_key == "backlog":
+        items = [d for d in items if not d["is_recent"]]
+        items.sort(key=lambda d: d.get("received_at") or "")
+    elif scope != "all":
+        items = [d for d in items if d["is_recent"]]
+
+    if filter_key and filter_key in _INBOX_FILTERS and filter_key != "backlog":
         items = [d for d in items if _INBOX_FILTERS[filter_key](d)]
 
     return items, summary
@@ -3177,6 +3236,7 @@ def _build_deleted_inbox_items(conn) -> list[dict]:
 @permission_required("can_use_email_tools")
 def email_inbox_page():
     filter_key = request.args.get("filter") or ""
+    scope = request.args.get("scope") or ""
     is_admin = get_effective_role() == "admin"
     conn = get_connection()
     try:
@@ -3184,16 +3244,30 @@ def email_inbox_page():
             inbox_items = _build_deleted_inbox_items(conn)
             _, summary = _build_inbox_items(conn)
         else:
-            inbox_items, summary = _build_inbox_items(conn, filter_key=filter_key)
+            effective_scope = scope
+            if filter_key == "backlog":
+                effective_scope = "backlog"
+            elif scope == "all" and is_admin:
+                effective_scope = "all"
+            elif not scope:
+                effective_scope = "recent"
+            inbox_items, summary = _build_inbox_items(
+                conn, filter_key=filter_key, scope=effective_scope
+            )
     finally:
         conn.close()
-    active_filter = filter_key if (filter_key in _INBOX_FILTERS or (filter_key == "deleted" and is_admin)) else ""
+    valid_filters = set(_INBOX_FILTERS) | {"deleted"}
+    active_filter = filter_key if (filter_key in valid_filters and (filter_key != "deleted" or is_admin)) else ""
     ctx = base_ctx()
     ctx.update(
         inbox_items=inbox_items,
-        unassigned_count=summary["unassigned_total"],
+        unassigned_count=summary["unassigned_recent_total"],
+        unassigned_backlog_count=summary["unassigned_backlog_total"],
+        unassigned_total_count=summary["unassigned_total"],
         older_than_7d_count=summary["older_than_7d_total"],
+        inbox_display_days=summary["display_days"],
         active_filter=active_filter,
+        inbox_scope=scope if scope in ("all",) else ("backlog" if filter_key == "backlog" else "recent"),
         show_deleted_filter=is_admin,
         active_page="email_inbox",
     )
@@ -3217,6 +3291,8 @@ _INBOX_ITEM_PUBLIC_FIELDS = (
 @permission_required("can_use_email_tools")
 def api_email_inbox_items():
     filter_key = request.args.get("filter") or ""
+    scope = request.args.get("scope") or ""
+    is_admin = get_effective_role() == "admin"
     conn = get_connection()
     try:
         if filter_key == "deleted":
@@ -3230,14 +3306,26 @@ def api_email_inbox_items():
                 {k: d.get(k) for k in _DELETED_INBOX_ITEM_PUBLIC_FIELDS} for d in deleted_items
             ]
         else:
-            items, summary = _build_inbox_items(conn, filter_key=filter_key)
+            effective_scope = scope
+            if filter_key == "backlog":
+                effective_scope = "backlog"
+            elif scope == "all" and is_admin:
+                effective_scope = "all"
+            elif not scope:
+                effective_scope = "recent"
+            items, summary = _build_inbox_items(
+                conn, filter_key=filter_key, scope=effective_scope
+            )
             response_items = [
                 {k: d.get(k) for k in _INBOX_ITEM_PUBLIC_FIELDS} for d in items
             ]
         return jsonify({
             "items": response_items,
             "unassigned_total": summary["unassigned_total"],
+            "unassigned_recent_total": summary["unassigned_recent_total"],
+            "unassigned_backlog_total": summary["unassigned_backlog_total"],
             "older_than_7d_total": summary["older_than_7d_total"],
+            "display_days": summary["display_days"],
         })
     finally:
         conn.close()
@@ -3421,16 +3509,40 @@ def api_client_returns(client_id: int):
         conn.close()
 
 
+def _pickup_queue_rows(conn, year: int, *, sort: str = "newest"):
+    """Returns at PICKUP for the season year filter.
+
+    sort: ``newest`` (queue UI) or ``name`` (A–Z verify/print export).
+    """
+    if sort == "name":
+        order = (
+            "ORDER BY lower(c.last_name), "
+            "lower(COALESCE(c.first_name, '')), "
+            "r.tax_year DESC, "
+            "r.id"
+        )
+    else:
+        order = (
+            "ORDER BY "
+            "CASE WHEN r.pickup_date IS NULL OR r.pickup_date='' THEN 1 ELSE 0 END, "
+            "r.pickup_date DESC, "
+            "CASE WHEN r.updated_at IS NULL OR r.updated_at='' THEN 1 ELSE 0 END, "
+            "r.updated_at DESC, "
+            "r.id DESC"
+        )
+    return conn.execute(
+        f"{_SELECT} WHERE (strftime('%Y', r.intake_date) = ? OR (r.intake_date IS NULL AND r.tax_year = ?)) "
+        f"AND r.client_status = 'PICKUP' {order}",
+        (str(year), year - 1),
+    ).fetchall()
+
+
 @app.route("/logout-queue")
 @permission_required("can_manage_efile_queue")
 def logout_queue():
     year = int(request.args.get("year", date.today().year))
     conn = get_connection()
-    rows = conn.execute(
-        f"{_SELECT} WHERE (strftime('%Y', r.intake_date) = ? OR (r.intake_date IS NULL AND r.tax_year = ?)) "
-        "AND r.client_status = 'PICKUP' ORDER BY CAST(r.log_number AS INTEGER)",
-        (str(year), year - 1),
-    ).fetchall()
+    rows = _pickup_queue_rows(conn, year)
     conn.close()
     saved = request.args.get("saved")
     success = request.args.get("msg", "Saved.") if saved else None
@@ -3442,6 +3554,24 @@ def logout_queue():
         "success":     success,
     })
     return render_template("logout_queue.html", **ctx)
+
+
+@app.route("/logout-queue/print")
+@permission_required("can_manage_efile_queue")
+def logout_queue_print():
+    """Printable Pickup Queue checklist with checkboxes for desk verification."""
+    year = int(request.args.get("year", date.today().year))
+    conn = get_connection()
+    rows = [_enrich(dict(r)) for r in _pickup_queue_rows(conn, year, sort="name")]
+    conn.close()
+    ctx = base_ctx(year)
+    ctx.update({
+        "active_page": "logout",
+        "returns": rows,
+        "generated_on": date.today().isoformat(),
+        "today": date.today().isoformat(),
+    })
+    return render_template("pickup_verify_print.html", **ctx)
 
 
 @app.route("/efile-queue")
@@ -6209,7 +6339,8 @@ def prep_workspace(return_id: int):
         taxops_forms = dict(forms_row) if forms_row else {}
         prep_document_rows = conn.execute(
             """
-            SELECT id, filename, original_filename, doc_type, uploaded_at
+            SELECT id, filename, original_filename, doc_type, uploaded_at,
+                   prep_review_status, prep_reviewed_at, prep_reviewed_by
             FROM return_documents
             WHERE return_id = ? AND is_deleted = 0
             ORDER BY uploaded_at DESC
@@ -6217,6 +6348,8 @@ def prep_workspace(return_id: int):
             (return_id,),
         ).fetchall()
         prep_documents = [dict(r) for r in prep_document_rows]
+        for d in prep_documents:
+            d["prep_review_status"] = d.get("prep_review_status") or ""
     finally:
         conn.close()
 
@@ -9111,11 +9244,12 @@ def admin_runbook():
             raw_md = fh.read()
     except OSError:
         raw_md = "# RUNBOOK.md not found\n\nFile expected at `docs/RUNBOOK.md`."
-    return render_template(
-        "runbook.html",
-        raw_md=raw_md,
-        active_page="runbook",
-    )
+    ctx = base_ctx()
+    ctx.update({
+        "raw_md": raw_md,
+        "active_page": "runbook",
+    })
+    return render_template("runbook.html", **ctx)
 
 
 @app.route("/admin/runbook/raw")

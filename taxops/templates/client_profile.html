@@ -81,8 +81,10 @@
         <input type="text" data-client-field="taxpayer_cell" id="prof-cell" value="{{ client.taxpayer_cell or '' }}"
                class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/></label>
       <label class="block text-sm"><span class="text-slate-500 text-xs uppercase font-semibold">Email</span>
-        <input type="text" data-client-field="taxpayer_email" id="prof-email" value="{{ client.taxpayer_email or '' }}"
-               class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/></label>
+        <input type="email" data-client-field="taxpayer_email" id="prof-email" value="{{ client.taxpayer_email or '' }}"
+               placeholder="client@email.com"
+               class="mt-1 w-full rounded-lg border border-blue-200 bg-blue-50/40 px-3 py-2 text-sm"/></label>
+      <p class="text-xs text-blue-700 md:col-span-2 -mt-2">Optional but important — links past email documents to this client.</p>
       <label class="block text-sm"><span class="text-slate-500 text-xs uppercase font-semibold">Referred by</span>
         <input type="text" data-client-field="referred_by" id="prof-referred" value="{{ client.referred_by or '' }}"
                class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"/></label>
@@ -179,10 +181,51 @@
         </select>
       </div>
     </div>
+
+    {% if can_manage_return_documents or can_scan_intake_docs %}
+    <div class="px-5 py-3 border-b border-slate-100 bg-white space-y-3">
+      <p class="text-xs text-slate-500">
+        {{ _('Non-tax documents (ID, POA, correspondence) live on the client profile — not on a specific return.') }}
+      </p>
+      <div class="flex flex-wrap items-end gap-3">
+        {% if can_manage_return_documents %}
+        <label class="flex flex-col gap-1 text-sm shrink-0">
+          <span class="text-slate-500 font-medium">{{ _('File') }}</span>
+          <input type="file" id="client-doc-file" accept="image/*,.pdf"
+                 class="text-sm text-slate-700 max-w-[14rem] file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700">
+        </label>
+        {% endif %}
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-slate-500 font-medium">{{ _('Non-tax type') }}</span>
+          <select id="client-doc-type"
+                  class="border border-slate-200 rounded-lg px-3 py-2 text-slate-800 min-w-[11rem] text-sm">
+            {% for t in client_doc_type_options %}
+            <option value="{{ t }}" {% if t == 'misc' %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% if can_manage_return_documents %}
+        <button type="button" id="client-doc-upload-btn"
+                class="shrink-0 text-xs border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-2 text-slate-600 hover:text-slate-900">
+          {{ _('Upload to profile') }}
+        </button>
+        {% endif %}
+        {% if can_scan_intake_docs %}
+        <button type="button" id="client-doc-scan-btn"
+                class="shrink-0 text-xs font-semibold btn-primary border rounded-lg px-3 py-2 whitespace-nowrap">
+          {{ _('Scan non-tax (Epson)') }}
+        </button>
+        {% endif %}
+      </div>
+      <p id="client-doc-status" class="hidden text-xs font-medium"></p>
+    </div>
+    {% endif %}
+
     <table class="w-full text-sm">
       <thead class="bg-slate-50 text-left text-xs text-slate-500 uppercase">
         <tr>
-          <th class="px-5 py-2">TY</th>
+          <th class="px-5 py-2">Scope</th>
+          <th class="py-2">TY</th>
           <th class="py-2">Log</th>
           <th class="py-2">Type</th>
           <th class="py-2">File</th>
@@ -193,17 +236,28 @@
       <tbody class="divide-y divide-slate-100" id="client-docs-tbody">
         {% for d in client_documents %}
         <tr data-doc-row data-tax-year="{{ d.tax_year or '' }}" data-doc-type="{{ d.doc_type or '' }}">
-          <td class="px-5 py-2 font-mono">{% if d.tax_year is not none %}{{ d.tax_year }}{% else %}—{% endif %}</td>
+          <td class="px-5 py-2">
+            {% if d.scope == 'client' %}
+            <span class="text-[10px] font-bold uppercase tracking-wide text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded">{{ _('Profile') }}</span>
+            {% else %}
+            <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">{{ _('Return') }}</span>
+            {% endif %}
+          </td>
+          <td class="py-2 font-mono">{% if d.tax_year is not none %}{{ d.tax_year }}{% else %}—{% endif %}</td>
           <td class="py-2 font-mono text-slate-500">{{ d.log_number or '—' }}</td>
           <td class="py-2">{{ d.doc_type or '—' }}</td>
           <td class="py-2 truncate max-w-[12rem]" title="{{ d.original_filename or d.filename }}">{{ d.original_filename or d.filename }}</td>
           <td class="py-2 text-slate-500 text-xs">{{ d.uploaded_at or '—' }}</td>
           <td class="py-2 pr-5 whitespace-nowrap">
-            <a href="/return/{{ d.return_id }}/documents/{{ d.id }}/view" class="text-blue-600 hover:underline font-medium">Open</a>
+            {% if d.scope == 'client' %}
+            <a href="/clients/{{ client_id }}/documents/{{ d.id }}/view" class="text-blue-600 hover:underline font-medium" target="_blank" rel="noopener">Open</a>
+            {% else %}
+            <a href="/return/{{ d.return_id }}/documents/{{ d.id }}/view" class="text-blue-600 hover:underline font-medium" target="_blank" rel="noopener">Open</a>
+            {% endif %}
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="px-5 py-6 text-slate-400">No uploaded documents.</td></tr>
+        <tr><td colspan="7" class="px-5 py-6 text-slate-400">No uploaded documents.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -238,6 +292,7 @@
 
 <script>
 (function () {
+  const CLIENT_ID = {{ client_id }};
   const ySel = document.getElementById("doc-filter-year");
   const tSel = document.getElementById("doc-filter-type");
   function applyFilters() {
@@ -253,6 +308,69 @@
   }
   if (ySel) ySel.addEventListener("change", applyFilters);
   if (tSel) tSel.addEventListener("change", applyFilters);
+
+  function showClientDocStatus(msg, isErr) {
+    const el = document.getElementById("client-doc-status");
+    if (!el) return;
+    el.classList.remove("hidden");
+    el.textContent = msg;
+    el.className = "text-xs font-medium " + (isErr ? "text-red-600" : "text-green-700");
+  }
+
+  document.getElementById("client-doc-upload-btn")?.addEventListener("click", async function () {
+    const fileEl = document.getElementById("client-doc-file");
+    const typeEl = document.getElementById("client-doc-type");
+    const f = fileEl && fileEl.files && fileEl.files[0];
+    if (!f) { showClientDocStatus("Choose a file first.", true); return; }
+    const fd = new FormData();
+    fd.append("document", f);
+    fd.append("doc_type", (typeEl && typeEl.value) || "misc");
+    showClientDocStatus("Uploading…", false);
+    try {
+      const resp = await _csrfFetch("/clients/" + CLIENT_ID + "/documents/upload", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await resp.json().catch(function () { return {}; });
+      if (!resp.ok || !data.success) {
+        throw new Error(data.error || ("Upload failed (" + resp.status + ")"));
+      }
+      window.location.reload();
+    } catch (e) {
+      showClientDocStatus(e.message || String(e), true);
+    }
+  });
+
+  document.getElementById("client-doc-scan-btn")?.addEventListener("click", async function () {
+    const typeEl = document.getElementById("client-doc-type");
+    const btn = document.getElementById("client-doc-scan-btn");
+    if (btn) btn.disabled = true;
+    showClientDocStatus("Scanning from Epson… keep pages in the feeder.", false);
+    try {
+      const resp = await _csrfFetch("/api/clients/" + CLIENT_ID + "/scan-intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          doc_type: (typeEl && typeEl.value) || "misc",
+          handwriting: false,
+        }),
+      });
+      const data = await resp.json().catch(function () { return {}; });
+      if (!resp.ok || !data.success) {
+        const tips = (data.tips || []).filter(function (t) { return t && t !== data.error; });
+        throw new Error((data.error || "Scan failed") + (tips.length ? " — " + tips.join(" ") : ""));
+      }
+      showClientDocStatus(
+        "Uploaded " + (data.page_count != null ? data.page_count : "?") + " page(s) to client profile.",
+        false
+      );
+      setTimeout(function () { window.location.reload(); }, 800);
+    } catch (e) {
+      showClientDocStatus(e.message || String(e), true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
 
   const saveBtn = document.getElementById("client-profile-save");
   if (saveBtn) {
@@ -282,8 +400,12 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ field: fld, value: val }),
           });
-          const data = await resp.json();
-          if (!data.success) throw new Error(data.error || fld);
+          let data = {};
+          try { data = await resp.json(); } catch (_) { /* non-JSON body */ }
+          if (!resp.ok || !data.success) {
+            const msg = data.error || data.message || ("Save failed for " + fld + " (HTTP " + resp.status + ")");
+            throw new Error(msg);
+          }
         }
         window.location.reload();
       } catch (e) {

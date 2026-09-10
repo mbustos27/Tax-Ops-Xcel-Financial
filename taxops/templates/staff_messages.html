@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% block title %}Staff Messages — Tax Log{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-6 space-y-6 pb-24">
+
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Staff Messages</h1>
+    <p class="text-sm text-slate-600 mt-1">
+      Leave a note for a colleague, or open the header <strong>Messages</strong> icon for a floating panel
+      (notifications + silent mini-chats). They will also see it in the nav badge.
+    </p>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wide">New message</h2>
+
+    <div id="send-result" class="hidden rounded-lg px-4 py-2.5 text-sm font-medium"></div>
+
+    <div>
+      <label class="block text-xs font-semibold text-slate-600 mb-1" for="msg-subject">Subject</label>
+      <input id="msg-subject" type="text" maxlength="200" placeholder="e.g. Client callback — Garcia, Maria"
+             class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+    </div>
+
+    <div>
+      <label class="block text-xs font-semibold text-slate-600 mb-1" for="msg-body">Message</label>
+      <textarea id="msg-body" rows="4" maxlength="4000" placeholder="Phone number, what they need, best time to call back…"
+                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
+    </div>
+
+    <div>
+      <label class="block text-xs font-semibold text-slate-600 mb-1" for="msg-client-search">Related client (optional)</label>
+      <input type="hidden" id="msg-client-id" value="">
+      <div id="msg-client-selected" class="hidden mb-2 flex items-center justify-between gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2">
+        <span id="msg-client-selected-label" class="text-sm font-medium text-indigo-900 truncate"></span>
+        <button type="button" id="msg-client-clear" class="text-xs font-semibold text-indigo-700 hover:underline shrink-0">Clear</button>
+      </div>
+      <input id="msg-client-search" type="search" autocomplete="off" placeholder="Type last name…"
+             class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+      <ul id="msg-client-dropdown"
+          class="hidden mt-1 rounded-lg border border-slate-200 bg-white shadow-lg max-h-52 overflow-auto z-10"></ul>
+      <p class="text-xs text-slate-400 mt-1">Search by client name — their tax file opens in one click when they have a return on file.</p>
+    </div>
+
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-xs font-semibold text-slate-600">To</label>
+        <div class="flex gap-2">
+          <button type="button" id="pick-all-btn" class="text-xs font-semibold text-indigo-700 hover:underline">Select all</button>
+          <span class="text-slate-300">|</span>
+          <button type="button" id="pick-none-btn" class="text-xs font-semibold text-indigo-700 hover:underline">Clear</button>
+        </div>
+      </div>
+      <div class="border border-slate-200 rounded-lg p-3 max-h-48 overflow-y-auto space-y-2 bg-slate-50">
+        {% for u in staff %}
+        <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+          <input type="checkbox" class="staff-cb text-indigo-600" value="{{ u.id }}">
+          <span>{{ u.display_name or u.username }}</span>
+          <span class="text-xs text-slate-400">({{ u.role }})</span>
+        </label>
+        {% else %}
+        <p class="text-sm text-slate-400">No other active staff accounts.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button id="send-msg-btn" type="button"
+            class="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors">
+      Send message
+    </button>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="flex border-b border-slate-100">
+      <button type="button" id="tab-inbox" class="tab-btn flex-1 px-4 py-3 text-sm font-semibold text-indigo-700 border-b-2 border-indigo-600 bg-indigo-50/50">
+        Inbox ({{ inbox|length }}{% if inbox %} shown{% endif %})
+      </button>
+      <button type="button" id="tab-sent" class="tab-btn flex-1 px-4 py-3 text-sm font-semibold text-slate-500 border-b-2 border-transparent hover:bg-slate-50">
+        Sent ({{ sent|length }}{% if sent %} shown{% endif %})
+      </button>
+    </div>
+
+    <div id="panel-inbox">
+      {% if inbox %}
+      <ul class="divide-y divide-slate-100">
+        {% for m in inbox %}
+        <li class="px-5 py-4 {% if not m.is_read %}bg-blue-50/40{% endif %}" data-thread="{{ m.thread_id or m.id }}">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-semibold text-slate-900">{{ m.subject }}</div>
+              <p class="text-xs text-slate-500 mt-0.5">From {{ m.sender_display or m.sender_username }}</p>
+              <p class="text-sm text-slate-600 mt-2 whitespace-pre-wrap">{{ m.body }}</p>
+              {% if m.client_name %}
+              {% if m.link_url %}
+              <a href="{{ m.link_url }}" class="text-xs font-semibold text-indigo-700 mt-2 inline-block hover:underline">Open {{ m.client_name }}</a>
+              {% else %}
+              <span class="text-xs text-slate-500 mt-2 inline-block">Client: {{ m.client_name }}</span>
+              {% endif %}
+              {% elif m.link_url %}
+              <a href="{{ m.link_url }}" class="text-xs font-mono text-indigo-700 mt-1 inline-block hover:underline">{{ m.link_url }}</a>
+              {% endif %}
+              <div class="mt-3">
+                <button type="button"
+                        class="reply-open-btn text-xs font-semibold text-indigo-700 hover:underline"
+                        data-thread="{{ m.thread_id or m.id }}">
+                  Reply / open chat
+                </button>
+              </div>
+              <div class="reply-box hidden mt-2 space-y-2" data-thread="{{ m.thread_id or m.id }}">
+                <textarea rows="2" maxlength="4000" placeholder="Type a reply…"
+                          class="reply-body w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></textarea>
+                <button type="button" class="reply-send-btn px-3 py-1.5 rounded-lg text-xs font-semibold btn-primary border"
+                        data-thread="{{ m.thread_id or m.id }}">Send reply</button>
+                <span class="reply-status text-xs text-slate-500"></span>
+              </div>
+            </div>
+            <div class="text-right shrink-0 text-xs text-slate-500 tabular-nums">
+              {{ (m.created_at or '')[:16].replace('T', ' ') }}
+              {% if not m.is_read %}
+              <div class="mt-1 text-[10px] font-bold text-blue-600 uppercase">New</div>
+              {% endif %}
+            </div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="px-5 py-8 text-center text-sm text-slate-400">No messages in your inbox yet.</p>
+      {% endif %}
+    </div>
+
+    <div id="panel-sent" class="hidden">
+      {% if sent %}
+      <ul class="divide-y divide-slate-100">
+        {% for m in sent %}
+        <li class="px-5 py-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-semibold text-slate-900">{{ m.subject }}</div>
+              <p class="text-xs text-slate-500 mt-0.5">To {{ m.recipient_display or m.recipient_username }}</p>
+              <p class="text-sm text-slate-600 mt-2 whitespace-pre-wrap">{{ m.body }}</p>
+              {% if m.client_name %}
+              {% if m.link_url %}
+              <a href="{{ m.link_url }}" class="text-xs font-semibold text-indigo-700 mt-2 inline-block hover:underline">Open {{ m.client_name }}</a>
+              {% else %}
+              <span class="text-xs text-slate-500 mt-2 inline-block">Client: {{ m.client_name }}</span>
+              {% endif %}
+              {% elif m.link_url %}
+              <span class="text-xs font-mono text-indigo-700 mt-1 inline-block">{{ m.link_url }}</span>
+              {% endif %}
+            </div>
+            <div class="text-right shrink-0 text-xs text-slate-500 tabular-nums">
+              {{ (m.created_at or '')[:16].replace('T', ' ') }}
+            </div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="px-5 py-8 text-center text-sm text-slate-400">You have not sent any messages yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  function showResult(el, ok, msg) {
+    el.className = 'rounded-lg px-4 py-2.5 text-sm font-medium ' +
+      (ok ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    setTimeout(function () { el.classList.add('hidden'); }, 8000);
+  }
+
+  document.getElementById('pick-all-btn').addEventListener('click', function () {
+    document.querySelectorAll('.staff-cb').forEach(function (cb) { cb.checked = true; });
+  });
+  document.getElementById('pick-none-btn').addEventListener('click', function () {
+    document.querySelectorAll('.staff-cb').forEach(function (cb) { cb.checked = false; });
+  });
+
+  function activateTab(which) {
+    var inboxBtn = document.getElementById('tab-inbox');
+    var sentBtn = document.getElementById('tab-sent');
+    var inboxPanel = document.getElementById('panel-inbox');
+    var sentPanel = document.getElementById('panel-sent');
+    if (which === 'sent') {
+      inboxBtn.className = 'tab-btn flex-1 px-4 py-3 text-sm font-semibold text-slate-500 border-b-2 border-transparent hover:bg-slate-50';
+      sentBtn.className = 'tab-btn flex-1 px-4 py-3 text-sm font-semibold text-indigo-700 border-b-2 border-indigo-600 bg-indigo-50/50';
+      inboxPanel.classList.add('hidden');
+      sentPanel.classList.remove('hidden');
+    } else {
+      sentBtn.className = 'tab-btn flex-1 px-4 py-3 text-sm font-semibold text-slate-500 border-b-2 border-transparent hover:bg-slate-50';
+      inboxBtn.className = 'tab-btn flex-1 px-4 py-3 text-sm font-semibold text-indigo-700 border-b-2 border-indigo-600 bg-indigo-50/50';
+      sentPanel.classList.add('hidden');
+      inboxPanel.classList.remove('hidden');
+    }
+  }
+  document.getElementById('tab-inbox').addEventListener('click', function () { activateTab('inbox'); });
+  document.getElementById('tab-sent').addEventListener('click', function () { activateTab('sent'); });
+
+  var _clientSearchTimer = null;
+  var clientSearchEl = document.getElementById('msg-client-search');
+  var clientIdEl = document.getElementById('msg-client-id');
+  var clientDropdown = document.getElementById('msg-client-dropdown');
+  var clientSelected = document.getElementById('msg-client-selected');
+  var clientSelectedLabel = document.getElementById('msg-client-selected-label');
+
+  function clearClientPick() {
+    clientIdEl.value = '';
+    clientSelectedLabel.textContent = '';
+    clientSelected.classList.add('hidden');
+    clientSearchEl.classList.remove('hidden');
+    clientSearchEl.value = '';
+    clientDropdown.classList.add('hidden');
+    clientDropdown.innerHTML = '';
+  }
+
+  document.getElementById('msg-client-clear').addEventListener('click', clearClientPick);
+
+  function pickClient(id, label) {
+    clientIdEl.value = String(id);
+    clientSelectedLabel.textContent = label;
+    clientSelected.classList.remove('hidden');
+    clientSearchEl.classList.add('hidden');
+    clientDropdown.classList.add('hidden');
+    clientDropdown.innerHTML = '';
+  }
+
+  clientSearchEl.addEventListener('input', function () {
+    clearTimeout(_clientSearchTimer);
+    var q = clientSearchEl.value.trim();
+    if (q.length < 2) {
+      clientDropdown.classList.add('hidden');
+      return;
+    }
+    _clientSearchTimer = setTimeout(async function () {
+      try {
+        var r = await fetch('/api/clients/search?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var data = await r.json();
+        var clients = Array.isArray(data) ? data : (data.clients || data.results || []);
+        clientDropdown.innerHTML = '';
+        if (!clients.length) {
+          clientDropdown.innerHTML = '<li class="px-3 py-2 text-sm text-slate-400">No clients found</li>';
+        } else {
+          clients.forEach(function (c) {
+            var li = document.createElement('li');
+            var label = c.name || c.display_name || ((c.last_name || '') + (c.first_name ? ', ' + c.first_name : ''));
+            li.className = 'px-3 py-2 text-sm cursor-pointer hover:bg-slate-50 border-b border-slate-100 last:border-0 text-slate-800';
+            li.textContent = label;
+            li.addEventListener('click', function () { pickClient(c.id, label); });
+            clientDropdown.appendChild(li);
+          });
+        }
+        clientDropdown.classList.remove('hidden');
+      } catch (e) {
+        clientDropdown.innerHTML = '<li class="px-3 py-2 text-sm text-red-600">Search failed — try again</li>';
+        clientDropdown.classList.remove('hidden');
+      }
+    }, 220);
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!clientDropdown.contains(e.target) && e.target !== clientSearchEl) {
+      clientDropdown.classList.add('hidden');
+    }
+  });
+
+  document.getElementById('send-msg-btn').addEventListener('click', async function () {
+    var res = document.getElementById('send-result');
+    var subject = document.getElementById('msg-subject').value.trim();
+    var body = document.getElementById('msg-body').value.trim();
+    var clientIdRaw = clientIdEl.value.trim();
+    var clientId = clientIdRaw ? parseInt(clientIdRaw, 10) : null;
+    var userIds = [];
+    document.querySelectorAll('.staff-cb:checked').forEach(function (cb) {
+      userIds.push(parseInt(cb.value, 10));
+    });
+    if (!subject) { showResult(res, false, 'Subject is required.'); return; }
+    if (!body) { showResult(res, false, 'Message is required.'); return; }
+    if (!userIds.length) { showResult(res, false, 'Select at least one colleague.'); return; }
+
+    var r = await _csrfFetch('/api/staff-messages/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject: subject, body: body, client_id: clientId, user_ids: userIds }),
+    });
+    var d = await r.json();
+    if (d.success) {
+      showResult(res, true, 'Message sent to ' + d.sent_count + ' colleague(s).');
+      setTimeout(function () { location.reload(); }, 1200);
+    } else {
+      showResult(res, false, d.error || 'Could not send message.');
+    }
+  });
+
+  document.querySelectorAll('.reply-open-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var tid = btn.getAttribute('data-thread');
+      var box = document.querySelector('.reply-box[data-thread="' + tid + '"]');
+      if (box) box.classList.toggle('hidden');
+    });
+  });
+  document.querySelectorAll('.reply-send-btn').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      var tid = parseInt(btn.getAttribute('data-thread'), 10);
+      var box = document.querySelector('.reply-box[data-thread="' + tid + '"]');
+      var ta = box ? box.querySelector('.reply-body') : null;
+      var status = box ? box.querySelector('.reply-status') : null;
+      var body = ta ? ta.value.trim() : '';
+      if (!body) { if (status) status.textContent = 'Type a reply first.'; return; }
+      var r = await _csrfFetch('/api/staff-messages/reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thread_id: tid, body: body }),
+      });
+      var d = await r.json();
+      if (d.success) {
+        if (status) status.textContent = 'Sent.';
+        setTimeout(function () { location.reload(); }, 800);
+      } else if (status) {
+        status.textContent = d.error || 'Failed.';
+      }
+    });
+  });
+
+  var params = new URLSearchParams(location.search);
+  var openThread = params.get('thread');
+  if (openThread && typeof window.__openMessagesPanel === 'function') {
+    window.__openMessagesPanel('chats');
+    if (typeof window.__openStaffThread === 'function') {
+      window.__openStaffThread(parseInt(openThread, 10));
+    }
+  }
+})();
+</script>
+{% endblock %}

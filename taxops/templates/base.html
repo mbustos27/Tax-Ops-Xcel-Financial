@@ -1,12 +1,17 @@
 <!DOCTYPE html>
 <html lang="{{ 'es' if current_locale == 'es_MX' else 'en' }}">
 <head>
-  <!-- Part 5: anti-FOWT theme application before CSS loads -->
+  <!-- Part 5: anti-FOWT theme + font-scale before CSS loads -->
   <script>
     (function(){
       var s = localStorage.getItem('taxops-theme');
       if (s === 'dark') document.documentElement.setAttribute('data-theme','dark');
       else document.documentElement.setAttribute('data-theme','light');
+      var fs = localStorage.getItem('taxops-font-scale');
+      var n = parseFloat(fs);
+      if (!isFinite(n) || n < 0.75 || n > 1.75) n = 1;
+      document.documentElement.style.setProperty('--ui-font-scale', String(n));
+      if (n !== 1) document.documentElement.setAttribute('data-font-scaled', '1');
     })();
   </script>
   <meta charset="UTF-8">
@@ -16,7 +21,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='tw.min.css') }}?v={{ config.APP_VERSION }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ config.APP_VERSION }}">
 </head>
-<body class="h-screen overflow-hidden flex flex-col" style="background:var(--bg-page);color:var(--text-primary)" data-year="{{ current_year }}">
+<body class="h-screen overflow-hidden flex flex-col" style="background:var(--bg-page);color:var(--text-primary)" data-year="{{ current_year }}" data-page="{{ active_page or '' }}">
 
   <!-- ── Header ─────────────────────────────────────────────────────────── -->
   <header id="site-header" class="shadow-lg sticky top-0 z-30" style="background:var(--nav-bg)">
@@ -29,8 +34,8 @@
         <span class="text-sm font-mono font-semibold" style="color:var(--nav-text)">{{ current_year }}</span>
       </a>
 
-      <!-- Global Search -->
-      <div class="relative flex-1 min-w-0" id="search-wrap">
+      <!-- Global Search — flex-1 grows; min-width keeps it usable when admin nav is dense -->
+      <div class="relative flex-1" id="search-wrap">
         <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none z-10">
           <svg class="w-5 h-5" style="color:var(--nav-text)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -42,7 +47,7 @@
           placeholder="Log # or name… (press /)"
           autocomplete="off"
           spellcheck="false"
-          class="block w-full min-w-0"
+          class="block w-full"
         >
         <div id="search-results"
              class="hidden absolute top-full left-0 right-0 mt-1 w-full rounded-xl shadow-2xl overflow-hidden z-50 max-h-80 overflow-y-auto min-w-[min(100%,28rem)]"
@@ -55,6 +60,14 @@
       <nav class="flex items-center gap-1 shrink-0 flex-nowrap" aria-label="{{ _('Main navigation') }}">
         <a href="/?year={{ current_year }}" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}">
           {{ _('Dashboard') }}
+        </a>
+        <a href="{{ url_for('staff_messages.staff_messages_page') }}"
+           class="nav-link {% if active_page == 'staff_messages' %}active{% endif %}">
+          {{ _('Messages') }}
+        </a>
+        <a href="/bookkeeping"
+           class="nav-link {% if active_page == 'bookkeeping' %}active{% endif %}">
+          {{ _('Bookkeeping') }}
         </a>
 
         <!-- Reports nav hidden until reports are functional -->
@@ -71,19 +84,20 @@
         {% set _can_email_tools = has_permission('can_use_email_tools') %}
         {% set _can_scan = has_permission('can_scan_intake_docs') %}
         {% set _can_send_email = has_permission('can_send_client_email') %}
-        {% set _has_any_tools = _is_preparer or _can_efile or _can_extension or _can_email_tools or _can_send_email or _can_scan %}
+        {% set _has_any_tools = _is_preparer or _can_efile or _can_extension or _can_email_tools or _can_send_email or _can_scan or has_permission('can_manage_now_serving') %}
         {% set daily_active =
-            active_page in ('logout','efile','extension','work_orders','email_inbox','email_campaigns','receipt_queue',
+            active_page in ('logout','efile','extension','work_orders','now_serving','email_inbox','email_campaigns','receipt_queue',
                             'dependents_review','spouses_review')
             or request.path.startswith('/email-inbox')
             or request.path.startswith('/admin/email-campaigns')
+            or request.path.startswith('/now-serving/')
             or (request.args.get('filter') == 'scan_deferred')
         %}
         {% set occasional_active =
             active_page in ('upload','source_compare','import_audit','merge','efile_batch','extension_batch',
                             'audit_log','payments','review','season_rollover','backup_admin','failed_docs',
                             'admin_users','sender_rules','wo_quick_picks','compliance','compliance_periods',
-                            'compliance_credentials','email_health','reception_agents','accounting_settings',
+                            'compliance_credentials','bookkeeping','email_health','reception_agents','accounting_settings',
                             'recovered_clients','audit_alerts')
         %}
         {% if _has_any_tools %}
@@ -105,6 +119,8 @@
                class="hidden absolute left-0 top-full mt-1 min-w-[16rem] w-max max-w-[min(calc(100vw-2rem),22rem)] rounded-xl shadow-lg py-1 z-50"
                style="background:var(--dropdown-bg);border:1px solid var(--dropdown-border)">
             {% if _can_efile %}
+            {# Soft-default: admin pages that forget base_ctx() must not 500 the whole shell #}
+            {% set status_counts = status_counts|default({}, true) %}
             <a href="/logout-queue?year={{ current_year }}"
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'logout' %}tools-item-active{% endif %}">
               <span>{{ _('Pickup Queue') }}</span>
@@ -126,6 +142,13 @@
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'work_orders' %}tools-item-active{% endif %}">
               <span>{{ _('Work Orders') }}</span>
             </a>
+            {% if has_permission('can_manage_now_serving') %}
+            <button type="button" id="ns-open-btn-menu"
+                    onclick="window.TaxOpsOpenNowServing && window.TaxOpsOpenNowServing()"
+                    class="tools-item flex items-center justify-between gap-3 w-full text-left">
+              <span>{{ _('Now Serving') }}</span>
+            </button>
+            {% endif %}
             {% if _can_extension %}
             <a href="/extension-queue?year={{ current_year }}"
                class="tools-item flex items-center justify-between gap-3 {% if active_page == 'extension' %}tools-item-active{% endif %}">
@@ -259,6 +282,10 @@
             <a href="{{ url_for('users.admin_users') }}"
                class="tools-item {% if active_page == 'admin_users' %}tools-item-active{% endif %}">
               {{ _('Staff Accounts') }}
+            </a>
+            <a href="{{ url_for('announcements.announcements_admin') }}"
+               class="tools-item {% if active_page == 'announcements' %}tools-item-active{% endif %}">
+              {{ _('Announcements') }}
             </a>
             <a href="{{ url_for('sender_rules.sender_rules_admin') }}"
                class="tools-item {% if active_page == 'sender_rules' %}tools-item-active{% endif %}">
@@ -525,19 +552,19 @@
           </div>
         </div>
 
-        <!-- WO-7: my-notifications bell (per-user, e.g. "Work Order assigned to you") -->
+        <!-- Messages panel (notifications + staff mini-chats) -->
         <div class="relative shrink-0" id="notif-bell-wrap">
           <button id="notif-bell"
-                  aria-label="{{ _('Notifications') }}"
+                  aria-label="{{ _('Messages') }}"
                   aria-expanded="false"
-                  aria-haspopup="true"
-                  aria-controls="notif-dropdown"
-                  title="{{ _('Notifications') }}"
+                  aria-haspopup="dialog"
+                  aria-controls="msg-panel"
+                  title="{{ _('Messages') }}"
                   class="relative flex items-center justify-center w-7 h-7 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
                   style="color:var(--nav-text)">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                    d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
             </svg>
             <span id="notif-bell-badge"
                   class="absolute -top-0.5 -right-0.5 min-w-[1rem] h-4 bg-blue-500 text-white
@@ -547,21 +574,52 @@
               {{ my_unread_notification_count }}
             </span>
           </button>
+        </div>
 
-          <div id="notif-dropdown"
-               class="hidden absolute right-0 top-full mt-2 w-80 rounded-xl shadow-2xl overflow-hidden z-50">
-            <div class="flex items-center justify-between px-4 py-3 border-b"
-                 style="background:var(--dropdown-bg);border-color:var(--border-subtle)">
-              <span class="font-bold text-sm" style="color:var(--text-primary)">{{ _('Notifications') }}</span>
-              <button type="button" id="notif-mark-all-read"
-                      class="text-xs font-semibold" style="color:var(--color-primary)">
-                {{ _('Mark all read') }}
-              </button>
-            </div>
-            <ul id="notif-list" class="max-h-96 overflow-y-auto divide-y" style="background:var(--dropdown-bg);border-color:var(--border-subtle)">
-              <li class="px-4 py-8 text-center text-sm" style="color:var(--text-muted)">{{ _('Loading...') }}</li>
-            </ul>
-          </div>
+        {% if session.get('logged_in') and has_permission('can_manage_now_serving') %}
+        <button type="button" id="ns-open-btn"
+                class="shrink-0 flex items-center gap-1.5 min-h-7 px-2.5 rounded-full border text-xs font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                style="border-color:var(--border-strong);color:var(--nav-text);background:var(--nav-hover-bg)"
+                title="{{ _('Now Serving') }}"
+                aria-haspopup="dialog">
+          <span aria-hidden="true">#</span>
+          <span class="hidden sm:inline">{{ _('Now Serving') }}</span>
+        </button>
+        {% endif %}
+
+        <!-- Text size (accessibility) -->
+        <div id="font-scale-control"
+             class="flex items-center gap-0.5 shrink-0 rounded-full border px-0.5"
+             style="border-color:var(--border-strong);color:var(--nav-text)"
+             role="group"
+             aria-label="{{ _('Text size') }}">
+          <button type="button" id="font-scale-down"
+                  class="flex items-center justify-center min-w-[1.75rem] h-7 px-1 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                  aria-label="{{ _('Decrease text size') }}"
+                  title="{{ _('Decrease text size') }}">
+            <span class="font-bold leading-none" style="font-size:0.7rem" aria-hidden="true">A−</span>
+          </button>
+          <select id="font-scale-pick"
+                  class="tabular-nums text-center min-w-[3.25rem] h-7 text-[0.65rem] font-semibold bg-transparent border-0 focus:outline-none cursor-pointer"
+                  style="color:inherit"
+                  aria-label="{{ _('Text size percent') }}"
+                  title="{{ _('Text size') }}">
+            <option value="0.75">75%</option>
+            <option value="0.8">80%</option>
+            <option value="0.9">90%</option>
+            <option value="1" selected>100%</option>
+            <option value="1.1">110%</option>
+            <option value="1.25">125%</option>
+            <option value="1.5">150%</option>
+            <option value="1.75">175%</option>
+            <option value="2">200%</option>
+          </select>
+          <button type="button" id="font-scale-up"
+                  class="flex items-center justify-center min-w-[1.75rem] h-7 px-1 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                  aria-label="{{ _('Increase text size') }}"
+                  title="{{ _('Increase text size') }}">
+            <span class="font-bold leading-none" style="font-size:0.95rem" aria-hidden="true">A+</span>
+          </button>
         </div>
 
         <!-- Theme toggle — reduced size -->
@@ -825,6 +883,14 @@
        (visible near the very bottom of a ~5000px document, not pinned to
        the viewport) — moving it here is the fix. -->
   {% block fixed_footer %}{% endblock %}
+
+  {% if session.get('logged_in') %}
+  {% include "messages_panel.html" %}
+  {% endif %}
+
+  {% if session.get('logged_in') and has_permission('can_manage_now_serving') %}
+  {% include "now_serving_modal.html" %}
+  {% endif %}
 
   <!-- ── Back to top ───────────────────────────────────────────────────── -->
   <button id="back-to-top"
@@ -1111,112 +1177,7 @@
     })();
   </script>
   <script>
-    (function () {
-      const bell     = document.getElementById('notif-bell');
-      const dropdown = document.getElementById('notif-dropdown');
-      const wrap     = document.getElementById('notif-bell-wrap');
-      const list     = document.getElementById('notif-list');
-      const badge    = document.getElementById('notif-bell-badge');
-      const markAllBtn = document.getElementById('notif-mark-all-read');
-      if (!bell || !dropdown) return;
-
-      function escapeHtml(s) {
-        const d = document.createElement('div');
-        d.textContent = s == null ? '' : String(s);
-        return d.innerHTML;
-      }
-
-      function setBadge(count) {
-        if (count > 0) {
-          badge.textContent = count;
-          badge.classList.remove('hidden');
-        } else {
-          badge.classList.add('hidden');
-        }
-      }
-
-      function renderNotifications(items) {
-        if (!items.length) {
-          list.innerHTML = '<li class="px-4 py-8 text-center text-sm" style="color:var(--text-muted)">'
-            + '{{ _("No notifications") | e }}</li>';
-          return;
-        }
-        list.innerHTML = items.map(function (n) {
-          const unreadDot = n.is_read ? '' : '<span class="mt-1 w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>';
-          return '<li>'
-            + '<a href="' + escapeHtml(n.link_url || '#') + '" data-id="' + n.id + '" data-read="' + n.is_read + '"'
-            + ' class="notif-item flex items-start gap-3 px-4 py-3 transition-colors" style="color:inherit">'
-            + unreadDot
-            + '<div class="flex-1 min-w-0">'
-            + '<div class="font-semibold text-sm" style="color:var(--text-primary)">' + escapeHtml(n.title) + '</div>'
-            + (n.body ? '<div class="text-xs mt-0.5" style="color:var(--text-muted)">' + escapeHtml(n.body) + '</div>' : '')
-            + '</div></a></li>';
-        }).join('');
-      }
-
-      async function loadNotifications() {
-        try {
-          const resp = await fetch('/api/my-notifications');
-          if (!resp.ok) return;
-          const data = await resp.json();
-          renderNotifications(data.notifications || []);
-          setBadge(data.unread_count || 0);
-        } catch (e) {
-          console.error('Failed to load notifications', e);
-        }
-      }
-
-      list.addEventListener('click', async function (e) {
-        const link = e.target.closest('.notif-item');
-        if (!link) return;
-        const id = link.getAttribute('data-id');
-        const alreadyRead = link.getAttribute('data-read') === '1';
-        if (id && !alreadyRead) {
-          try { await _csrfFetch(`/api/my-notifications/${id}/read`, { method: 'POST' }); } catch (e2) { /* navigate anyway */ }
-        }
-      });
-
-      if (markAllBtn) {
-        markAllBtn.addEventListener('click', async function (e) {
-          e.stopPropagation();
-          try { await _csrfFetch('/api/my-notifications/mark-all-read', { method: 'POST' }); } catch (e2) { /* ignore */ }
-          loadNotifications();
-        });
-      }
-
-      function openNotifDropdown() {
-        dropdown.classList.remove('hidden');
-        bell.setAttribute('aria-expanded', 'true');
-        dropdown.style.opacity = '0';
-        dropdown.style.transform = 'translateY(-6px)';
-        requestAnimationFrame(() => {
-          dropdown.style.transition = 'opacity 150ms ease, transform 150ms ease';
-          dropdown.style.opacity = '1';
-          dropdown.style.transform = 'translateY(0)';
-        });
-        loadNotifications();
-      }
-      function closeNotifDropdown() {
-        dropdown.classList.add('hidden');
-        bell.setAttribute('aria-expanded', 'false');
-      }
-
-      bell.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const open = !dropdown.classList.contains('hidden');
-        if (open) closeNotifDropdown(); else openNotifDropdown();
-      });
-
-      document.addEventListener('click', (e) => {
-        if (!wrap.contains(e.target)) closeNotifDropdown();
-      });
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
-          closeNotifDropdown();
-          bell.focus();
-        }
-      });
-    })();
+    /* Notifications + staff chats live in messages_panel.html (bell opens floating panel). */
   </script>
   <script>
     (function () {
@@ -1395,6 +1356,69 @@
 
     applyTheme(getStored());
     if (btn) btn.addEventListener('click', cycleTheme);
+  })();
+  </script>
+
+  <!-- Accessibility: page-wide text size (scales rem layout with root font-size) -->
+  <script>
+  (function () {
+    var STORAGE_KEY = 'taxops-font-scale';
+    // Browser-like accessibility steps (Chrome/Edge zoom family, capped for layout).
+    var STEPS = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+    var html = document.documentElement;
+    var downBtn = document.getElementById('font-scale-down');
+    var upBtn = document.getElementById('font-scale-up');
+    var labelEl = document.getElementById('font-scale-label');
+    var pickEl = document.getElementById('font-scale-pick');
+
+    function nearestStep(n) {
+      var best = STEPS[1];
+      var bestDist = Infinity;
+      for (var i = 0; i < STEPS.length; i++) {
+        var d = Math.abs(STEPS[i] - n);
+        if (d < bestDist) { bestDist = d; best = STEPS[i]; }
+      }
+      return best;
+    }
+
+    function getStored() {
+      var n = parseFloat(localStorage.getItem(STORAGE_KEY));
+      if (!isFinite(n)) return 1;
+      return nearestStep(n);
+    }
+
+    function applyScale(n) {
+      n = nearestStep(n);
+      html.style.setProperty('--ui-font-scale', String(n));
+      if (n === 1) html.removeAttribute('data-font-scaled');
+      else html.setAttribute('data-font-scaled', '1');
+      if (n >= 1.25) html.setAttribute('data-font-large', '1');
+      else html.removeAttribute('data-font-large');
+      if (labelEl) labelEl.textContent = Math.round(n * 100) + '%';
+      if (pickEl) pickEl.value = String(n);
+      if (downBtn) downBtn.disabled = (n <= STEPS[0]);
+      if (upBtn) upBtn.disabled = (n >= STEPS[STEPS.length - 1]);
+    }
+
+    function step(delta) {
+      var cur = getStored();
+      var idx = STEPS.indexOf(cur);
+      if (idx < 0) idx = STEPS.indexOf(1);
+      if (idx < 0) idx = 3;
+      var next = STEPS[Math.max(0, Math.min(STEPS.length - 1, idx + delta))];
+      try { localStorage.setItem(STORAGE_KEY, String(next)); } catch (_) {}
+      applyScale(next);
+    }
+
+    applyScale(getStored());
+    if (downBtn) downBtn.addEventListener('click', function () { step(-1); });
+    if (upBtn) upBtn.addEventListener('click', function () { step(1); });
+    if (pickEl) pickEl.addEventListener('change', function () {
+      var n = parseFloat(pickEl.value);
+      if (!isFinite(n)) return;
+      try { localStorage.setItem(STORAGE_KEY, String(nearestStep(n))); } catch (_) {}
+      applyScale(n);
+    });
   })();
   </script>
 

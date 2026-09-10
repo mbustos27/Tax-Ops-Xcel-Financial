@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TaxOps onboarding — Lucy &amp; Sandra</title>
+  <style>
+    :root { --ink:#1e1a1b; --muted:#5c5557; --line:#e5d6da; --cabernet:#6B2233; }
+    body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--ink); max-width: 42rem; margin: 1.5rem auto; padding: 0 1.25rem 3rem; line-height: 1.45; }
+    h1 { color: var(--cabernet); font-size: 1.5rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.05rem; margin-top: 1.5rem; border-bottom: 1px solid var(--line); padding-bottom: 0.25rem; }
+    .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; margin: 0.75rem 0; }
+    th, td { border: 1px solid var(--line); padding: 0.45rem 0.6rem; text-align: left; vertical-align: top; }
+    th { background: #f7f1f2; }
+    code, .pw { font-family: ui-monospace, Consolas, monospace; background: #f3e5e8; padding: 0.1rem 0.35rem; border-radius: 0.25rem; }
+    .pw { font-weight: 700; color: var(--cabernet); }
+    ul { padding-left: 1.2rem; }
+    li { margin: 0.25rem 0; }
+    .warn { background: #fff8e6; border: 1px solid #e8d48b; border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.9rem; }
+    .print { margin-top: 1.5rem; font-size: 0.8rem; color: var(--muted); }
+    @media print {
+      body { margin: 0; max-width: none; }
+      .noprint { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <p class="noprint"><button type="button" onclick="window.print()">Print this page</button>
+    · Full copy also at <code>T:\taxops\docs\onboarding\lucy-sandra.md</code></p>
+
+  <h1>TaxOps onboarding — Lucy &amp; Sandra</h1>
+  <p class="meta">Role: <strong>Preparer</strong> · September 2026<br>
+  Use this sheet the first time you sign in. Change the temporary password when TaxOps asks.</p>
+
+  <div class="warn">
+    <strong>Temporary password (both accounts):</strong> <span class="pw">temp@92</span><br>
+    Change it on first login. Do not keep using the temp password after that.
+  </div>
+
+  <h2>1. Open TaxOps</h2>
+  <table>
+    <tr><th>URL</th><td><code>http://192.168.1.173:5000</code></td></tr>
+    <tr><th>Or</th><td><code>http://taxlog:5000</code> (after workstation setup)</td></tr>
+    <tr><th>Desktop</th><td>“Tax Log” shortcut, if already set up</td></tr>
+  </table>
+  <p>If the page will not load, run <code>\\Xcel-server\taxops\SETUP_WORKSTATION.bat</code> or ask Moises.</p>
+
+  <h2>2. Your login</h2>
+  <table>
+    <tr><th>Name</th><th>Username</th><th>Temp password</th></tr>
+    <tr><td>Lucy</td><td><code>lucy</code></td><td class="pw">temp@92</td></tr>
+    <tr><td>Sandra</td><td><code>sandra</code></td><td class="pw">temp@92</td></tr>
+  </table>
+  <ol>
+    <li>Sign in with your username and <span class="pw">temp@92</span>.</li>
+    <li>Set a <strong>new personal password</strong> when prompted.</li>
+    <li>Finish the one-time Welcome screen if it appears.</li>
+    <li>Optional: Guided Tour from the help icon in the header anytime.</li>
+  </ol>
+
+  <h2>3. What you can do</h2>
+  <p>You are a <strong>preparer</strong> — day-to-day tax workflow (not admin-only tools).</p>
+  <p><strong>Main:</strong> Dashboard · Bookkeeping · New Intake · open any return for docs / Prep / status</p>
+  <p><strong>Daily menu:</strong></p>
+  <ul>
+    <li><strong>Pickup Queue</strong> — clients ready at the counter</li>
+    <li><strong>E-File Queue</strong> — ready to transmit / batch</li>
+    <li><strong>Work Orders</strong> — non-return walk-ins</li>
+    <li><strong>Now Serving</strong> — lobby take-a-number (also header <strong># Now Serving</strong>)</li>
+    <li><strong>Extension Queue</strong></li>
+    <li><strong>Docs not scanned</strong></li>
+  </ul>
+  <p><strong>Occasional:</strong> Compliance Tracker, Filing Periods, batches, and other preparer tools as needed.</p>
+  <p><em>You will not see admin-only items</em> (Email Inbox, Staff Accounts, Audit log, etc.).</p>
+
+  <h2>4. First-day checklist</h2>
+  <ul>
+    <li>☐ Open TaxOps and sign in</li>
+    <li>☐ Change password from <span class="pw">temp@92</span></li>
+    <li>☐ Finish Welcome if shown</li>
+    <li>☐ Find a known client on the Dashboard</li>
+    <li>☐ Open Daily → Now Serving (or header button)</li>
+    <li>☐ Open Pickup Queue and E-File Queue once</li>
+    <li>☐ Confirm with a teammate which status to use while working in Drake</li>
+  </ul>
+
+  <h2>5. Quick tips</h2>
+  <ul>
+    <li><strong>Privacy</strong> in the header masks names when a client is at your desk.</li>
+    <li><strong>Now Serving</strong> numbers are plain (1, 2, 3…). The lobby display announces in English and Spanish.</li>
+    <li>Help icon → Guided Tour · footer → Ops Runbook · or ask Moises.</li>
+  </ul>
+
+  <p class="print">Internal handoff only — do not email this file outside the office after passwords are changed.</p>
+</body>
+</html>

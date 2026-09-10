@@ -114,14 +114,14 @@
           </button>
           {% if can_scan_intake_docs %}
           <button type="button" id="reactivate-scan-btn" onclick="reactivateIntakeScan()"
-                  class="inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-all
-                         {% if ret.scan_deferred %}text-white bg-[#6B2233] hover:bg-[#8B2E44] border border-[#6B2233]
+                  class="inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-all whitespace-nowrap
+                         {% if ret.scan_deferred %}btn-primary border
                          {% else %}text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200{% endif %}">
             <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
-            <span id="reactivate-scan-btn-label">{% if ret.scan_deferred %}{{ _('Scan documents now') }}{% else %}{{ _('Scan documents') }}{% endif %}</span>
+            <span id="reactivate-scan-btn-label" class="shrink-0">{% if ret.scan_deferred %}{{ _('Scan documents now') }}{% else %}{{ _('Scan documents') }}{% endif %}</span>
           </button>
           {% endif %}
           {# LIFE-3: Intake sheet PDF #}
@@ -182,7 +182,7 @@
       <p class="text-xs text-amber-800 mt-0.5">{{ _('Documents were skipped at intake. Load pages in the Epson feeder and scan now.') }}</p>
     </div>
     <button type="button" onclick="reactivateIntakeScan()"
-            class="shrink-0 text-xs font-semibold text-white bg-[#6B2233] hover:bg-[#8B2E44] rounded-lg px-4 py-2.5 transition-all">
+            class="shrink-0 text-xs font-semibold btn-primary border rounded-lg px-4 py-2.5 transition-all">
       {{ _('Start intake scan') }}
     </button>
   </div>
@@ -663,8 +663,8 @@
         <div class="p-3 border-b border-[var(--border-subtle)] flex gap-2">
           <input id="missing-doc-input" type="text" placeholder="e.g. W-2, Prior year return, SSN card…"
                  class="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                 onkeydown="if(event.key==='Enter') addMissingDoc({{ ret.id }})">
-          <button onclick="addMissingDoc({{ ret.id }})"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();addMissingDoc({{ ret.id }})}">
+          <button type="button" onclick="addMissingDoc({{ ret.id }})"
                   class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white transition-colors">
             + Add
           </button>
@@ -822,7 +822,7 @@
             {% if can_scan_intake_docs %}
             <button type="button" id="doc-scan-btn"
                     onclick="reactivateIntakeScan()"
-                    class="shrink-0 flex items-center gap-1.5 text-xs text-white bg-[#6B2233] hover:bg-[#8B2E44] rounded-lg px-3 py-2 transition-all">
+                    class="shrink-0 flex items-center gap-1.5 text-xs font-semibold btn-primary border rounded-lg px-3 py-2 transition-all whitespace-nowrap">
               {{ _('Scan from Epson') }}
             </button>
             {% endif %}
@@ -857,20 +857,44 @@
       {% if can_scan_intake_docs %}
       <div id="scan-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
         <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-5 space-y-4 border border-slate-200">
-          <h3 class="text-lg font-semibold text-[#6B2233]">{{ _('Scan client documents now?') }}</h3>
+          <h3 class="text-lg font-semibold" style="color:var(--color-primary)">{{ _('Scan client documents now?') }}</h3>
           <p class="text-sm text-slate-600">{{ _('Load pages in the Epson feeder. We will scan, upload, and auto-sort what we can.') }}</p>
           <div id="scan-agent-health" class="text-xs rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
             {{ _('Checking scanner…') }}
           </div>
           <label class="flex flex-col gap-1 text-sm">
+            <span class="text-slate-500 font-medium">{{ _('Save to') }}</span>
+            <select id="scan-destination" class="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    onchange="(function(sel){
+                      var tax=document.getElementById('scan-doc-type-tax');
+                      var cli=document.getElementById('scan-doc-type-client');
+                      if(!tax||!cli) return;
+                      var isClient = sel.value==='client';
+                      tax.classList.toggle('hidden', isClient);
+                      cli.classList.toggle('hidden', !isClient);
+                      tax.disabled = isClient;
+                      cli.disabled = !isClient;
+                    })(this)">
+              <option value="return" selected>{{ _('This return (tax docs)') }}</option>
+              <option value="client">{{ _('Client profile (non-tax)') }}</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1 text-sm">
             <span class="text-slate-500 font-medium">{{ _('Document type') }}</span>
-            <select id="scan-doc-type" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+            <select id="scan-doc-type-tax" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
               <option value="unknown" selected>{{ _('Mixed / sort later (recommended)') }}</option>
               <option value="W-2">W-2</option>
               <option value="1099">1099</option>
               <option value="prior_return">{{ _('Prior Return') }}</option>
               <option value="government_id">{{ _('Government ID') }}</option>
               <option value="misc">Misc</option>
+            </select>
+            <select id="scan-doc-type-client" class="hidden border border-slate-200 rounded-lg px-3 py-2 text-sm" disabled>
+              <option value="government_id">{{ _('Government ID') }}</option>
+              <option value="authorization">{{ _('Authorization / POA') }}</option>
+              <option value="correspondence">{{ _('Correspondence') }}</option>
+              <option value="engagement">{{ _('Engagement letter') }}</option>
+              <option value="misc" selected>Misc</option>
             </select>
           </label>
           <label class="flex items-center gap-2 text-sm text-slate-700">
@@ -881,10 +905,12 @@
           <div class="flex flex-wrap gap-2 justify-end pt-2">
             <button type="button" onclick="skipScanModal()" class="text-xs px-3 py-2 rounded-lg border border-slate-200 text-slate-600">{{ _('Skip') }}</button>
             <button type="button" id="scan-modal-restart" onclick="restartScanCountdown()"
-                    class="hidden text-xs px-3 py-2 rounded-lg border border-[#6B2233] text-[#6B2233] hover:bg-[#6B2233]/10 font-semibold">
+                    class="hidden text-xs px-3 py-2 rounded-lg border font-semibold"
+                    style="border-color:var(--color-primary);color:var(--color-primary)">
               {{ _('Restart timer') }}
             </button>
-            <button type="button" id="scan-modal-go" onclick="runScanAndUpload()" class="text-xs px-3 py-2 rounded-lg bg-[#6B2233] text-white">{{ _('Scan & upload') }}</button>
+            <button type="button" id="scan-modal-go" onclick="runScanAndUpload()"
+                    class="text-xs px-3 py-2 rounded-lg btn-primary border font-semibold">{{ _('Scan & upload') }}</button>
           </div>
         </div>
       </div>
@@ -1259,10 +1285,16 @@
   }
 
   // ── Missing documents tracker ─────────────────────────────────────────────
+  function _refocusMissingDocInput(input) {
+    if (!input) return;
+    input.focus();
+    input.select();
+  }
+
   async function addMissingDoc(returnId) {
     const input = document.getElementById('missing-doc-input');
     const text  = (input.value || '').trim();
-    if (!text) return;
+    if (!text) { _refocusMissingDocInput(input); return; }
     input.disabled = true;
     try {
       const resp = await _csrfFetch(`/api/return/${returnId}/missing-doc`, {
@@ -1271,7 +1303,11 @@
         body:    JSON.stringify({ text }),
       });
       const data = await resp.json();
-      if (!data.success) { input.disabled = false; return; }
+      if (!data.success) {
+        input.disabled = false;
+        _refocusMissingDocInput(input);
+        return;
+      }
       input.value    = '';
       input.disabled = false;
       // Remove empty placeholder
@@ -1290,7 +1326,11 @@
                 class="text-slate-300 hover:text-red-400 transition-colors text-xs" title="Remove">&#10005;</button>`;
       list.appendChild(div);
       refreshDocsBadge(returnId);
-    } catch(e) { input.disabled = false; }
+      _refocusMissingDocInput(input);
+    } catch(e) {
+      input.disabled = false;
+      _refocusMissingDocInput(input);
+    }
   }
 
   async function toggleMissingDoc(returnId, docId, btn) {
@@ -2789,10 +2829,10 @@
     const labelEl = document.getElementById('reactivate-scan-btn-label');
     if (navBtn) {
       if (SCAN_DEFERRED) {
-        navBtn.className = 'inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-all text-white bg-[#6B2233] hover:bg-[#8B2E44] border border-[#6B2233]';
+        navBtn.className = 'inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-all whitespace-nowrap btn-primary border';
         if (labelEl) labelEl.textContent = '{{ _("Scan documents now") }}';
       } else {
-        navBtn.className = 'inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-all text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200';
+        navBtn.className = 'inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-all whitespace-nowrap text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200';
         if (labelEl) labelEl.textContent = '{{ _("Scan documents") }}';
       }
     }
@@ -3005,12 +3045,19 @@
     _scanCountdownActive = false;
     const statusEl = document.getElementById('scan-modal-status');
     const goBtn = document.getElementById('scan-modal-go');
-    const docType = (document.getElementById('scan-doc-type') || {}).value || 'unknown';
+    const destination = (document.getElementById('scan-destination') || {}).value || 'return';
+    const taxSel = document.getElementById('scan-doc-type-tax');
+    const clientSel = document.getElementById('scan-doc-type-client');
+    const docType = destination === 'client'
+      ? ((clientSel && clientSel.value) || 'misc')
+      : ((taxSel && taxSel.value) || (document.getElementById('scan-doc-type') || {}).value || 'unknown');
     const handwriting = !!(document.getElementById('scan-handwriting') || {}).checked;
     _setRestartScanBtn(false);
     if (statusEl) {
       statusEl.classList.remove('hidden');
-      statusEl.textContent = 'Scanning from Epson… keep pages in the feeder.';
+      statusEl.textContent = destination === 'client'
+        ? 'Scanning non-tax docs to client profile…'
+        : 'Scanning from Epson… keep pages in the feeder.';
       statusEl.className = 'text-xs font-medium text-slate-600';
     }
     if (goBtn) goBtn.disabled = true;
@@ -3018,7 +3065,7 @@
       const up = await _csrfFetch(`/api/return/${RETURN_ID}/scan-intake`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ handwriting, doc_type: docType }),
+        body: JSON.stringify({ handwriting, doc_type: docType, destination }),
       });
       const data = await up.json().catch(() => ({}));
       if (!up.ok) {
@@ -3028,15 +3075,22 @@
       const pageCount = data.page_count != null ? data.page_count : '?';
       const logNum = data.log_number || LOG_NUMBER || '';
       if (statusEl) {
-        statusEl.textContent = `Uploaded ${pageCount} page(s)` +
-          (logNum ? ` — LOG:${logNum}` : '') +
-          (data.label_printed ? ' (label printed)' : '') +
-          (docType === 'unknown' || data.auto_sort ? ' — sorting in background' : '');
+        if (data.scope === 'client' || destination === 'client') {
+          statusEl.textContent = `Uploaded ${pageCount} page(s) to client profile (non-tax)` +
+            (data.view_url ? ' — open from Client page' : '');
+        } else {
+          statusEl.textContent = `Uploaded ${pageCount} page(s)` +
+            (logNum ? ` — LOG:${logNum}` : '') +
+            (data.label_printed ? ' (label printed)' : '') +
+            (docType === 'unknown' || data.auto_sort ? ' — sorting in background' : '');
+        }
         statusEl.className = 'text-xs font-medium text-green-700';
       }
       _setScanDeferredUi(false);
-      loadDocuments();
-      loadFormData();
+      if (destination !== 'client') {
+        loadDocuments();
+        loadFormData();
+      }
       setTimeout(closeScanModal, 1500);
       try {
         const u = new URL(window.location.href);

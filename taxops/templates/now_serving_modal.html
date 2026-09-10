@@ -1,0 +1,318 @@
+{# Now Serving floating panel — reception+; non-blocking so staff can work underneath. #}
+<div id="ns-modal"
+     class="hidden fixed z-[100050] w-[min(100vw-1.5rem,40rem)] max-h-[min(90vh,36rem)] overflow-hidden rounded-2xl shadow-2xl border border-slate-200 bg-white flex flex-col"
+     style="left:1rem;bottom:1rem;top:auto;right:auto"
+     role="dialog" aria-labelledby="ns-modal-title" aria-modal="false"
+     data-is-admin="{{ '1' if get_effective_role() == 'admin' else '0' }}">
+  <div id="ns-modal-header"
+       class="shrink-0 flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 cursor-grab active:cursor-grabbing select-none touch-none"
+       style="background:var(--color-primary-light)"
+       title="{{ _('Drag to move') }}">
+    <div class="min-w-0 pointer-events-none">
+      <h2 id="ns-modal-title" class="text-base font-bold truncate" style="color:var(--color-primary-text)">
+        {{ _('Now Serving') }}
+      </h2>
+      <p class="text-[11px] text-slate-500">{{ _('Drag to move — stays open while you work.') }}</p>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      {% if get_effective_role() == 'admin' %}
+      <button type="button" id="ns-reset"
+              class="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-50 cursor-pointer"
+              title="{{ _('Reset day') }}">
+        {{ _('Reset day') }}
+      </button>
+      {% endif %}
+      <button type="button" id="ns-modal-close"
+              class="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 hover:bg-white text-lg leading-none cursor-pointer"
+              aria-label="{{ _('Close') }}">×</button>
+    </div>
+  </div>
+
+  <div class="overflow-y-auto flex-1 min-h-0">
+    <p id="ns-err" class="hidden mx-4 mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
+
+    <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3" id="ns-columns">
+      {% for w in [1, 2] %}
+      <section class="rounded-xl border border-slate-200 overflow-hidden" data-window="{{ w }}">
+        <div class="px-3 py-2 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <h3 class="font-bold text-sm text-slate-800">{{ _('Window') }} {{ w }}</h3>
+          <span class="text-[11px] font-semibold text-slate-500">
+            <span data-role="waiting-count">—</span> {{ _('waiting') }}
+          </span>
+        </div>
+        <div class="p-3 space-y-3">
+          <div>
+            <div class="text-[10px] uppercase tracking-wide font-bold text-slate-400">{{ _('Now Serving') }}</div>
+            <div class="text-3xl font-black tabular-nums mt-0.5" style="color:var(--color-primary)"
+                 data-role="serving-label">—</div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button type="button"
+                    class="ns-call min-h-11 px-3 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
+                    style="background:var(--color-primary)"
+                    data-window="{{ w }}" disabled>
+              {{ _('Call Next') }}
+            </button>
+            <button type="button"
+                    class="ns-transfer min-h-11 px-3 rounded-lg text-sm font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                    data-window="{{ w }}" data-ticket-id="" disabled>
+              {{ _('Send to Window') }} {{ 3 - w }}
+            </button>
+          </div>
+          <ul class="text-sm text-slate-600 space-y-1 max-h-28 overflow-y-auto" data-role="waiting-list">
+            <li class="text-slate-400" data-empty="1">{{ _('No one waiting') }}</li>
+          </ul>
+        </div>
+      </section>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const modal = document.getElementById('ns-modal');
+  if (!modal) return;
+  const openBtn = document.getElementById('ns-open-btn');
+  const closeBtn = document.getElementById('ns-modal-close');
+  const header = document.getElementById('ns-modal-header');
+  const errEl = document.getElementById('ns-err');
+  const isAdmin = modal.dataset.isAdmin === '1';
+  const SEND = {{ _('Send to Window') | tojson }};
+  const NONE = {{ _('No one waiting') | tojson }};
+  const POS_KEY = 'taxops-ns-panel-pos';
+  const OPEN_KEY = 'taxops-ns-panel-open';
+  let pollTimer = null;
+  let open = false;
+  let drag = null;
+
+  function showErr(msg) {
+    if (!errEl) return;
+    if (!msg) { errEl.classList.add('hidden'); errEl.textContent = ''; return; }
+    errEl.textContent = msg;
+    errEl.classList.remove('hidden');
+  }
+
+  function paint(snap) {
+    if (!snap || !snap.windows) return;
+    [1, 2].forEach(function (w) {
+      const col = snap.windows[String(w)] || {};
+      const section = modal.querySelector('section[data-window="' + w + '"]');
+      if (!section) return;
+      const serving = col.serving;
+      section.querySelector('[data-role="serving-label"]').textContent =
+        (serving && serving.label) ? serving.label : '—';
+      section.querySelector('[data-role="waiting-count"]').textContent =
+        col.waiting_count != null ? col.waiting_count : 0;
+      const callBtn = section.querySelector('.ns-call');
+      const xferBtn = section.querySelector('.ns-transfer');
+      if (callBtn) callBtn.disabled = !(col.waiting_count > 0);
+      if (xferBtn) {
+        xferBtn.disabled = !serving;
+        xferBtn.dataset.ticketId = serving ? String(serving.id) : '';
+        xferBtn.textContent = SEND + ' ' + (3 - w);
+      }
+      const list = section.querySelector('[data-role="waiting-list"]');
+      if (list) {
+        const rows = col.waiting || [];
+        list.innerHTML = rows.length
+          ? rows.map(function (t) { return '<li class="font-mono">' + (t.label || '') + '</li>'; }).join('')
+          : '<li class="text-slate-400" data-empty="1">' + NONE + '</li>';
+      }
+    });
+  }
+
+  function refresh() {
+    return fetch('/now-serving/api/snapshot', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(paint)
+      .catch(function () {});
+  }
+
+  function startPoll() {
+    stopPoll();
+    pollTimer = setInterval(refresh, 4000);
+  }
+  function stopPoll() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function clampPos(left, top) {
+    const pad = 8;
+    const w = modal.offsetWidth || 640;
+    const h = modal.offsetHeight || 320;
+    const maxL = Math.max(pad, window.innerWidth - w - pad);
+    const maxT = Math.max(pad, window.innerHeight - h - pad);
+    return {
+      left: Math.min(maxL, Math.max(pad, left)),
+      top: Math.min(maxT, Math.max(pad, top)),
+    };
+  }
+
+  function applyPos(left, top) {
+    const p = clampPos(left, top);
+    modal.style.left = p.left + 'px';
+    modal.style.top = p.top + 'px';
+    modal.style.right = 'auto';
+    modal.style.bottom = 'auto';
+    try {
+      sessionStorage.setItem(POS_KEY, JSON.stringify({ left: p.left, top: p.top }));
+    } catch (e) {}
+  }
+
+  function restorePos() {
+    try {
+      const raw = sessionStorage.getItem(POS_KEY);
+      if (!raw) return;
+      const p = JSON.parse(raw);
+      if (typeof p.left === 'number' && typeof p.top === 'number') {
+        applyPos(p.left, p.top);
+      }
+    } catch (e) {}
+  }
+
+  function defaultPos() {
+    const w = modal.offsetWidth || 640;
+    const h = modal.offsetHeight || 320;
+    applyPos(window.innerWidth - w - 16, window.innerHeight - h - 16);
+  }
+
+  function resetPos() {
+    try { sessionStorage.removeItem(POS_KEY); } catch (e) {}
+    defaultPos();
+  }
+
+  function bringToFront() {
+    modal.style.zIndex = '100050';
+  }
+
+  function openModal(opts) {
+    const reset = !!(opts && opts.resetPos);
+    const alreadyOpen = open;
+    modal.classList.remove('hidden');
+    open = true;
+    showErr('');
+    bringToFront();
+    if (reset || alreadyOpen) {
+      resetPos();
+    } else if (!sessionStorage.getItem(POS_KEY)) {
+      defaultPos();
+    } else {
+      restorePos();
+    }
+    try { sessionStorage.setItem(OPEN_KEY, '1'); } catch (e) {}
+    refresh();
+    startPoll();
+  }
+  function closeModal() {
+    modal.classList.add('hidden');
+    open = false;
+    stopPoll();
+    try { sessionStorage.removeItem(OPEN_KEY); } catch (e) {}
+  }
+
+  window.TaxOpsOpenNowServing = function () {
+    openModal({ resetPos: open });
+  };
+
+  openBtn && openBtn.addEventListener('click', function (e) {
+    e.preventDefault();
+    openModal({ resetPos: open });
+  });
+  closeBtn && closeBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    closeModal();
+  });
+  // Escape closes only when focus is inside the panel — don't steal Escape from forms.
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && open && modal.contains(document.activeElement)) closeModal();
+  });
+
+  // Drag by header (ignore interactive controls in the header).
+  header && header.addEventListener('pointerdown', function (e) {
+    if (e.button != null && e.button !== 0) return;
+    if (e.target.closest('button, a, input, select, textarea')) return;
+    const rect = modal.getBoundingClientRect();
+    drag = {
+      ox: e.clientX - rect.left,
+      oy: e.clientY - rect.top,
+      pid: e.pointerId,
+    };
+    try { header.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+  });
+  header && header.addEventListener('pointermove', function (e) {
+    if (!drag || drag.pid !== e.pointerId) return;
+    applyPos(e.clientX - drag.ox, e.clientY - drag.oy);
+  });
+  function endDrag(e) {
+    if (!drag) return;
+    if (e && drag.pid != null && e.pointerId !== drag.pid) return;
+    drag = null;
+  }
+  header && header.addEventListener('pointerup', endDrag);
+  header && header.addEventListener('pointercancel', endDrag);
+
+  window.addEventListener('resize', function () {
+    if (!open) return;
+    const rect = modal.getBoundingClientRect();
+    applyPos(rect.left, rect.top);
+  });
+
+  async function postJson(url, body) {
+    const resp = await _csrfFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await resp.json().catch(function () { return {}; });
+    return { ok: resp.ok, data: data };
+  }
+
+  modal.addEventListener('click', async function (e) {
+    const call = e.target.closest('.ns-call');
+    const xfer = e.target.closest('.ns-transfer');
+    if (call) {
+      showErr('');
+      call.disabled = true;
+      const res = await postJson('/now-serving/api/call-next', { window: parseInt(call.dataset.window, 10) });
+      if (res.data.snapshot) paint(res.data.snapshot);
+      else refresh();
+      if (!res.ok || !res.data.success) showErr(res.data.error || 'Call next failed');
+      return;
+    }
+    if (xfer) {
+      const tid = parseInt(xfer.dataset.ticketId, 10);
+      if (!tid) return;
+      showErr('');
+      xfer.disabled = true;
+      const res = await postJson('/now-serving/api/transfer', { ticket_id: tid });
+      if (res.data.snapshot) paint(res.data.snapshot);
+      else refresh();
+      if (!res.ok || !res.data.success) showErr(res.data.error || 'Transfer failed');
+    }
+  });
+
+  document.getElementById('ns-reset')?.addEventListener('click', async function (e) {
+    e.stopPropagation();
+    if (!isAdmin) return;
+    if (!confirm({{ _('Clear all tickets and restart numbering at 1? This cannot be undone.') | tojson }})) return;
+    showErr('');
+    const res = await postJson('/now-serving/api/reset', { confirm: true });
+    if (res.data.snapshot) paint(res.data.snapshot);
+    if (!res.ok || !res.data.success) showErr(res.data.error || 'Reset failed');
+  });
+
+  // Open from ?open_now_serving=1, or restore if left open across navigation.
+  try {
+    const u = new URL(window.location.href);
+    if (u.searchParams.get('open_now_serving') === '1') {
+      openModal();
+      u.searchParams.delete('open_now_serving');
+      window.history.replaceState({}, '', u.pathname + u.search);
+    } else if (sessionStorage.getItem(OPEN_KEY) === '1') {
+      openModal();
+    }
+  } catch (e) {}
+})();
+</script>

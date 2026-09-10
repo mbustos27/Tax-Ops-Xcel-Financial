@@ -126,3 +126,38 @@ NSSM-hosted deployments reachable from multiple PCs:
 - **Static cache busting:** set **`TAXOPS_VERSION`** or **`TAXOPS_APP_VERSION`** when you deploy so `?v=` on JS/CSS changes (#142–#144). Without git on the server, the app falls back to filesystem mtime for the version token.
 
 See GitHub **[Production Hardening #82](https://github.com/mbustos27/Tax-Ops-Xcel-Financial/issues/82)** and child issues (**#83** audit epic, PROD issues **#89–#96**).
+
+## Now Serving (lobby take-a-number)
+
+Single queue, two windows. Ships with the normal TaxOps NSSM restart — no extra service.
+
+| Screen | URL | Auth |
+|--------|-----|------|
+| Public kiosk (iPad) | `/now-serving/kiosk` | **None** (intentional — not behind login) |
+| Lobby display (TV / Pi) | `/now-serving/display` | **None** — large board + English/Spanish voice |
+| Staff controls | Header **Now Serving** / Daily menu (modal on any page) | Receptionist / Preparer / Admin |
+| End-of-day reset | modal button | Admin only |
+
+`/now-serving/board` redirects to the dashboard with the modal open (bookmark-compatible).
+
+### Lobby display (Raspberry Pi → HDMI TV)
+
+Prefer a **Raspberry Pi + Chromium kiosk** over a Roku channel for v1: same live SSE feed as the staff board, bilingual TTS in the browser, no app-store review.
+
+1. Point the Pi at TaxOps on the LAN, e.g. `http://192.168.1.173:5000/now-serving/display?autosound=1`.
+2. Copy `scripts/now_serving_display_kiosk.sh` to the Pi, `chmod +x` it, set `TAXOPS_URL`, and run (or add to autostart).
+3. Chromium flag `--autoplay-policy=no-user-gesture-required` plus `?autosound=1` skips the tap-to-enable gate so voice works after reboot.
+4. Install Spanish voices on the Pi if needed (`espeak-ng` / Chromium language packs) so both `en-US` and `es-MX` announcements play.
+
+**Roku:** a native BrightScript channel is not built yet. Short-term options: HDMI from the Pi, or any device that can open the display URL in a browser. A Roku channel can consume the same `/now-serving/api/snapshot` + `/now-serving/api/events` later.
+
+Voice announces only when a window’s **serving** ticket changes (Call Next), English then Spanish — e.g. “Now serving number 12 at window 1” / “Ahora sirviendo el número 12 en ventanilla 1”. Tickets are plain day numbers (1, 2, 3…), not `A-###`.
+
+### Lobby iPad setup
+
+1. On the lobby iPad, open Safari to `http://<TaxOps-LAN-address>/now-serving/kiosk`.
+2. Share → **Add to Home Screen** (full-screen web app metas are already on the page).
+3. Enable **Guided Access** (Settings → Accessibility → Guided Access) and lock the iPad to that Home Screen icon so guests cannot leave the kiosk.
+4. After a power loss, Guided Access must be started again manually. A future option is Apple Configurator 2 + Supervised **Single App Mode** — not built into TaxOps.
+
+Ticket stubs print through the existing Filetrack print relay (`FILETRACK_RELAY_URL`, TCP 8765) as raw ZPL with the ticket label and window. Confirm with Moises before pointing at a live-traffic printer.

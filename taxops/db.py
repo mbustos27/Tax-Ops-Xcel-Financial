@@ -11,7 +11,7 @@ from form_schema import CREATE_TABLE_FRAGMENTS_DOC7, get_form_alter_columns_by_t
 # DEBT-6: increment this integer whenever a new migration block is added to
 # _migrate_existing_tables.  The value is stored in app_settings and surfaced
 # via /health so ops can confirm a deploy applied all migrations.
-CURRENT_SCHEMA_VERSION = 30
+CURRENT_SCHEMA_VERSION = 39
 
 _log = logging.getLogger(__name__)
 
@@ -482,6 +482,43 @@ def init_db(conn: sqlite3.Connection) -> None:
           uploaded_at       TEXT,
           notes             TEXT,
           is_deleted        INTEGER NOT NULL DEFAULT 0
+        );
+
+        -- Client-scoped non-tax documents (ID, POA, correspondence, etc.).
+        -- Not bound to a specific return; optional scanned_from_return_id is audit only.
+        CREATE TABLE IF NOT EXISTS client_documents (
+          id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+          client_id              INTEGER NOT NULL REFERENCES clients(id),
+          filename               TEXT NOT NULL,
+          original_filename      TEXT,
+          doc_type               TEXT,
+          source                 TEXT,
+          file_path              TEXT NOT NULL,
+          file_size_bytes        INTEGER,
+          file_hash              TEXT,
+          uploaded_by            TEXT,
+          uploaded_at            TEXT,
+          notes                  TEXT,
+          is_deleted             INTEGER NOT NULL DEFAULT 0,
+          scanned_from_return_id INTEGER REFERENCES returns(id)
+        );
+
+        -- Now Serving (take-a-number): one queue, two windows, A-### tickets.
+        CREATE TABLE IF NOT EXISTS now_serving_tickets (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          number      INTEGER NOT NULL,
+          window      INTEGER NOT NULL CHECK (window IN (1, 2)),
+          status      TEXT NOT NULL CHECK (status IN ('waiting', 'serving', 'done')),
+          queue_pos   INTEGER NOT NULL,
+          created_at  TEXT NOT NULL,
+          transferred INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS now_serving_state (
+          id               INTEGER PRIMARY KEY CHECK (id = 1),
+          next_number      INTEGER NOT NULL DEFAULT 1,
+          assign_turn      INTEGER NOT NULL DEFAULT 1 CHECK (assign_turn IN (1, 2)),
+          transfer_counter INTEGER NOT NULL DEFAULT 0,
+          event_seq        INTEGER NOT NULL DEFAULT 0
         );
 
         -- email_classifications: archived by Phase 2.2 (see _migrate_existing_tables,
@@ -1267,6 +1304,11 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
             "match_method TEXT",
             # Set to 1 after extracted_fields are flattened into return_documents_fts.
             "ocr_text_indexed INTEGER NOT NULL DEFAULT 0",
+            # Prep workspace: preparer marks each page/file as entered into Drake
+            # or not needed. NULL/empty = still pending review.
+            "prep_review_status TEXT",
+            "prep_reviewed_at TEXT",
+            "prep_reviewed_by TEXT",
         ],
         "auth_users": [
             # ONBOARD-1: forces password change on first login / after admin reset
@@ -2539,6 +2581,170 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_email_campaigns_category "
         "ON email_campaigns(category, status)"
+    )
+
+    # Schema v31 — admin staff announcements (in-app bell notifications).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS announcements (
+          id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+          title                TEXT NOT NULL,
+          body                 TEXT,
+          link_url             TEXT,
+          recipient_scope      TEXT NOT NULL,
+          recipient_user_ids   TEXT,
+          sent_count           INTEGER NOT NULL DEFAULT 0,
+          created_by_user_id   INTEGER REFERENCES auth_users(id),
+          created_by_display   TEXT,
+          created_at           TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_announcements_created "
+        "ON announcements(created_at DESC)"
+    )
+
+    # Schema v32 — peer staff messages (in-app bell + inbox/sent page).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS staff_messages (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          sender_user_id      INTEGER NOT NULL REFERENCES auth_users(id),
+          recipient_user_id   INTEGER NOT NULL REFERENCES auth_users(id),
+          subject             TEXT NOT NULL,
+          body                TEXT NOT NULL,
+          client_id           INTEGER REFERENCES clients(id),
+          link_url            TEXT,
+          notification_id     INTEGER REFERENCES notifications(id),
+          is_read             INTEGER NOT NULL DEFAULT 0,
+          created_at          TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_staff_messages_recipient "
+        "ON staff_messages(recipient_user_id, is_read, created_at DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_staff_messages_sender "
+        "ON staff_messages(sender_user_id, created_at DESC)"
+    )
+
+    # Schema v33 — link staff messages to a client (client search on compose form).
+    sm_cols = _table_columns(conn, "staff_messages")
+    if "client_id" not in sm_cols:
+        conn.execute(
+            "ALTER TABLE staff_messages ADD COLUMN client_id INTEGER REFERENCES clients(id)"
+        )
+
+    # Schema v34 — prep document review (entered / not_needed) on return_documents.
+    rd_cols = _table_columns(conn, "return_documents")
+    for col_def in (
+        "prep_review_status TEXT",
+        "prep_reviewed_at TEXT",
+        "prep_reviewed_by TEXT",
+    ):
+        col_name = col_def.split(" ", 1)[0]
+        if col_name not in rd_cols:
+            conn.execute(f"ALTER TABLE return_documents ADD COLUMN {col_def}")
+
+    # Schema v35 — client-scoped non-tax documents (profile / reception scans).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS client_documents (
+          id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+          client_id              INTEGER NOT NULL REFERENCES clients(id),
+          filename               TEXT NOT NULL,
+          original_filename      TEXT,
+          doc_type               TEXT,
+          source                 TEXT,
+          file_path              TEXT NOT NULL,
+          file_size_bytes        INTEGER,
+          file_hash              TEXT,
+          uploaded_by            TEXT,
+          uploaded_at            TEXT,
+          notes                  TEXT,
+          is_deleted             INTEGER NOT NULL DEFAULT 0,
+          scanned_from_return_id INTEGER REFERENCES returns(id)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_client_documents_client "
+        "ON client_documents(client_id, is_deleted, uploaded_at DESC)"
+    )
+
+    # Schema v36 — Now Serving take-a-number (single queue, two windows).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS now_serving_tickets (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          number      INTEGER NOT NULL,
+          window      INTEGER NOT NULL CHECK (window IN (1, 2)),
+          status      TEXT NOT NULL CHECK (status IN ('waiting', 'serving', 'done')),
+          queue_pos   INTEGER NOT NULL,
+          created_at  TEXT NOT NULL,
+          transferred INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS now_serving_state (
+          id               INTEGER PRIMARY KEY CHECK (id = 1),
+          next_number      INTEGER NOT NULL DEFAULT 1,
+          assign_turn      INTEGER NOT NULL DEFAULT 1 CHECK (assign_turn IN (1, 2)),
+          transfer_counter INTEGER NOT NULL DEFAULT 0,
+          event_seq        INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_now_serving_window_status_pos "
+        "ON now_serving_tickets(window, status, queue_pos, id)"
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_now_serving_active_number "
+        "ON now_serving_tickets(number) WHERE status IN ('waiting', 'serving')"
+    )
+    # Seed the singleton state row if missing.
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO now_serving_state (id, next_number, assign_turn, transfer_counter, event_seq)
+        VALUES (1, 1, 1, 0, 0)
+        """
+    )
+    # v37 — live-update revision counter for SSE / polling.
+    ns_cols = _table_columns(conn, "now_serving_state")
+    if "event_seq" not in ns_cols:
+        conn.execute(
+            "ALTER TABLE now_serving_state ADD COLUMN event_seq INTEGER NOT NULL DEFAULT 0"
+        )
+    # v38 — transferred flag: manual/auto moves stick; no ping-pong rebalance.
+    ns_tix_cols = _table_columns(conn, "now_serving_tickets")
+    if "transferred" not in ns_tix_cols:
+        conn.execute(
+            "ALTER TABLE now_serving_tickets ADD COLUMN transferred INTEGER NOT NULL DEFAULT 0"
+        )
+
+    # Schema v39 — staff message threads (reply / mini-chat).
+    sm_cols_v39 = _table_columns(conn, "staff_messages")
+    if "thread_id" not in sm_cols_v39:
+        conn.execute(
+            "ALTER TABLE staff_messages ADD COLUMN thread_id INTEGER REFERENCES staff_messages(id)"
+        )
+    if "parent_id" not in sm_cols_v39:
+        conn.execute(
+            "ALTER TABLE staff_messages ADD COLUMN parent_id INTEGER REFERENCES staff_messages(id)"
+        )
+    # Backfill roots so existing rows participate in conversations.
+    conn.execute(
+        "UPDATE staff_messages SET thread_id = id WHERE thread_id IS NULL"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_staff_messages_thread "
+        "ON staff_messages(thread_id, created_at, id)"
     )
 
     # DEBT-6: stamp the schema version so /health can confirm migrations ran.

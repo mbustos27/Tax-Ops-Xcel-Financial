@@ -260,6 +260,9 @@ EMAIL_INBOX_DIR = os.environ.get(
     "EMAIL_INBOX_DIR",
     str(_HERE / "documents" / "email_inbox")
 )
+# Holding-area triage: default UI shows only recent items; IMAP skips stale unseen.
+EMAIL_INBOX_DISPLAY_DAYS = int(os.environ.get("EMAIL_INBOX_DISPLAY_DAYS", "14"))
+EMAIL_INBOX_INGEST_MAX_AGE_DAYS = int(os.environ.get("EMAIL_INBOX_INGEST_MAX_AGE_DAYS", "14"))
 
 # MULTIYEAR-3 — YoY highlight thresholds for GET /api/clients/<id>/years
 def _mf_env(name: str, default: str) -> float:
@@ -601,6 +604,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "can_manage_return_documents": frozenset({"receptionist", "preparer", "admin"}),
     # Client profile contact fields + filing status on latest return (intake desk).
     "can_edit_client_profile":     frozenset({"receptionist", "preparer", "admin"}),
+    # Now Serving staff board / call-next / transfer (lobby queue). Reset stays admin-only.
+    "can_manage_now_serving":      frozenset({"receptionist", "preparer", "admin"}),
 }
 
 

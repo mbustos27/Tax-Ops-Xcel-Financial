@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-  One-time desk setup: map T: to the TaxOps share, route hostname "taxlog",
+  One-time desk setup: map office network drives, route hostname "taxlog",
   and put a Tax Log shortcut on the Desktop.
 
 .DESCRIPTION
@@ -10,19 +10,22 @@
   or, once T: is mapped:
     T:\SETUP_WORKSTATION.bat
 
-  Does NOT install scan/print relays - use T:\GO_RECEPTION.bat on reception only.
+  Maps and verifies all standard Xcel-server drives:
+    F:  \\Xcel-server\ACCNTING
+    P:  \\Xcel-server\PUBLIC
+    Q:  \\Xcel-server\QUICKBOOKS
+    T:  \\Xcel-server\taxops
+
+  Tax Log URL (default): http://192.168.1.173:5000
+  Friendly hosts name:   http://taxlog:5000
+
+  Does NOT install scan/print relays — use T:\GO_RECEPTION.bat on reception only.
 
 .PARAMETER ServerIP
   TaxOps / Tax Log LAN IP (NSSM host). Default 192.168.1.173
 
 .PARAMETER Hostname
   Friendly name written to hosts. Default taxlog -> http://taxlog:5000
-
-.PARAMETER UncRoot
-  Share to map as T:. Default \\Xcel-server\taxops
-
-.PARAMETER DriveLetter
-  Drive letter for the share. Default T
 
 .PARAMETER AppPort
   TaxOps HTTP port. Default 5000
@@ -32,23 +35,32 @@
 
 .PARAMETER SkipShortcut
   Do not create Desktop shortcut.
+
+.PARAMETER SkipDriveMap
+  Only check drives; do not create/fix mappings.
 #>
 param(
-    [string]$ServerIP     = "192.168.1.173",
-    [string]$Hostname     = "taxlog",
-    [string]$UncRoot      = "\\Xcel-server\taxops",
-    [string]$DriveLetter  = "T",
-    [int]$AppPort         = 5000,
+    [string]$ServerIP    = "192.168.1.173",
+    [string]$Hostname    = "taxlog",
+    [string]$FileServer  = "Xcel-server",
+    [int]$AppPort        = 5000,
     [switch]$SkipHosts,
     [switch]$SkipShortcut,
+    [switch]$SkipDriveMap,
     [switch]$ElevatedHostsPass
 )
 
 $ErrorActionPreference = "Continue"
-$UncRoot = $UncRoot.TrimEnd('\')
-$DriveLetter = $DriveLetter.TrimEnd(':').ToUpperInvariant()
-$Drive = "${DriveLetter}:"
-$TaxLogUrl = "http://${Hostname}:${AppPort}"
+
+# Canonical office drive letters (from \\Xcel-server share list + existing net use).
+$script:RequiredDrives = @(
+    @{ Letter = "F"; Unc = "\\$FileServer\ACCNTING";   Label = "Accounting" }
+    @{ Letter = "P"; Unc = "\\$FileServer\PUBLIC";     Label = "Public" }
+    @{ Letter = "Q"; Unc = "\\$FileServer\QUICKBOOKS"; Label = "QuickBooks" }
+    @{ Letter = "T"; Unc = "\\$FileServer\taxops";     Label = "TaxOps" }
+)
+
+$TaxLogUrl   = "http://${Hostname}:${AppPort}"
 $TaxLogUrlIp = "http://${ServerIP}:${AppPort}"
 
 $script:ok = 0
@@ -68,7 +80,7 @@ function Test-IsAdmin {
     return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-function Invoke-NetUseTimed([string]$ArgsLine, [int]$TimeoutSec = 12) {
+function Invoke-NetUseTimed([string]$ArgsLine, [int]$TimeoutSec = 15) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "cmd.exe"
     $psi.Arguments = "/c net use $ArgsLine"
@@ -129,52 +141,140 @@ function Test-TcpPort([string]$Computer, [int]$Port, [int]$Ms = 3000) {
     } catch { return $false }
 }
 
-function Ensure-DriveMapping {
-    Work "Checking $Drive -> $UncRoot ..."
-
-    # Already correct?
+function Get-MappedRoot([string]$Letter) {
+    $drive = "${Letter}:"
     try {
-        $existing = Get-PSDrive -Name $DriveLetter -PSProvider FileSystem -EA SilentlyContinue
-        if ($existing -and $existing.DisplayRoot) {
-            $root = $existing.DisplayRoot.TrimEnd('\')
-            if ($root -ieq $UncRoot) {
-                if (Test-Path -LiteralPath (Join-Path $Drive "taxops")) {
-                    Good "$Drive already maps to $UncRoot"
-                    return
-                }
-            } else {
-                Warn "$Drive currently maps to $root - reconnecting to $UncRoot"
-                $null = Invoke-NetUseTimed ("{0} /delete /y" -f $Drive)
-            }
+        $ps = Get-PSDrive -Name $Letter -PSProvider FileSystem -EA SilentlyContinue
+        if ($ps -and $ps.DisplayRoot) {
+            return $ps.DisplayRoot.TrimEnd('\')
         }
     } catch {}
+    $view = Invoke-NetUseTimed $drive
+    if ($view.ExitCode -eq 0 -and $view.Text -match '\\\\[^\s]+') {
+        $m = [regex]::Match($view.Text, '(\\\\[^\s]+)')
+        if ($m.Success) { return $m.Groups[1].Value.TrimEnd('\') }
+    }
+    return $null
+}
 
-    # net use may already have it
-    $view = Invoke-NetUseTimed $Drive
-    if ($view.ExitCode -eq 0 -and $view.Text -match [regex]::Escape($UncRoot)) {
-        Good "$Drive already connected to $UncRoot"
-        return
+function Test-UncReachable([string]$Unc) {
+    try {
+        return [bool](Test-Path -LiteralPath $Unc -EA SilentlyContinue)
+    } catch {
+        return $false
+    }
+}
+
+function Ensure-NetworkDriveMapping {
+    param(
+        [Parameter(Mandatory)] [string]$Letter,
+        [Parameter(Mandatory)] [string]$Unc,
+        [Parameter(Mandatory)] [string]$Label
+    )
+    $drive = "${Letter}:"
+    $uncNorm = $Unc.TrimEnd('\')
+    Work ("Checking {0} -> {1} ({2}) ..." -f $drive, $uncNorm, $Label)
+
+    if (-not (Test-UncReachable $uncNorm)) {
+        # Try alternate casing for PUBLIC/public etc.
+        $alt = $uncNorm
+        if ($uncNorm -match '\\PUBLIC$') {
+            $alt = ($uncNorm -replace '\\PUBLIC$', '\public')
+        }
+        if ($alt -ne $uncNorm -and (Test-UncReachable $alt)) {
+            $uncNorm = $alt
+        } else {
+            Bad ("Share not reachable: {0}" -f $uncNorm)
+            Info ("Confirm you can open {0} in File Explorer (LAN / credentials)." -f $uncNorm)
+            return $false
+        }
     }
 
-    # Disconnect stale letter then map persistent
-    $null = Invoke-NetUseTimed ("{0} /delete /y" -f $Drive)
-    $map = Invoke-NetUseTimed ("{0} `"{1}`" /persistent:yes" -f $Drive, $UncRoot)
+    $current = Get-MappedRoot $Letter
+    if ($current) {
+        if ($current -ieq $uncNorm) {
+            if (Test-Path -LiteralPath $drive -EA SilentlyContinue) {
+                Good ("{0} already maps to {1}" -f $drive, $uncNorm)
+                return $true
+            }
+        } else {
+            Warn ("{0} currently maps to {1} — reconnecting to {2}" -f $drive, $current, $uncNorm)
+            if ($SkipDriveMap) {
+                Bad ("Wrong mapping on {0} (expected {1})" -f $drive, $uncNorm)
+                return $false
+            }
+            $null = Invoke-NetUseTimed ("{0} /delete /y" -f $drive)
+        }
+    }
+
+    if ($SkipDriveMap) {
+        if ($current -and ($current -ieq $uncNorm)) {
+            Good ("{0} OK (check-only)" -f $drive)
+            return $true
+        }
+        Bad ("{0} not mapped to {1} (check-only; re-run without -SkipDriveMap)" -f $drive, $uncNorm)
+        return $false
+    }
+
+    # Fresh persistent map
+    $null = Invoke-NetUseTimed ("{0} /delete /y" -f $drive)
+    $map = Invoke-NetUseTimed ('{0} "{1}" /persistent:yes' -f $drive, $uncNorm)
     if ($map.TimedOut) {
-        Bad "Mapping $Drive timed out - is \\Xcel-server reachable on the LAN?"
+        Bad ("Mapping {0} timed out — is \\{1} reachable?" -f $drive, $FileServer)
         Info $map.Text
-        return
+        return $false
     }
     if ($map.ExitCode -ne 0) {
-        Bad "net use $Drive failed (exit $($map.ExitCode))"
+        Bad ("net use {0} failed (exit {1})" -f $drive, $map.ExitCode)
         Info $map.Text
-        Info "Open File Explorer -> \\Xcel-server\taxops and confirm you can browse it."
-        return
+        return $false
     }
-    if (Test-Path -LiteralPath (Join-Path $Drive "taxops")) {
-        Good "Mapped $Drive -> $UncRoot (persistent)"
+    if (Test-Path -LiteralPath $drive -EA SilentlyContinue) {
+        Good ("Mapped {0} -> {1} (persistent)" -f $drive, $uncNorm)
+        return $true
+    }
+    Warn ("Mapped {0} but path not visible yet — refresh Explorer" -f $drive)
+    return $true
+}
+
+function Test-AllNetworkDrives {
+    Say ""
+    Say "  Network drives" "Cyan"
+    $allOk = $true
+    foreach ($d in $script:RequiredDrives) {
+        $ok = Ensure-NetworkDriveMapping -Letter $d.Letter -Unc $d.Unc -Label $d.Label
+        if (-not $ok) { $allOk = $false }
+    }
+
+    # Extra shares on the server (informational — not required on every desk)
+    Work ("Listing other shares on \\{0} ..." -f $FileServer)
+    $view = Invoke-NetUseTimed ("view \\{0}" -f $FileServer) 20
+    if ($view.ExitCode -eq 0 -and $view.Text) {
+        $known = @{}
+        foreach ($d in $script:RequiredDrives) {
+            $share = ($d.Unc -split '\\')[-1]
+            $known[$share.ToUpperInvariant()] = $true
+        }
+        $lines = $view.Text -split "`r?`n"
+        $extras = @()
+        foreach ($line in $lines) {
+            if ($line -match '^\s*([A-Za-z0-9][A-Za-z0-9 _-]+)\s+Disk\b') {
+                $name = $Matches[1].Trim()
+                if (-not $known.ContainsKey($name.ToUpperInvariant())) {
+                    $extras += $name
+                }
+            }
+        }
+        if ($extras.Count -gt 0) {
+            Info ("Other Disk shares (not auto-mapped): {0}" -f ($extras -join ", "))
+            Info "Scan folders (FRONT SCAN, etc.) stay per-user — map manually if needed."
+        } else {
+            Info "No extra Disk shares beyond F/P/Q/T."
+        }
     } else {
-        Warn "Mapped $Drive but taxops\ folder not visible yet - refresh Explorer"
+        Warn ("Could not list shares on \\{0} (net view failed)" -f $FileServer)
     }
+    return $allOk
 }
 
 function Ensure-HostsEntry {
@@ -190,7 +290,7 @@ function Ensure-HostsEntry {
     }
 
     if (-not (Test-IsAdmin)) {
-        Work "hosts needs Administrator - prompting UAC..."
+        Work "hosts needs Administrator — prompting UAC..."
         $self = $PSCommandPath
         if (-not $self) { $self = $MyInvocation.MyCommand.Path }
         $arg = @(
@@ -198,12 +298,12 @@ function Ensure-HostsEntry {
             "-File", $self,
             "-ServerIP", $ServerIP,
             "-Hostname", $Hostname,
-            "-UncRoot", $UncRoot,
-            "-DriveLetter", $DriveLetter,
+            "-FileServer", $FileServer,
             "-AppPort", "$AppPort",
             "-ElevatedHostsPass"
         )
         if ($SkipShortcut) { $arg += "-SkipShortcut" }
+        if ($SkipDriveMap) { $arg += "-SkipDriveMap" }
         $p = Start-Process -FilePath "powershell.exe" -Verb RunAs -Wait -PassThru -ArgumentList $arg
         if ($p.ExitCode -eq 0 -and (Get-HostsIP $Hostname) -eq $ServerIP) {
             Good "hosts updated: $Hostname -> $ServerIP"
@@ -238,37 +338,38 @@ function Ensure-DesktopShortcut {
         return
     }
 
-    $lnkPath = Join-Path $desktop "Tax Log.lnk"
+    # Prefer IP URL so the shortcut works even before hosts is fixed.
+    $primaryUrl = $TaxLogUrlIp
+    $urlPath = Join-Path $desktop "Tax Log.url"
     try {
-        $w = New-Object -ComObject WScript.Shell
-        $sc = $w.CreateShortcut($lnkPath)
-        $sc.TargetPath = $TaxLogUrl
-        $sc.Description = "TaxOps / Tax Log ($TaxLogUrl)"
-        # Prefer edge/default browser via URL-style .lnk TargetPath = http://...
-        $sc.Save()
-        Good "Desktop shortcut: $lnkPath"
-        Info "Opens $TaxLogUrl"
+        @(
+            "[InternetShortcut]"
+            "URL=$primaryUrl"
+        ) | Set-Content -LiteralPath $urlPath -Encoding ASCII
+        Good "Desktop shortcut: $urlPath"
+        Info "Opens $primaryUrl"
     } catch {
-        # Some Windows builds dislike http TargetPath on .lnk - fall back to .url
+        Warn "URL shortcut failed: $($_.Exception.Message)"
+    }
+
+    # Also write friendly-name .url if hosts is set
+    if ((Get-HostsIP $Hostname) -eq $ServerIP) {
         try {
-            $urlPath = Join-Path $desktop "Tax Log.url"
+            $namePath = Join-Path $desktop "Tax Log (taxlog).url"
             @(
                 "[InternetShortcut]"
                 "URL=$TaxLogUrl"
-            ) | Set-Content -LiteralPath $urlPath -Encoding ASCII
-            Good "Desktop shortcut: $urlPath"
-        } catch {
-            Warn "Shortcut skipped: $($_.Exception.Message)"
-        }
+            ) | Set-Content -LiteralPath $namePath -Encoding ASCII
+            Good "Desktop shortcut: $namePath"
+        } catch {}
     }
 
-    # Share explorer shortcut (optional convenience)
     try {
         $shareLnk = Join-Path $desktop "TaxOps Share (T).lnk"
         $w2 = New-Object -ComObject WScript.Shell
         $sc2 = $w2.CreateShortcut($shareLnk)
-        $sc2.TargetPath = $Drive
-        $sc2.Description = "TaxOps share $UncRoot"
+        $sc2.TargetPath = "T:\"
+        $sc2.Description = "TaxOps share \\$FileServer\taxops"
         $sc2.Save()
         Good "Desktop shortcut: $shareLnk"
     } catch {
@@ -277,11 +378,11 @@ function Ensure-DesktopShortcut {
 }
 
 function Test-TaxLogReachable {
-    $healthIp = $TaxLogUrlIp + '/health'
-    $healthName = $TaxLogUrl + '/health'
+    $healthIp = $TaxLogUrlIp + "/health"
+    $healthName = $TaxLogUrl + "/health"
     Work ("Checking Tax Log at {0}:{1} ..." -f $ServerIP, $AppPort)
     if (-not (Test-TcpPort $ServerIP $AppPort 4000)) {
-        Bad ("Cannot reach {0}:{1} - TaxOps service down, wrong IP, or firewall" -f $ServerIP, $AppPort)
+        Bad ("Cannot reach {0}:{1} — TaxOps service down, wrong IP, or firewall" -f $ServerIP, $AppPort)
         Info ("From this PC try:  curl.exe {0}" -f $healthIp)
         return
     }
@@ -297,7 +398,6 @@ function Test-TaxLogReachable {
         Info ("Browser may still work at {0}" -f $TaxLogUrlIp)
     }
 
-    # Name route (after hosts)
     if ((Get-HostsIP $Hostname) -eq $ServerIP) {
         try {
             $r2 = Invoke-WebRequest -Uri $healthName -UseBasicParsing -TimeoutSec 8
@@ -305,7 +405,7 @@ function Test-TaxLogReachable {
                 Good ("Hostname route OK ({0})" -f $healthName)
             }
         } catch {
-            Warn ("hosts set but {0} failed - try IP URL or flush DNS: ipconfig /flushdns" -f $healthName)
+            Warn ("hosts set but {0} failed — try IP URL or: ipconfig /flushdns" -f $healthName)
         }
     }
 }
@@ -326,33 +426,42 @@ Say ""
 Say "========================================================" "Cyan"
 Say "  TaxOps workstation setup" "Cyan"
 Say "========================================================" "Cyan"
-Say "  Share : $UncRoot  ->  $Drive" "Gray"
-Say "  Tax Log : $TaxLogUrl  ($ServerIP)" "Gray"
+Say "  File server : \\$FileServer" "Gray"
+Say "  Drives      : F: ACCNTING  P: PUBLIC  Q: QUICKBOOKS  T: taxops" "Gray"
+Say "  Tax Log URL : $TaxLogUrlIp" "Gray"
+Say "  Hostname    : $TaxLogUrl  ($ServerIP)" "Gray"
 Say ""
 
-# Prefer UNC reachability first (works before T: exists)
-Work "Probing share $UncRoot ..."
-if (Test-Path -LiteralPath $UncRoot) {
-    Good "Share reachable: $UncRoot"
+Work ("Probing file server \\{0} ..." -f $FileServer)
+if ((Test-TcpPort $FileServer 445 4000) -or (Test-UncReachable "\\$FileServer\taxops")) {
+    Good ("File server reachable: \\{0}" -f $FileServer)
 } else {
-    Bad "Cannot reach $UncRoot"
+    Bad ("Cannot reach \\{0} (SMB / LAN)" -f $FileServer)
     Info "Check LAN / Wi-Fi (not guest), VPN, and that Xcel-server is on."
-    Info "You can still map the drive if credentials are needed - Explorer may prompt."
 }
 
-Ensure-DriveMapping
+$null = Test-AllNetworkDrives
 Ensure-HostsEntry
 Ensure-DesktopShortcut
 Test-TaxLogReachable
+
+# Final T: sanity for TaxOps tree
+if (Test-Path -LiteralPath "T:\taxops" -EA SilentlyContinue) {
+    Good "T:\taxops folder visible"
+} elseif (Test-Path -LiteralPath "T:\" -EA SilentlyContinue) {
+    Warn "T: mapped but taxops\ folder not visible yet"
+} else {
+    Bad "T: not available — TaxOps share mapping failed"
+}
 
 Say ""
 Say "========================================================" "Cyan"
 Say ("  Done.  OK={0}  WARN={1}  FAIL={2}" -f $script:ok, $script:warn, $script:fail) "Cyan"
 Say "========================================================" "Cyan"
 Say ""
-Say "  Open Tax Log:  $TaxLogUrl" "White"
-Say "  Or by IP:      $TaxLogUrlIp" "White"
-Say "  Share:         $Drive   ($UncRoot)" "White"
+Say "  Open Tax Log:  $TaxLogUrlIp" "White"
+Say "  Or by name:    $TaxLogUrl" "White"
+Say "  Drives:        F:  P:  Q:  T:" "White"
 Say ""
 if ($script:fail -gt 0) {
     Say "  Fix FAIL lines above, then re-run this script." "Yellow"

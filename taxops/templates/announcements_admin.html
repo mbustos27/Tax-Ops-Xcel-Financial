@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Staff Announcements — Tax Log{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-6 space-y-6 pb-24">
+
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Staff Announcements</h1>
+    <p class="text-sm text-slate-600 mt-1">
+      Send an in-app notification to every active employee or a selected group.
+      Recipients see it in the nav bell — TaxOps does not send staff email.
+    </p>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
+    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wide">New announcement</h2>
+
+    <div id="send-result" class="hidden rounded-lg px-4 py-2.5 text-sm font-medium"></div>
+
+    <div>
+      <label class="block text-xs font-semibold text-slate-600 mb-1" for="ann-title">Title</label>
+      <input id="ann-title" type="text" maxlength="200" placeholder="e.g. Office closed Friday for training"
+             class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+    </div>
+
+    <div>
+      <label class="block text-xs font-semibold text-slate-600 mb-1" for="ann-body">Message</label>
+      <textarea id="ann-body" rows="4" maxlength="4000" placeholder="Optional details shown under the title in the bell dropdown."
+                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
+    </div>
+
+    <div>
+      <label class="block text-xs font-semibold text-slate-600 mb-1" for="ann-link">Link (optional)</label>
+      <input id="ann-link" type="text" placeholder="/dashboard or /intake"
+             class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400">
+      <p class="text-xs text-slate-400 mt-1">Site-relative path only. Clicking the notification opens this page.</p>
+    </div>
+
+    <fieldset class="space-y-2">
+      <legend class="text-xs font-semibold text-slate-600 mb-1">Recipients</legend>
+      <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+        <input type="radio" name="ann-scope" value="all" checked class="text-indigo-600">
+        All active staff ({{ staff|length }})
+      </label>
+      <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+        <input type="radio" name="ann-scope" value="selected" class="text-indigo-600">
+        Selected staff only
+      </label>
+    </fieldset>
+
+    <div id="staff-picker" class="hidden border border-slate-200 rounded-lg p-3 max-h-56 overflow-y-auto space-y-2 bg-slate-50">
+      <div class="flex gap-2 mb-2">
+        <button type="button" id="pick-all-btn" class="text-xs font-semibold text-indigo-700 hover:underline">Select all</button>
+        <span class="text-slate-300">|</span>
+        <button type="button" id="pick-none-btn" class="text-xs font-semibold text-indigo-700 hover:underline">Clear</button>
+      </div>
+      {% for u in staff %}
+      <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+        <input type="checkbox" class="staff-cb text-indigo-600" value="{{ u.id }}">
+        <span>{{ u.display_name or u.username }}</span>
+        <span class="text-xs text-slate-400">({{ u.role }})</span>
+      </label>
+      {% else %}
+      <p class="text-sm text-slate-400">No active staff accounts.</p>
+      {% endfor %}
+    </div>
+
+    <button id="send-ann-btn" type="button"
+            class="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors">
+      Send announcement
+    </button>
+  </div>
+
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="px-5 py-3 border-b border-slate-100">
+      <span class="text-sm font-bold text-slate-800 uppercase tracking-wide">Recent announcements</span>
+    </div>
+    {% if announcements %}
+    <ul class="divide-y divide-slate-100">
+      {% for a in announcements %}
+      <li class="px-5 py-4">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="font-semibold text-slate-900">{{ a.title }}</div>
+            {% if a.body %}
+            <p class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">{{ a.body }}</p>
+            {% endif %}
+            {% if a.link_url %}
+            <p class="text-xs font-mono text-indigo-700 mt-1">{{ a.link_url }}</p>
+            {% endif %}
+          </div>
+          <div class="text-right shrink-0 text-xs text-slate-500 tabular-nums">
+            <div>{{ a.sent_count }} recipient{{ '' if a.sent_count == 1 else 's' }}</div>
+            <div class="mt-0.5">{{ (a.created_at or '')[:16].replace('T', ' ') }}</div>
+          </div>
+        </div>
+        <p class="text-xs text-slate-400 mt-2">
+          By {{ a.created_by_display or 'Admin' }}
+          · {{ 'All active staff' if a.recipient_scope == 'all' else 'Selected staff' }}
+        </p>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="px-5 py-8 text-center text-sm text-slate-400">No announcements sent yet.</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  function showResult(el, ok, msg) {
+    el.className = 'rounded-lg px-4 py-2.5 text-sm font-medium ' +
+      (ok ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    setTimeout(function () { el.classList.add('hidden'); }, 8000);
+  }
+
+  var picker = document.getElementById('staff-picker');
+  document.querySelectorAll('input[name="ann-scope"]').forEach(function (radio) {
+    radio.addEventListener('change', function () {
+      if (radio.value === 'selected' && radio.checked) {
+        picker.classList.remove('hidden');
+      } else if (radio.value === 'all' && radio.checked) {
+        picker.classList.add('hidden');
+      }
+    });
+  });
+
+  document.getElementById('pick-all-btn').addEventListener('click', function () {
+    document.querySelectorAll('.staff-cb').forEach(function (cb) { cb.checked = true; });
+  });
+  document.getElementById('pick-none-btn').addEventListener('click', function () {
+    document.querySelectorAll('.staff-cb').forEach(function (cb) { cb.checked = false; });
+  });
+
+  document.getElementById('send-ann-btn').addEventListener('click', async function () {
+    var res = document.getElementById('send-result');
+    var title = document.getElementById('ann-title').value.trim();
+    var body = document.getElementById('ann-body').value.trim();
+    var link = document.getElementById('ann-link').value.trim();
+    var scope = document.querySelector('input[name="ann-scope"]:checked').value;
+    var userIds = [];
+    if (scope === 'selected') {
+      document.querySelectorAll('.staff-cb:checked').forEach(function (cb) {
+        userIds.push(parseInt(cb.value, 10));
+      });
+      if (!userIds.length) {
+        showResult(res, false, 'Select at least one staff member.');
+        return;
+      }
+    }
+    if (!title) {
+      showResult(res, false, 'Title is required.');
+      return;
+    }
+    if (!confirm('Send this announcement now?')) return;
+
+    var payload = {
+      title: title,
+      body: body || null,
+      link_url: link || null,
+      recipient_scope: scope,
+      user_ids: userIds,
+    };
+    var r = await _csrfFetch('/api/admin/announcements/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    var d = await r.json();
+    if (d.success) {
+      showResult(res, true, 'Sent to ' + d.sent_count + ' staff member(s).');
+      setTimeout(function () { location.reload(); }, 1500);
+    } else {
+      showResult(res, false, d.error || 'Could not send announcement.');
+    }
+  });
+})();
+</script>
+{% endblock %}

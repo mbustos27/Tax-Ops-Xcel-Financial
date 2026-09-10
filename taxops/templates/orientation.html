@@ -8,40 +8,118 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ config.APP_VERSION }}">
   <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
-<body class="h-full bg-slate-50 flex items-center justify-center">
-  <div class="w-full max-w-md px-4">
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
+<body class="h-full bg-slate-50 flex items-center justify-center py-8">
+  <div class="w-full max-w-lg px-4">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6 max-h-[90vh] overflow-y-auto">
 
       <div>
         <h1 class="text-xl font-bold text-slate-900">Welcome to TaxOps</h1>
         <p class="text-sm text-slate-500 mt-1">Here is where everything lives:</p>
       </div>
 
-      <ul class="space-y-3 text-sm text-slate-700">
-        <li class="flex gap-3">
-          <span class="font-semibold text-slate-900 w-32 shrink-0">Dashboard</span>
-          <span class="text-slate-500">All clients and returns — search, filter, and track status.</span>
-        </li>
-        <li class="flex gap-3">
-          <span class="font-semibold text-slate-900 w-32 shrink-0">Return detail</span>
-          <span class="text-slate-500">Click any client to see their documents, notes, and status history.</span>
-        </li>
-        <li class="flex gap-3">
-          <span class="font-semibold text-slate-900 w-32 shrink-0">Email Review</span>
-          <span class="text-slate-500">Incoming client emails and attachments from the mail watcher.</span>
-        </li>
-        <li class="flex gap-3">
-          <span class="font-semibold text-slate-900 w-32 shrink-0">Review Queue</span>
-          <span class="text-slate-500">Documents flagged by AI extraction that need your attention.</span>
-        </li>
-        <li class="flex gap-3">
-          <span class="font-semibold text-slate-900 w-32 shrink-0">Payments</span>
-          <span class="text-slate-500">Fee collection and balance tracking by return.</span>
-        </li>
-      </ul>
+      <div class="space-y-5 text-sm text-slate-700">
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">Main</p>
+          <ul class="space-y-2.5">
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Dashboard</span>
+              <span class="text-slate-500">All clients and returns — search, filter, and track status.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Bookkeeping</span>
+              <span class="text-slate-500">Monthly bookkeeping queue and client periods.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">New Intake</span>
+              <span class="text-slate-500">Walk-in worksheet — start a new client or re-intake a returning one.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Return detail</span>
+              <span class="text-slate-500">Documents, notes, missing items, prep workspace, and status history.</span>
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">Daily menu</p>
+          <ul class="space-y-2.5">
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Pickup Queue</span>
+              <span class="text-slate-500">Returns ready for client pickup at the counter.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">E-File Queue</span>
+              <span class="text-slate-500">Returns ready to transmit — build batches from here.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Work Orders</span>
+              <span class="text-slate-500">Non-return walk-in requests and billing checklists.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Now Serving</span>
+              <span class="text-slate-500">Lobby take-a-number — call next, transfer windows, keep the line moving (header button too).</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Extension Queue</span>
+              <span class="text-slate-500">Extension requests waiting to be batched and filed.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Email Inbox</span>
+              <span class="text-slate-500">Unassigned client emails — attach attachments to the right return.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Email Campaigns</span>
+              <span class="text-slate-500">Office mass-email templates and sends (when you have permission).</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Docs not scanned</span>
+              <span class="text-slate-500">Returns where intake scan was skipped — finish scanning later.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Receipt Queue</span>
+              <span class="text-slate-500">OCR receipt review before QuickBooks export.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Spouses / Dep. Review</span>
+              <span class="text-slate-500">Admin checks for spouse and dependent data that need a human look.</span>
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">Occasional menu</p>
+          <ul class="space-y-2.5">
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Compliance Tracker</span>
+              <span class="text-slate-500">Sales tax / city licenses and filing status by client.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Filing Periods</span>
+              <span class="text-slate-500">Period board for compliance filings across months.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Payments</span>
+              <span class="text-slate-500">Fee collection and balances by return.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Review</span>
+              <span class="text-slate-500">Documents flagged by extraction that need confirmation.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Batches &amp; Import</span>
+              <span class="text-slate-500">E-file / extension batches, CSV import, source compare, import audit.</span>
+            </li>
+            <li class="flex gap-3">
+              <span class="font-semibold text-slate-900 w-36 shrink-0">Admin tools</span>
+              <span class="text-slate-500">Staff accounts, announcements, sender rules, audit log, backups, email health, season rollover, merge clients.</span>
+            </li>
+          </ul>
+        </div>
+      </div>
 
       <p class="text-xs text-slate-400">
-        This screen appears only once. You can always reach the runbook under <em>Ops Runbook</em> in the footer.
+        This screen appears only once. Relaunch the guided tour anytime from the help icon in the header,
+        or open the runbook under <em>Ops Runbook</em> in the footer.
       </p>
 
       <button id="dismiss-btn" type="button"

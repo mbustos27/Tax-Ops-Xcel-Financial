@@ -149,7 +149,7 @@
             {% endif %}
             {% if can_scan_intake_docs %}
             <button type="button" id="prep-scan-btn"
-                    class="text-xs font-semibold text-white bg-[#6B2233] hover:bg-[#8B2E44] rounded-lg px-2.5 py-1.5">
+                    class="text-xs font-semibold btn-primary border rounded-lg px-2.5 py-1.5 whitespace-nowrap">
               {{ _('Scan') }}
             </button>
             {% endif %}
@@ -165,6 +165,11 @@
             <button type="button" data-doc-id="{{ d.id }}"
               class="prep-doc-row w-full text-left px-4 py-2.5 hover:bg-slate-50 flex flex-wrap items-center gap-2{% if viewer_open and loop.index0 == initial_doc_index %} bg-violet-50 ring-1 ring-inset ring-violet-200{% endif %}">
               <span class="flex-1 min-w-0 font-medium text-slate-800 truncate">{{ d.filename or d.original_filename or ('#' ~ d.id) }}</span>
+              {% if d.prep_review_status == 'entered' %}
+              <span class="prep-review-badge text-[10px] font-bold uppercase tracking-wide text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">{{ _('Entered') }}</span>
+              {% elif d.prep_review_status == 'not_needed' %}
+              <span class="prep-review-badge text-[10px] font-bold uppercase tracking-wide text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">{{ _('Not needed') }}</span>
+              {% endif %}
               <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">{{ d.doc_type or 'unknown' }}</span>
               <span class="text-xs text-slate-400 font-mono">{{ (d.uploaded_at or '')[:16] or '—' }}</span>
             </button>
@@ -211,6 +216,26 @@
        class="{% if not initial_doc %}hidden {% endif %}sm:inline text-xs font-semibold text-indigo-200 hover:text-white whitespace-nowrap px-2">
       {{ _('Open tab') }}
     </a>
+    {% if can_manage_return_documents %}
+    <div id="prep-review-controls" class="flex items-center gap-1.5 shrink-0 mx-1"
+         role="group" aria-label="{{ _('Document prep status') }}">
+      <button type="button" id="prep-mark-entered"
+              class="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-emerald-400/60 text-emerald-100 hover:bg-emerald-500/20 whitespace-nowrap"
+              title="{{ _('Mark this page as entered into Drake') }}">
+        {{ _('Entered') }}
+      </button>
+      <button type="button" id="prep-mark-not-needed"
+              class="text-xs font-bold px-2.5 py-1.5 rounded-lg border border-amber-400/60 text-amber-100 hover:bg-amber-500/20 whitespace-nowrap"
+              title="{{ _('Mark this page as not needed') }}">
+        {{ _('Not needed') }}
+      </button>
+      <button type="button" id="prep-mark-clear"
+              class="text-xs font-semibold px-2 py-1.5 rounded-lg border border-white/20 text-white/70 hover:bg-white/10 whitespace-nowrap"
+              title="{{ _('Clear prep mark') }}">
+        {{ _('Clear') }}
+      </button>
+    </div>
+    {% endif %}
     <button type="button" id="prep-viewer-next"
             class="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-lg border border-white/20 hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none"
             aria-label="{{ _('Next document') }}" title="{{ _('Next') }}">
@@ -250,7 +275,7 @@
 {% if can_scan_intake_docs %}
 <div id="scan-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
   <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-5 space-y-4 border border-slate-200">
-    <h3 class="text-lg font-semibold text-[#6B2233]">{{ _('Scan client documents now?') }}</h3>
+    <h3 class="text-lg font-semibold" style="color:var(--color-primary)">{{ _('Scan client documents now?') }}</h3>
     <p class="text-sm text-slate-600">{{ _('Load pages in the Epson feeder.') }}</p>
     <div id="scan-agent-health" class="text-xs rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">{{ _('Checking scanner…') }}</div>
     <select id="scan-doc-type" class="border border-slate-200 rounded-lg px-3 py-2 text-sm w-full">
@@ -268,8 +293,8 @@
     <p id="scan-modal-status" class="hidden text-xs font-medium"></p>
     <div class="flex flex-wrap gap-2 justify-end pt-2">
       <button type="button" id="scan-modal-close" class="text-xs px-3 py-2 rounded-lg border border-slate-200 text-slate-600">{{ _('Close') }}</button>
-      <button type="button" id="scan-modal-restart" class="hidden text-xs px-3 py-2 rounded-lg border border-[#6B2233] text-[#6B2233] font-semibold">{{ _('Restart timer') }}</button>
-      <button type="button" id="scan-modal-go" class="text-xs px-3 py-2 rounded-lg bg-[#6B2233] text-white">{{ _('Scan & upload') }}</button>
+      <button type="button" id="scan-modal-restart" class="hidden text-xs px-3 py-2 rounded-lg border font-semibold" style="border-color:var(--color-primary);color:var(--color-primary)">{{ _('Restart timer') }}</button>
+      <button type="button" id="scan-modal-go" class="text-xs px-3 py-2 rounded-lg btn-primary border font-semibold">{{ _('Scan & upload') }}</button>
     </div>
   </div>
 </div>
@@ -295,6 +320,37 @@
   let _docs = {{ prep_documents | tojson }};
   let _docIndex = {% if viewer_open %}{{ initial_doc_index }}{% else %}-1{% endif %};
   const VIEWER_PREOPENED = {% if viewer_open %}true{% else %}false{% endif %};
+  const LBL_ENTERED = {{ _('Entered') | tojson }};
+  const LBL_NOT_NEEDED = {{ _('Not needed') | tojson }};
+
+  function _prepBadgeHtml(status) {
+    if (status === 'entered') {
+      return `<span class="prep-review-badge text-[10px] font-bold uppercase tracking-wide text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">${esc(LBL_ENTERED)}</span>`;
+    }
+    if (status === 'not_needed') {
+      return `<span class="prep-review-badge text-[10px] font-bold uppercase tracking-wide text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">${esc(LBL_NOT_NEEDED)}</span>`;
+    }
+    return '';
+  }
+
+  function _syncReviewButtons() {
+    const d = (_docIndex >= 0 && _docs[_docIndex]) ? _docs[_docIndex] : null;
+    const st = d ? (d.prep_review_status || '') : '';
+    const entered = document.getElementById('prep-mark-entered');
+    const notNeeded = document.getElementById('prep-mark-not-needed');
+    const clearBtn = document.getElementById('prep-mark-clear');
+    if (entered) {
+      entered.classList.toggle('bg-emerald-500/40', st === 'entered');
+      entered.classList.toggle('ring-2', st === 'entered');
+      entered.classList.toggle('ring-emerald-300', st === 'entered');
+    }
+    if (notNeeded) {
+      notNeeded.classList.toggle('bg-amber-500/40', st === 'not_needed');
+      notNeeded.classList.toggle('ring-2', st === 'not_needed');
+      notNeeded.classList.toggle('ring-amber-300', st === 'not_needed');
+    }
+    if (clearBtn) clearBtn.disabled = !st;
+  }
 
   function _viewerIsOpen() {
     const modal = document.getElementById('prep-viewer-modal');
@@ -306,7 +362,12 @@
     if (!meta || _docIndex < 0 || !_docs.length) return;
     const d = _docs[_docIndex];
     const typ = d.doc_type || 'unknown';
-    meta.textContent = `${_docIndex + 1} / ${_docs.length}` + (typ ? ` · ${typ}` : '');
+    const st = d.prep_review_status || '';
+    let review = '';
+    if (st === 'entered') review = ' · ' + LBL_ENTERED;
+    else if (st === 'not_needed') review = ' · ' + LBL_NOT_NEEDED;
+    meta.textContent = `${_docIndex + 1} / ${_docs.length}` + (typ ? ` · ${typ}` : '') + review;
+    _syncReviewButtons();
   }
 
   function showStatus(msg, isErr) {
@@ -357,8 +418,12 @@
     if (frame) frame.src = url;
     if (label) label.textContent = filename;
     if (meta) {
+      const st = d.prep_review_status || '';
+      let review = '';
+      if (st === 'entered') review = ' · ' + LBL_ENTERED;
+      else if (st === 'not_needed') review = ' · ' + LBL_NOT_NEEDED;
       meta.textContent = `${_docIndex + 1} / ${_docs.length}` +
-        (typ ? ` · ${typ}` : '');
+        (typ ? ` · ${typ}` : '') + review;
     }
     if (open) {
       open.href = url;
@@ -368,6 +433,7 @@
     document.body.classList.add('overflow-hidden');
     _setNavEnabled();
     _highlightListRow();
+    _syncReviewButtons();
   }
 
   function closeViewer() {
@@ -403,15 +469,18 @@
       const fn = esc(d.filename || d.original_filename || ('#' + d.id));
       const typ = esc(d.doc_type || 'unknown');
       const when = esc((d.uploaded_at || '').slice(0, 16) || '—');
+      const badge = _prepBadgeHtml(d.prep_review_status || '');
       return `<button type="button" data-doc-id="${d.id}"
         class="prep-doc-row w-full text-left px-4 py-2.5 hover:bg-slate-50 flex flex-wrap items-center gap-2">
         <span class="flex-1 min-w-0 font-medium text-slate-800 truncate">${fn}</span>
+        ${badge}
         <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">${typ}</span>
         <span class="text-xs text-slate-400 font-mono">${when}</span>
       </button>`;
     }).join('');
     if (_docIndex >= _docs.length) _docIndex = _docs.length - 1;
     _highlightListRow();
+    _syncReviewButtons();
   }
 
   document.getElementById('prep-doc-list')?.addEventListener('click', (e) => {
@@ -479,6 +548,48 @@
     else if (e.key === 'ArrowLeft') { e.preventDefault(); stepViewer(-1); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); stepViewer(1); }
   });
+
+  async function setPrepReview(status) {
+    if (!CAN_MANAGE || _docIndex < 0 || !_docs[_docIndex]) return;
+    const d = _docs[_docIndex];
+    const docId = d.id;
+    try {
+      const r = await _csrfFetch(`/return/${RETURN_ID}/documents/${docId}/prep-review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: status || 'clear' }),
+      });
+      const data = await _authJson(r);
+      if (!r.ok || data.error) throw new Error(data.error || 'Update failed');
+      d.prep_review_status = data.prep_review_status || '';
+      d.prep_reviewed_at = data.prep_reviewed_at || null;
+      d.prep_reviewed_by = data.prep_reviewed_by || null;
+      // Refresh list badge without full reload
+      const row = document.querySelector(`.prep-doc-row[data-doc-id="${docId}"]`);
+      if (row) {
+        row.querySelectorAll('.prep-review-badge').forEach(el => el.remove());
+        const badge = _prepBadgeHtml(d.prep_review_status);
+        if (badge) {
+          const nameEl = row.querySelector('.flex-1');
+          if (nameEl) nameEl.insertAdjacentHTML('afterend', badge);
+        }
+      }
+      _updateViewerMeta();
+      showStatus(
+        d.prep_review_status === 'entered' ? '{{ _("Marked entered.") }}'
+          : d.prep_review_status === 'not_needed' ? '{{ _("Marked not needed.") }}'
+          : '{{ _("Prep mark cleared.") }}',
+        false
+      );
+    } catch (err) {
+      showStatus(err.message || String(err), true);
+    }
+  }
+
+  document.getElementById('prep-mark-entered')?.addEventListener('click', () => setPrepReview('entered'));
+  document.getElementById('prep-mark-not-needed')?.addEventListener('click', () => setPrepReview('not_needed'));
+  document.getElementById('prep-mark-clear')?.addEventListener('click', () => setPrepReview('clear'));
+  if (VIEWER_PREOPENED) _syncReviewButtons();
 
   if (CAN_MANAGE) {
     const fileInput = document.getElementById('prep-doc-file');

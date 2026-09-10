@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TaxOps onboarding — Lorena</title>
+  <style>
+    :root { --ink:#1e1a1b; --muted:#5c5557; --line:#e5d6da; --cabernet:#6B2233; }
+    body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--ink); max-width: 42rem; margin: 1.5rem auto; padding: 0 1.25rem 3rem; line-height: 1.45; }
+    h1 { color: var(--cabernet); font-size: 1.5rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.05rem; margin-top: 1.5rem; border-bottom: 1px solid var(--line); padding-bottom: 0.25rem; }
+    h3 { font-size: 0.95rem; margin: 1rem 0 0.35rem; color: var(--ink); }
+    .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; margin: 0.75rem 0; }
+    th, td { border: 1px solid var(--line); padding: 0.45rem 0.6rem; text-align: left; vertical-align: top; }
+    th { background: #f7f1f2; }
+    code, .pw { font-family: ui-monospace, Consolas, monospace; background: #f3e5e8; padding: 0.1rem 0.35rem; border-radius: 0.25rem; }
+    .pw { font-weight: 700; color: var(--cabernet); }
+    ul, ol { padding-left: 1.2rem; }
+    li { margin: 0.25rem 0; }
+    .warn { background: #fff8e6; border: 1px solid #e8d48b; border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.9rem; }
+    .print { margin-top: 1.5rem; font-size: 0.8rem; color: var(--muted); }
+    .noprint button {
+      font: inherit; padding: 0.4rem 0.85rem; border-radius: 0.35rem;
+      border: 1px solid var(--cabernet); background: var(--cabernet); color: #fff; cursor: pointer;
+    }
+    @media print {
+      body { margin: 0; max-width: none; padding: 0.5in 0.6in; }
+      .noprint { display: none !important; }
+      .warn { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <p class="noprint">
+    <button type="button" onclick="window.print()">Print</button>
+    · Markdown: <code>T:\taxops\docs\onboarding\lorena-es-MX.md</code>
+  </p>
+
+  <h1>Incorporación a TaxOps — Lorena</h1>
+  <p class="meta">Rol: <strong>Preparadora (preparer)</strong> · septiembre 2026<br>
+  Entregue esta hoja la primera vez que inicie sesión. Cambie la contraseña temporal cuando TaxOps lo pida.</p>
+
+  <div class="warn">
+    <strong>Contraseña temporal:</strong> <span class="pw">temp@92</span><br>
+    Cámbiela en el primer login. No siga usando la temporal después.
+  </div>
+
+  <h2>1. Abrir TaxOps</h2>
+  <table>
+    <tr><th>URL</th><td><code>http://192.168.1.173:5000</code></td></tr>
+    <tr><th>O</th><td><code>http://taxlog:5000</code> (después de configurar la workstation)</td></tr>
+    <tr><th>Desktop</th><td>Shortcut “Tax Log” (si ya corrió el setup)</td></tr>
+  </table>
+  <p>Si la página no carga: confirme los network drives (sobre todo <strong>T:</strong>) con
+    <code>\\Xcel-server\taxops\SETUP_WORKSTATION.bat</code>, o pregunte a Moisés / admin.</p>
+
+  <h2>2. Su acceso</h2>
+  <table>
+    <tr><th>Nombre</th><th>Username</th><th>Temp password</th></tr>
+    <tr><td>Lorena</td><td><code>lorena</code></td><td class="pw">temp@92</td></tr>
+  </table>
+  <ol>
+    <li>Inicie sesión (sign in) con <code>lorena</code> y <span class="pw">temp@92</span>.</li>
+    <li>TaxOps pedirá una <strong>contraseña nueva</strong> — solo usted la debe conocer.</li>
+    <li>Puede aparecer <strong>Welcome</strong> una sola vez — avance.</li>
+    <li>Opcional: Guided Tour desde el ícono de ayuda en el header.</li>
+  </ol>
+  <p>No comparta <span class="pw">temp@92</span> después de cambiarla. Si se bloquea, pida a un admin un password reset.</p>
+
+  <h2>3. Qué puede hacer (preparadora)</h2>
+  <p>Está configurada como <strong>preparer</strong>: trabajo diario de impuestos (no herramientas solo de admin).</p>
+
+  <h3>Barra principal</h3>
+  <ul>
+    <li><strong>Dashboard</strong> — buscar clientes / declaraciones, filtros, estatus</li>
+    <li><strong>Bookkeeping</strong> — cola de contabilidad mensual</li>
+    <li><strong>New Intake</strong> — hoja de entrada (walk-in / cliente que regresa)</li>
+  </ul>
+
+  <h3>Menú Daily (la mayor parte del día)</h3>
+  <ul>
+    <li><strong>Pickup Queue</strong> — clientes listos en mostrador</li>
+    <li><strong>E-File Queue</strong> — listos para transmitir / batch</li>
+    <li><strong>Work Orders</strong> — solicitudes sin declaración</li>
+    <li><strong>Now Serving</strong> — turnos del lobby (también <strong># Now Serving</strong> en el header). Call Next; el panel se queda abierto mientras trabaja</li>
+    <li><strong>Extension Queue</strong> — prórrogas</li>
+    <li><strong>Docs not scanned</strong> — terminar escaneos omitidos en intake</li>
+  </ul>
+
+  <h3>En una declaración</h3>
+  <p>Abra un cliente desde el Dashboard → documentos, notas, docs faltantes, <strong>Prep</strong>, estatus, Scan / Upload.</p>
+
+  <h3>Occasional (cuando haga falta)</h3>
+  <ul>
+    <li><strong>Compliance Tracker</strong> / <strong>Filing Periods</strong></li>
+    <li>Batches y otras herramientas de preparer según su rol</li>
+  </ul>
+  <p><em>Solo admin (usted no verá):</em> Email Inbox, Email Campaigns, Staff Accounts, Audit log, Sender Rules, day reset en Now Serving, etc.</p>
+
+  <h2>4. Lista del primer día</h2>
+  <ul>
+    <li>☐ Abrir <code>http://192.168.1.173:5000</code> e iniciar sesión</li>
+    <li>☐ Cambiar password de <span class="pw">temp@92</span></li>
+    <li>☐ Terminar Welcome / orientación si aparece</li>
+    <li>☐ Buscar un cliente conocido en el Dashboard</li>
+    <li>☐ Abrir <strong>Daily → Now Serving</strong> (o el botón del header) y confirmar que el panel abre</li>
+    <li>☐ Abrir <strong>Pickup Queue</strong> y <strong>E-File Queue</strong> una vez</li>
+    <li>☐ Preguntar a un compañero qué estatus usan mientras trabajan en Drake</li>
+  </ul>
+
+  <h2>5. Tips rápidos</h2>
+  <ul>
+    <li><strong>Privacy</strong> en el header oculta nombres cuando hay un cliente en su desk.</li>
+    <li>Controles de text size junto a Privacy.</li>
+    <li><strong>Now Serving</strong> usa números simples (1, 2, 3…). El lobby display anuncia en inglés y español.</li>
+    <li>¿Dudas? Help → Guided Tour, o <strong>Ops Runbook</strong> en el footer, o pregunte a Moisés / admin.</li>
+  </ul>
+
+  <h2>6. Para el admin (Moisés)</h2>
+  <table>
+    <tr><th>Username</th><th>Display</th><th>Role</th><th>Notes</th></tr>
+    <tr>
+      <td><code>lorena</code></td>
+      <td>Lorena</td>
+      <td>preparer</td>
+      <td><code>must_change_password</code> activo hasta el primer cambio</td>
+    </tr>
+  </table>
+  <p>Temp password (solo este handoff): <span class="pw">temp@92</span></p>
+  <p>Después del cambio, confirme Dashboard + Now Serving. Si falla el login: <strong>Occasional → Staff Accounts</strong> → reset password y reactive “must change password.”</p>
+
+  <p class="print">Internal handoff only — no envíe este archivo fuera de la oficina después de cambiar passwords.</p>
+</body>
+</html>

@@ -1,5 +1,5 @@
 @echo off
-:: Desk setup: map T: -> \\Xcel-server\taxops, hosts taxlog, Tax Log desktop shortcut.
+:: Desk setup: map F/P/Q/T network drives, hosts taxlog, Tax Log desktop shortcut.
 :: Double-click from Explorer (UNC or T:):
 ::   \\Xcel-server\taxops\SETUP_WORKSTATION.bat
 ::   T:\SETUP_WORKSTATION.bat
@@ -24,7 +24,11 @@ echo.
 echo  ========================================================
 echo    TaxOps workstation setup
 echo  ========================================================
-echo    Maps T: to \\Xcel-server\taxops
+echo    Maps F: \\Xcel-server\ACCNTING
+echo    Maps P: \\Xcel-server\PUBLIC
+echo    Maps Q: \\Xcel-server\QUICKBOOKS
+echo    Maps T: \\Xcel-server\taxops
+echo    Tax Log URL: http://192.168.1.173:5000
 echo    Routes hostname taxlog -^> TaxOps server
 echo    Adds Desktop "Tax Log" shortcut
 echo  ========================================================
