@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import functools
 import os
 import threading
 import sys
@@ -18,13 +17,30 @@ import logging
 import sqlite3
 import tempfile
 
-from config import APP_ENV, DB_PATH
+from config import APP_ENV, DB_PATH, TAXOPS_COOKIE_SECURE, default_tax_year
 from csv_analyzer import analyze, iter_data_rows, normalize_status
 from db import get_connection, init_db
 from form_schema import FORM_INTEGER_COLUMNS, FORM_TABLE_INSERT_COLUMNS
 from merge_ops import merge_client_into
 from name_matcher import find_client as fuzzy_find_client, is_business, parse_name, _all_clients_cache
 from normalizer import normalize_date, normalize_currency, normalize_string, canonical_status, is_locked_status
+from auth import (
+    authenticate_user,
+    clear_login_failures,
+    csrf_protect,
+    ensure_csrf_token,
+    forbidden_response,
+    login_allowed,
+    login_configured,
+    login_required,
+    new_upload_token,
+    pop_upload_path,
+    record_login_failure,
+    required_role_for_path,
+    role_at_least,
+    safe_next_url,
+)
+from review_payload import to_import_row
 from preparer import (
     normalize_preparer,
     preparer_dropdown_options,
@@ -59,11 +75,14 @@ app.jinja_env.globals["preparer_list_label"] = preparer_list_label
 
 # Secret key for signing session cookies.
 # Set TAXOPS_SECRET env-var in production; a random fallback is fine for dev.
-app.secret_key = os.environ.get("TAXOPS_SECRET", os.urandom(24))
-
-# Login credentials — override via environment variables.
-_LOGIN_USER = os.environ.get("TAXOPS_USER", "info")
-_LOGIN_PASS = os.environ.get("TAXOPS_PASS", "2703Tax")
+# Missing TAXOPS_SECRET rotates sessions on every process restart (NSSM) — set it.
+app.secret_key = os.environ.get("TAXOPS_SECRET") or os.urandom(24)
+# Office LAN is HTTP — do not set Secure unless TAXOPS_COOKIE_SECURE=true (HTTPS).
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=TAXOPS_COOKIE_SECURE,
+)
 
 
 def privacy_mode_enabled() -> bool:
@@ -105,18 +124,37 @@ def _mask_client_payload(payload: dict) -> dict:
     return masked
 
 
-def login_required(f):
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        if not session.get("logged_in"):
-            # Fetch/XHR callers follow redirects into the HTML login page; that hides
-            # session expiry and spams logs with 302 + /login. Return JSON instead.
-            p = request.path or ""
-            if p.startswith("/api/") or p.startswith("/ai/"):
-                return jsonify({"error": "login_required"}), 401
-            return redirect(url_for("login", next=request.path))
-        return f(*args, **kwargs)
-    return wrapper
+@app.before_request
+def _csrf_and_rbac():
+    csrf_fail = csrf_protect()
+    if csrf_fail is not None:
+        return csrf_fail
+    if not session.get("logged_in"):
+        return None
+    need = required_role_for_path(request.path or "")
+    if need and not role_at_least(session.get("role"), need):
+        return forbidden_response()
+    return None
+
+
+@app.context_processor
+def _auth_template_ctx():
+    logged_in = bool(session.get("logged_in"))
+    token = ""
+    if logged_in or (request.endpoint == "login"):
+        token = ensure_csrf_token()
+    return {
+        "csrf_token": token,
+        "current_role": session.get("role") or "staff",
+        "role_at_least": lambda min_role: role_at_least(session.get("role"), min_role),
+    }
+
+
+@app.errorhandler(403)
+def _forbidden_page(_err):
+    if (request.path or "").startswith("/api/") or (request.path or "").startswith("/ai/"):
+        return jsonify({"error": "forbidden"}), 403
+    return render_template("403.html"), 403
 
 
 @app.after_request
@@ -619,12 +657,22 @@ def login():
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
-        if username == _LOGIN_USER and password == _LOGIN_PASS:
-            session["logged_in"] = True
-            session["username"]  = username
-            next_url = request.args.get("next") or url_for("dashboard")
-            return redirect(next_url)
-        error = "Invalid username or password."
+        ip = request.remote_addr or "unknown"
+        if not login_configured():
+            error = "TaxOps login is not configured. Set TAXOPS_PASS or TAXOPS_USERS in the environment."
+        elif not login_allowed(ip):
+            error = "Too many sign-in attempts. Wait a few minutes and try again."
+        else:
+            user = authenticate_user(username, password)
+            if user:
+                session["logged_in"] = True
+                session["username"] = user["username"]
+                session["role"] = user["role"]
+                clear_login_failures(ip)
+                next_url = safe_next_url(request.args.get("next") or request.form.get("next"))
+                return redirect(next_url)
+            record_login_failure(ip)
+            error = "Invalid username or password."
     return render_template("login.html", error=error)
 
 
@@ -1980,14 +2028,13 @@ def efile_queue_export():
 
     buf = io.StringIO()
     w   = csv.writer(buf)
-    w.writerow(["Log #", "Last Name", "First Name", "SSN Last 4", "Tax Year",
+    w.writerow(["Log #", "Last Name", "First Name", "Tax Year",
                 "Preparer", "Pickup Date", "Fee Paid", "Receipt #"])
     for r in rows:
         w.writerow([
             r["log_number"] or "",
             r["last_name"]  or "",
             r["first_name"] or "",
-            r["ssn_last4"]  or "",
             r["tax_year"]   or "",
             r["processor"]  or "",
             r["pickup_date"] or "",
@@ -2100,12 +2147,16 @@ def pickup_workflow(return_id: int):
 def payments():
     year         = int(request.args.get("year", date.today().year))
     balance_only = request.args.get("balance_only")
-    where = "WHERE r.tax_year=?"
+    where = (
+        "WHERE (strftime('%Y', r.intake_date) = ? OR "
+        "(r.intake_date IS NULL AND r.tax_year = ?))"
+    )
+    params: list = [str(year), year - 1]
     if balance_only:
         where += " AND p.total_fee IS NOT NULL AND COALESCE(p.fee_paid,0) < p.total_fee"
     conn = get_connection()
     rows = conn.execute(
-        f"{_SELECT} {where} ORDER BY CAST(r.log_number AS INTEGER)", (year,)
+        f"{_SELECT} {where} ORDER BY CAST(r.log_number AS INTEGER)", params
     ).fetchall()
     conn.close()
     ctx = base_ctx(year)
@@ -2129,6 +2180,7 @@ def intake():
             "today": date.today().isoformat(),
             "error": None,
             "habit_profile": None,
+            "default_tax_year": default_tax_year(),
         })
         return render_template("intake.html", **ctx)
 
@@ -2141,7 +2193,13 @@ def intake():
     first_name = (f.get("first_name") or "").strip().upper()
     if not last_name:
         ctx = base_ctx()
-        ctx.update({"active_page": "intake", "today": today_iso, "error": "Last name is required.", "prefill": {}})
+        ctx.update({
+            "active_page": "intake",
+            "today": today_iso,
+            "error": "Last name is required.",
+            "prefill": {},
+            "default_tax_year": default_tax_year(),
+        })
         return render_template("intake.html", **ctx), 400
 
     def _v(key):
@@ -2161,7 +2219,7 @@ def intake():
 
     conn = get_connection()
     try:
-        tax_year = _i("tax_year") or date.today().year
+        tax_year = _i("tax_year") or default_tax_year()
 
         # ── Auto log number (max + 1 for this tax year) ───────────────────────
         row = conn.execute(
@@ -2361,7 +2419,12 @@ def intake():
     except Exception as exc:
         conn.rollback()
         ctx = base_ctx()
-        ctx.update({"active_page": "intake", "today": today_iso, "error": str(exc)})
+        ctx.update({
+            "active_page": "intake",
+            "today": today_iso,
+            "error": str(exc),
+            "default_tax_year": default_tax_year(),
+        })
         return render_template("intake.html", **ctx), 500
     finally:
         conn.close()
@@ -2407,7 +2470,7 @@ def upload_preview():
     ]
 
     return jsonify({
-        "tmp_path":    tmp.name,
+        "upload_token": new_upload_token(tmp.name),
         "filename":    f.filename,
         "total_rows":  result.total_rows,
         "warnings":    result.warnings,
@@ -2423,10 +2486,11 @@ def upload_preview():
 def upload_confirm():
     """Execute import using the analysis result confirmed by staff."""
     data       = request.get_json(force=True)
-    tmp_path   = data.get("tmp_path", "")
+    token      = data.get("upload_token") or ""
     overrides  = data.get("overrides", {})   # {str(col_index): "table.field" | "skip"}
-    tax_year   = int(data.get("tax_year", date.today().year))
+    tax_year   = int(data.get("tax_year", default_tax_year()))
 
+    tmp_path = pop_upload_path(token)
     if not tmp_path or not os.path.exists(tmp_path):
         return jsonify({"error": "Upload session expired — please re-upload."}), 400
 
@@ -2483,16 +2547,19 @@ def _import_row_forced(conn, row_data: dict, tax_year: int, ts: str, today_iso: 
     # Temporarily patch the row so _import_row's name-parse produces something
     # that will definitely match (or not) based on client_id override.
     # Easiest: delegate to _import_row with a single-entry cache that forces the match.
-    if client_id is not None:
-        forced_cache = [{"id": client_id, "ln": "\x00FORCED\x00", "fn": ""}]
-        # Pre-seed row name with the sentinel so exact match fires
-        patched = dict(row_data)
-        patched["clients.last_name"]  = "\x00FORCED\x00"
-        patched["clients.first_name"] = ""
-        _import_row(conn, patched, tax_year, ts, today_iso, stats, _client_cache=forced_cache)
-    else:
-        # No client_id → force new client by using an empty cache
-        _import_row(conn, row_data, tax_year, ts, today_iso, stats, _client_cache=[])
+    prev_blank = getattr(_import_row, "_allow_blank_log", False)
+    _import_row._allow_blank_log = True
+    try:
+        if client_id is not None:
+            forced_cache = [{"id": client_id, "ln": "\x00FORCED\x00", "fn": ""}]
+            patched = dict(row_data)
+            patched["clients.last_name"]  = "\x00FORCED\x00"
+            patched["clients.first_name"] = ""
+            _import_row(conn, patched, tax_year, ts, today_iso, stats, _client_cache=forced_cache)
+        else:
+            _import_row(conn, row_data, tax_year, ts, today_iso, stats, _client_cache=[])
+    finally:
+        _import_row._allow_blank_log = prev_blank
 
 
 def _import_row(conn, row_data: dict, tax_year: int, ts: str, today_iso: str, stats: dict,
@@ -2515,7 +2582,7 @@ def _import_row(conn, row_data: dict, tax_year: int, ts: str, today_iso: str, st
         stats["skipped"] += 1
         return
 
-    if not log_number:
+    if not log_number and not getattr(_import_row, "_allow_blank_log", False):
         stats["skipped"] += 1
         return
 
@@ -2586,12 +2653,16 @@ def _import_row(conn, row_data: dict, tax_year: int, ts: str, today_iso: str, st
     # Match by client + year only — log_number may be absent on Drake-imported
     # returns and will be written onto the record if the CSV supplies it.
     existing_ret = conn.execute(
-        "SELECT id, log_number FROM returns WHERE client_id=? AND tax_year=?",
+        "SELECT id, log_number, client_status FROM returns WHERE client_id=? AND tax_year=?",
         (client_id, ret_year),
     ).fetchone()
 
     raw_status  = g("returns", "client_status")
-    norm_status = normalize_status(raw_status) if raw_status else "PROCESSING"
+    norm_status = canonical_status(raw_status) if raw_status else "PROCESSING"
+    if norm_status and norm_status not in STATUS_FLOW and not is_locked_status(norm_status):
+        # Unknown alias already collapsed; if still off-flow, park as PROCESSING
+        if canonical_status(norm_status) not in STATUS_FLOW:
+            norm_status = "PROCESSING"
 
     intake_dt,  _ = normalize_date(g("returns", "intake_date"))
     pickup_dt,  _ = normalize_date(g("returns", "pickup_date"))
@@ -2629,6 +2700,11 @@ def _import_row(conn, row_data: dict, tax_year: int, ts: str, today_iso: str, st
         # (Drake imports don't carry log numbers; the manual log is the source).
         existing_log = existing_ret["log_number"]
         new_log = log_number if log_number else existing_log
+        status_to_write = (
+            existing_ret["client_status"]
+            if is_locked_status(existing_ret["client_status"])
+            else norm_status
+        )
         conn.execute(
             """UPDATE returns
                SET log_number=?,
@@ -2638,7 +2714,7 @@ def _import_row(conn, row_data: dict, tax_year: int, ts: str, today_iso: str, st
                    logout_date=COALESCE(logout_date,?),
                    updated_at=?
                WHERE id=?""",
-            (new_log, norm_status, ret_fields["processor"], ret_fields["verified"],
+            (new_log, status_to_write, ret_fields["processor"], ret_fields["verified"],
              ret_fields["intake_date"], pickup_dt, logout_dt, ts, ret_id),
         )
     else:
@@ -3136,22 +3212,24 @@ def review_resolve():
         conn.close()
         return jsonify({"error": "Item not found or already resolved"}), 404
 
-    row_data  = json.loads(item["raw_json"])
+    row_data  = to_import_row(json.loads(item["raw_json"] or "{}"), item["csv_year"])
     ts        = now()
     today_iso = date.today().isoformat()
 
     try:
+        resolve_year = item["csv_year"] or default_tax_year()
         if action == "new":
-            # Force-create a brand-new client by wiping the cache entry
-            forced_cache: list = []
             stats = {"created": 0, "updated": 0, "skipped": 0, "review": 0, "errors": []}
-            _import_row_forced(conn, row_data, item["csv_year"] or date.today().year,
+            _import_row_forced(conn, row_data, resolve_year,
                                ts, today_iso, stats, client_id=None)
 
         elif action in ("confirm", "link"):
             cid = override_client_id if action == "link" else item["proposed_client_id"]
+            if cid is None:
+                conn.close()
+                return jsonify({"error": "No matching client — use Link or New"}), 400
             stats = {"created": 0, "updated": 0, "skipped": 0, "review": 0, "errors": []}
-            _import_row_forced(conn, row_data, item["csv_year"] or date.today().year,
+            _import_row_forced(conn, row_data, resolve_year,
                                ts, today_iso, stats, client_id=int(cid))
         else:
             conn.close()
@@ -3379,7 +3457,7 @@ def api_return_sync_to_drake(return_id: int):
 @login_required
 def api_status(return_id: int):
     data       = request.get_json(force=True)
-    new_status = (data.get("status") or "").upper().strip()
+    new_status = canonical_status((data.get("status") or "").upper().strip())
     if new_status not in STATUS_FLOW:
         return jsonify({"error": "Invalid status"}), 400
 
@@ -3390,6 +3468,9 @@ def api_status(return_id: int):
         return jsonify({"error": "Not found"}), 404
 
     old_status  = row["client_status"]
+    if is_locked_status(old_status):
+        conn.close()
+        return jsonify({"error": "CANCELLED returns cannot be changed from the app"}), 409
     timestamp   = now()
     today_iso   = date.today().isoformat()
     date_field  = STATUS_DATE_STAMP.get(new_status)
@@ -3467,7 +3548,7 @@ def api_field(return_id: int):
                 cur = conn.execute(
                     "SELECT client_status FROM returns WHERE id=?", (return_id,)
                 ).fetchone()
-                if cur and cur["client_status"] != "LOG OUT":
+                if cur and cur["client_status"] != "LOG OUT" and not is_locked_status(cur["client_status"]):
                     old_status = cur["client_status"]
                     ts = now()
                     note = "Auto-advanced: ack date set" if field == "ack_date" else "Auto-advanced: logout date set"

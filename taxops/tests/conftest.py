@@ -51,11 +51,8 @@ def client(app):
 
 @pytest.fixture
 def client_logged_in(client, app, monkeypatch: pytest.MonkeyPatch):
-    # app reads login env-vars at import time; patch the module globals for tests.
-    import app as mod
-
-    monkeypatch.setattr(mod, "_LOGIN_USER", "__test_user__")
-    monkeypatch.setattr(mod, "_LOGIN_PASS", "__test_pass__")
+    monkeypatch.setenv("TAXOPS_USER", "__test_user__")
+    monkeypatch.setenv("TAXOPS_PASS", "__test_pass__")
     client.post(
         "/login",
         data={"username": "__test_user__", "password": "__test_pass__"},

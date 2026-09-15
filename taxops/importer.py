@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
-from config import MANUAL_LOG_SOURCE
+from config import MANUAL_LOG_SOURCE, default_tax_year
+from review_payload import extract_review_identity
 from csv_analyzer import _is_skip_row, analyze
 from csv_analyzer import _clean as _clean_header_cell
 from events import create_status_events
@@ -278,7 +279,9 @@ def process_csv(conn: sqlite3.Connection, csv_path: str, batch_id: int, source_f
             normalized, warnings = _normalize_row(row, prep.header_lookup, prep.log_key, prep.yr_key)
             # If year is missing but the row has a name, default to the log's own year (intake year)
             if normalized["returns"]["tax_year"] is None and normalized["clients"]["last_name"]:
-                normalized["returns"]["tax_year"] = getattr(prep, "tax_year_hint", None) or 2025
+                normalized["returns"]["tax_year"] = (
+                    getattr(prep, "tax_year_hint", None) or default_tax_year()
+                )
             if not normalized["returns"]["log_number"] or normalized["returns"]["tax_year"] is None:
                 raise ValueError(
                     "Missing required values: office log #(LOG yyyy column) and/or tax year column"
@@ -930,9 +933,17 @@ def _insert_note_if_new(conn: sqlite3.Connection, return_id: int, note_text: str
 
 
 def _insert_review_row(conn: sqlite3.Connection, batch_id: int, row_number: int, row: Dict[str, str], reason: str) -> None:
+    ident = extract_review_identity(row)
     conn.execute(
-        "INSERT INTO review_queue (batch_id, row_number, reason, raw_json, created_at) VALUES (?, ?, ?, ?, ?)",
-        (batch_id, row_number, reason, json.dumps(row, ensure_ascii=True), now()),
+        """INSERT INTO review_queue
+           (batch_id, row_number, reason, raw_json, created_at,
+            status, csv_last, csv_first, csv_log, csv_year)
+           VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)""",
+        (
+            batch_id, row_number, reason, json.dumps(row, ensure_ascii=True), now(),
+            ident.get("csv_last"), ident.get("csv_first"),
+            ident.get("csv_log"), ident.get("csv_year"),
+        ),
     )
 
 

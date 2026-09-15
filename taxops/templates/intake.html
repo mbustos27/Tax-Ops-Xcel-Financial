@@ -3,6 +3,7 @@
 
 {% block content %}
 <form id="intake-form" method="post" action="/intake" autocomplete="off" class="space-y-6">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
   <!-- Hidden client_id populated by JS when an existing client is selected -->
   <input type="hidden" name="client_id" id="client_id_field" value="">
@@ -67,7 +68,7 @@
         <label class="intake-label">Tax Year</label>
         <select name="tax_year" class="intake-input">
           {% for y in [2026, 2025, 2024, 2023] %}
-          <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
+          <option value="{{ y }}" {% if y == default_tax_year %}selected{% endif %}>{{ y }}</option>
           {% endfor %}
         </select>
       </div>

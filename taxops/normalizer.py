@@ -72,19 +72,27 @@ _STATUS_CANONICAL: Dict[str, str] = {
     "LOGOUT": "LOG OUT",
     "LOGGED OUT": "LOG OUT",
     "LOG-OUT": "LOG OUT",
-    "COMPLETE": "COMPLETE",
-    "COMPLETED": "COMPLETE",
+    "COMPLETE": "LOG OUT",
+    "COMPLETED": "LOG OUT",
     "PICK UP": "PICKUP",
     "PICKUP": "PICKUP",
     "PICKED UP": "PICKUP",
+    "OLD PICKUP": "PICKUP",
     "EFILE READY": "EFILE READY",
     "E-FILE READY": "EFILE READY",
     "EFILEREADY": "EFILE READY",
-    "IN PROGRESS": "IN PROGRESS",
-    "IN-PROGRESS": "IN PROGRESS",
-    "INPROGRESS": "IN PROGRESS",
-    "INTAKE": "INTAKE",
-    "INTAKED": "INTAKE",
+    "EFILE": "EFILE READY",
+    "E-FILE": "EFILE READY",
+    "IN PROGRESS": "PROCESSING",
+    "IN-PROGRESS": "PROCESSING",
+    "INPROGRESS": "PROCESSING",
+    "PRIOR PROC": "PROCESSING",
+    "PRIOR PROCESSING": "PROCESSING",
+    "LOG IN": "PROCESSING",
+    "LOGIN": "PROCESSING",
+    "INTAKE": "PROCESSING",
+    "INTAKED": "PROCESSING",
+    "PRIOR HOLD": "HOLD",
     "PENDING": "PENDING",
     "HOLD":          "HOLD",
     "ON HOLD":       "HOLD",
@@ -99,6 +107,28 @@ _STATUS_CANONICAL: Dict[str, str] = {
     "EXTENSION": "EXTENSION",
     "EXT": "EXTENSION",
 }
+
+# One-shot DB cleanup keys (legacy values that were stored without going through
+# canonical_status). Values must already be STATUS_FLOW / CANCELLED forms.
+LEGACY_STATUS_REWRITES: Dict[str, str] = {
+    "PICK UP": "PICKUP",
+    "OLD PICKUP": "PICKUP",
+    "PICKED UP": "PICKUP",
+    "EFILE": "EFILE READY",
+    "E-FILE": "EFILE READY",
+    "E-FILE READY": "EFILE READY",
+    "PRIOR HOLD": "HOLD",
+    "ON HOLD": "HOLD",
+    "PRIOR PROC": "PROCESSING",
+    "PRIOR PROCESSING": "PROCESSING",
+    "IN PROGRESS": "PROCESSING",
+    "LOG IN": "PROCESSING",
+    "LOGIN": "PROCESSING",
+    "INTAKE": "PROCESSING",
+    "COMPLETE": "LOG OUT",
+    "COMPLETED": "LOG OUT",
+}
+
 
 def canonical_status(raw: str | None) -> str | None:
     """Collapse status aliases to a single DB-canonical form (e.g. LOGOUT → LOG OUT)."""

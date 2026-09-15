@@ -41,6 +41,7 @@ from name_matcher import find_client as fuzzy_find_client, ACCEPT_THRESHOLD, str
 from normalizer import normalize_currency, normalize_date, normalize_string, normalize_tax_year, is_locked_status
 from preparer import normalize_preparer
 from utils import ImportStats, now
+from review_payload import extract_review_identity
 
 # ---------------------------------------------------------------------------
 # Format signatures — keys are canonical (upper-cased) header names
@@ -804,9 +805,17 @@ def _insert_review_row(
     conn: sqlite3.Connection, batch_id: int, row_number: int,
     row: Dict[str, str], reason: str,
 ) -> None:
+    ident = extract_review_identity(row)
     conn.execute(
-        "INSERT INTO review_queue (batch_id, row_number, reason, raw_json, created_at) VALUES (?,?,?,?,?)",
-        (batch_id, row_number, reason, json.dumps(row, ensure_ascii=True), now()),
+        """INSERT INTO review_queue
+           (batch_id, row_number, reason, raw_json, created_at,
+            status, csv_last, csv_first, csv_log, csv_year)
+           VALUES (?,?,?,?,?,'pending',?,?,?,?)""",
+        (
+            batch_id, row_number, reason, json.dumps(row, ensure_ascii=True), now(),
+            ident.get("csv_last"), ident.get("csv_first"),
+            ident.get("csv_log"), ident.get("csv_year"),
+        ),
     )
 
 

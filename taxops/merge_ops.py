@@ -112,6 +112,24 @@ def merge_return_into(
         except sqlite3.OperationalError:
             pass
 
+    for t in ("return_documents", "extraction_queue"):
+        try:
+            conn.execute(
+                f"UPDATE {t} SET return_id=? WHERE return_id=?", (winner_id, loser_id)
+            )
+        except sqlite3.OperationalError:
+            pass
+
+    try:
+        conn.execute(
+            "UPDATE efile_batch_items SET return_id=? WHERE return_id=?",
+            (winner_id, loser_id),
+        )
+    except sqlite3.IntegrityError:
+        conn.execute("DELETE FROM efile_batch_items WHERE return_id=?", (loser_id,))
+    except sqlite3.OperationalError:
+        pass
+
     conn.execute("DELETE FROM returns WHERE id=?", (loser_id,))
 
 
