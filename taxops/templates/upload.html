@@ -314,7 +314,7 @@ async function confirmImport() {
   const res  = await fetch('/upload/confirm', {
     method:  'POST',
     headers: {'Content-Type': 'application/json'},
-    body:    JSON.stringify({ tmp_path: _analysisData.tmp_path, overrides, tax_year: taxYear }),
+    body:    JSON.stringify({ upload_token: _analysisData.upload_token, overrides, tax_year: taxYear }),
   });
   const data = await res.json();
 

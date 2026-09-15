@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import functools
 import io
 import json
 import logging
@@ -69,6 +68,7 @@ from chat_cache import (
 )
 from chat_scope_classifier import should_block_tool_router_llm
 from chat_training_log import append_staff_ai_chat_question
+from auth import login_required
 
 ai = Blueprint("ai", __name__, url_prefix="/ai")
 
@@ -719,28 +719,11 @@ def _reason_is_useful(reason: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Auth — same logic as login_required in app.py; duplicated here to avoid
-# a circular import (app.py imports this module).
-# ---------------------------------------------------------------------------
-
-def _login_required(f):
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        if not session.get("logged_in"):
-            p = request.path or ""
-            if p.startswith("/api/") or p.startswith("/ai/"):
-                return jsonify({"error": "login_required"}), 401
-            return redirect(url_for("login", next=request.path))
-        return f(*args, **kwargs)
-    return wrapper
-
-
-# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
 @ai.get("/status")
-@_login_required
+@login_required
 def ai_status():
     """Ping Ollama and report whether it is reachable.
     Also reports fastText classifier status.
@@ -820,7 +803,7 @@ def ai_status():
 
 
 @ai.get("/chat")
-@_login_required
+@login_required
 def ai_chat_page():
     """Staff UI: plain-English questions routed to allowlisted DB tools via the LLM."""
     try:
@@ -836,7 +819,7 @@ def ai_chat_page():
 
 
 @ai.post("/chat")
-@_login_required
+@login_required
 def ai_chat():
     """LLM-6 — tool router: LLM picks an allowlisted db_tools function; results are scrubbed."""
     try:
@@ -1596,7 +1579,7 @@ def _ai_chat_submit():
 
 
 @ai.post("/return/<int:return_id>/draft-email")
-@_login_required
+@login_required
 def ai_draft_email(return_id: int):
     """Draft a plain-English rejection follow-up email for a REJECTED return.
 
@@ -1718,7 +1701,7 @@ def ai_draft_email(return_id: int):
 
 
 @ai.post("/rejection-code/lookup")
-@_login_required
+@login_required
 def ai_rejection_code_lookup():
     """Normalize a raw IRS rejection code and return a plain-English explanation.
 
@@ -1805,7 +1788,7 @@ def ai_rejection_code_lookup():
 
 
 @ai.post("/documents/<int:doc_id>/extract")
-@_login_required
+@login_required
 def ai_document_extract(doc_id: int):
     """DOC-4 — Extract intake-safe fields: PDF text → llama3.2, scanned PDF / images → vision.
 
@@ -1880,7 +1863,7 @@ def ai_document_extract(doc_id: int):
 
 
 @ai.post("/documents/<int:doc_id>/classify")
-@_login_required
+@login_required
 def ai_document_classify(doc_id: int):
     """DOC-5 — classify doc_type via _extract_fields + _detect_form_type (no extra LLM path)."""
     conn = get_connection()
