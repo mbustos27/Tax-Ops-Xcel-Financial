@@ -208,7 +208,9 @@
         ahead: "People ahead",
         assigned: "Go to Window",
         busy: "Please wait…",
-        err: "Could not issue a ticket. Try again."
+        err: "Could not issue a ticket. Try again.",
+        closed: "Closed — we close at 5:00 during non-tax time.",
+        closedBtn: "Closed"
       },
       es_MX: {
         title: "Ahora Atendiendo",
@@ -220,7 +222,9 @@
         ahead: "Personas adelante",
         assigned: "Vaya a la Ventanilla",
         busy: "Espere…",
-        err: "No se pudo emitir boleto. Intente de nuevo."
+        err: "No se pudo emitir boleto. Intente de nuevo.",
+        closed: "Cerrado — cerramos a las 5:00 fuera de temporada de impuestos.",
+        closedBtn: "Cerrado"
       }
     };
     var LOCALE_KEY = "taxops-now-serving-locale";
@@ -231,6 +235,7 @@
     var stub = document.getElementById("stub");
     var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || "";
     var busy = false;
+    var officeClosed = false;
 
     function t(key) { return (STR[locale] || STR.en)[key] || key; }
 
@@ -240,12 +245,29 @@
         el.textContent = t(el.getAttribute("data-i18n"));
       });
       langBtn.textContent = locale === "es_MX" ? "EN" : "ES";
+      applyClosedUi();
+    }
+
+    function applyClosedUi() {
+      if (officeClosed) {
+        takeBtn.disabled = true;
+        takeBtn.textContent = t("closedBtn");
+        errEl.hidden = false;
+        errEl.textContent = t("closed");
+      } else if (!busy) {
+        takeBtn.disabled = false;
+        takeBtn.textContent = t("take");
+      }
     }
 
     function paintServing(snap) {
       var ns = (snap && snap.now_serving) || {};
       document.getElementById("serve-1").textContent = ns["1"] || "—";
       document.getElementById("serve-2").textContent = ns["2"] || "—";
+      if (snap && snap.hours) {
+        officeClosed = snap.hours.accepting_tickets === false;
+        applyClosedUi();
+      }
     }
 
     function showStub(ticket) {
@@ -267,7 +289,7 @@
     });
 
     takeBtn.addEventListener("click", function () {
-      if (busy) return;
+      if (busy || officeClosed) return;
       busy = true;
       takeBtn.disabled = true;
       takeBtn.textContent = t("busy");
@@ -282,18 +304,31 @@
         credentials: "same-origin"
       }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
         .then(function (res) {
-          if (!res.ok || !res.d.success) throw new Error((res.d && res.d.error) || t("err"));
-          paintServing({ now_serving: res.d.now_serving });
+          if (!res.ok || !res.d.success) {
+            if (res.d && res.d.error === "closed") {
+              officeClosed = true;
+              applyClosedUi();
+              throw new Error("closed");
+            }
+            throw new Error((res.d && res.d.error) || t("err"));
+          }
+          paintServing({ now_serving: res.d.now_serving, hours: res.d.hours });
           showStub(res.d);
         })
-        .catch(function () {
+        .catch(function (err) {
+          if (officeClosed || (err && err.message === "closed")) {
+            applyClosedUi();
+            return;
+          }
           errEl.hidden = false;
           errEl.textContent = t("err");
         })
         .finally(function () {
           busy = false;
-          takeBtn.disabled = false;
-          takeBtn.textContent = t("take");
+          if (!officeClosed) {
+            takeBtn.disabled = false;
+            takeBtn.textContent = t("take");
+          }
         });
     });
 

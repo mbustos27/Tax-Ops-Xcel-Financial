@@ -45,9 +45,28 @@ def test_lobby_display_reachable_without_login(client, taxops_db_path):
     resp = client.get("/now-serving/display")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert "Ahora sirviendo" in html
+    assert "Ahora sirviendo" in html  # EN/ES voice string only
     assert "speechSynthesis" in html
     assert "/now-serving/api/events" in html
+    # Giant numbers + window digits; hours bar is the only extra chrome.
+    assert html.count("Ahora sirviendo") == 1
+    assert ">1</div>" in html and ">2</div>" in html
+    assert "<h1>Now Serving</h1>" not in html
+    assert "Window 1</div>" not in html
+    assert "Ventanilla 1" not in html
+    assert 'id="hours-line"' in html
+    assert "Open until 5:00" in html
+    assert "Abierto hasta las 5:00" in html
+    assert "Mute voice" not in html
+    assert "Unmute voice" not in html
+    assert "waiting · en espera" not in html
+    assert 'data-role="waiting"' not in html
+    assert 'id="mute-btn"' not in html
+    assert 'class="label-en"' not in html
+    assert "getElementById(\"live-dot\")" not in html
+    assert 'key !== "M"' in html
+    assert 'get("mute") === "1"' in html
+    assert "no-store" in (resp.headers.get("Cache-Control") or "")
 
 
 def test_kiosk_reachable_without_login(client, taxops_db_path):
@@ -57,6 +76,7 @@ def test_kiosk_reachable_without_login(client, taxops_db_path):
     html = resp.get_data(as_text=True)
     assert "Take a Number" in html or "take-btn" in html
     assert "apple-mobile-web-app-capable" in html
+    assert "we close at 5:00 during non-tax time" in html
 
 
 def test_kiosk_take_issues_ticket_without_login(client, taxops_db_path, monkeypatch):
@@ -65,6 +85,10 @@ def test_kiosk_take_issues_ticket_without_login(client, taxops_db_path, monkeypa
     monkeypatch.setattr(
         "routes.now_serving.try_print_now_serving_ticket",
         lambda label, window: printed.append((label, window)) or True,
+    )
+    monkeypatch.setattr(
+        "routes.now_serving.lobby_hours",
+        lambda: {"accepting_tickets": True, "close_label": "5:00"},
     )
     resp = client.post("/now-serving/kiosk/take", json={})
     assert resp.status_code == 200, resp.get_data(as_text=True)
@@ -76,6 +100,29 @@ def test_kiosk_take_issues_ticket_without_login(client, taxops_db_path, monkeypa
     assert printed == [("1", 1)]
 
 
+def test_kiosk_take_rejects_after_non_tax_close(client, taxops_db_path, monkeypatch):
+    reset_day(taxops_db_path)
+    issued = []
+    monkeypatch.setattr(
+        "routes.now_serving.try_print_now_serving_ticket",
+        lambda label, window: issued.append((label, window)) or True,
+    )
+    monkeypatch.setattr(
+        "routes.now_serving.lobby_hours",
+        lambda: {
+            "accepting_tickets": False,
+            "tax_season": False,
+            "close_label": "5:00",
+        },
+    )
+    resp = client.post("/now-serving/kiosk/take", json={})
+    assert resp.status_code == 409
+    body = resp.get_json()
+    assert body["success"] is False
+    assert body["error"] == "closed"
+    assert issued == []
+
+
 def test_snapshot_and_events_public(client, taxops_db_path):
     reset_day(taxops_db_path)
     issue_ticket(taxops_db_path)
@@ -84,6 +131,8 @@ def test_snapshot_and_events_public(client, taxops_db_path):
     body = snap.get_json()
     assert "revision" in body
     assert "windows" in body
+    assert "hours" in body
+    assert "accepting_tickets" in body["hours"]
 
     # Read a short SSE burst — first event should be a data: line.
     ev = client.get("/now-serving/api/events", buffered=False)
@@ -235,6 +284,10 @@ def test_issue_triggers_print_from_kiosk_route(client, taxops_db_path, monkeypat
         return True
 
     monkeypatch.setattr("routes.now_serving.try_print_now_serving_ticket", _fake)
+    monkeypatch.setattr(
+        "routes.now_serving.lobby_hours",
+        lambda: {"accepting_tickets": True, "close_label": "5:00"},
+    )
     resp = client.post("/now-serving/kiosk/take", json={})
     assert resp.status_code == 200
     assert calls == [{"label": "1", "window": 1}]
