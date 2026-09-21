@@ -144,6 +144,8 @@ Single queue, two windows. Ships with the normal TaxOps NSSM restart — no extr
 
 Prefer a **Raspberry Pi + Chromium kiosk** over a Roku channel for v1: same live SSE feed as the staff board, bilingual TTS in the browser, no app-store review.
 
+The TV is a glance board: one bilingual header, then a large gold ticket number and **Window N / Ventanilla N** per window. Waiting counts, mute button, and live-status footer stay off the screen so the number can be read from across the lobby. Press `M` or open with `?mute=1` to mute; `?autosound=1` still skips the tap-to-enable gate.
+
 1. Point the Pi at TaxOps on the LAN, e.g. `http://192.168.1.173:5000/now-serving/display?autosound=1`.
 2. Copy `scripts/now_serving_display_kiosk.sh` to the Pi, `chmod +x` it, set `TAXOPS_URL`, and run (or add to autostart).
 3. Chromium flag `--autoplay-policy=no-user-gesture-required` plus `?autosound=1` skips the tap-to-enable gate so voice works after reboot.

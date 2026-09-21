@@ -48,6 +48,19 @@ def test_lobby_display_reachable_without_login(client, taxops_db_path):
     assert "Ahora sirviendo" in html
     assert "speechSynthesis" in html
     assert "/now-serving/api/events" in html
+    # Glance board: header once, huge number + window only — no chrome.
+    assert html.count("Ahora sirviendo") == 2  # header subtitle + ES TTS string
+    assert "Window 1" in html and "Ventanilla 1" in html
+    assert "Window 2" in html and "Ventanilla 2" in html
+    assert "Mute voice" not in html
+    assert "Unmute voice" not in html
+    assert "waiting · en espera" not in html
+    assert 'data-role="waiting"' not in html
+    assert 'id="mute-btn"' not in html
+    assert 'class="label-en"' not in html
+    assert "getElementById(\"live-dot\")" not in html
+    assert 'key !== "M"' in html
+    assert 'get("mute") === "1"' in html
 
 
 def test_kiosk_reachable_without_login(client, taxops_db_path):
