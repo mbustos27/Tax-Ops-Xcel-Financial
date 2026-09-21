@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -40,7 +42,9 @@
     .shell {
       height: 100%;
       display: flex;
+      flex-direction: column;
       padding: clamp(0.4rem, 1.2vw, 1rem);
+      gap: clamp(0.4rem, 1.2vw, 0.85rem);
     }
     .boards {
       flex: 1;
@@ -92,6 +96,31 @@
       color: transparent;
       text-shadow: none;
     }
+    .hours-bar {
+      flex-shrink: 0;
+      text-align: center;
+      padding: clamp(0.45rem, 1.4vh, 0.85rem) 0.75rem;
+      border-radius: clamp(0.6rem, 1.2vw, 0.9rem);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .hours-bar.closed {
+      background: rgba(245, 215, 110, 0.16);
+      border-color: rgba(245, 215, 110, 0.45);
+    }
+    .hours-main {
+      font-size: clamp(1.35rem, 3.2vw, 2.35rem);
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      line-height: 1.15;
+    }
+    .hours-sub {
+      margin-top: 0.2rem;
+      font-size: clamp(1rem, 2.1vw, 1.45rem);
+      font-weight: 700;
+      color: var(--ticket);
+    }
+    .hours-sub:empty { display: none; }
     #sound-gate {
       position: fixed;
       inset: 0;
@@ -142,6 +171,10 @@
         <div class="win" aria-hidden="true">2</div>
         <div class="serving empty" data-role="serving" aria-label="None"></div>
       </section>
+    </div>
+    <div class="hours-bar" id="hours-bar" data-state="open">
+      <div class="hours-main" id="hours-line">Open until 5:00 · Abierto hasta las 5:00</div>
+      <div class="hours-sub" id="hours-sub"></div>
     </div>
   </div>
 
@@ -325,16 +358,40 @@
     setTimeout(function () { section.classList.remove("flash"); }, 1600);
   }
 
+  function paintHours(snap) {
+    const bar = document.getElementById("hours-bar");
+    const line = document.getElementById("hours-line");
+    const sub = document.getElementById("hours-sub");
+    if (!bar || !line) return;
+    const h = (snap && snap.hours) || {};
+    const en = h.en || "Open until 5:00";
+    const es = h.es || "Abierto hasta las 5:00";
+    line.textContent = en + " · " + es;
+    if (sub) {
+      const subEn = h.sub_en || "";
+      const subEs = h.sub_es || "";
+      sub.textContent = subEn && subEs ? subEn + " · " + subEs : (subEn || subEs);
+    }
+    const closed = h.accepting_tickets === false;
+    bar.classList.toggle("closed", closed);
+    bar.setAttribute("data-state", closed ? "closed" : "open");
+  }
+
   function paint(snap) {
-    if (!snap || !snap.windows) return;
+    paintHours(snap);
+    if (!snap) return;
+    const windows = snap.windows || {};
+    const flat = snap.now_serving || {};
     ["1", "2"].forEach(function (w) {
-      const col = snap.windows[w] || {};
+      const col = windows[w] || {};
       const section = boards.querySelector('section[data-window="' + w + '"]');
       if (!section) return;
       const serving = col.serving;
-      const label = serving && serving.label ? String(serving.label) : "";
-      const idKey = serving ? String(serving.id) : null;
+      let label = serving && serving.label ? String(serving.label) : "";
+      if (!label && flat[w]) label = String(flat[w]);
+      const idKey = serving ? String(serving.id) : (label || null);
       const numEl = section.querySelector('[data-role="serving"]');
+      if (!numEl) return;
       numEl.textContent = label;
       numEl.classList.toggle("empty", !label);
       numEl.setAttribute("aria-label", label || "None");

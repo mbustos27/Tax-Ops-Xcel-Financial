@@ -5,9 +5,15 @@ from datetime import datetime
 
 from zoneinfo import ZoneInfo
 
-from office_hours import accepting_tickets, is_tax_season, lobby_hours
+from office_hours import accepting_tickets, is_tax_season, lobby_hours, office_tz
 
 PT = ZoneInfo("America/Los_Angeles")
+
+
+def test_office_tz_always_resolves():
+    tz = office_tz()
+    assert tz is not None
+    datetime.now(tz)
 
 
 def test_tax_season_is_jan_through_apr_15():
@@ -27,7 +33,16 @@ def test_non_tax_close_at_5pm_pacific():
     assert hours["accepting_tickets"] is False
     assert hours["en"] == "Closed"
     assert hours["es"] == "Cerrado"
+    assert hours["sub_en"] == "Opens at 9:00"
+    assert hours["sub_es"] == "Abrimos a las 9:00"
     assert hours["close_label"] == "5:00"
+
+
+def test_non_tax_before_open_is_closed():
+    hours = lobby_hours(datetime(2026, 9, 21, 8, 30, tzinfo=PT))
+    assert hours["accepting_tickets"] is False
+    assert hours["en"] == "Closed"
+    assert hours["sub_en"] == "Opens at 9:00"
 
 
 def test_non_tax_afternoon_shows_open_until_5():
@@ -42,5 +57,6 @@ def test_tax_season_stays_open_after_5():
     assert accepting_tickets(late) is True
     hours = lobby_hours(late)
     assert hours["tax_season"] is True
-    assert hours["en"] == ""
-    assert hours["es"] == ""
+    assert hours["en"] == "Open today"
+    assert hours["es"] == "Abierto hoy"
+    assert hours["sub_en"] == "Tax season hours"

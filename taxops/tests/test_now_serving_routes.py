@@ -48,13 +48,15 @@ def test_lobby_display_reachable_without_login(client, taxops_db_path):
     assert "Ahora sirviendo" in html  # EN/ES voice string only
     assert "speechSynthesis" in html
     assert "/now-serving/api/events" in html
-    # Number + window digit only — no bilingual chrome, hours, or waiting.
+    # Giant numbers + window digits; hours bar is the only extra chrome.
     assert html.count("Ahora sirviendo") == 1
     assert ">1</div>" in html and ">2</div>" in html
     assert "<h1>Now Serving</h1>" not in html
     assert "Window 1</div>" not in html
     assert "Ventanilla 1" not in html
-    assert 'id="hours-line"' not in html
+    assert 'id="hours-line"' in html
+    assert "Open until 5:00" in html
+    assert "Abierto hasta las 5:00" in html
     assert "Mute voice" not in html
     assert "Unmute voice" not in html
     assert "waiting · en espera" not in html
@@ -64,6 +66,7 @@ def test_lobby_display_reachable_without_login(client, taxops_db_path):
     assert "getElementById(\"live-dot\")" not in html
     assert 'key !== "M"' in html
     assert 'get("mute") === "1"' in html
+    assert "no-store" in (resp.headers.get("Cache-Control") or "")
 
 
 def test_kiosk_reachable_without_login(client, taxops_db_path):

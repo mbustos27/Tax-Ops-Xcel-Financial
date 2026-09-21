@@ -6,22 +6,44 @@ Tax season (Jan 1–Apr 15 by default): no 5:00 cutoff — staff keep the line o
 from __future__ import annotations
 
 import os
-from datetime import datetime, time
+from datetime import datetime, time, timedelta, timezone
 from typing import Any, Optional
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 DEFAULT_TZ = "America/Los_Angeles"
 DEFAULT_TAX_SEASON_START = (1, 1)
 DEFAULT_TAX_SEASON_END = (4, 15)
 DEFAULT_NON_TAX_CLOSE = time(17, 0)
+DEFAULT_NON_TAX_OPEN = time(9, 0)
 
 
-def office_tz() -> ZoneInfo:
+def _pacific_offset_tz() -> timezone:
+    """PDT/PST when tzdata is missing (common on Windows CPython)."""
+    utc_now = datetime.now(timezone.utc)
+    year = utc_now.year
+
+    def nth_weekday(month: int, weekday: int, n: int) -> datetime:
+        first = datetime(year, month, 1, tzinfo=timezone.utc)
+        delta = (weekday - first.weekday()) % 7
+        return first + timedelta(days=delta + 7 * (n - 1))
+
+    # 2nd Sunday in March 10:00 UTC ≈ 02:00 PST; 1st Sunday in Nov 09:00 UTC ≈ 02:00 PDT.
+    dst_start = nth_weekday(3, 6, 2).replace(hour=10)
+    dst_end = nth_weekday(11, 6, 1).replace(hour=9)
+    if dst_start <= utc_now < dst_end:
+        return timezone(timedelta(hours=-7), name="PDT")
+    return timezone(timedelta(hours=-8), name="PST")
+
+
+def office_tz():
     name = (os.environ.get("TAXOPS_OFFICE_TZ") or DEFAULT_TZ).strip() or DEFAULT_TZ
     try:
         return ZoneInfo(name)
-    except ZoneInfoNotFoundError:
-        return ZoneInfo(DEFAULT_TZ)
+    except Exception:
+        try:
+            return ZoneInfo(DEFAULT_TZ)
+        except Exception:
+            return _pacific_offset_tz()
 
 
 def _month_day(env_key: str, default: tuple[int, int]) -> tuple[int, int]:
@@ -55,22 +77,34 @@ def is_tax_season(when: Optional[datetime] = None) -> bool:
     return start <= md <= end
 
 
-def non_tax_close_time() -> time:
-    raw = (os.environ.get("TAXOPS_NON_TAX_CLOSE") or "17:00").strip()
+def _parse_hhmm(env_key: str, default: time) -> time:
+    raw = (os.environ.get(env_key) or "").strip()
+    if not raw:
+        return default
     try:
         hour_s, minute_s = raw.split(":", 1)
-        hour, minute = int(hour_s), int(minute_s)
-        return time(hour, minute)
+        return time(int(hour_s), int(minute_s))
     except ValueError:
-        return DEFAULT_NON_TAX_CLOSE
+        return default
+
+
+def non_tax_close_time() -> time:
+    return _parse_hhmm("TAXOPS_NON_TAX_CLOSE", DEFAULT_NON_TAX_CLOSE)
+
+
+def non_tax_open_time() -> time:
+    return _parse_hhmm("TAXOPS_NON_TAX_OPEN", DEFAULT_NON_TAX_OPEN)
+
+
+def clock_label(clock: time) -> str:
+    hour = clock.hour % 12 or 12
+    if clock.minute:
+        return f"{hour}:{clock.minute:02d}"
+    return f"{hour}:00"
 
 
 def close_label(close: Optional[time] = None) -> str:
-    close = close or non_tax_close_time()
-    hour = close.hour % 12 or 12
-    if close.minute:
-        return f"{hour}:{close.minute:02d}"
-    return f"{hour}:00"
+    return clock_label(close or non_tax_close_time())
 
 
 def accepting_tickets(when: Optional[datetime] = None) -> bool:
@@ -78,28 +112,38 @@ def accepting_tickets(when: Optional[datetime] = None) -> bool:
     if is_tax_season(when):
         return True
     now = office_now(when)
+    opens = non_tax_open_time()
     close = non_tax_close_time()
-    return (now.hour, now.minute) < (close.hour, close.minute)
+    hm = (now.hour, now.minute)
+    return hm >= (opens.hour, opens.minute) and hm < (close.hour, close.minute)
 
 
 def lobby_hours(when: Optional[datetime] = None) -> dict[str, Any]:
     now = office_now(when)
     close = non_tax_close_time()
+    opens = non_tax_open_time()
     tax = is_tax_season(now)
     open_now = accepting_tickets(now)
-    label = close_label(close)
+    close_txt = clock_label(close)
+    open_txt = clock_label(opens)
     if tax:
-        en, es = "", ""
+        en, es = "Open today", "Abierto hoy"
+        sub_en, sub_es = "Tax season hours", "Horario de temporada"
     elif open_now:
-        en, es = f"Open until {label}", f"Abierto hasta las {label}"
+        en, es = f"Open until {close_txt}", f"Abierto hasta las {close_txt}"
+        sub_en, sub_es = "", ""
     else:
         en, es = "Closed", "Cerrado"
+        sub_en, sub_es = f"Opens at {open_txt}", f"Abrimos a las {open_txt}"
     return {
         "timezone": str(now.tzinfo),
         "tax_season": tax,
         "accepting_tickets": open_now,
-        "close_label": label,
+        "close_label": close_txt,
+        "open_label": open_txt,
         "local_time": now.strftime("%H:%M"),
         "en": en,
         "es": es,
+        "sub_en": sub_en,
+        "sub_es": sub_es,
     }

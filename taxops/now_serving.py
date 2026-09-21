@@ -573,7 +573,23 @@ def board_snapshot(db_path: Optional[str] = None) -> dict[str, Any]:
             "SELECT next_number, assign_turn, transfer_counter, event_seq "
             "FROM now_serving_state WHERE id = 1"
         ).fetchone()
-        from office_hours import lobby_hours
+        try:
+            from office_hours import lobby_hours
+
+            hours = lobby_hours()
+        except Exception:
+            hours = {
+                "timezone": "America/Los_Angeles",
+                "tax_season": False,
+                "accepting_tickets": True,
+                "close_label": "5:00",
+                "open_label": "9:00",
+                "local_time": "",
+                "en": "Open until 5:00",
+                "es": "Abierto hasta las 5:00",
+                "sub_en": "",
+                "sub_es": "",
+            }
 
         return {
             "windows": windows,
@@ -581,7 +597,7 @@ def board_snapshot(db_path: Optional[str] = None) -> dict[str, Any]:
                 "1": windows["1"]["serving"]["label"] if windows["1"]["serving"] else None,
                 "2": windows["2"]["serving"]["label"] if windows["2"]["serving"] else None,
             },
-            "hours": lobby_hours(),
+            "hours": hours,
             "revision": int(state["event_seq"]) if state and state["event_seq"] is not None else 0,
             "state": {
                 "next_number": int(state["next_number"]) if state else 1,

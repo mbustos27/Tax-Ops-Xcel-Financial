@@ -8,7 +8,8 @@
 set -euo pipefail
 
 TAXOPS_URL="${TAXOPS_URL:-http://192.168.1.173:5000}"
-DISPLAY_URL="${TAXOPS_DISPLAY_URL:-${TAXOPS_URL%/}/now-serving/display?autosound=1}"
+CACHE_BUST="${TAXOPS_DISPLAY_V:-$(date +%s)}"
+DISPLAY_URL="${TAXOPS_DISPLAY_URL:-${TAXOPS_URL%/}/now-serving/display?autosound=1&v=${CACHE_BUST}}"
 
 # Disable screensaver / blanking when possible (Pi OS).
 if command -v xset >/dev/null 2>&1; then
@@ -38,5 +39,7 @@ exec "$CHROMIUM" \
   --check-for-update-interval=31536000 \
   --autoplay-policy=no-user-gesture-required \
   --disable-features=TranslateUI \
+  --disk-cache-size=1 \
+  --disable-http-cache \
   --lang=en-US \
   "$DISPLAY_URL"

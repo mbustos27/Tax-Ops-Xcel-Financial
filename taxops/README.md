@@ -146,7 +146,7 @@ Prefer a **Raspberry Pi + Chromium kiosk** over a Roku channel for v1: same live
 
 The TV is number-only: a gold ticket and a small window digit (1 / 2). No header, hours, waiting counts, mute button, or live footer. Press `M` or open with `?mute=1` to mute; `?autosound=1` still skips the tap-to-enable gate.
 
-**Hours (Los Angeles):** during non-tax time the public **kiosk** stops issuing numbers at **5:00 PM**. The TV does not show hours. Tax season is Jan 1–Apr 15 — no 5:00 cutoff. Staff Call Next still works after close so the remaining line can finish. Override with `TAXOPS_OFFICE_TZ`, `TAXOPS_NON_TAX_CLOSE`, `TAXOPS_TAX_SEASON_START`, `TAXOPS_TAX_SEASON_END`.
+**Hours (Los Angeles):** the lobby TV shows a bilingual bar at the bottom. Non-tax time is **9:00–5:00** — “Open until 5:00 / Abierto hasta las 5:00”, then “Closed / Cerrado” plus “Opens at 9:00”. The kiosk stops issuing numbers outside those hours. Tax season (Jan 1–Apr 15) shows “Open today” and has no 5:00 cutoff. Staff Call Next still works after close. Override with `TAXOPS_OFFICE_TZ`, `TAXOPS_NON_TAX_OPEN`, `TAXOPS_NON_TAX_CLOSE`, `TAXOPS_TAX_SEASON_START`, `TAXOPS_TAX_SEASON_END`.
 
 1. Point the Pi at TaxOps on the LAN, e.g. `http://192.168.1.173:5000/now-serving/display?autosound=1`.
 2. Copy `scripts/now_serving_display_kiosk.sh` to the Pi, `chmod +x` it, set `TAXOPS_URL`, and run (or add to autostart).
