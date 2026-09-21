@@ -573,12 +573,15 @@ def board_snapshot(db_path: Optional[str] = None) -> dict[str, Any]:
             "SELECT next_number, assign_turn, transfer_counter, event_seq "
             "FROM now_serving_state WHERE id = 1"
         ).fetchone()
+        from office_hours import lobby_hours
+
         return {
             "windows": windows,
             "now_serving": {
                 "1": windows["1"]["serving"]["label"] if windows["1"]["serving"] else None,
                 "2": windows["2"]["serving"]["label"] if windows["2"]["serving"] else None,
             },
+            "hours": lobby_hours(),
             "revision": int(state["event_seq"]) if state and state["event_seq"] is not None else 0,
             "state": {
                 "next_number": int(state["next_number"]) if state else 1,

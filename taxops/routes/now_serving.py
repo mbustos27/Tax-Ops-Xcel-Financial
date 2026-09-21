@@ -49,6 +49,7 @@ from now_serving import (
     transfer_to_other_window,
     try_print_now_serving_ticket,
 )
+from office_hours import lobby_hours
 
 now_serving_bp = Blueprint("now_serving", __name__)
 logger = logging.getLogger(__name__)
@@ -112,6 +113,18 @@ def lobby_display():
 
 @now_serving_bp.post("/now-serving/kiosk/take")
 def kiosk_take():
+    hours = lobby_hours()
+    if not hours.get("accepting_tickets"):
+        return jsonify({
+            "success": False,
+            "error": "closed",
+            "hours": hours,
+            "message": (
+                f"Office is closed. We close at {hours.get('close_label', '5:00')} "
+                "during non-tax time."
+            ),
+            "snapshot": board_snapshot(),
+        }), 409
     ticket = issue_ticket()
     printed = try_print_now_serving_ticket(ticket["label"], ticket["window"])
     ticket["printed"] = printed

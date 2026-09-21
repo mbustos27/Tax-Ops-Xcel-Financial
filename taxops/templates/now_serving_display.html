@@ -61,6 +61,14 @@
       font-size: clamp(0.85rem, 1.5vw, 1.15rem);
       font-weight: 600;
     }
+    .hours {
+      margin-top: 0.35rem;
+      color: var(--muted);
+      font-size: clamp(0.8rem, 1.4vw, 1.05rem);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .hours[hidden] { display: none; }
     .boards {
       flex: 1;
       display: grid;
@@ -156,6 +164,7 @@
     <header>
       <h1>Now Serving</h1>
       <div class="sub">Ahora sirviendo</div>
+      <div class="hours" id="hours-line" hidden></div>
     </header>
 
     <div class="boards" id="boards">
@@ -352,7 +361,21 @@
     setTimeout(function () { section.classList.remove("flash"); }, 1600);
   }
 
+  function paintHours(snap) {
+    const el = document.getElementById("hours-line");
+    if (!el) return;
+    const h = snap && snap.hours;
+    if (!h || h.tax_season || !h.en) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = h.en + " · " + h.es;
+  }
+
   function paint(snap) {
+    paintHours(snap);
     if (!snap || !snap.windows) return;
     ["1", "2"].forEach(function (w) {
       const col = snap.windows[w] || {};
