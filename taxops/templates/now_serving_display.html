@@ -40,86 +40,57 @@
     .shell {
       height: 100%;
       display: flex;
-      flex-direction: column;
-      padding: clamp(0.75rem, 2vw, 1.75rem);
-      gap: clamp(0.5rem, 1.5vh, 1rem);
+      padding: clamp(0.4rem, 1.2vw, 1rem);
     }
-    header {
-      text-align: center;
-      flex-shrink: 0;
-    }
-    h1 {
-      margin: 0;
-      font-size: clamp(1.1rem, 2.4vw, 1.85rem);
-      font-weight: 800;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-    }
-    .sub {
-      margin-top: 0.15rem;
-      color: var(--muted);
-      font-size: clamp(0.85rem, 1.5vw, 1.15rem);
-      font-weight: 600;
-    }
-    .hours {
-      margin-top: 0.35rem;
-      color: var(--muted);
-      font-size: clamp(0.8rem, 1.4vw, 1.05rem);
-      font-weight: 700;
-      letter-spacing: 0.04em;
-    }
-    .hours[hidden] { display: none; }
     .boards {
       flex: 1;
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: clamp(0.75rem, 2vw, 1.75rem);
+      gap: clamp(0.4rem, 1.2vw, 1rem);
       min-height: 0;
+      width: 100%;
     }
     .board {
+      position: relative;
       background: var(--card);
-      border: 2px solid rgba(255, 255, 255, 0.14);
-      border-radius: clamp(1rem, 2vw, 1.75rem);
-      padding: clamp(1rem, 3vw, 2.25rem);
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      border-radius: clamp(0.75rem, 1.6vw, 1.25rem);
+      padding: clamp(0.5rem, 2vw, 1.25rem);
       display: flex;
-      flex-direction: column;
-      justify-content: center;
       align-items: center;
+      justify-content: center;
       text-align: center;
+      min-height: 0;
       transition: box-shadow 0.35s ease, border-color 0.35s ease, transform 0.35s ease;
     }
     .board.flash {
       border-color: var(--flash);
       box-shadow: 0 0 0 6px rgba(245, 215, 110, 0.35), 0 20px 50px rgba(0, 0, 0, 0.35);
-      transform: scale(1.015);
+      transform: scale(1.01);
+    }
+    .win {
+      position: absolute;
+      top: clamp(0.45rem, 1.6vw, 1rem);
+      left: clamp(0.55rem, 1.8vw, 1.15rem);
+      font-size: clamp(1.5rem, 3.2vw, 2.5rem);
+      font-weight: 800;
+      line-height: 1;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
     }
     .serving {
-      font-size: clamp(5.5rem, 18vw, 13rem);
+      font-size: clamp(7rem, 26vw, 18rem);
       font-weight: 900;
-      line-height: 0.92;
+      line-height: 0.88;
       font-variant-numeric: tabular-nums;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.04em;
       color: var(--ticket);
-      text-shadow: 0 10px 32px rgba(0, 0, 0, 0.4);
-      min-height: 0.92em;
+      text-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+      min-height: 0.88em;
     }
     .serving.empty {
       color: transparent;
       text-shadow: none;
-    }
-    .win {
-      margin-top: clamp(0.65rem, 2vh, 1.25rem);
-      font-size: clamp(1.25rem, 3vw, 2.35rem);
-      font-weight: 800;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--ink);
-    }
-    .win-es {
-      margin-top: 0.2rem;
-      font-size: clamp(0.95rem, 1.8vw, 1.35rem);
-      font-weight: 600;
-      color: var(--muted);
     }
     #sound-gate {
       position: fixed;
@@ -148,7 +119,7 @@
     }
     @media (max-width: 700px) {
       .boards { grid-template-columns: 1fr; }
-      .serving { font-size: clamp(4.5rem, 28vw, 8rem); }
+      .serving { font-size: clamp(6rem, 42vw, 11rem); }
     }
   </style>
 </head>
@@ -160,23 +131,16 @@
     </button>
   </div>
 
+  <h1 class="sr-only">Now Serving</h1>
   <div class="shell">
-    <header>
-      <h1>Now Serving</h1>
-      <div class="sub">Ahora sirviendo</div>
-      <div class="hours" id="hours-line" hidden></div>
-    </header>
-
     <div class="boards" id="boards">
-      <section class="board" data-window="1">
+      <section class="board" data-window="1" aria-label="Window 1">
+        <div class="win" aria-hidden="true">1</div>
         <div class="serving empty" data-role="serving" aria-label="None"></div>
-        <div class="win">Window 1</div>
-        <div class="win-es">Ventanilla 1</div>
       </section>
-      <section class="board" data-window="2">
+      <section class="board" data-window="2" aria-label="Window 2">
+        <div class="win" aria-hidden="true">2</div>
         <div class="serving empty" data-role="serving" aria-label="None"></div>
-        <div class="win">Window 2</div>
-        <div class="win-es">Ventanilla 2</div>
       </section>
     </div>
   </div>
@@ -361,21 +325,7 @@
     setTimeout(function () { section.classList.remove("flash"); }, 1600);
   }
 
-  function paintHours(snap) {
-    const el = document.getElementById("hours-line");
-    if (!el) return;
-    const h = snap && snap.hours;
-    if (!h || h.tax_season || !h.en) {
-      el.hidden = true;
-      el.textContent = "";
-      return;
-    }
-    el.hidden = false;
-    el.textContent = h.en + " · " + h.es;
-  }
-
   function paint(snap) {
-    paintHours(snap);
     if (!snap || !snap.windows) return;
     ["1", "2"].forEach(function (w) {
       const col = snap.windows[w] || {};
