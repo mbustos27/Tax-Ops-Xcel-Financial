@@ -35,6 +35,10 @@ class RestartAssessment:
     summary: str
     active_staff: list[dict[str, Any]] = field(default_factory=list)
     recent_writes: list[dict[str, Any]] = field(default_factory=list)
+    write_details: list[dict[str, Any]] = field(default_factory=list)
+    extraction_jobs: list[dict[str, Any]] = field(default_factory=list)
+    db_lock: dict[str, Any] = field(default_factory=dict)
+    next_steps: list[str] = field(default_factory=list)
     blockers: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -213,6 +217,185 @@ def _pending_extraction(conn: sqlite3.Connection) -> dict[str, int]:
     return out
 
 
+def _client_label(last_name: Any, first_name: Any, return_id: Any) -> str:
+    ln = (last_name or "").strip()
+    fn = (first_name or "").strip()
+    if ln or fn:
+        return f"{ln}, {fn}".strip(", ")
+    return f"Return #{return_id}"
+
+
+def _recent_write_details(
+    conn: sqlite3.Connection, write_minutes: int, limit: int = 25
+) -> list[dict[str, Any]]:
+    """Row-level recent activity for the restart-check UI (newest first)."""
+    cutoff = _cutoff(write_minutes)
+    details: list[dict[str, Any]] = []
+
+    def _add(kind: str, when: str | None, **extra: Any) -> None:
+        if not when:
+            return
+        details.append({"kind": kind, "when": when, **extra})
+
+    try:
+        if _table_exists(conn, "status_events"):
+            for r in conn.execute(
+                """
+                SELECT e.event_timestamp AS when_ts, e.return_id, e.old_status, e.new_status,
+                       e.event_type, e.source_file, e.note,
+                       r.log_number, c.last_name, c.first_name
+                FROM status_events e
+                LEFT JOIN returns r ON r.id = e.return_id
+                LEFT JOIN clients c ON c.id = r.client_id
+                WHERE e.event_timestamp >= ?
+                ORDER BY e.event_timestamp DESC
+                LIMIT ?
+                """,
+                (cutoff, limit),
+            ).fetchall():
+                _add(
+                    "status",
+                    r["when_ts"],
+                    return_id=r["return_id"],
+                    log_number=r["log_number"],
+                    client=_client_label(r["last_name"], r["first_name"], r["return_id"]),
+                    detail=(
+                        f"{r['old_status'] or '—'} → {r['new_status'] or '—'}"
+                        + (f" ({r['event_type']})" if r["event_type"] else "")
+                    ),
+                    source=r["source_file"] or "",
+                    note=(r["note"] or "")[:120],
+                )
+    except sqlite3.Error:
+        pass
+
+    try:
+        if _table_exists(conn, "notes"):
+            for r in conn.execute(
+                """
+                SELECT n.created_at AS when_ts, n.return_id, n.source, n.note_text,
+                       r.log_number, c.last_name, c.first_name
+                FROM notes n
+                LEFT JOIN returns r ON r.id = n.return_id
+                LEFT JOIN clients c ON c.id = r.client_id
+                WHERE n.created_at >= ?
+                ORDER BY n.created_at DESC
+                LIMIT ?
+                """,
+                (cutoff, limit),
+            ).fetchall():
+                snippet = (r["note_text"] or "").replace("\n", " ").strip()[:80]
+                _add(
+                    "note",
+                    r["when_ts"],
+                    return_id=r["return_id"],
+                    log_number=r["log_number"],
+                    client=_client_label(r["last_name"], r["first_name"], r["return_id"]),
+                    detail=snippet or "(note)",
+                    source=r["source"] or "",
+                    note="",
+                )
+    except sqlite3.Error:
+        pass
+
+    try:
+        if _table_exists(conn, "return_documents"):
+            for r in conn.execute(
+                """
+                SELECT d.uploaded_at AS when_ts, d.return_id, d.uploaded_by, d.original_filename,
+                       d.doc_type, r.log_number, c.last_name, c.first_name
+                FROM return_documents d
+                LEFT JOIN returns r ON r.id = d.return_id
+                LEFT JOIN clients c ON c.id = r.client_id
+                WHERE d.uploaded_at >= ?
+                ORDER BY d.uploaded_at DESC
+                LIMIT ?
+                """,
+                (cutoff, limit),
+            ).fetchall():
+                fname = r["original_filename"] or r["doc_type"] or "document"
+                by = r["uploaded_by"] or ""
+                _add(
+                    "document",
+                    r["when_ts"],
+                    return_id=r["return_id"],
+                    log_number=r["log_number"],
+                    client=_client_label(r["last_name"], r["first_name"], r["return_id"]),
+                    detail=fname + (f" by {by}" if by else ""),
+                    source="upload",
+                    note="",
+                )
+    except sqlite3.Error:
+        pass
+
+    try:
+        if _table_exists(conn, "returns"):
+            for r in conn.execute(
+                """
+                SELECT r.updated_at AS when_ts, r.id AS return_id, r.log_number,
+                       r.client_status, r.processor, c.last_name, c.first_name
+                FROM returns r
+                LEFT JOIN clients c ON c.id = r.client_id
+                WHERE r.updated_at >= ?
+                ORDER BY r.updated_at DESC
+                LIMIT ?
+                """,
+                (cutoff, min(limit, 15)),
+            ).fetchall():
+                _add(
+                    "return_update",
+                    r["when_ts"],
+                    return_id=r["return_id"],
+                    log_number=r["log_number"],
+                    client=_client_label(r["last_name"], r["first_name"], r["return_id"]),
+                    detail=f"status {r['client_status'] or '—'}"
+                    + (f" · prep {r['processor']}" if r["processor"] else ""),
+                    source="",
+                    note="",
+                )
+    except sqlite3.Error:
+        pass
+
+    details.sort(key=lambda d: d.get("when") or "", reverse=True)
+    return details[:limit]
+
+
+def _extraction_job_details(conn: sqlite3.Connection, limit: int = 15) -> list[dict[str, Any]]:
+    if not _table_exists(conn, "extraction_queue"):
+        return []
+    try:
+        rows = conn.execute(
+            """
+            SELECT q.id, q.status, q.return_id, q.created_at, q.detected_form_type, q.attempts,
+                   r.log_number, c.last_name, c.first_name
+            FROM extraction_queue q
+            LEFT JOIN returns r ON r.id = q.return_id
+            LEFT JOIN clients c ON c.id = r.client_id
+            WHERE q.status IN ('pending', 'processing')
+            ORDER BY CASE q.status WHEN 'processing' THEN 0 ELSE 1 END, q.created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "id": r["id"],
+                "status": r["status"],
+                "return_id": r["return_id"],
+                "log_number": r["log_number"],
+                "client": _client_label(r["last_name"], r["first_name"], r["return_id"]),
+                "form": r["detected_form_type"] or "",
+                "attempts": r["attempts"],
+                "created_at": r["created_at"],
+            }
+        )
+    return out
+
+
 def _sqlite_writable(db_path: str) -> tuple[bool, str]:
     """Try BEGIN IMMEDIATE; failure usually means another writer holds the lock."""
     try:
@@ -241,13 +424,15 @@ def assess_restart(
     checked = now()
     staff = _active_staff(conn, idle_minutes)
     writes = _recent_write_signals(conn, write_minutes)
+    write_details = _recent_write_details(conn, write_minutes)
     extraction = _pending_extraction(conn)
+    extraction_jobs = _extraction_job_details(conn)
     blockers: list[str] = []
     warnings: list[str] = []
     notes: list[str] = [
-        "Cookie logins alone are invisible until presence tracking is live "
-        "(after this build is running and staff click around).",
-        f"Idle window: {idle_minutes} min · write window: {write_minutes} min.",
+        f"Idle window: {idle_minutes} min (who still has the app open).",
+        f"Write window: {write_minutes} min (recent saves that block restart).",
+        "Status changes, notes, uploads, and return updates count as writes.",
     ]
 
     path = db_path
@@ -259,6 +444,7 @@ def assess_restart(
         except Exception:
             path = None
     lock_ok, lock_msg = (True, "Skipped lock check") if not path else _sqlite_writable(path)
+    db_lock = {"ok": lock_ok, "message": lock_msg}
     if not lock_ok:
         blockers.append(lock_msg)
 
@@ -275,7 +461,8 @@ def assess_restart(
     if writes:
         blockers.append(
             "Recent database writes in the last "
-            f"{write_minutes} min — someone may be mid-save"
+            f"{write_minutes} min — someone may be mid-save "
+            "(see Activity details below)"
         )
 
     writers = [s for s in staff if s.get("recent_write")]
@@ -294,6 +481,11 @@ def assess_restart(
         verdict = "WAIT"
         safe = False
         summary = "Do not restart yet — active saves or a busy database."
+        next_steps = [
+            "Look at Activity details — call the desk about those returns.",
+            f"Wait until there are no new writes for {write_minutes} minutes.",
+            "Refresh this page; restart only when the verdict is SAFE or CAUTION.",
+        ]
     elif warnings and browsers:
         verdict = "CAUTION"
         safe = True
@@ -301,14 +493,23 @@ def assess_restart(
             "No recent saves detected, but people still have the app open. "
             "Warn the desk, then restart."
         )
+        next_steps = [
+            f"Tell {', '.join(s['username'] for s in browsers)} a restart is coming.",
+            "Then restart the Windows service / NSSM.",
+        ]
     elif warnings:
         verdict = "CAUTION"
         safe = True
         summary = "Mostly clear — review warnings, then restart if OK."
+        next_steps = [
+            "Review warnings (queued extractions are usually fine).",
+            "Restart when ready.",
+        ]
     else:
         verdict = "SAFE"
         safe = True
         summary = "No active staff or recent writes detected — safe to restart."
+        next_steps = ["Restart the Windows service / NSSM now."]
 
     return RestartAssessment(
         verdict=verdict,
@@ -319,6 +520,10 @@ def assess_restart(
         summary=summary,
         active_staff=staff,
         recent_writes=writes,
+        write_details=write_details,
+        extraction_jobs=extraction_jobs,
+        db_lock=db_lock,
+        next_steps=next_steps,
         blockers=blockers,
         warnings=warnings,
         notes=notes,
@@ -350,9 +555,33 @@ def format_assessment_text(a: RestartAssessment) -> str:
             )
         lines.append("")
     if a.recent_writes:
-        lines.append("Recent writes:")
+        lines.append("Recent writes (counts):")
         for w in a.recent_writes:
             lines.append(f"  • {w['label']}: {w['count']} (last {w['window_minutes']} min)")
+        lines.append("")
+    if a.write_details:
+        lines.append("Activity details:")
+        for d in a.write_details[:20]:
+            log = d.get("log_number") or d.get("return_id") or "?"
+            lines.append(
+                f"  • [{d.get('kind')}] {d.get('when')}  "
+                f"log {log}  {d.get('client')}  {d.get('detail')}"
+            )
+        lines.append("")
+    if a.extraction_jobs:
+        lines.append("Extraction queue:")
+        for j in a.extraction_jobs[:10]:
+            lines.append(
+                f"  • {j.get('status')}  log {j.get('log_number') or j.get('return_id')}  "
+                f"{j.get('client')}"
+            )
+        lines.append("")
+    if a.db_lock:
+        lines.append(f"DB lock: {a.db_lock.get('message')}")
+        lines.append("")
+    if a.next_steps:
+        lines.append("Next:")
+        lines.extend(f"  {i}. {s}" for i, s in enumerate(a.next_steps, 1))
         lines.append("")
     lines.append(
         "SAFE = restart OK · CAUTION = warn desk first · WAIT = finish active work first"

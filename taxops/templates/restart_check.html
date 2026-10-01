@@ -8,13 +8,19 @@
   'CAUTION': 'border-amber-300 bg-amber-50 text-amber-950',
   'WAIT': 'border-red-300 bg-red-50 text-red-950'
 }[v] %}
+{% set kind_label = {
+  'status': 'Status change',
+  'note': 'Note',
+  'document': 'Document upload',
+  'return_update': 'Return updated'
+} %}
 
 <div class="max-w-3xl mx-auto p-4 md:p-6 space-y-5 overflow-y-auto h-full">
   <div class="flex items-start justify-between gap-3">
     <div>
       <h1 class="text-2xl font-bold text-slate-900">Safe to restart?</h1>
       <p class="text-slate-600 text-sm mt-1">
-        Checks who is using TaxOps and whether anyone saved data in the last few minutes.
+        Shows who has TaxOps open and which returns were saved in the last few minutes.
         Use this before restarting the Windows service.
       </p>
     </div>
@@ -29,7 +35,17 @@
     <div class="text-xs font-semibold uppercase tracking-wide opacity-80">Verdict</div>
     <div class="text-3xl font-black mt-1">{{ assessment.verdict }}</div>
     <p class="mt-2 text-base leading-snug">{{ assessment.summary }}</p>
-    <p class="mt-2 text-xs opacity-70">Checked {{ assessment.checked_at }} · idle {{ assessment.idle_minutes }}m · writes {{ assessment.write_minutes }}m</p>
+    <p class="mt-2 text-xs opacity-70">
+      Checked {{ assessment.checked_at }} ·
+      idle {{ assessment.idle_minutes }}m ·
+      writes {{ assessment.write_minutes }}m ·
+      DB {{ 'OK' if assessment.db_lock.ok else 'BUSY' }}
+    </p>
+    {% if assessment.next_steps %}
+    <ol class="mt-3 list-decimal pl-5 text-sm space-y-1 font-medium">
+      {% for s in assessment.next_steps %}<li>{{ s }}</li>{% endfor %}
+    </ol>
+    {% endif %}
   </div>
 
   {% if assessment.blockers %}
@@ -52,6 +68,7 @@
 
   <section class="rounded-xl border border-slate-200 bg-white p-4">
     <h2 class="font-bold text-slate-900">Active staff</h2>
+    <p class="text-xs text-slate-500 mt-1">Seen in the last {{ assessment.idle_minutes }} minutes.</p>
     {% if assessment.active_staff %}
     <ul class="mt-3 divide-y divide-slate-100">
       {% for s in assessment.active_staff %}
@@ -59,6 +76,7 @@
         <div>
           <span class="font-semibold">{{ s.username }}</span>
           <span class="text-slate-500">· {{ s.last_method }} {{ s.last_path }}</span>
+          {% if s.last_ip %}<span class="text-slate-400">· {{ s.last_ip }}</span>{% endif %}
         </div>
         <div class="text-slate-500">
           {% if s.recent_write %}
@@ -77,7 +95,8 @@
   </section>
 
   <section class="rounded-xl border border-slate-200 bg-white p-4">
-    <h2 class="font-bold text-slate-900">Recent database writes</h2>
+    <h2 class="font-bold text-slate-900">Recent writes (summary)</h2>
+    <p class="text-xs text-slate-500 mt-1">Counts in the last {{ assessment.write_minutes }} minutes.</p>
     {% if assessment.recent_writes %}
     <ul class="mt-2 space-y-1 text-sm list-disc pl-5 text-slate-800">
       {% for w in assessment.recent_writes %}
@@ -89,15 +108,80 @@
     {% endif %}
   </section>
 
+  <section class="rounded-xl border border-slate-200 bg-white p-4">
+    <h2 class="font-bold text-slate-900">Activity details</h2>
+    <p class="text-xs text-slate-500 mt-1">
+      Which returns were touched — ask the desk about these before bouncing.
+    </p>
+    {% if assessment.write_details %}
+    <ul class="mt-3 divide-y divide-slate-100">
+      {% for d in assessment.write_details %}
+      <li class="py-2.5 text-sm">
+        <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span class="text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded
+                       {% if d.kind == 'status' %}bg-red-100 text-red-800
+                       {% elif d.kind == 'document' %}bg-indigo-100 text-indigo-800
+                       {% elif d.kind == 'note' %}bg-amber-100 text-amber-900
+                       {% else %}bg-slate-100 text-slate-700{% endif %}">
+            {{ kind_label.get(d.kind, d.kind) }}
+          </span>
+          <span class="text-slate-500 text-xs">{{ d.when }}</span>
+        </div>
+        <div class="mt-1 font-semibold text-slate-900">
+          {% if d.log_number %}Log #{{ d.log_number }}{% else %}Return {{ d.return_id }}{% endif %}
+          <span class="font-normal text-slate-600">· {{ d.client }}</span>
+        </div>
+        <div class="text-slate-700">{{ d.detail }}</div>
+        {% if d.source or d.note %}
+        <div class="text-xs text-slate-500 mt-0.5">
+          {% if d.source %}source: {{ d.source }}{% endif %}
+          {% if d.note %}{% if d.source %} · {% endif %}{{ d.note }}{% endif %}
+        </div>
+        {% endif %}
+        {% if d.return_id %}
+        <a href="/return/{{ d.return_id }}" class="text-xs text-blue-700 hover:underline">Open return</a>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-2 text-sm text-slate-600">No detailed activity in the write window.</p>
+    {% endif %}
+  </section>
+
+  {% if assessment.extraction_jobs %}
+  <section class="rounded-xl border border-slate-200 bg-white p-4">
+    <h2 class="font-bold text-slate-900">Extraction queue</h2>
+    <p class="text-xs text-slate-500 mt-1">Queued jobs usually resume after restart. Processing jobs are a stronger reason to wait.</p>
+    <ul class="mt-3 divide-y divide-slate-100">
+      {% for j in assessment.extraction_jobs %}
+      <li class="py-2 text-sm flex flex-col sm:flex-row sm:justify-between gap-1">
+        <div>
+          <span class="font-semibold {% if j.status == 'processing' %}text-red-700{% else %}text-slate-800{% endif %}">
+            {{ j.status }}
+          </span>
+          · {% if j.log_number %}Log #{{ j.log_number }}{% else %}Return {{ j.return_id }}{% endif %}
+          · {{ j.client }}
+          {% if j.form %}<span class="text-slate-500">· {{ j.form }}</span>{% endif %}
+        </div>
+        <div class="text-xs text-slate-500">attempts {{ j.attempts }} · {{ j.created_at }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   <section class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 space-y-2">
-    <p><strong>How to use</strong></p>
-    <ol class="list-decimal pl-5 space-y-1">
-      <li>Open this page on your phone (admin login).</li>
-      <li>If verdict is <strong>WAIT</strong>, ask the desk to finish the current client / save.</li>
-      <li>If <strong>CAUTION</strong>, announce a quick restart, then bounce the service.</li>
-      <li>If <strong>SAFE</strong>, restart is fine.</li>
-    </ol>
-    <p class="text-xs text-slate-500">CLI on the office PC: <code class="bg-white px-1 rounded border">python check_restart_safe.py</code> from the <code class="bg-white px-1 rounded border">taxops</code> folder.</p>
+    <p><strong>How to read this</strong></p>
+    <ul class="list-disc pl-5 space-y-1">
+      <li><strong>WAIT</strong> — recent saves or DB busy. Finish those returns first.</li>
+      <li><strong>CAUTION</strong> — no recent saves, but someone still has the app open. Warn them, then restart.</li>
+      <li><strong>SAFE</strong> — clear to bounce the service.</li>
+    </ul>
+    <p class="text-xs text-slate-500">
+      CLI: <code class="bg-white px-1 rounded border">python check_restart_safe.py</code> from
+      <code class="bg-white px-1 rounded border">C:\TaxOps\taxops</code>
+    </p>
   </section>
 </div>
 {% endblock %}
