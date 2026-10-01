@@ -512,6 +512,52 @@ def test_enqueue_receipt_creates_row(taxops_db_path, tmp_path, monkeypatch):
     assert row[4] == "pending"  # status column
 
 
+def test_enqueue_receipt_skips_test_first_name(taxops_db_path, tmp_path, monkeypatch):
+    """Clients with first_name 'test' must not enter the QB receipt queue."""
+    import db as _db
+    monkeypatch.setattr(_db, "DB_PATH", taxops_db_path)
+
+    img = tmp_path / "receipt-test.jpg"
+    img.write_bytes(b"\xff\xd8\xff" + b"\x00" * 20)
+
+    conn = sqlite3.connect(taxops_db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "INSERT INTO clients (last_name, first_name, created_at) VALUES ('Demo','Test','2026-01-01')"
+    )
+    cid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO returns (client_id, log_number, created_at) VALUES (?,'T002','2026-01-01')",
+        (cid,),
+    )
+    rid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """INSERT INTO return_documents
+           (return_id, filename, original_filename, doc_type, file_path, uploaded_at, is_deleted)
+           VALUES (?, 'receipt.jpg', 'Practice Receipt.jpg', 'receipt', ?, '2026-01-01', 0)""",
+        (rid, str(img)),
+    )
+    conn.commit()
+    doc_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+
+    from routes.documents import _enqueue_receipt, _is_test_client_first_name
+
+    assert _is_test_client_first_name("test")
+    assert _is_test_client_first_name("TEST")
+    assert not _is_test_client_first_name("Tess")
+
+    with patch("accounting_worker._notify_receipt_worker") as notify:
+        _enqueue_receipt(doc_id, str(img))
+        notify.assert_not_called()
+
+    conn = sqlite3.connect(taxops_db_path)
+    row = conn.execute(
+        "SELECT * FROM receipt_queue WHERE return_document_id=?", (doc_id,)
+    ).fetchone()
+    conn.close()
+    assert row is None
+
 # ─────────────────────────────────────────────────────────────────────────────
 # ACCOUNTING-7: Worker retry + dead-letter
 # ─────────────────────────────────────────────────────────────────────────────

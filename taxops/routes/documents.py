@@ -123,13 +123,41 @@ def _sha256_file(path: str) -> str:
     return h.hexdigest()
 
 
+def _is_test_client_first_name(first_name: str | None) -> bool:
+    """Sandbox / practice clients named first_name=test stay out of the QB receipt queue."""
+    return (first_name or "").strip().lower() == "test"
+
+
 def _enqueue_receipt(doc_id: int, image_path: str) -> None:
-    """ACCOUNTING-10: auto-enqueue a return document with doc_type='receipt' for OCR."""
+    """ACCOUNTING-10: auto-enqueue a return document with doc_type='receipt' for OCR.
+
+    Skips enqueue when the linked client's first name is ``test`` (any case)
+    so practice returns never land in the QuickBooks receipt review queue.
+    """
     from datetime import datetime, timezone
 
     now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         with contextlib.closing(get_connection()) as conn:
+            name_row = conn.execute(
+                """
+                SELECT c.first_name
+                  FROM return_documents rd
+                  JOIN returns r ON r.id = rd.return_id
+                  JOIN clients c ON c.id = r.client_id
+                 WHERE rd.id = ?
+                """,
+                (doc_id,),
+            ).fetchone()
+            first_name = name_row["first_name"] if name_row else None
+            if _is_test_client_first_name(first_name):
+                log.info(
+                    "_enqueue_receipt: skipping QB receipt queue for doc_id=%d "
+                    "(client first_name is test)",
+                    doc_id,
+                )
+                return
+
             conn.execute(
                 """
                 INSERT INTO receipt_queue
