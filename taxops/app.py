@@ -3795,8 +3795,9 @@ def pickup_workflow(return_id: int):
                 year_for_queue = int(intake[:4]) if len(intake) >= 4 else date.today().year
             except (ValueError, TypeError):
                 year_for_queue = date.today().year
-            # Open the 1-page letter payment receipt (no auto window.print —
-            # staff click Print). Back returns to pickup queue.
+            # Auto-open + print the 1-page letter payment receipt on save.
+            # Template scales to one page before window.print(); Back/next
+            # returns to the pickup queue.
             next_q = url_for(
                 "logout_queue",
                 year=year_for_queue,
@@ -3807,6 +3808,7 @@ def pickup_workflow(return_id: int):
                 url_for(
                     "payment_receipt_print",
                     return_id=return_id,
+                    autoprint=1,
                     next=next_q,
                 )
             )
@@ -3833,8 +3835,8 @@ def payment_receipt_print(return_id: int):
     """One-page letter (8.5×11) payment receipt for pickup / desk reprint.
 
     Hard-capped to a single page via print CSS + scale-to-fit. Pickup
-    completion redirects here; printing only happens when staff click Print
-    (no automatic window.print).
+    completion redirects here with ``autoprint=1`` so the browser print
+    dialog opens after the sheet is fitted to one page.
     """
     ret = get_one(return_id)
     if not ret:
@@ -3870,6 +3872,7 @@ def payment_receipt_print(return_id: int):
         amount_display=amount_display,
         balance=balance,
         is_qb=is_qb,
+        autoprint=bool(request.args.get("autoprint")),
         receipt_date=receipt_date,
         next_url=next_url,
     )

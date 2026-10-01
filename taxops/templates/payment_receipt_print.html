@@ -313,12 +313,15 @@
 
 <script>
 (function () {
+  var printedOnce = false;
+
   function fitToOnePage() {
     var sheet = document.querySelector('.sheet');
     if (!sheet) return;
     sheet.style.transform = '';
     sheet.style.transformOrigin = '';
     sheet.style.height = '';
+    // Letter height minus ~0.45in margins — never allow a second page.
     var maxPx = 10 * 96;
     var h = sheet.scrollHeight;
     if (h > maxPx) {
@@ -329,15 +332,28 @@
       sheet.style.overflow = 'hidden';
     }
   }
-  window.addEventListener('beforeprint', fitToOnePage);
-  window.addEventListener('afterprint', function () {
+
+  function resetFit() {
     var sheet = document.querySelector('.sheet');
     if (!sheet) return;
     sheet.style.transform = '';
     sheet.style.transformOrigin = '';
     sheet.style.height = '';
     sheet.style.overflow = '';
+  }
+
+  window.addEventListener('beforeprint', fitToOnePage);
+  window.addEventListener('afterprint', resetFit);
+
+  {% if autoprint %}
+  // Pickup save: open print dialog once, only after fitting to one page.
+  window.addEventListener('load', function () {
+    if (printedOnce) return;
+    printedOnce = true;
+    fitToOnePage();
+    setTimeout(function () { window.print(); }, 200);
   });
+  {% endif %}
 })();
 </script>
 </body>

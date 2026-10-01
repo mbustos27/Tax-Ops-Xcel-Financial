@@ -68,13 +68,13 @@ def test_payment_receipt_is_single_letter_page_html(client_logged_in, taxops_db_
     assert "size: letter portrait" in html
     assert "max-height: 10in" in html
     assert "page-break-inside: avoid" in html
-    # Must never auto-fire the print dialog.
-    assert "window.print()" in html  # button onclick only
+    # Manual open: Print button only — no load-time auto print.
+    assert 'onclick="window.print()"' in html
     assert "addEventListener('load'" not in html
-    assert html.count("window.print()") == 1
 
 
-def test_pickup_complete_redirects_to_receipt_not_autoprint(client_logged_in, taxops_db_path):
+def test_pickup_complete_redirects_to_receipt_with_autoprint(client_logged_in, taxops_db_path):
+    """Pickup save redirects with autoprint=1; Flask never spools a job."""
     rid = _seed_pickup_return(taxops_db_path)
     resp = client_logged_in.post(
         f"/pickup/{rid}",
@@ -91,15 +91,18 @@ def test_pickup_complete_redirects_to_receipt_not_autoprint(client_logged_in, ta
     assert resp.status_code == 302
     loc = resp.headers.get("Location") or ""
     assert f"/return/{rid}/payment-receipt" in loc
-    assert "autoprint" not in loc
+    assert "autoprint=1" in loc
 
-    # Follow once — still HTML only, no printer.
+    # HTML-only check: autoprint fits to one page, then calls window.print once.
     page = client_logged_in.get(loc)
     assert page.status_code == 200
     body = page.data.decode("utf-8")
     assert "PAYMENT RECEIPT" in body
     assert "#6B2233" in body
-    assert body.count("window.print()") == 1
+    assert "addEventListener('load'" in body
+    assert "fitToOnePage()" in body
+    assert "printedOnce" in body
+    assert "max-height: 10in" in body
 
 
 def test_work_order_and_intake_print_css_cap_one_page(client_logged_in):
