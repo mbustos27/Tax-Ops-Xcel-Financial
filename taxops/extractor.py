@@ -256,6 +256,8 @@ def start_extraction_worker(app) -> None:
     )
     _worker_thread = thread
     thread.start()
+    # Drain any backlog left from before this process started (don't wait a full poll).
+    _notify_extraction_worker()
     logger.info("Extraction worker started")
 
 
@@ -279,9 +281,54 @@ def _worker_loop(app):
             logger.error("Extraction worker error: %s", e)
 
 
+def _requeue_stuck_processing(conn, *, stale_minutes: int = 15) -> int:
+    """Reset orphaned ``processing`` rows (worker died mid-job) back to pending.
+
+    Uses ``processed_at`` as the processing-start stamp (set when status flips to
+    processing). Rows with a null stamp are treated as stale orphans.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from utils import parse_iso_datetime
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)
+    rows = conn.execute(
+        """
+        SELECT id, processed_at
+        FROM extraction_queue
+        WHERE status = 'processing'
+        """
+    ).fetchall()
+    n = 0
+    for r in rows:
+        stamp = parse_iso_datetime(r["processed_at"])
+        if stamp is not None:
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            else:
+                stamp = stamp.astimezone(timezone.utc)
+            if stamp > cutoff:
+                continue
+        conn.execute(
+            """
+            UPDATE extraction_queue
+            SET status = 'pending',
+                error_message = ?
+            WHERE id = ? AND status = 'processing'
+            """,
+            ("Requeued: stuck in processing", r["id"]),
+        )
+        n += 1
+    if n:
+        conn.commit()
+        logger.warning("Requeued %s extraction item(s) stuck in processing", n)
+    return n
+
+
 def _process_queue():
     conn = get_connection()
     try:
+        _requeue_stuck_processing(conn)
         pending = conn.execute(
             """
             SELECT eq.*, rd.file_path, rd.filename, rd.doc_type, rd.source
@@ -387,10 +434,12 @@ def _process_item(conn, item: dict) -> None:
     conn.execute(
         """
         UPDATE extraction_queue
-        SET status = 'processing', attempts = attempts + 1
+        SET status = 'processing',
+            attempts = attempts + 1,
+            processed_at = ?
         WHERE id = ?
         """,
-        (item_id,),
+        (get_now(), item_id),
     )
     conn.commit()
 
