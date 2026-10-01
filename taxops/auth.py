@@ -24,6 +24,8 @@ _ADMIN_PREFIXES = (
     "/source-compare",
     "/merge-clients",
     "/import-audit",
+    "/ops/restart-check",
+    "/api/ops/",
     "/api/source-compare",
     "/api/merge-clients",
     "/api/audit/",
