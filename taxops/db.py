@@ -323,6 +323,16 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_notes_return ON notes(return_id);
         CREATE INDEX IF NOT EXISTS idx_return_documents_return ON return_documents(return_id);
         CREATE INDEX IF NOT EXISTS idx_returns_status ON returns(client_status);
+
+        CREATE TABLE IF NOT EXISTS staff_presence (
+          username      TEXT PRIMARY KEY,
+          last_seen     TEXT NOT NULL,
+          last_path     TEXT,
+          last_method   TEXT,
+          last_ip       TEXT,
+          last_write_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_staff_presence_seen ON staff_presence(last_seen);
         """
     )
     conn.commit()
@@ -582,6 +592,21 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
           reviewed_at TEXT
         )
         """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS staff_presence (
+          username      TEXT PRIMARY KEY,
+          last_seen     TEXT NOT NULL,
+          last_path     TEXT,
+          last_method   TEXT,
+          last_ip       TEXT,
+          last_write_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_staff_presence_seen ON staff_presence(last_seen)"
     )
     _canonicalize_legacy_statuses(conn)
     _backfill_review_queue_identity(conn)
