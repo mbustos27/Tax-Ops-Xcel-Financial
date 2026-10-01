@@ -63,6 +63,48 @@ def test_presence_and_recent_write_wait(taxops_db_path):
     assert "ok" in a.db_lock
 
 
+def test_junk_and_future_timestamps_do_not_block(taxops_db_path):
+    """Office DB has bad status_events rows; string >= cutoff wrongly counted them."""
+    from restart_guard import _is_recent
+
+    assert not _is_recent("database is locked", 3)
+    assert not _is_recent("2027-03-16", 3)
+    assert not _is_recent("2026-09-14T17:38:58+00:00", 3)
+
+    conn = get_connection(taxops_db_path)
+    init_db(conn)
+    old = "2026-01-01T00:00:00+00:00"
+    conn.execute(
+        """
+        INSERT INTO clients (id, last_name, first_name, created_at, updated_at)
+        VALUES (1, 'Test', 'Client', ?, ?)
+        """,
+        (old, old),
+    )
+    conn.execute(
+        """
+        INSERT INTO returns (id, client_id, log_number, tax_year, client_status, updated_at)
+        VALUES (1, 1, '1', 2025, 'PICKUP', ?)
+        """,
+        (old,),
+    )
+    conn.execute(
+        """
+        INSERT INTO status_events (return_id, event_type, old_status, new_status, event_timestamp, source_file)
+        VALUES
+          (1, 'STATUS_CHANGED', 'A', 'B', 'database is locked', '4'),
+          (1, 'LOGGED_OUT', NULL, NULL, '2027-03-16', 'CSMDATA.csv'),
+          (1, 'STATUS_CHANGED', 'X', 'Y', '2026-09-14T17:38:58+00:00', 'old')
+        """
+    )
+    conn.commit()
+    a = assess_restart(conn, db_path=taxops_db_path, idle_minutes=5, write_minutes=3)
+    conn.close()
+    assert not any(w["key"] == "status_changes" for w in a.recent_writes)
+    assert not any(d.get("kind") == "status" for d in a.write_details)
+    assert a.verdict in ("SAFE", "CAUTION")
+
+
 def test_browse_only_is_caution(taxops_db_path):
     conn = get_connection(taxops_db_path)
     init_db(conn)
