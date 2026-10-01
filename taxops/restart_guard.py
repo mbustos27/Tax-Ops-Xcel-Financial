@@ -53,6 +53,34 @@ def _cutoff(minutes: int) -> str:
     )
 
 
+def _is_recent(value: str | None, minutes: int, *, now_dt: datetime | None = None) -> bool:
+    """True only for parseable timestamps inside the last ``minutes`` (not future junk).
+
+    String compares like ``event_timestamp >= cutoff`` wrongly include values such as
+    ``2027-03-16`` or ``database is locked`` and caused false WAIT on the office DB.
+    """
+    dt = parse_iso_datetime(value)
+    if dt is None:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    ref = now_dt or datetime.now(timezone.utc)
+    if dt > ref + timedelta(minutes=1):
+        return False
+    age = (ref - dt).total_seconds()
+    return 0 <= age <= float(minutes) * 60.0
+
+
+def _as_return_id(value: Any) -> int | None:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
 def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
     row = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
@@ -107,32 +135,36 @@ def touch_presence(
     return True
 
 
-def _count_since(conn: sqlite3.Connection, sql: str, cutoff: str) -> int:
+def _count_recent_timestamps(
+    conn: sqlite3.Connection, sql: str, write_minutes: int, *, limit: int = 400
+) -> int:
+    """Count rows whose timestamp column is truly inside the write window."""
     try:
-        row = conn.execute(sql, (cutoff,)).fetchone()
+        rows = conn.execute(sql, (limit,)).fetchall()
     except sqlite3.Error:
         return 0
-    if not row:
-        return 0
-    return int(row[0] or 0)
+    ref = datetime.now(timezone.utc)
+    return sum(1 for r in rows if _is_recent(r[0], write_minutes, now_dt=ref))
 
 
 def _active_staff(conn: sqlite3.Connection, idle_minutes: int) -> list[dict[str, Any]]:
     if not _table_exists(conn, "staff_presence"):
         return []
-    cutoff = _cutoff(idle_minutes)
-    rows = conn.execute(
-        """
-        SELECT username, last_seen, last_path, last_method, last_ip, last_write_at
-        FROM staff_presence
-        WHERE last_seen >= ?
-        ORDER BY last_seen DESC
-        """,
-        (cutoff,),
-    ).fetchall()
+    try:
+        rows = conn.execute(
+            """
+            SELECT username, last_seen, last_path, last_method, last_ip, last_write_at
+            FROM staff_presence
+            ORDER BY last_seen DESC
+            """
+        ).fetchall()
+    except sqlite3.Error:
+        return []
     out: list[dict[str, Any]] = []
-    write_cut = _cutoff(DEFAULT_WRITE_MINUTES)
+    ref = datetime.now(timezone.utc)
     for r in rows:
+        if not _is_recent(r["last_seen"], idle_minutes, now_dt=ref):
+            continue
         out.append(
             {
                 "username": r["username"],
@@ -140,8 +172,8 @@ def _active_staff(conn: sqlite3.Connection, idle_minutes: int) -> list[dict[str,
                 "last_path": r["last_path"],
                 "last_method": r["last_method"],
                 "last_ip": r["last_ip"],
-                "recent_write": bool(
-                    r["last_write_at"] and str(r["last_write_at"]) >= write_cut
+                "recent_write": _is_recent(
+                    r["last_write_at"], DEFAULT_WRITE_MINUTES, now_dt=ref
                 ),
             }
         )
@@ -151,49 +183,60 @@ def _active_staff(conn: sqlite3.Connection, idle_minutes: int) -> list[dict[str,
 def _recent_write_signals(
     conn: sqlite3.Connection, write_minutes: int
 ) -> list[dict[str, Any]]:
-    cutoff = _cutoff(write_minutes)
     signals: list[dict[str, Any]] = []
     checks = [
         (
             "status_changes",
-            "SELECT COUNT(*) FROM status_events WHERE event_timestamp >= ?",
+            "SELECT event_timestamp FROM status_events ORDER BY id DESC LIMIT ?",
             "Status / workflow changes",
         ),
         (
             "notes",
-            "SELECT COUNT(*) FROM notes WHERE created_at >= ?",
+            "SELECT created_at FROM notes ORDER BY id DESC LIMIT ?",
             "Notes added",
         ),
         (
             "documents",
-            "SELECT COUNT(*) FROM return_documents WHERE uploaded_at >= ?",
+            "SELECT uploaded_at FROM return_documents ORDER BY id DESC LIMIT ?",
             "Documents uploaded",
         ),
         (
             "returns_updated",
-            "SELECT COUNT(*) FROM returns WHERE updated_at >= ?",
+            "SELECT updated_at FROM returns ORDER BY id DESC LIMIT ?",
             "Returns updated",
         ),
         (
             "clients_updated",
-            "SELECT COUNT(*) FROM clients WHERE updated_at >= ?",
+            "SELECT updated_at FROM clients ORDER BY id DESC LIMIT ?",
             "Clients updated",
         ),
         (
             "imports",
-            "SELECT COUNT(*) FROM import_batches WHERE imported_at >= ?",
+            "SELECT imported_at FROM import_batches ORDER BY id DESC LIMIT ?",
             "CSV imports",
         ),
         (
             "extraction_created",
-            "SELECT COUNT(*) FROM extraction_queue WHERE created_at >= ?",
+            "SELECT created_at FROM extraction_queue ORDER BY id DESC LIMIT ?",
             "Extraction jobs created",
         ),
     ]
     for key, sql, label in checks:
-        n = _count_since(conn, sql, cutoff)
+        if key == "status_changes" and not _table_exists(conn, "status_events"):
+            continue
+        if key == "notes" and not _table_exists(conn, "notes"):
+            continue
+        if key == "documents" and not _table_exists(conn, "return_documents"):
+            continue
+        if key == "imports" and not _table_exists(conn, "import_batches"):
+            continue
+        if key == "extraction_created" and not _table_exists(conn, "extraction_queue"):
+            continue
+        n = _count_recent_timestamps(conn, sql, write_minutes)
         if n:
-            signals.append({"key": key, "label": label, "count": n, "window_minutes": write_minutes})
+            signals.append(
+                {"key": key, "label": label, "count": n, "window_minutes": write_minutes}
+            )
     return signals
 
 
@@ -229,13 +272,15 @@ def _recent_write_details(
     conn: sqlite3.Connection, write_minutes: int, limit: int = 25
 ) -> list[dict[str, Any]]:
     """Row-level recent activity for the restart-check UI (newest first)."""
-    cutoff = _cutoff(write_minutes)
     details: list[dict[str, Any]] = []
+    ref = datetime.now(timezone.utc)
+    scan = max(limit * 20, 200)
 
-    def _add(kind: str, when: str | None, **extra: Any) -> None:
-        if not when:
+    def _add(kind: str, when: str | None, return_id: Any, **extra: Any) -> None:
+        if not _is_recent(when, write_minutes, now_dt=ref):
             return
-        details.append({"kind": kind, "when": when, **extra})
+        rid = _as_return_id(return_id)
+        details.append({"kind": kind, "when": when, "return_id": rid, **extra})
 
     try:
         if _table_exists(conn, "status_events"):
@@ -247,18 +292,18 @@ def _recent_write_details(
                 FROM status_events e
                 LEFT JOIN returns r ON r.id = e.return_id
                 LEFT JOIN clients c ON c.id = r.client_id
-                WHERE e.event_timestamp >= ?
-                ORDER BY e.event_timestamp DESC
+                ORDER BY e.id DESC
                 LIMIT ?
                 """,
-                (cutoff, limit),
+                (scan,),
             ).fetchall():
+                rid = _as_return_id(r["return_id"])
                 _add(
                     "status",
                     r["when_ts"],
-                    return_id=r["return_id"],
+                    r["return_id"],
                     log_number=r["log_number"],
-                    client=_client_label(r["last_name"], r["first_name"], r["return_id"]),
+                    client=_client_label(r["last_name"], r["first_name"], rid or r["return_id"]),
                     detail=(
                         f"{r['old_status'] or '—'} → {r['new_status'] or '—'}"
                         + (f" ({r['event_type']})" if r["event_type"] else "")
@@ -278,19 +323,19 @@ def _recent_write_details(
                 FROM notes n
                 LEFT JOIN returns r ON r.id = n.return_id
                 LEFT JOIN clients c ON c.id = r.client_id
-                WHERE n.created_at >= ?
-                ORDER BY n.created_at DESC
+                ORDER BY n.id DESC
                 LIMIT ?
                 """,
-                (cutoff, limit),
+                (scan,),
             ).fetchall():
+                rid = _as_return_id(r["return_id"])
                 snippet = (r["note_text"] or "").replace("\n", " ").strip()[:80]
                 _add(
                     "note",
                     r["when_ts"],
-                    return_id=r["return_id"],
+                    r["return_id"],
                     log_number=r["log_number"],
-                    client=_client_label(r["last_name"], r["first_name"], r["return_id"]),
+                    client=_client_label(r["last_name"], r["first_name"], rid or r["return_id"]),
                     detail=snippet or "(note)",
                     source=r["source"] or "",
                     note="",
@@ -307,20 +352,20 @@ def _recent_write_details(
                 FROM return_documents d
                 LEFT JOIN returns r ON r.id = d.return_id
                 LEFT JOIN clients c ON c.id = r.client_id
-                WHERE d.uploaded_at >= ?
-                ORDER BY d.uploaded_at DESC
+                ORDER BY d.id DESC
                 LIMIT ?
                 """,
-                (cutoff, limit),
+                (scan,),
             ).fetchall():
+                rid = _as_return_id(r["return_id"])
                 fname = r["original_filename"] or r["doc_type"] or "document"
                 by = r["uploaded_by"] or ""
                 _add(
                     "document",
                     r["when_ts"],
-                    return_id=r["return_id"],
+                    r["return_id"],
                     log_number=r["log_number"],
-                    client=_client_label(r["last_name"], r["first_name"], r["return_id"]),
+                    client=_client_label(r["last_name"], r["first_name"], rid or r["return_id"]),
                     detail=fname + (f" by {by}" if by else ""),
                     source="upload",
                     note="",
@@ -330,22 +375,24 @@ def _recent_write_details(
 
     try:
         if _table_exists(conn, "returns"):
+            # Prefer updated_at order so older returns that were just edited still appear.
+            # Python _is_recent drops future / garbage timestamps that sort high as text.
             for r in conn.execute(
                 """
                 SELECT r.updated_at AS when_ts, r.id AS return_id, r.log_number,
                        r.client_status, r.processor, c.last_name, c.first_name
                 FROM returns r
                 LEFT JOIN clients c ON c.id = r.client_id
-                WHERE r.updated_at >= ?
+                WHERE r.updated_at IS NOT NULL AND length(trim(r.updated_at)) >= 19
                 ORDER BY r.updated_at DESC
                 LIMIT ?
                 """,
-                (cutoff, min(limit, 15)),
+                (scan,),
             ).fetchall():
                 _add(
                     "return_update",
                     r["when_ts"],
-                    return_id=r["return_id"],
+                    r["return_id"],
                     log_number=r["log_number"],
                     client=_client_label(r["last_name"], r["first_name"], r["return_id"]),
                     detail=f"status {r['client_status'] or '—'}"
