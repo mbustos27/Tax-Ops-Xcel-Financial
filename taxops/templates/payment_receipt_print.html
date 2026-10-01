@@ -8,144 +8,193 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: Georgia, "Times New Roman", serif;
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 12px;
     color: #1a1a1a;
-    background: #ece8e1;
-    padding: 16px;
+    background: #F4EFE9;
+    padding: 20px;
+  }
+
+  .sheet {
+    background: #fff;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 28px 32px;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 12px rgba(0,0,0,.12);
   }
 
   .print-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    max-width: 640px;
+    max-width: 720px;
     margin: 0 auto 12px;
-    font-family: Arial, Helvetica, sans-serif;
   }
   .print-bar button {
-    background: #1e3a5f;
+    background: #6B2233;
     color: #fff;
     border: none;
     border-radius: 6px;
-    padding: 8px 20px;
+    padding: 8px 22px;
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
+    letter-spacing: .02em;
   }
-  .print-bar button:hover { background: #162d49; }
-  .print-bar a {
+  .print-bar button:hover { background: #5a1c2a; }
+  .print-bar .close-link {
     font-size: 12px;
-    color: #444;
+    color: #555;
     text-decoration: none;
   }
+  .print-bar .close-link:hover { color: #000; }
 
-  /* Single letter sheet — keep content compact so it never needs page 2. */
-  .sheet {
-    background: #fff;
-    max-width: 640px;
-    margin: 0 auto;
-    padding: 28px 32px 24px;
-    border: 1px solid #cfc8bc;
-    box-shadow: 0 2px 10px rgba(0,0,0,.08);
+  /* Same burgundy header language as work_order / missing_docs print sheets */
+  .header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    border-bottom: 3px solid #6B2233;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
   }
-
-  .office {
+  .office-name { font-size: 17px; font-weight: 700; color: #3D1019; letter-spacing: .02em; }
+  .office-sub { font-size: 11px; color: #6B2233; margin-top: 2px; }
+  .form-title {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    color: #6B2233;
+    text-align: right;
+  }
+  .log-number {
     font-size: 20px;
-    font-weight: 700;
-    letter-spacing: .01em;
-    color: #1e3a5f;
-  }
-  .office-sub {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 11px;
-    color: #666;
+    font-weight: 800;
+    font-family: ui-monospace, monospace;
+    color: #3D1019;
+    text-align: right;
     margin-top: 2px;
   }
-  .doc-title {
-    margin-top: 14px;
-    padding-top: 10px;
-    border-top: 2px solid #1e3a5f;
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    color: #1e3a5f;
-  }
 
-  .meta {
-    margin-top: 12px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px 18px;
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 11px;
+  table.meta {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 14px;
   }
-  .meta .k { color: #666; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: 9px; }
-  .meta .v { margin-top: 1px; font-size: 12px; color: #111; }
+  table.meta td {
+    padding: 4px 8px;
+    vertical-align: bottom;
+  }
+  table.meta td.lbl {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 9px;
+    letter-spacing: .06em;
+    color: #6B2233;
+    padding-bottom: 0;
+  }
+  table.meta td.val {
+    border-bottom: 1px solid #999;
+    min-width: 80px;
+    padding-top: 2px;
+  }
 
   table.lines {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 16px;
-    font-family: Arial, Helvetica, sans-serif;
     font-size: 12px;
+    margin-top: 4px;
   }
   table.lines th {
-    text-align: left;
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: .05em;
+    background: #6B2233;
     color: #fff;
-    background: #1e3a5f;
-    padding: 6px 8px;
+    font-weight: 700;
+    padding: 6px 10px;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
   }
-  table.lines th.amt, table.lines td.amt { text-align: right; }
+  table.lines th.amt { text-align: right; width: 120px; }
   table.lines td {
-    padding: 7px 8px;
+    padding: 7px 10px;
     border-bottom: 1px solid #e5e5e5;
   }
-  table.lines tr.total td {
+  table.lines td.amt { text-align: right; }
+  table.lines tr:nth-child(even) td { background: #F4EFE9; }
+  .total-row td {
+    border-top: 2px solid #6B2233;
     border-bottom: none;
-    border-top: 2px solid #1e3a5f;
-    font-weight: 700;
+    font-weight: 800;
     font-size: 14px;
+    color: #3D1019;
     padding-top: 10px;
+    background: #fff !important;
   }
 
-  .paid-banner {
+  .amount-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #F4EFE9;
+    border: 2px solid #6B2233;
+    border-radius: 8px;
+    padding: 10px 16px;
     margin-top: 14px;
-    font-family: Arial, Helvetica, sans-serif;
+  }
+  .amount-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #6B2233;
+  }
+  .amount-value {
+    font-size: 22px;
+    font-weight: 800;
+    color: #3D1019;
+  }
+
+  .status-note {
+    margin-top: 12px;
     font-size: 12px;
     font-weight: 700;
-    color: #14532d;
-    background: #ecfdf5;
-    border: 1px solid #bbf7d0;
-    padding: 8px 10px;
+    color: #3D1019;
+    background: #F4EFE9;
+    border: 1px solid #6B2233;
+    border-radius: 6px;
+    padding: 8px 12px;
   }
-  .paid-banner.balance {
+  .status-note.balance {
     color: #92400e;
     background: #fffbeb;
     border-color: #fde68a;
   }
 
   .thanks {
-    margin-top: 18px;
+    margin-top: 16px;
     font-size: 12px;
     color: #444;
   }
-  .footer {
-    margin-top: 16px;
+  .form-end-line {
+    border-top: 2px dashed #6B2233;
+    margin-top: 18px;
     padding-top: 8px;
-    border-top: 1px dashed #bbb;
-    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+  }
+  .form-end-label {
     font-size: 9px;
-    color: #888;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #999;
   }
 
+  /* Hard 1-page max — keep burgundy formatting, never spill to page 2 */
   @media print {
-    body { background: #fff; padding: 0; }
+    body { background: #fff; padding: 0; font-size: 11px; }
     .print-bar { display: none !important; }
     .sheet {
       border: none;
@@ -158,11 +207,12 @@
       max-height: 10in;
       overflow: hidden;
     }
-    table.lines th, .paid-banner {
+    .header-row, table.lines th, table.lines tr:nth-child(even) td,
+    .amount-row, .status-note, .total-row td {
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    @page { size: letter portrait; margin: 0.5in; }
+    @page { size: letter portrait; margin: 0.45in; }
   }
 </style>
 </head>
@@ -170,46 +220,50 @@
 
 <div class="print-bar">
   <button type="button" onclick="window.print()">Print receipt (1 page)</button>
-  <div>
-    {% if next_url %}
-    <a href="{{ next_url }}">← Back</a>
-    {% else %}
-    <a href="javascript:window.close()">Close</a>
-    {% endif %}
-  </div>
+  {% if next_url %}
+  <a href="{{ next_url }}" class="close-link">&larr; Back</a>
+  {% else %}
+  <a href="javascript:window.close()" class="close-link">&#x2715; Close</a>
+  {% endif %}
 </div>
 
 <div class="sheet">
-  <div class="office">Xcel Financial Services, LLC</div>
-  <div class="office-sub">Payment receipt · Tax preparation</div>
-  <div class="doc-title">Payment Receipt</div>
 
-  <div class="meta">
+  <div class="header-row">
     <div>
-      <div class="k">Client</div>
-      <div class="v">{{ client_name }}</div>
+      <div class="office-name">Xcel Financial Services, LLC</div>
+      <div class="office-sub">Payment receipt · Tax preparation</div>
     </div>
     <div>
-      <div class="k">Date</div>
-      <div class="v">{{ receipt_date }}</div>
-    </div>
-    <div>
-      <div class="k">Log #</div>
-      <div class="v">{{ r.log_number or '—' }}</div>
-    </div>
-    <div>
-      <div class="k">Tax Year</div>
-      <div class="v">{{ r.tax_year or '—' }}</div>
-    </div>
-    <div>
-      <div class="k">Receipt #</div>
-      <div class="v">{{ r.receipt_number or '—' }}</div>
-    </div>
-    <div>
-      <div class="k">Payment method</div>
-      <div class="v">{{ r.payment_method or '—' }}{% if r.check_number %} · Check {{ r.check_number }}{% endif %}</div>
+      <div class="form-title">PAYMENT RECEIPT</div>
+      {% if r.log_number %}
+      <div class="log-number">#{{ r.log_number }}</div>
+      {% endif %}
     </div>
   </div>
+
+  <table class="meta">
+    <tr>
+      <td class="lbl" style="width:40%">Client</td>
+      <td class="lbl" style="width:30%">Date</td>
+      <td class="lbl" style="width:30%">Tax Year</td>
+    </tr>
+    <tr>
+      <td class="val">{{ client_name }}</td>
+      <td class="val">{{ receipt_date }}</td>
+      <td class="val">{{ r.tax_year or '—' }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">Receipt #</td>
+      <td class="lbl">Payment Method</td>
+      <td class="lbl">{% if r.check_number %}Check #{% endif %}</td>
+    </tr>
+    <tr>
+      <td class="val">{{ r.receipt_number or '—' }}</td>
+      <td class="val">{{ r.payment_method or '—' }}</td>
+      <td class="val">{% if r.check_number %}{{ r.check_number }}{% endif %}</td>
+    </tr>
+  </table>
 
   <table class="lines">
     <thead>
@@ -229,23 +283,32 @@
         <td class="amt">${{ '%.2f'|format(cc_fee) }}</td>
       </tr>
       {% endif %}
-      <tr class="total">
+      <tr class="total-row">
         <td>{% if is_qb %}Amount billed{% else %}Amount paid{% endif %}</td>
         <td class="amt">${{ '%.2f'|format(amount_display) }}</td>
       </tr>
     </tbody>
   </table>
 
+  <div class="amount-row">
+    <div class="amount-label">{% if is_qb %}Amount to bill{% else %}Amount paid{% endif %}</div>
+    <div class="amount-value">${{ '%.2f'|format(amount_display) }}</div>
+  </div>
+
   {% if is_qb %}
-  <div class="paid-banner">QuickBooks billing — invoice / receipt # recorded as {{ r.receipt_number or 'QB' }}.</div>
+  <div class="status-note">QuickBooks billing — invoice / receipt # recorded as {{ r.receipt_number or 'QB' }}.</div>
   {% elif balance > 0.005 %}
-  <div class="paid-banner balance">Balance remaining: ${{ '%.2f'|format(balance) }}</div>
+  <div class="status-note balance">Balance remaining: ${{ '%.2f'|format(balance) }}</div>
   {% else %}
-  <div class="paid-banner">Paid in full. Thank you.</div>
+  <div class="status-note">Paid in full. Thank you.</div>
   {% endif %}
 
   <p class="thanks">Thank you for choosing Xcel Financial Services.</p>
-  <p class="footer">Office copy · Keep with client file · Single page</p>
+
+  <div class="form-end-line">
+    <span class="form-end-label">End of Payment Receipt · One page</span>
+  </div>
+
 </div>
 
 <script>
