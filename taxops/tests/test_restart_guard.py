@@ -58,6 +58,9 @@ def test_presence_and_recent_write_wait(taxops_db_path):
     assert a.safe_to_restart is False
     assert any(s["username"] == "maria" for s in a.active_staff)
     assert any(w["key"] == "status_changes" for w in a.recent_writes)
+    assert any(d.get("kind") == "status" and d.get("return_id") == 1 for d in a.write_details)
+    assert a.next_steps
+    assert "ok" in a.db_lock
 
 
 def test_browse_only_is_caution(taxops_db_path):
