@@ -119,3 +119,76 @@ def send_zpl(zpl: str, printer_name: str | None = None) -> None:
             logger.exception("ClosePrinter cleanup failed for %r", printer_name)
 
     logger.info("Sent %d bytes of ZPL to printer %r (job %s)", len(zpl.encode("utf-8")), printer_name, job_id)
+
+
+def send_pdf(
+    pdf_bytes: bytes,
+    printer_name: str | None = None,
+    *,
+    doc_name: str = "taxops letter",
+) -> None:
+    """Silently print a PDF to a Windows letter printer (no browser dialog).
+
+    Writes bytes to a temp ``.pdf`` and uses ``ShellExecute`` ``printto`` so
+    the installed printer driver renders the job (Ricoh / PCL / etc.). This
+    path is for 8.5×11 docs — never send these to the ZPL label queue.
+
+    ``printer_name`` defaults to ``LETTER_PRINTER_NAME`` (TAXOPS_LETTER_PRINTER
+    / FILETRACK_LETTER_PRINTER). Raises PrinterNotFoundError if unset.
+    """
+    import os
+    import tempfile
+    import time
+
+    _require_win32print()
+    import win32api  # type: ignore
+
+    if printer_name is None:
+        from filetrack.config import LETTER_PRINTER_NAME
+        printer_name = LETTER_PRINTER_NAME
+    if not printer_name:
+        raise PrinterNotFoundError(
+            "No letter printer configured. Set TAXOPS_LETTER_PRINTER "
+            "(or FILETRACK_LETTER_PRINTER) on the print-relay machine to the "
+            "exact Windows queue name for the 8.5×11 printer "
+            "(e.g. \"RICOH C5502 Printer\"). "
+            f"Available printers: {list_printers()}."
+        )
+    if not pdf_bytes or not pdf_bytes.startswith(b"%PDF"):
+        raise SpoolerError("send_pdf requires PDF bytes starting with %PDF")
+
+    known = list_printers()
+    if printer_name not in known:
+        raise PrinterNotFoundError(
+            f"Letter printer {printer_name!r} not found. Available: {known}."
+        )
+
+    fd, path = tempfile.mkstemp(prefix="taxops_letter_", suffix=".pdf")
+    try:
+        os.write(fd, pdf_bytes)
+        os.close(fd)
+        fd = -1
+        # printto: silent path through the Windows driver — no browser dialog.
+        win32api.ShellExecute(0, "printto", path, f'"{printer_name}"', ".", 0)
+        # Give the spooler a moment to open the temp file before we delete it.
+        time.sleep(2.0)
+        logger.info(
+            "Sent %d-byte PDF (%s) to letter printer %r",
+            len(pdf_bytes), doc_name, printer_name,
+        )
+    except PrinterNotFoundError:
+        raise
+    except Exception as exc:
+        raise SpoolerError(
+            f"ShellExecute printto failed for {printer_name!r}: {exc}"
+        ) from exc
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except Exception:
+                pass
+        try:
+            os.remove(path)
+        except Exception:
+            logger.warning("Could not remove temp PDF %s (spooler still holding it)", path)

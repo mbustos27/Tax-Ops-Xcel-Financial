@@ -74,6 +74,13 @@ DEFAULT_SERIAL_BAUD = int(os.environ.get("FILETRACK_SERIAL_BAUD", "9600"))
 
 # ── Printer (M1) ─────────────────────────────────────────────────────────────
 DEFAULT_PRINTER_NAME = os.environ.get("FILETRACK_PRINTER") or None
+# Letter / 8.5×11 printer (Ricoh etc.) — separate from the label ZPL queue.
+# Used for silent payment-receipt PDF jobs via the print relay.
+LETTER_PRINTER_NAME = (
+    os.environ.get("TAXOPS_LETTER_PRINTER")
+    or os.environ.get("FILETRACK_LETTER_PRINTER")
+    or None
+)
 
 # ── Label geometry — confirmed: 2.625" x 1" @ 203dpi ────────────────────────
 LABEL_WIDTH_DOTS = 532   # ^PW532

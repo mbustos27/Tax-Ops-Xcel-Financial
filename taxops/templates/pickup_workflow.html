@@ -37,12 +37,37 @@
   </div>
   {% endif %}
 
-  <div class="flex justify-end">
+  <div class="flex justify-end gap-2">
+    <button type="button" id="relay-receipt-btn"
+            class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-[#6B2233] text-[#6B2233] bg-white hover:bg-[#F4EFE9]">
+      Print receipt via relay (1 page)
+    </button>
     <a href="/return/{{ r.id }}/payment-receipt" target="_blank" rel="noopener"
        class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-50">
-      Print payment receipt (1 page)
+      Preview receipt
     </a>
   </div>
+  <script>
+  (function () {
+    var btn = document.getElementById('relay-receipt-btn');
+    if (!btn) return;
+    btn.addEventListener('click', async function () {
+      btn.disabled = true;
+      var prev = btn.textContent;
+      btn.textContent = 'Sending…';
+      try {
+        var resp = await _csrfFetch('/api/return/{{ r.id }}/payment-receipt/print', { method: 'POST' });
+        var j = await resp.json();
+        btn.textContent = j.success ? 'Sent to printer' : ('Failed: ' + (j.error || 'error'));
+        if (!j.success) btn.disabled = false;
+      } catch (e) {
+        btn.textContent = prev;
+        btn.disabled = false;
+        alert('Could not reach print relay.');
+      }
+    });
+  })();
+  </script>
 
   {# ── Completion checklist ────────────────────────────────────────────── #}
   {% set chk_sigs  = r.signatures_given and r.signatures_received %}

@@ -84,7 +84,8 @@ below), then run the relay:
 
 ```powershell
 cd T:\taxops
-$env:FILETRACK_PRINTER = "4BARCODE 4B-2054A"       # exact local queue name on THIS machine
+$env:FILETRACK_PRINTER = "4BARCODE 4B-2054A"       # exact local queue name on THIS machine (labels)
+$env:TAXOPS_LETTER_PRINTER = "RICOH C5502 Printer" # 8.5×11 payment receipts (silent PDF)
 $env:FILETRACK_RELAY_TOKEN = "<shared secret, same value as the server below>"
 python -m filetrack.relay.server --port 8765
 ```
@@ -123,7 +124,7 @@ below) — as an NSSM service on the workstation. Preferred: run
 nssm install FiletrackRelay "C:\path\to\python.exe"
 nssm set FiletrackRelay AppParameters "-m filetrack.relay.server --port 8765"
 nssm set FiletrackRelay AppDirectory "T:\taxops"
-nssm set FiletrackRelay AppEnvironmentExtra "FILETRACK_PRINTER=4BARCODE 4B-2054A" "FILETRACK_RELAY_TOKEN=<shared secret>"
+nssm set FiletrackRelay AppEnvironmentExtra "FILETRACK_PRINTER=4BARCODE 4B-2054A" "TAXOPS_LETTER_PRINTER=RICOH C5502 Printer" "FILETRACK_RELAY_TOKEN=<shared secret>"
 nssm set FiletrackRelay AppStdout "T:\taxops\filetrack\relay\logs\relay_stdout.log"
 nssm set FiletrackRelay AppStderr "T:\taxops\filetrack\relay\logs\relay_stderr.log"
 nssm start FiletrackRelay

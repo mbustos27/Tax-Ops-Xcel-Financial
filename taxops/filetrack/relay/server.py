@@ -68,6 +68,7 @@ def handle_print_job(
         PrinterNotFoundError,
         PrinterUnavailableError,
         SpoolerError,
+        send_pdf,
         send_zpl,
     )
 
@@ -88,9 +89,49 @@ def handle_print_job(
         logger.info("filetrack.relay: printed raw ZPL (%d chars)", len(raw_zpl))
         return 200, {"success": True, "mode": "raw_zpl"}
 
+    # Letter (8.5×11) PDF jobs — payment receipts etc. Silent printto via
+    # TAXOPS_LETTER_PRINTER on this machine (never the ZPL label queue).
+    pdf_b64 = payload.get("pdf_base64")
+    if isinstance(pdf_b64, str) and pdf_b64.strip():
+        import base64
+
+        try:
+            pdf_bytes = base64.b64decode(pdf_b64, validate=False)
+        except Exception:
+            return 400, {"error": "pdf_base64 is not valid base64"}
+        if not pdf_bytes.startswith(b"%PDF"):
+            return 400, {"error": "pdf_base64 must decode to a PDF (%PDF…)"}
+        # Soft guard against multi-page jobs (fpdf writes "/Type /Page").
+        page_leaves = pdf_bytes.count(b"/Type /Page") - pdf_bytes.count(b"/Type /Pages")
+        if page_leaves > 1:
+            return 400, {
+                "error": f"letter PDF must be exactly 1 page (found ~{page_leaves})"
+            }
+        printer_override = payload.get("printer")
+        doc_name = str(payload.get("doc_name") or "taxops letter")[:80]
+        try:
+            send_pdf(
+                pdf_bytes,
+                printer_name=str(printer_override).strip() if printer_override else None,
+                doc_name=doc_name,
+            )
+        except (PrinterNotFoundError, PrinterUnavailableError, SpoolerError) as exc:
+            logger.error("filetrack.relay: letter PDF print failed: %s", exc)
+            return 500, {"error": str(exc)}
+        except Exception:
+            logger.exception("filetrack.relay: unexpected error printing letter PDF")
+            return 500, {"error": "internal error"}
+        logger.info(
+            "filetrack.relay: printed letter PDF (%d bytes, doc=%s)",
+            len(pdf_bytes), doc_name,
+        )
+        return 200, {"success": True, "mode": "letter_pdf", "bytes": len(pdf_bytes)}
+
     log_number = payload.get("log_number")
     if not log_number:
-        return 400, {"error": "log_number is required (or pass zpl for a raw test print)"}
+        return 400, {
+            "error": "log_number is required (or pass zpl / pdf_base64)"
+        }
 
     from filetrack.labels.print_label import print_label
 

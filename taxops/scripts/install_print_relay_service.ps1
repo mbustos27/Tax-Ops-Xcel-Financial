@@ -15,6 +15,8 @@ param(
     [string]$PythonExe = "",
     [string]$Token = $env:FILETRACK_RELAY_TOKEN,
     [string]$Printer = $env:FILETRACK_PRINTER,
+    # 8.5×11 letter printer for payment receipts (separate from ZPL labels)
+    [string]$LetterPrinter = $(if ($env:TAXOPS_LETTER_PRINTER) { $env:TAXOPS_LETTER_PRINTER } else { $env:FILETRACK_LETTER_PRINTER }),
     [string]$HostBind = "0.0.0.0",
     [int]$Port = 8765,
     [string]$ServiceName = "FiletrackRelay",
@@ -78,6 +80,7 @@ if (-not (Test-IsAdmin)) {
     )
     if ($Token) { $arg += @("-Token", "`"$Token`"") }
     if ($Printer) { $arg += @("-Printer", "`"$Printer`"") }
+    if ($LetterPrinter) { $arg += @("-LetterPrinter", "`"$LetterPrinter`"") }
     if ($PythonExe) { $arg += @("-PythonExe", "`"$PythonExe`"") }
     if ($NssmExe) { $arg += @("-NssmExe", "`"$NssmExe`"") }
     Start-Process powershell.exe -Verb RunAs -WorkingDirectory $ShareRoot -ArgumentList $arg
@@ -92,12 +95,18 @@ $logDir = "C:\TaxOps\logs"
 New-Item -ItemType Directory -Force -Path $envDir | Out-Null
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
-# Token: prefer param, else existing relay.env, else taxops\.env, else prompt
-if (-not $Token -and (Test-Path -LiteralPath $envFile)) {
+# Token / letter printer: prefer param, else existing relay.env, else prompt/default
+if (Test-Path -LiteralPath $envFile) {
     foreach ($line in Get-Content -LiteralPath $envFile) {
-        if ($line -match '^\s*FILETRACK_RELAY_TOKEN=(.+)$') { $Token = $Matches[1].Trim().Trim('"'); break }
+        if (-not $Token -and $line -match '^\s*FILETRACK_RELAY_TOKEN=(.+)$') {
+            $Token = $Matches[1].Trim().Trim('"')
+        }
+        if (-not $LetterPrinter -and $line -match '^\s*TAXOPS_LETTER_PRINTER=(.+)$') {
+            $LetterPrinter = $Matches[1].Trim().Trim('"')
+        }
     }
 }
+if (-not $LetterPrinter) { $LetterPrinter = "RICOH C5502 Printer" }
 if (-not $Token) {
     $shareEnv = Join-Path $appDir ".env"
     if (Test-Path -LiteralPath $shareEnv) {
@@ -115,6 +124,7 @@ if (-not $Token) { throw "FILETRACK_RELAY_TOKEN required" }
 @(
     "FILETRACK_RELAY_TOKEN=$Token"
     "FILETRACK_PRINTER=$Printer"
+    "TAXOPS_LETTER_PRINTER=$LetterPrinter"
     "FILETRACK_RELAY_HOST=$HostBind"
     "FILETRACK_RELAY_PORT=$Port"
 ) | Set-Content -LiteralPath $envFile -Encoding ASCII
@@ -163,6 +173,7 @@ if (-not $svc) {
 & $nssm set $ServiceName AppRestartDelay 5000
 & $nssm set $ServiceName AppEnvironmentExtra "FILETRACK_RELAY_TOKEN=$Token"
 & $nssm set $ServiceName AppEnvironmentExtra "+FILETRACK_PRINTER=$Printer"
+& $nssm set $ServiceName AppEnvironmentExtra "+TAXOPS_LETTER_PRINTER=$LetterPrinter"
 & $nssm set $ServiceName AppEnvironmentExtra "+FILETRACK_RELAY_HOST=$HostBind"
 & $nssm set $ServiceName AppEnvironmentExtra "+FILETRACK_RELAY_PORT=$Port"
 & $nssm set $ServiceName AppEnvironmentExtra "+FILETRACK_RELAY_ENV=$envFile"
