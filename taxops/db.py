@@ -11,7 +11,7 @@ from form_schema import CREATE_TABLE_FRAGMENTS_DOC7, get_form_alter_columns_by_t
 # DEBT-6: increment this integer whenever a new migration block is added to
 # _migrate_existing_tables.  The value is stored in app_settings and surfaced
 # via /health so ops can confirm a deploy applied all migrations.
-CURRENT_SCHEMA_VERSION = 39
+CURRENT_SCHEMA_VERSION = 40
 
 _log = logging.getLogger(__name__)
 
@@ -715,6 +715,16 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_returns_proc_year    ON returns(processor, tax_year);
         CREATE INDEX IF NOT EXISTS idx_returns_updated_at   ON returns(updated_at);
         CREATE INDEX IF NOT EXISTS idx_auth_users_username  ON auth_users(username);
+
+        CREATE TABLE IF NOT EXISTS staff_presence (
+          username      TEXT PRIMARY KEY,
+          last_seen     TEXT NOT NULL,
+          last_path     TEXT,
+          last_method   TEXT,
+          last_ip       TEXT,
+          last_write_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_staff_presence_seen ON staff_presence(last_seen);
         """
     )
     conn.commit()
@@ -2745,6 +2755,23 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_staff_messages_thread "
         "ON staff_messages(thread_id, created_at, id)"
+    )
+
+    # v40 — staff presence for restart-safety checks (who's mid-save).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS staff_presence (
+          username      TEXT PRIMARY KEY,
+          last_seen     TEXT NOT NULL,
+          last_path     TEXT,
+          last_method   TEXT,
+          last_ip       TEXT,
+          last_write_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_staff_presence_seen ON staff_presence(last_seen)"
     )
 
     # DEBT-6: stamp the schema version so /health can confirm migrations ran.

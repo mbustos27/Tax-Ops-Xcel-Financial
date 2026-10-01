@@ -548,6 +548,7 @@ def _mask_client_payload(payload: dict) -> dict:
 
 # DEBT-1: auth helpers live in auth.py to avoid circular imports with blueprints.
 from auth import login_required, role_required, view_only_for, get_effective_role, permission_required, has_permission  # noqa: E402 (import after path setup)
+from restart_guard import assess_restart, touch_presence  # noqa: E402
 app.jinja_env.globals["get_effective_role"] = get_effective_role
 app.jinja_env.globals["has_permission"] = has_permission
 # receptionist_allowed_statuses registered after STATUS_FLOW helpers below.
@@ -626,6 +627,33 @@ def _security_headers(response):
         "form-action 'self'; "
         f"frame-ancestors {frame_ancestors};"
     )
+    return response
+
+
+@app.after_request
+def _touch_staff_presence(response):
+    """Record desk activity so admins can see if a restart would interrupt work."""
+    if not session.get("logged_in"):
+        return response
+    try:
+        if (request.endpoint or "") == "static":
+            return response
+        user = (session.get("username") or "").strip()
+        if not user:
+            return response
+        conn = get_connection()
+        try:
+            touch_presence(
+                conn,
+                username=user,
+                path=request.path or "",
+                method=request.method or "GET",
+                ip=request.headers.get("X-Forwarded-For", request.remote_addr),
+            )
+        finally:
+            conn.close()
+    except Exception:
+        logging.getLogger("taxops.presence").exception("presence touch failed")
     return response
 
 
@@ -6289,6 +6317,45 @@ def api_search():
         }
         for r in deduped
     ])
+
+
+@app.get("/api/ops/restart-safe")
+@role_required("admin")
+def api_ops_restart_safe():
+    """JSON restart-safety snapshot for admins / scripts."""
+    idle = request.args.get("idle_minutes", type=int)
+    write = request.args.get("write_minutes", type=int)
+    conn = get_connection()
+    try:
+        assessment = assess_restart(
+            conn,
+            db_path=DB_PATH,
+            idle_minutes=idle or 5,
+            write_minutes=write or 3,
+        )
+    finally:
+        conn.close()
+    return jsonify(assessment.to_dict())
+
+
+@app.get("/ops/restart-check")
+@role_required("admin")
+def ops_restart_check_page():
+    """Phone-friendly page: is anyone mid-save before an NSSM/service restart?"""
+    year = int(request.args.get("year", date.today().year))
+    conn = get_connection()
+    try:
+        assessment = assess_restart(conn, db_path=DB_PATH)
+    finally:
+        conn.close()
+    ctx = base_ctx(year)
+    ctx.update(
+        {
+            "active_page": "restart_check",
+            "assessment": assessment.to_dict(),
+        }
+    )
+    return render_template("restart_check.html", **ctx)
 
 
 @app.post("/api/privacy-mode")
