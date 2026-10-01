@@ -416,7 +416,65 @@ class TestPrivacy:
 
 
 # ---------------------------------------------------------------------------
-# 9. Status transition validity
+# 9. Card fee balance (total_fee is base; fee_paid includes 3% cc)
+# ---------------------------------------------------------------------------
+
+
+class TestCardFeeBalance:
+    def test_enrich_balance_includes_cc_fee(self):
+        """Card payers must not show a negative balance when paid in full."""
+        import app as app_mod
+
+        with app_mod.app.test_request_context("/"):
+            row = app_mod._enrich(
+                {
+                    "total_fee": 200.0,
+                    "cc_fee": 6.0,
+                    "fee_paid": 206.0,
+                    "client_status": "EFILE READY",
+                    "first_name": "Ann",
+                    "last_name": "Lee",
+                }
+            )
+        assert row["balance"] == 0.0
+        assert row["paid_in_full"] is True
+
+    def test_enrich_balance_due_when_unpaid(self):
+        import app as app_mod
+
+        with app_mod.app.test_request_context("/"):
+            row = app_mod._enrich(
+                {
+                    "total_fee": 200.0,
+                    "cc_fee": 6.0,
+                    "fee_paid": 0.0,
+                    "client_status": "PICKUP",
+                    "first_name": "Ann",
+                    "last_name": "Lee",
+                }
+            )
+        assert row["balance"] == 206.0
+        assert row["paid_in_full"] is False
+
+
+# ---------------------------------------------------------------------------
+# 10. Lookup indexes for child tables
+# ---------------------------------------------------------------------------
+
+
+class TestIntegrityIndexes:
+    def test_payments_and_notes_indexes_exist(self, mem_db):
+        idx = {
+            r["name"]
+            for r in mem_db.execute("SELECT name FROM sqlite_master WHERE type='index'")
+        }
+        assert "idx_payments_return" in idx
+        assert "idx_notes_return" in idx
+        assert "idx_returns_status" in idx
+
+
+# ---------------------------------------------------------------------------
+# 11. Status transition validity
 # ---------------------------------------------------------------------------
 
 
@@ -427,7 +485,15 @@ class TestStatusTransitions:
     the flow rules directly against the DB + normalizer logic.
     """
 
-    STATUS_FLOW = ["PROCESSING", "HOLD", "FINALIZE", "PICKUP", "EFILE READY", "LOG OUT", "REJECTED"]
+    STATUS_FLOW = [
+        "PROCESSING",
+        "HOLD",
+        "FINALIZE",
+        "PICKUP",
+        "EFILE READY",
+        "LOG OUT",
+        "REJECTED",
+    ]
     LOCKED = {"CANCELLED"}
 
     def _apply_status(self, conn: sqlite3.Connection, return_id: int, new_status: str) -> bool:

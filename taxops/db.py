@@ -319,6 +319,10 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_efile_items_batch   ON efile_batch_items(batch_id);
         CREATE INDEX IF NOT EXISTS idx_efile_items_return  ON efile_batch_items(return_id);
         CREATE INDEX IF NOT EXISTS idx_ai_chat_common_exp ON ai_chat_common_answers(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_payments_return ON payments(return_id);
+        CREATE INDEX IF NOT EXISTS idx_notes_return ON notes(return_id);
+        CREATE INDEX IF NOT EXISTS idx_return_documents_return ON return_documents(return_id);
+        CREATE INDEX IF NOT EXISTS idx_returns_status ON returns(client_status);
         """
     )
     conn.commit()

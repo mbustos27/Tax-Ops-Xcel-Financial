@@ -281,8 +281,11 @@ def _to_float(v) -> float:
 def _enrich(r: dict) -> dict:
     total = _to_float(r.get("total_fee"))
     paid  = _to_float(r.get("fee_paid"))
-    r["balance"]      = round(total - paid, 2) if total else None
-    r["paid_in_full"] = bool(total and paid >= total)
+    cc    = _to_float(r.get("cc_fee"))
+    # Card pickup stores fee_paid = base + 3% and total_fee = base. Owed includes cc.
+    owed = total + cc
+    r["balance"]      = round(owed - paid, 2) if owed else None
+    r["paid_in_full"] = bool(owed and paid >= owed)
     r["color"]        = STATUS_DOT.get(r.get("client_status") or "", "dot-slate")
     r["badge_class"]  = STATUS_BADGE.get(r.get("client_status") or "", "bg-slate-100 text-slate-500 border-slate-200")
     first = r.get("first_name") or ""
@@ -377,7 +380,8 @@ def query_returns(filters: dict | None = None) -> list[dict]:
 
     if f.get("balance_due"):
         clauses.append(
-            "(p.total_fee IS NOT NULL AND COALESCE(p.fee_paid,0) < p.total_fee)"
+            "(p.total_fee IS NOT NULL AND COALESCE(p.fee_paid,0) < "
+            "(COALESCE(p.total_fee,0) + COALESCE(p.cc_fee,0)))"
         )
     if f.get("late_intake"):
         clauses.append(
@@ -2153,7 +2157,10 @@ def payments():
     )
     params: list = [str(year), year - 1]
     if balance_only:
-        where += " AND p.total_fee IS NOT NULL AND COALESCE(p.fee_paid,0) < p.total_fee"
+        where += (
+            " AND p.total_fee IS NOT NULL AND COALESCE(p.fee_paid,0) < "
+            "(COALESCE(p.total_fee,0) + COALESCE(p.cc_fee,0))"
+        )
     conn = get_connection()
     rows = conn.execute(
         f"{_SELECT} {where} ORDER BY CAST(r.log_number AS INTEGER)", params
@@ -2220,6 +2227,9 @@ def intake():
     conn = get_connection()
     try:
         tax_year = _i("tax_year") or default_tax_year()
+
+        # Serialize log assignment so two concurrent intakes cannot mint the same number.
+        conn.execute("BEGIN IMMEDIATE")
 
         # ── Auto log number (max + 1 for this tax year) ───────────────────────
         row = conn.execute(

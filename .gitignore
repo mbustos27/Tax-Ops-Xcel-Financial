@@ -14,11 +14,17 @@ venv/
 .venv/
 env/
 
-# Database files — allowed for now for portability
-# *.db
+# Database files / taxpayer extracts — do not commit office data
+*.db
+*.db-wal
+*.db-shm
+taxops/taxops.db
+taxops/taxops_demo.db
 
 # Sensitive data files
 taxops/data/incoming/*.csv
+taxops/data/processed/*.csv
+taxops/data/error/*.csv
 
 # OS
 .DS_Store
