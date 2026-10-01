@@ -3790,26 +3790,23 @@ def pickup_workflow(return_id: int):
         success_msg = "Saved."
         if new_status == "EFILE READY":
             success_msg = "Pickup complete — status moved to EFILE READY."
+            # Silent 8.5×11 receipt via print relay (no browser dialog).
+            printed_ok, print_detail = _try_print_payment_receipt(return_id)
+            if printed_ok:
+                success_msg += " Receipt sent to letter printer (1 page)."
+            else:
+                success_msg += f" Receipt not printed ({print_detail})."
             intake = ret.get("intake_date") or ""
             try:
                 year_for_queue = int(intake[:4]) if len(intake) >= 4 else date.today().year
             except (ValueError, TypeError):
                 year_for_queue = date.today().year
-            # Auto-open + print the 1-page letter payment receipt on save.
-            # Template scales to one page before window.print(); Back/next
-            # returns to the pickup queue.
-            next_q = url_for(
-                "logout_queue",
-                year=year_for_queue,
-                saved=1,
-                msg=success_msg,
-            )
             return redirect(
                 url_for(
-                    "payment_receipt_print",
-                    return_id=return_id,
-                    autoprint=1,
-                    next=next_q,
+                    "logout_queue",
+                    year=year_for_queue,
+                    saved=1,
+                    msg=success_msg,
                 )
             )
         return redirect(f"/pickup/{return_id}?saved=1&msg={success_msg}")
@@ -3829,19 +3826,11 @@ def pickup_workflow(return_id: int):
     return render_template("pickup_workflow.html", **ctx)
 
 
-@app.route("/return/<int:return_id>/payment-receipt")
-@login_required
-def payment_receipt_print(return_id: int):
-    """One-page letter (8.5×11) payment receipt for pickup / desk reprint.
-
-    Hard-capped to a single page via print CSS + scale-to-fit. Pickup
-    completion redirects here with ``autoprint=1`` so the browser print
-    dialog opens after the sheet is fitted to one page.
-    """
+def _payment_receipt_context(return_id: int) -> dict | None:
+    """Shared fields for HTML preview + PDF render. None if return missing."""
     ret = get_one(return_id)
     if not ret:
-        abort(404)
-
+        return None
     total_fee = float(ret.get("total_fee") or 0)
     cc_fee = float(ret.get("cc_fee") or 0)
     fee_paid = float(ret.get("fee_paid") or 0)
@@ -3849,33 +3838,85 @@ def payment_receipt_print(return_id: int):
     is_qb = method == "QB Billing"
     amount_display = total_fee + cc_fee if is_qb else fee_paid
     balance = max(0.0, (total_fee + cc_fee) - fee_paid) if not is_qb else 0.0
-
     client_name = ", ".join(
         p for p in [(ret.get("last_name") or "").strip(), (ret.get("first_name") or "").strip()] if p
     ) or (ret.get("display_name") or "Client")
-
     pickup = (ret.get("pickup_date") or "").strip()
     receipt_date = pickup[:10] if pickup else date.today().isoformat()
+    return {
+        "r": ret,
+        "client_name": client_name,
+        "total_fee": total_fee,
+        "cc_fee": cc_fee,
+        "fee_paid": fee_paid,
+        "amount_display": amount_display,
+        "balance": balance,
+        "is_qb": is_qb,
+        "receipt_date": receipt_date,
+    }
+
+
+def _try_print_payment_receipt(return_id: int) -> tuple[bool, str]:
+    """Build the 1-page letter PDF and send it through the print relay."""
+    ctx = _payment_receipt_context(return_id)
+    if not ctx:
+        return False, "return not found"
+    try:
+        from services.letter_print import try_print_letter_pdf
+        from services.payment_receipt_pdf import render_payment_receipt_pdf
+
+        ret = ctx["r"]
+        pdf = render_payment_receipt_pdf(
+            client_name=ctx["client_name"],
+            log_number=ret.get("log_number"),
+            tax_year=ret.get("tax_year"),
+            receipt_date=ctx["receipt_date"],
+            receipt_number=ret.get("receipt_number"),
+            payment_method=ret.get("payment_method"),
+            check_number=ret.get("check_number"),
+            total_fee=ctx["total_fee"],
+            cc_fee=ctx["cc_fee"],
+            amount_display=ctx["amount_display"],
+            balance=ctx["balance"],
+            is_qb=ctx["is_qb"],
+        )
+        return try_print_letter_pdf(
+            pdf,
+            doc_name=f"payment-receipt-{ret.get('log_number') or return_id}",
+        )
+    except Exception as exc:
+        return False, str(exc)
+
+
+@app.route("/return/<int:return_id>/payment-receipt")
+@login_required
+def payment_receipt_print(return_id: int):
+    """On-screen preview of the one-page letter payment receipt (no dialog)."""
+    ctx = _payment_receipt_context(return_id)
+    if not ctx:
+        abort(404)
 
     next_url = (request.args.get("next") or "").strip() or None
-    # Only allow relative in-app next URLs (open redirect guard).
     if next_url and not next_url.startswith("/"):
         next_url = None
 
     return render_template(
         "payment_receipt_print.html",
-        r=ret,
-        client_name=client_name,
-        total_fee=total_fee,
-        cc_fee=cc_fee,
-        fee_paid=fee_paid,
-        amount_display=amount_display,
-        balance=balance,
-        is_qb=is_qb,
-        autoprint=bool(request.args.get("autoprint")),
-        receipt_date=receipt_date,
         next_url=next_url,
+        **ctx,
     )
+
+
+@app.post("/api/return/<int:return_id>/payment-receipt/print")
+@login_required
+def api_payment_receipt_print(return_id: int):
+    """Silent reprint via print relay — 8.5×11, one page, no browser dialog."""
+    if get_one(return_id) is None:
+        return jsonify({"success": False, "error": "not found"}), 404
+    ok, detail = _try_print_payment_receipt(return_id)
+    if ok:
+        return jsonify({"success": True, "detail": detail})
+    return jsonify({"success": False, "error": detail}), 502
 
 
 @app.route("/payments")
