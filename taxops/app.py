@@ -3795,12 +3795,19 @@ def pickup_workflow(return_id: int):
                 year_for_queue = int(intake[:4]) if len(intake) >= 4 else date.today().year
             except (ValueError, TypeError):
                 year_for_queue = date.today().year
+            # Open the 1-page letter payment receipt (no auto window.print —
+            # staff click Print). Back returns to pickup queue.
+            next_q = url_for(
+                "logout_queue",
+                year=year_for_queue,
+                saved=1,
+                msg=success_msg,
+            )
             return redirect(
                 url_for(
-                    "logout_queue",
-                    year=year_for_queue,
-                    saved=1,
-                    msg=success_msg,
+                    "payment_receipt_print",
+                    return_id=return_id,
+                    next=next_q,
                 )
             )
         return redirect(f"/pickup/{return_id}?saved=1&msg={success_msg}")
@@ -3818,6 +3825,54 @@ def pickup_workflow(return_id: int):
         "card_fee_rate": CARD_FEE_RATE,
     })
     return render_template("pickup_workflow.html", **ctx)
+
+
+@app.route("/return/<int:return_id>/payment-receipt")
+@login_required
+def payment_receipt_print(return_id: int):
+    """One-page letter (8.5×11) payment receipt for pickup / desk reprint.
+
+    Hard-capped to a single page via print CSS + scale-to-fit. Pickup
+    completion redirects here; printing only happens when staff click Print
+    (no automatic window.print).
+    """
+    ret = get_one(return_id)
+    if not ret:
+        abort(404)
+
+    total_fee = float(ret.get("total_fee") or 0)
+    cc_fee = float(ret.get("cc_fee") or 0)
+    fee_paid = float(ret.get("fee_paid") or 0)
+    method = (ret.get("payment_method") or "").strip()
+    is_qb = method == "QB Billing"
+    amount_display = total_fee + cc_fee if is_qb else fee_paid
+    balance = max(0.0, (total_fee + cc_fee) - fee_paid) if not is_qb else 0.0
+
+    client_name = ", ".join(
+        p for p in [(ret.get("last_name") or "").strip(), (ret.get("first_name") or "").strip()] if p
+    ) or (ret.get("display_name") or "Client")
+
+    pickup = (ret.get("pickup_date") or "").strip()
+    receipt_date = pickup[:10] if pickup else date.today().isoformat()
+
+    next_url = (request.args.get("next") or "").strip() or None
+    # Only allow relative in-app next URLs (open redirect guard).
+    if next_url and not next_url.startswith("/"):
+        next_url = None
+
+    return render_template(
+        "payment_receipt_print.html",
+        r=ret,
+        client_name=client_name,
+        total_fee=total_fee,
+        cc_fee=cc_fee,
+        fee_paid=fee_paid,
+        amount_display=amount_display,
+        balance=balance,
+        is_qb=is_qb,
+        receipt_date=receipt_date,
+        next_url=next_url,
+    )
 
 
 @app.route("/payments")

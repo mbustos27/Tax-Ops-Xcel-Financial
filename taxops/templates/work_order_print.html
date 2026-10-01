@@ -179,22 +179,45 @@
   .form-end-line { border-top: 2px dashed #6B2233; margin-top: 26px; padding-top: 8px; text-align: center; }
   .form-end-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #999; }
 
-  /* ── @media print ── */
+  /* ── @media print — hard 1-page max ── */
   @media print {
-    body { background: #fff; padding: 0; }
+    body { background: #fff; padding: 0; font-size: 9px; }
     .print-bar { display: none !important; }
-    .sheet { border: none; box-shadow: none; max-width: 100%; padding: 0; margin: 0; }
+    .sheet {
+      border: none;
+      box-shadow: none;
+      max-width: 100%;
+      padding: 0;
+      margin: 0;
+      page-break-inside: avoid;
+      page-break-after: avoid;
+      max-height: 10in;
+      overflow: hidden;
+    }
+    .office-name { font-size: 14px; }
+    .form-title { font-size: 16px; }
+    .wo-number { font-size: 12px; }
+    table.meta, table.items { font-size: 9px; }
+    table.meta td { padding: 2px 4px; }
+    table.items th, table.items td { padding: 3px 6px; }
+    .billing-block { margin-top: 10px; padding-top: 8px; }
+    .billing-amount-row { padding: 6px 10px; margin-bottom: 6px; }
+    .billing-amount-value { font-size: 16px; }
+    .sig-block { margin-top: 10px; }
+    .sig-line { margin-top: 8px; }
+    .chk-row { margin-top: 8px; gap: 8px; }
+    .form-end-line { margin-top: 10px; padding-top: 4px; }
     table.items th, table.items tr:nth-child(even) td, .header-row, .total-row td, .billing-amount-row {
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
-    @page { margin: 0.6in; size: letter portrait; }
+    @page { margin: 0.35in; size: letter portrait; }
   }
 </style>
 </head>
 <body>
 
 <div class="print-bar">
-  <button onclick="window.print()">&#128438; Print / Save as PDF</button>
+  <button onclick="window.print()">&#128438; Print / Save as PDF (1 page)</button>
   <a href="javascript:window.close()" class="close-link">&#x2715; Close</a>
 </div>
 
@@ -333,5 +356,35 @@
   </div>
 
 </div><!-- /sheet -->
+
+<script>
+(function () {
+  function fitToOnePage() {
+    var sheet = document.querySelector('.sheet');
+    if (!sheet) return;
+    sheet.style.transform = '';
+    sheet.style.transformOrigin = '';
+    sheet.style.height = '';
+    var maxPx = 10 * 96; // letter height minus ~0.35in margins
+    var h = sheet.scrollHeight;
+    if (h > maxPx) {
+      var scale = maxPx / h;
+      sheet.style.transformOrigin = 'top left';
+      sheet.style.transform = 'scale(' + scale + ')';
+      sheet.style.height = (maxPx / scale) + 'px';
+      sheet.style.overflow = 'hidden';
+    }
+  }
+  window.addEventListener('beforeprint', fitToOnePage);
+  window.addEventListener('afterprint', function () {
+    var sheet = document.querySelector('.sheet');
+    if (!sheet) return;
+    sheet.style.transform = '';
+    sheet.style.transformOrigin = '';
+    sheet.style.height = '';
+    sheet.style.overflow = '';
+  });
+})();
+</script>
 </body>
 </html>

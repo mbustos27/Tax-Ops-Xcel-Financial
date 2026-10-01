@@ -37,6 +37,13 @@
   </div>
   {% endif %}
 
+  <div class="flex justify-end">
+    <a href="/return/{{ r.id }}/payment-receipt" target="_blank" rel="noopener"
+       class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 bg-white hover:bg-slate-50">
+      Print payment receipt (1 page)
+    </a>
+  </div>
+
   {# ── Completion checklist ────────────────────────────────────────────── #}
   {% set chk_sigs  = r.signatures_given and r.signatures_received %}
   {% set chk_pay   = (r.payment_method and (r.fee_paid and r.fee_paid > 0)) or r.payment_method == 'QB Billing' %}
