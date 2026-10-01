@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}TaxOps {{ current_year }}{% endblock %}</title>
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='tw.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
@@ -54,6 +55,7 @@
           <span class="ml-1 bg-teal-500 text-white text-sm font-bold rounded-full px-2 py-0.5">{{ pc }}</span>
           {% endif %}
         </a>
+        {% if role_at_least('preparer') %}
         <a href="/efile-queue?year={{ current_year }}" class="nav-link {% if active_page == 'efile' %}active{% endif %}">
           E-File Queue
           {% set ec = status_counts.get('EFILE READY', 0) %}
@@ -61,6 +63,7 @@
           <span class="ml-1 bg-indigo-500 text-white text-sm font-bold rounded-full px-2 py-0.5">{{ ec }}</span>
           {% endif %}
         </a>
+        {% endif %}
         <a href="/payments?year={{ current_year }}" class="nav-link {% if active_page == 'payments' %}active{% endif %}">
           Payments
         </a>
@@ -71,6 +74,7 @@
           {% endif %}
         </a>
 
+        {% if role_at_least('preparer') %}
         <a href="/ai/chat?year={{ current_year }}" class="nav-link {% if active_page == 'ai_chat' %}active{% endif %}">
           AI Assistant
         </a>
@@ -78,9 +82,11 @@
         <a href="/email-review" class="nav-link {% if request.path.startswith('/email-review') %}active{% endif %}">
           Email Review
         </a>
+        {% endif %}
 
         <!-- Tools dropdown -->
         {% set tools_active = active_page in ('upload','source_compare','import_audit','merge','efile_batch') %}
+        {% if role_at_least('preparer') %}
         <div class="relative" id="tools-menu-wrap">
           <button id="tools-btn"
                   onclick="toggleToolsMenu()"
@@ -97,6 +103,7 @@
                class="tools-item {% if active_page == 'efile_batch' %}tools-item-active{% endif %}">
               E-file Batches
             </a>
+            {% if role_at_least('admin') %}
             <div class="my-1 border-t border-slate-100"></div>
             <a href="/upload"
                class="tools-item {% if active_page == 'upload' %}tools-item-active{% endif %}">
@@ -114,8 +121,10 @@
                class="tools-item {% if active_page == 'merge' %}tools-item-active{% endif %}">
               Merge Dupes
             </a>
+            {% endif %}
           </div>
         </div>
+        {% endif %}
 
         <a href="/intake" class="nav-link {% if active_page == 'intake' %}active{% endif %}">
           + New Intake
@@ -229,6 +238,7 @@
 
         <div class="flex items-center gap-2 text-sm text-slate-300">
           <span class="hidden sm:inline font-medium">{{ session.get('username', '') }}</span>
+          <span class="hidden sm:inline text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-slate-700 text-slate-300">{{ current_role }}</span>
           <a href="/logout"
              class="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors px-2.5 py-2 rounded-lg hover:bg-slate-700 min-h-[2.25rem]"
              title="Sign out">
@@ -328,6 +338,24 @@
     </svg>
   </button>
 
+  <script>
+    (function () {
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      var token = meta ? meta.getAttribute('content') : '';
+      if (!token || !window.fetch) return;
+      var orig = window.fetch.bind(window);
+      window.fetch = function (input, init) {
+        init = init || {};
+        var method = String(init.method || 'GET').toUpperCase();
+        if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+          var headers = new Headers(init.headers || {});
+          if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', token);
+          init.headers = headers;
+        }
+        return orig(input, init);
+      };
+    })();
+  </script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
   <script>
     /** Fetch with timeout — avoids perpetual “Loading…” if the server hangs.

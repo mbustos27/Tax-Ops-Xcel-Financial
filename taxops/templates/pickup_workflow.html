@@ -79,6 +79,7 @@
 
   {# ── Main form ──────────────────────────────────────────────────────── #}
   <form method="POST" action="/pickup/{{ r.id }}" class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
     {# Signatures section #}
     <div class="p-5 space-y-4">

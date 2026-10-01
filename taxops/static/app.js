@@ -1,6 +1,7 @@
 // ── Status badge Tailwind classes (mirrors app.py STATUS_BADGE) ───────────
 const STATUS_BADGE = {
   "PROCESSING":  "bg-sky-50 text-sky-700 border-sky-200",
+  "HOLD":        "bg-orange-50 text-orange-700 border-orange-200",
   "FINALIZE":    "bg-yellow-50 text-yellow-700 border-yellow-200",
   "PICKUP":      "bg-teal-50 text-teal-700 border-teal-200",
   "EFILE READY": "bg-indigo-50 text-indigo-700 border-indigo-200",
@@ -10,6 +11,7 @@ const STATUS_BADGE = {
 
 const STATUS_ROW = {
   "PROCESSING":  "status-PROCESSING",
+  "HOLD":        "status-HOLD",
   "FINALIZE":    "status-FINALIZE",
   "PICKUP":      "status-PICKUP",
   "EFILE READY": "status-EFILE-READY",

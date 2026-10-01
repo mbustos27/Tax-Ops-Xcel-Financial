@@ -340,7 +340,7 @@ function applyFilter(key, value) {
 }
 
 // ── Column sort ────────────────────────────────────────────────────────────
-const STATUS_ORDER = ['LOG IN','PROCESSING','FINALIZE','PICKUP','EFILE READY','LOG OUT','REJECTED'];
+const STATUS_ORDER = ['PROCESSING','HOLD','FINALIZE','PICKUP','EFILE READY','LOG OUT','REJECTED'];
 let _sortCol = null, _sortAsc = true;
 
 document.querySelectorAll('th.sortable').forEach(th => {

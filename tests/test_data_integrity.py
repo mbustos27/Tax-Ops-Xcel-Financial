@@ -355,7 +355,7 @@ class TestPrivacy:
         )
 
     def test_export_route_in_app_py_excludes_ssn(self):
-        """The export route in app.py must not include ssn_last4 in exported columns."""
+        """The e-file batch export route in app.py must not include ssn_last4."""
         import os
 
         app_path = os.path.join(
@@ -364,7 +364,6 @@ class TestPrivacy:
         with open(app_path, encoding="utf-8") as f:
             content = f.read()
 
-        # Find the efile batch export function block
         export_fn_match = re.search(
             r"def efile_batch_export.*?(?=\n@app|\nclass |\Z)", content, re.DOTALL
         )
@@ -374,6 +373,21 @@ class TestPrivacy:
         assert "ssn_last4" not in fn_body, (
             "efile_batch_export must not include ssn_last4 in output"
         )
+
+    def test_efile_queue_export_and_template_exclude_ssn(self):
+        """E-file ready queue CSV and UI must not include ssn_last4."""
+        import inspect
+        import os
+        import app as app_mod
+
+        src = inspect.getsource(app_mod.efile_queue_export)
+        assert "ssn_last4" not in src
+        tmpl_path = os.path.join(
+            os.path.dirname(__file__), "..", "taxops", "templates", "efile_queue.html"
+        )
+        with open(tmpl_path, encoding="utf-8") as f:
+            content = f.read()
+        assert "ssn_last4" not in content
 
     def test_ssn_column_not_in_batch_item_insert_for_new_batches(self):
         """Batch creation in app.py must not snapshot ssn_last4 into efile_batch_items."""
@@ -402,7 +416,65 @@ class TestPrivacy:
 
 
 # ---------------------------------------------------------------------------
-# 9. Status transition validity
+# 9. Card fee balance (total_fee is base; fee_paid includes 3% cc)
+# ---------------------------------------------------------------------------
+
+
+class TestCardFeeBalance:
+    def test_enrich_balance_includes_cc_fee(self):
+        """Card payers must not show a negative balance when paid in full."""
+        import app as app_mod
+
+        with app_mod.app.test_request_context("/"):
+            row = app_mod._enrich(
+                {
+                    "total_fee": 200.0,
+                    "cc_fee": 6.0,
+                    "fee_paid": 206.0,
+                    "client_status": "EFILE READY",
+                    "first_name": "Ann",
+                    "last_name": "Lee",
+                }
+            )
+        assert row["balance"] == 0.0
+        assert row["paid_in_full"] is True
+
+    def test_enrich_balance_due_when_unpaid(self):
+        import app as app_mod
+
+        with app_mod.app.test_request_context("/"):
+            row = app_mod._enrich(
+                {
+                    "total_fee": 200.0,
+                    "cc_fee": 6.0,
+                    "fee_paid": 0.0,
+                    "client_status": "PICKUP",
+                    "first_name": "Ann",
+                    "last_name": "Lee",
+                }
+            )
+        assert row["balance"] == 206.0
+        assert row["paid_in_full"] is False
+
+
+# ---------------------------------------------------------------------------
+# 10. Lookup indexes for child tables
+# ---------------------------------------------------------------------------
+
+
+class TestIntegrityIndexes:
+    def test_payments_and_notes_indexes_exist(self, mem_db):
+        idx = {
+            r["name"]
+            for r in mem_db.execute("SELECT name FROM sqlite_master WHERE type='index'")
+        }
+        assert "idx_payments_return" in idx
+        assert "idx_notes_return" in idx
+        assert "idx_returns_status" in idx
+
+
+# ---------------------------------------------------------------------------
+# 11. Status transition validity
 # ---------------------------------------------------------------------------
 
 
@@ -413,7 +485,15 @@ class TestStatusTransitions:
     the flow rules directly against the DB + normalizer logic.
     """
 
-    STATUS_FLOW = ["PROCESSING", "HOLD", "FINALIZE", "PICKUP", "EFILE READY", "LOG OUT", "REJECTED"]
+    STATUS_FLOW = [
+        "PROCESSING",
+        "HOLD",
+        "FINALIZE",
+        "PICKUP",
+        "EFILE READY",
+        "LOG OUT",
+        "REJECTED",
+    ]
     LOCKED = {"CANCELLED"}
 
     def _apply_status(self, conn: sqlite3.Connection, return_id: int, new_status: str) -> bool:

@@ -321,6 +321,57 @@ MANUAL_LOG_SOURCE = "MANUAL_LOG_IMPORT"
 DRAKE_SOURCE = "DRAKE_IMPORT"
 CSMDATA_SOURCE = "CSMDATA_IMPORT"
 
+# Office roles (LAN). staff < preparer < admin.
+# Front desk (staff): dashboard, intake, pickup, payments, return detail.
+# Preparer: e-file queues, email review, AI chat.
+# Admin: CSV import, merge, source compare, exports.
+ROLE_HIERARCHY: dict[str, int] = {"staff": 0, "preparer": 1, "admin": 2}
+
+# SESSION_COOKIE_SECURE — keep false on office HTTP. Set true only if serving HTTPS.
+TAXOPS_COOKIE_SECURE = os.environ.get("TAXOPS_COOKIE_SECURE", "false").lower() in (
+    "1", "true", "yes", "on",
+)
+
+
+def default_tax_year(season_year: int | None = None) -> int:
+    """Season 2026 intake defaults to TY 2025 (the return being prepared)."""
+    from datetime import date as _date
+
+    y = season_year if season_year else _date.today().year
+    return y - 1
+
+
+def parse_taxops_users(environ: dict | None = None) -> dict[str, dict[str, str]]:
+    """Parse TAXOPS_USERS (user:pass:role;…) plus TAXOPS_USER/TAXOPS_PASS fallback.
+
+    No hardcoded password. If nothing is configured, the map is empty and login fails.
+    """
+    env = environ if environ is not None else os.environ
+    users: dict[str, dict[str, str]] = {}
+    raw = (env.get("TAXOPS_USERS") or "").strip()
+    if raw:
+        for part in raw.split(";"):
+            chunk = part.strip()
+            if not chunk or ":" not in chunk:
+                continue
+            user, rest = chunk.split(":", 1)
+            user = user.strip()
+            if not user:
+                continue
+            role = "admin"
+            password = rest
+            if ":" in rest:
+                maybe_pass, maybe_role = rest.rsplit(":", 1)
+                if maybe_role.strip().lower() in ROLE_HIERARCHY:
+                    password = maybe_pass
+                    role = maybe_role.strip().lower()
+            users[user] = {"password": password, "role": role}
+    single_user = (env.get("TAXOPS_USER") or "info").strip() or "info"
+    single_pass = env.get("TAXOPS_PASS") or ""
+    if single_pass and single_user not in users:
+        users[single_user] = {"password": single_pass, "role": "admin"}
+    return users
+
 # Drake / CSM status → internal workflow status
 # Keys must match the uppercased value from the Status column exactly.
 DRAKE_STATUS_MAP: dict[str, str] = {

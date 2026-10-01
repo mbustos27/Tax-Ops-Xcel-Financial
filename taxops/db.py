@@ -319,6 +319,10 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_efile_items_batch   ON efile_batch_items(batch_id);
         CREATE INDEX IF NOT EXISTS idx_efile_items_return  ON efile_batch_items(return_id);
         CREATE INDEX IF NOT EXISTS idx_ai_chat_common_exp ON ai_chat_common_answers(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_payments_return ON payments(return_id);
+        CREATE INDEX IF NOT EXISTS idx_notes_return ON notes(return_id);
+        CREATE INDEX IF NOT EXISTS idx_return_documents_return ON return_documents(return_id);
+        CREATE INDEX IF NOT EXISTS idx_returns_status ON returns(client_status);
         """
     )
     conn.commit()
@@ -579,6 +583,54 @@ def _migrate_existing_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    _canonicalize_legacy_statuses(conn)
+    _backfill_review_queue_identity(conn)
+
+
+def _canonicalize_legacy_statuses(conn: sqlite3.Connection) -> None:
+    """Rewrite stored alias statuses onto STATUS_FLOW values (idempotent)."""
+    from normalizer import LEGACY_STATUS_REWRITES
+
+    existing = _table_columns(conn, "returns")
+    if "client_status" not in existing:
+        return
+    for old, new in LEGACY_STATUS_REWRITES.items():
+        conn.execute(
+            "UPDATE returns SET client_status=? WHERE client_status=?",
+            (new, old),
+        )
+
+
+def _backfill_review_queue_identity(conn: sqlite3.Connection) -> None:
+    """Fill csv_last/csv_first/csv_year on pending Drake/manual review rows."""
+    cols = _table_columns(conn, "review_queue")
+    if not {"csv_last", "raw_json"}.issubset(cols):
+        return
+    from review_payload import extract_review_identity
+
+    rows = conn.execute(
+        """SELECT id, raw_json, csv_last, csv_first, csv_year, csv_log
+           FROM review_queue WHERE status='pending'"""
+    ).fetchall()
+    for row in rows:
+        if row["csv_last"] and row["csv_year"] is not None:
+            continue
+        ident = extract_review_identity(row["raw_json"], row["csv_year"])
+        conn.execute(
+            """UPDATE review_queue
+               SET csv_last=COALESCE(NULLIF(csv_last,''), ?),
+                   csv_first=COALESCE(NULLIF(csv_first,''), ?),
+                   csv_log=COALESCE(NULLIF(csv_log,''), ?),
+                   csv_year=COALESCE(csv_year, ?)
+               WHERE id=?""",
+            (
+                ident.get("csv_last"),
+                ident.get("csv_first"),
+                ident.get("csv_log"),
+                ident.get("csv_year"),
+                row["id"],
+            ),
+        )
 
 
 def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:

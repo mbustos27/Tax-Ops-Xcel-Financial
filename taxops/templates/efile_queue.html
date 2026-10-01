@@ -100,7 +100,6 @@
                 Client
               </a>
             </th>
-            <th class="th w-14 text-center">SSN</th>
             <th class="th w-10 text-center">TY</th>
             <th class="th w-28">Preparer</th>
             <th class="th w-24">Pickup Date</th>
@@ -135,15 +134,6 @@
               </div>
               {% if r.display_name and r.display_name != (r.last_name ~ ', ' ~ r.first_name) %}
               <div class="text-xs text-slate-400">{{ r.display_name }}</div>
-              {% endif %}
-            </td>
-
-            <!-- SSN last 4 -->
-            <td class="td text-center">
-              {% if r.ssn_last4 %}
-              <span class="font-mono text-xs text-slate-600">****{{ r.ssn_last4 }}</span>
-              {% else %}
-              <span class="text-slate-300">—</span>
               {% endif %}
             </td>
 

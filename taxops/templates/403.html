@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Not allowed — TaxOps</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='tw.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center px-4">
+  <div class="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center">
+    <p class="text-sm font-semibold text-red-600 uppercase tracking-wide">403 — Not allowed</p>
+    <h1 class="mt-2 text-xl font-bold text-slate-800">This page is for a different office role</h1>
+    <p class="mt-3 text-sm text-slate-500">
+      Signed in as
+      <span class="font-semibold text-slate-700">{{ session.get('username', 'staff') }}</span>
+      ({{ session.get('role', 'staff') }}).
+      Import, merge, and CSV tools are admin-only; e-file / email / AI are preparer+.
+    </p>
+    <a href="/" class="mt-6 inline-flex items-center justify-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">
+      Back to dashboard
+    </a>
+  </div>
+</body>
+</html>
