@@ -56,10 +56,15 @@ def test_payment_receipt_is_single_letter_page_html(client_logged_in, taxops_db_
     assert resp.status_code == 200
     html = resp.data.decode("utf-8")
 
-    assert "Payment Receipt" in html
+    assert "PAYMENT RECEIPT" in html
     assert "ReceiptClient" in html
     assert "QB-1234" in html
     assert "257.50" in html
+    # Brand burgundy — same palette as work_order / missing_docs letter prints.
+    assert "#6B2233" in html
+    assert "#3D1019" in html
+    assert "#F4EFE9" in html
+    assert "#1e3a5f" not in html  # no navy substitute
     assert "size: letter portrait" in html
     assert "max-height: 10in" in html
     assert "page-break-inside: avoid" in html
@@ -92,7 +97,8 @@ def test_pickup_complete_redirects_to_receipt_not_autoprint(client_logged_in, ta
     page = client_logged_in.get(loc)
     assert page.status_code == 200
     body = page.data.decode("utf-8")
-    assert "Payment Receipt" in body
+    assert "PAYMENT RECEIPT" in body
+    assert "#6B2233" in body
     assert body.count("window.print()") == 1
 
 
